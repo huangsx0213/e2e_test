@@ -3,10 +3,11 @@ import React, { useState, useMemo } from 'react';
 import { TestSuite, TestCase, TestStep, Project, ActionType, SuiteVariable, HeaderProfile, BodyTemplate, ApiEndpoint } from '../types';
 import { Plus, Play, ChevronDown, ChevronRight, Wand2, Trash2, FileText, FlaskConical, Edit2, Check, X, Database, Search, Sparkles, Layers, TextQuote, Variable, Table2, Braces, MousePointer2, GripVertical, Workflow, FileCode, Globe } from 'lucide-react';
 import { generateStepsFromDescription } from '../services/geminiService';
+import { StepList } from './StepList';
 
 interface TestBuilderProps {
   suites: TestSuite[];
-  setSuites: React.Dispatch<React.SetStateAction<TestSuite[]>>;
+  suitesApi: any;
   projects: Project[];
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
@@ -17,7 +18,7 @@ interface TestBuilderProps {
 
 const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'];
 
-export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, projects, headers, bodies, endpoints, onRunCase, currentProjectId }) => {
+export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, projects, headers, bodies, endpoints, onRunCase, currentProjectId }) => {
   const [activeSuiteId, setActiveSuiteId] = useState<string>(suites[0]?.id || '');
   // Default to empty to show Suite Overview first
   const [activeCaseId, setActiveCaseId] = useState<string>(''); 
@@ -31,13 +32,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
   // Case Editing State
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [editCaseName, setEditCaseName] = useState('');
-
-  // Dropdown States
-  const [variableMenuOpen, setVariableMenuOpen] = useState<{ stepId: string, field: 'target' | 'data', paramName?: string } | null>(null);
-  const [elementMenuOpen, setElementMenuOpen] = useState<string | null>(null);
-
-  // Drag and Drop State
-  const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
 
   const activeSuite = suites.find(s => s.id === activeSuiteId);
   const activeCase = activeSuite?.cases.find(c => c.id === activeCaseId);
@@ -55,7 +49,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
   }, [suites, searchTerm]);
 
   // --- Suite Actions ---
-  const addSuite = () => {
+  const addSuite = async () => {
     const newSuite: TestSuite = { 
         id: `suite-${Date.now()}`, 
         name: 'New Test Suite', 
@@ -64,7 +58,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
         variables: [],
         dataRows: []
     };
-    setSuites(prev => [...prev, newSuite]);
+    await suitesApi.create(newSuite);
     setActiveSuiteId(newSuite.id);
     setActiveCaseId(''); // Show suite details
     // Auto Enter Edit Mode
@@ -72,20 +66,20 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
     setEditSuiteName('New Test Suite');
   };
 
-  const saveSuiteName = () => {
+  const saveSuiteName = async () => {
     if (editingSuiteId) {
-        setSuites(prev => prev.map(s => s.id === editingSuiteId ? { ...s, name: editSuiteName } : s));
+        await suitesApi.update(editingSuiteId, { name: editSuiteName });
         setEditingSuiteId(null);
     }
   };
 
-  const updateSuite = (suiteId: string, updates: Partial<TestSuite>) => {
-    setSuites(prev => prev.map(s => s.id === suiteId ? { ...s, ...updates } : s));
+  const updateSuite = async (suiteId: string, updates: Partial<TestSuite>) => {
+    await suitesApi.update(suiteId, updates);
   };
 
-  const deleteSuite = (suiteId: string) => {
+  const deleteSuite = async (suiteId: string) => {
       // Immediate deletion without confirmation
-      setSuites(prev => prev.filter(s => s.id !== suiteId));
+      await suitesApi.remove(suiteId);
       if (activeSuiteId === suiteId) {
          setActiveSuiteId('');
          setActiveCaseId('');
@@ -175,17 +169,17 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
   };
 
   // --- Case Actions ---
-  const addCase = (suiteId: string) => {
+  const addCase = async (suiteId: string) => {
     const newCase: TestCase = {
         id: `case-${Date.now()}`,
         name: 'New Test Case',
         description: '',
         steps: [],
     };
-    setSuites(prev => prev.map(s => {
-        if (s.id !== suiteId) return s;
-        return { ...s, cases: [...s.cases, newCase] };
-    }));
+    const suite = suites.find(s => s.id === suiteId);
+    if (suite) {
+        await suitesApi.update(suiteId, { cases: [...suite.cases, newCase] });
+    }
     setActiveSuiteId(suiteId);
     setActiveCaseId(newCase.id);
     // Auto Enter Edit Mode
@@ -193,117 +187,78 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
     setEditCaseName('New Test Case');
   };
 
-  const updateCase = (updates: Partial<TestCase>) => {
+  const updateCase = async (updates: Partial<TestCase>) => {
     if (!activeSuiteId || !activeCaseId) return;
-    setSuites(prev => prev.map(s => {
-      if (s.id !== activeSuiteId) return s;
-      return {
-        ...s,
-        cases: s.cases.map(c => c.id === activeCaseId ? { ...c, ...updates } : c)
-      };
-    }));
+    const suite = suites.find(s => s.id === activeSuiteId);
+    if (suite) {
+        const newCases = suite.cases.map(c => c.id === activeCaseId ? { ...c, ...updates } : c);
+        await suitesApi.update(activeSuiteId, { cases: newCases });
+    }
   };
 
-  const updateCaseSpecific = (suiteId: string, caseId: string, updates: Partial<TestCase>) => {
-    setSuites(prev => prev.map(s => {
-        if (s.id !== suiteId) return s;
-        return {
-            ...s,
-            cases: s.cases.map(c => c.id === caseId ? { ...c, ...updates } : c)
-        };
-    }));
+  const updateCaseSpecific = async (suiteId: string, caseId: string, updates: Partial<TestCase>) => {
+    const suite = suites.find(s => s.id === suiteId);
+    if (suite) {
+        const newCases = suite.cases.map(c => c.id === caseId ? { ...c, ...updates } : c);
+        await suitesApi.update(suiteId, { cases: newCases });
+    }
   };
 
-  const saveCaseName = (suiteId: string) => {
+  const saveCaseName = async (suiteId: string) => {
       if (editingCaseId) {
-          updateCaseSpecific(suiteId, editingCaseId, { name: editCaseName });
+          await updateCaseSpecific(suiteId, editingCaseId, { name: editCaseName });
           setEditingCaseId(null);
       }
   };
 
-  const deleteCase = (suiteId: string, caseId: string) => {
+  const deleteCase = async (suiteId: string, caseId: string) => {
     // Immediate deletion without confirmation
-    setSuites(prev => prev.map(s => {
-        if (s.id !== suiteId) return s;
-        return { ...s, cases: s.cases.filter(c => c.id !== caseId) };
-    }));
+    const suite = suites.find(s => s.id === suiteId);
+    if (suite) {
+        const newCases = suite.cases.filter(c => c.id !== caseId);
+        await suitesApi.update(suiteId, { cases: newCases });
+    }
     if (activeCaseId === caseId) setActiveCaseId('');
   };
 
-  // --- Step Actions ---
-  const addStep = () => {
-    if (!activeCase) return;
-    const newStep: TestStep = {
-      id: `step-${Date.now()}`,
-      action: 'CLICK',
-      target: '',
-      data: '',
-      description: ''
+  const createStepHandler = (
+    getItems: () => TestStep[] | undefined,
+    updateItems: (items: TestStep[]) => void
+  ) => {
+    return {
+      add: () => {
+        const newStep: TestStep = {
+          id: `step-${Date.now()}`,
+          action: 'CLICK',
+          target: '',
+          data: '',
+          description: ''
+        };
+        updateItems([...(getItems() || []), newStep]);
+      },
+      update: (stepId: string, updates: Partial<TestStep>) => {
+        updateItems((getItems() || []).map(s => s.id === stepId ? { ...s, ...updates } : s));
+      },
+      delete: (stepId: string) => {
+        updateItems((getItems() || []).filter(s => s.id !== stepId));
+      },
+      move: (fromIndex: number, toIndex: number) => {
+        const items = getItems() || [];
+        if (toIndex < 0 || toIndex >= items.length) return;
+        const newSteps = [...items];
+        const [movedStep] = newSteps.splice(fromIndex, 1);
+        newSteps.splice(toIndex, 0, movedStep);
+        updateItems(newSteps);
+      }
     };
-    updateCase({ steps: [...activeCase.steps, newStep] });
   };
 
-  const updateStep = (stepId: string, updates: Partial<TestStep>) => {
-    if (!activeCase) return;
-    updateCase({
-      steps: activeCase.steps.map(s => s.id === stepId ? { ...s, ...updates } : s)
-    });
-  };
-
-  const deleteStep = (stepId: string) => {
-    if (!activeCase) return;
-    updateCase({
-      steps: activeCase.steps.filter(s => s.id !== stepId)
-    });
-  };
-
-  const moveStep = (fromIndex: number, toIndex: number) => {
-    if (!activeCase) return;
-    if (toIndex < 0 || toIndex >= activeCase.steps.length) return;
-    
-    const newSteps = [...activeCase.steps];
-    const [movedStep] = newSteps.splice(fromIndex, 1);
-    newSteps.splice(toIndex, 0, movedStep);
-    
-    updateCase({ steps: newSteps });
-  };
-
-  const insertVariable = (stepId: string, field: 'target' | 'data', variableKey: string, paramName?: string) => {
-    if (!activeCase) return;
-    const step = activeCase.steps.find(s => s.id === stepId);
-    if (!step) return;
-    
-    if (paramName && field === 'data') {
-         // Handle JSON structure update for Module Params
-         let dataObj: Record<string, string> = {};
-         try {
-             dataObj = JSON.parse(step.data || '{}');
-         } catch (e) {}
-         
-         const currentVal = dataObj[paramName] || '';
-         const newVal = `${currentVal}\${${variableKey}}`;
-         
-         dataObj[paramName] = newVal;
-         updateStep(stepId, { data: JSON.stringify(dataObj) });
-    } else {
-        // Standard field update
-        const currentValue = field === 'target' ? step.target : step.data;
-        const newValue = `${currentValue}\${${variableKey}}`;
-        updateStep(stepId, { [field]: newValue });
-    }
-    setVariableMenuOpen(null);
-  };
-
-  const updateModuleParam = (stepId: string, currentDataJSON: string, paramKey: string, newValue: string) => {
-     let dataObj = {};
-     try {
-         dataObj = JSON.parse(currentDataJSON || '{}');
-     } catch (e) {
-         // ignore
-     }
-     dataObj = { ...dataObj, [paramKey]: newValue };
-     updateStep(stepId, { data: JSON.stringify(dataObj) });
-  };
+  const caseSteps = createStepHandler(() => activeCase?.steps, steps => updateCase({ steps }));
+  const caseSetupSteps = createStepHandler(() => activeCase?.setupSteps, setupSteps => updateCase({ setupSteps }));
+  const caseTeardownSteps = createStepHandler(() => activeCase?.teardownSteps, teardownSteps => updateCase({ teardownSteps }));
+  
+  const suiteSetupSteps = createStepHandler(() => activeSuite?.setupSteps, setupSteps => suitesApi.update(activeSuiteId, { setupSteps }));
+  const suiteTeardownSteps = createStepHandler(() => activeSuite?.teardownSteps, teardownSteps => suitesApi.update(activeSuiteId, { teardownSteps }));
 
   const handleAiGeneration = async () => {
     if (!activeCase || !activeProject) {
@@ -318,51 +273,8 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
     setGenerating(false);
   };
 
-  // --- Drag and Drop Handlers ---
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    const target = e.target as HTMLElement;
-    if (!target.closest('.drag-handle')) {
-        return;
-    }
-    setDraggedStepIndex(index);
-    e.dataTransfer.setData("text/plain", String(index));
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (draggedStepIndex === null) return;
-    moveStep(draggedStepIndex, dropIndex);
-    setDraggedStepIndex(null);
-  };
-
-  const closeAllMenus = () => {
-      setVariableMenuOpen(null);
-      setElementMenuOpen(null);
-  };
-
-  // Helper for Action Styling
-  const getActionColorClass = (action: ActionType) => {
-     if (action === 'RUN_MODULE') return 'bg-purple-100 text-purple-800 border-purple-300';
-     if (action.startsWith('ASSERT')) return 'bg-orange-50 text-orange-700 border-orange-200';
-     if (action.startsWith('API')) return 'bg-sky-50 text-sky-700 border-sky-200';
-     if (action === 'WAIT') return 'bg-gray-100 text-gray-700 border-gray-200';
-     return 'bg-blue-50 text-blue-700 border-blue-200';
-  };
-
   return (
     <div className="h-full flex overflow-hidden bg-gray-50 relative">
-      {(elementMenuOpen || variableMenuOpen) && (
-          <div className="fixed inset-0 z-40" onClick={closeAllMenus}></div>
-      )}
-
       {/* Sidebar: Suites Explorer */}
       <div className="w-72 border-r border-gray-200 bg-white flex flex-col z-10">
         {/* Project Context Selector */}
@@ -579,564 +491,55 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
                          </div>
                     </div>
 
+                    {/* Setup Steps */}
+                    <div className="px-6 pb-2 flex-1 space-y-3">
+                        <StepList
+                            title="Setup Steps"
+                            steps={activeCase.setupSteps || []}
+                            onUpdateStep={caseSetupSteps.update}
+                            onDeleteStep={caseSetupSteps.delete}
+                            onMoveStep={caseSetupSteps.move}
+                            onAddStep={caseSetupSteps.add}
+                            activeProject={activeProject}
+                            activeSuite={activeSuite}
+                            endpoints={endpoints}
+                            headers={headers}
+                            bodies={bodies}
+                        />
+                    </div>
+
                     {/* Steps List */}
+                    <div className="px-6 pb-2 flex-1 space-y-3">
+                        <StepList
+                            title="Test Steps"
+                            steps={activeCase.steps}
+                            onUpdateStep={caseSteps.update}
+                            onDeleteStep={caseSteps.delete}
+                            onMoveStep={caseSteps.move}
+                            onAddStep={caseSteps.add}
+                            activeProject={activeProject}
+                            activeSuite={activeSuite}
+                            endpoints={endpoints}
+                            headers={headers}
+                            bodies={bodies}
+                        />
+                    </div>
+
+                    {/* Teardown Steps */}
                     <div className="px-6 pb-6 flex-1 space-y-3">
-                         <div className="grid grid-cols-12 gap-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
-                            <div className="col-span-1 text-center">Step</div>
-                            <div className="col-span-2">Action</div>
-                            <div className="col-span-4">Target / Module</div>
-                            <div className="col-span-4">Value / Data</div>
-                            <div className="col-span-1"></div>
-                         </div>
-                         
-                         {activeCase.steps.map((step, index) => (
-                           <div 
-                                key={step.id} 
-                                draggable={true}
-                                onDragStart={(e) => handleDragStart(e, index)}
-                                onDragOver={(e) => handleDragOver(e, index)}
-                                onDrop={(e) => handleDrop(e, index)}
-                                className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-indigo-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-indigo-300 ring-2 ring-indigo-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-indigo-300 border-indigo-400' : ''}`}
-                           >
-                              <div className="grid grid-cols-12 gap-4 items-center">
-                                  {/* Drag Handle & Index */}
-                                  <div className="col-span-1 flex justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 flex items-center justify-center drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative">
-                                     <GripVertical size={16} className="mr-1 text-gray-400" />
-                                     
-                                     {/* Manual Step Reordering via Dropdown */}
-                                     <div className="relative">
-                                        <select 
-                                            className="appearance-none w-5 h-5 bg-gray-50 rounded-full text-xs font-mono font-medium text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer text-indigo-600 hover:bg-indigo-100 transition-colors"
-                                            value={index}
-                                            onChange={(e) => moveStep(index, parseInt(e.target.value))}
-                                            onMouseDown={(e) => e.stopPropagation()} 
-                                        >
-                                            {activeCase.steps.map((_, i) => (
-                                                <option key={i} value={i}>{i + 1}</option>
-                                            ))}
-                                        </select>
-                                     </div>
-                                  </div>
-                                  <div className="col-span-2">
-                                    <select 
-                                      className={`w-full text-[11px] font-bold rounded-md border px-2 py-1.5 focus:ring-2 focus:ring-opacity-50 outline-none uppercase cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
-                                      value={step.action}
-                                      onChange={(e) => updateStep(step.id, { action: e.target.value as ActionType, target: '', data: '' })}
-                                    >
-                                      {ACTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
-                                  </div>
-                                  
-                                  <div className="col-span-4 relative">
-                                    {step.action === 'RUN_MODULE' ? (
-                                        <div className="relative">
-                                            <Workflow className="absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-500" size={14} />
-                                            <select
-                                                className="w-full bg-purple-50 text-xs text-purple-900 rounded-md border border-purple-200 pl-8 pr-3 py-1.5 font-medium focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all cursor-pointer appearance-none"
-                                                value={step.target}
-                                                onChange={(e) => updateStep(step.id, { target: e.target.value })}
-                                            >
-                                                <option value="">Select a Module...</option>
-                                                {activeProject?.modules.map(mod => (
-                                                    <option key={mod.id} value={mod.id}>{mod.name}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-purple-400 pointer-events-none" size={12} />
-                                        </div>
-                                    ) : step.action.startsWith('API_') ? (
-                                        <div className="space-y-2">
-                                            <div>
-                                                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Endpoint</label>
-                                                <div className="relative">
-                                                    <Globe className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={10} />
-                                                    <select 
-                                                        className="w-full bg-white text-[10px] border border-gray-200 rounded pl-6 pr-6 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
-                                                        value={step.endpointId || ''}
-                                                        onChange={(e) => updateStep(step.id, { endpointId: e.target.value })}
-                                                    >
-                                                        <option value="">Direct URL</option>
-                                                        {endpoints.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                                    </select>
-                                                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" size={10} />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">
-                                                    {step.endpointId ? 'Resource Path' : 'Full URL'}
-                                                </label>
-                                                <div className="relative">
-                                                    <input 
-                                                        className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300 pr-8"
-                                                        value={step.target}
-                                                        onChange={(e) => updateStep(step.id, { target: e.target.value })}
-                                                        placeholder={step.endpointId ? '/v1/users' : 'https://api.example.com/v1/users'}
-                                                    />
-                                                    <button 
-                                                        className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 p-1 rounded"
-                                                        onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'target' ? null : { stepId: step.id, field: 'target' }); }}
-                                                        title="Insert Variable"
-                                                    >
-                                                        <Braces size={12} />
-                                                    </button>
-                                                    
-                                                    {/* Variable Autocomplete Dropdown - Target */}
-                                                    {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'target' && (
-                                                        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                            <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Variable</div>
-                                                            {(activeSuite.variables || []).length === 0 && <div className="px-2 py-2 text-gray-400 italic">No variables defined in suite</div>}
-                                                            {(activeSuite.variables || []).map(v => (
-                                                                <button 
-                                                                    key={v.id}
-                                                                    className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                                    onClick={() => insertVariable(step.id, 'target', v.key)}
-                                                                >
-                                                                    <span>{v.key}</span>
-                                                                    <span className="text-gray-400 text-[10px] truncate max-w-[100px] group-hover:text-indigo-400">{v.value}</span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="relative">
-                                            <input 
-                                              className="w-full bg-white text-xs text-indigo-700 font-medium rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none placeholder-gray-300 transition-all pr-8"
-                                              value={step.target}
-                                              onChange={(e) => updateStep(step.id, { target: e.target.value })}
-                                              onFocus={() => { setElementMenuOpen(step.id); setVariableMenuOpen(null); }}
-                                              placeholder={activeProject ? "Select Element..." : "Select Project First"}
-                                              disabled={!activeProject}
-                                            />
-                                            
-                                            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center">
-                                                {!step.target && <Search size={12} className="text-gray-300 pointer-events-none mr-1" />}
-                                                <button 
-                                                    className="text-gray-400 hover:text-indigo-600 p-1 rounded"
-                                                    onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'target' ? null : { stepId: step.id, field: 'target' }); setElementMenuOpen(null); }}
-                                                    title="Insert Variable"
-                                                >
-                                                    <Braces size={12} />
-                                                </button>
-                                            </div>
-
-                                            {/* Grouped Element Dropdown */}
-                                            {elementMenuOpen === step.id && (
-                                                <div 
-                                                    className="absolute top-full left-0 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-xl z-50 animate-in fade-in zoom-in-95 duration-75"
-                                                    onMouseDown={(e) => e.stopPropagation()} 
-                                                >
-                                                     {activeProject?.pages.map(page => {
-                                                         const matchingElements = page.elements.filter(el => {
-                                                             const query = step.target.toLowerCase();
-                                                             const full = `${page.name}/${el.name}`.toLowerCase();
-                                                             if (!query) return true;
-                                                             return full.includes(query) || page.name.toLowerCase().includes(query) || el.name.toLowerCase().includes(query);
-                                                         });
-
-                                                         if (matchingElements.length === 0) return null;
-
-                                                         return (
-                                                             <div key={page.id}>
-                                                                 <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 bg-gray-50 border-y border-gray-100 uppercase tracking-wider sticky top-0 z-10 flex items-center gap-1">
-                                                                    <Layers size={10} />
-                                                                    {page.name}
-                                                                 </div>
-                                                                 {matchingElements.map(el => (
-                                                                     <div
-                                                                        key={el.id}
-                                                                        className="px-4 py-2 text-xs text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer flex items-center gap-2 group/item transition-colors"
-                                                                        onMouseDown={(e) => {
-                                                                            e.preventDefault();
-                                                                            updateStep(step.id, { target: `${page.name}/${el.name}` });
-                                                                            setElementMenuOpen(null);
-                                                                        }}
-                                                                     >
-                                                                        <div className={`shrink-0 w-1.5 h-1.5 rounded-full ${el.selectorType === 'XPath' ? 'bg-purple-400' : 'bg-indigo-400'}`}></div>
-                                                                        <span className="font-medium">{el.name}</span>
-                                                                        <span className="ml-auto text-[10px] text-gray-400 group-hover/item:text-indigo-400 font-mono truncate max-w-[80px]">{el.selectorType}</span>
-                                                                     </div>
-                                                                 ))}
-                                                             </div>
-                                                         )
-                                                     })}
-                                                     {activeProject?.pages.length === 0 && (
-                                                         <div className="p-4 text-center text-gray-400 text-xs">No pages in project.</div>
-                                                     )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {/* Variable Autocomplete Dropdown - Target */}
-                                    {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'target' && (
-                                        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                            <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Variable</div>
-                                            {(activeSuite.variables || []).length === 0 && <div className="px-2 py-2 text-gray-400 italic">No variables defined in suite</div>}
-                                            {(activeSuite.variables || []).map(v => (
-                                                <button 
-                                                    key={v.id}
-                                                    className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                    onClick={() => insertVariable(step.id, 'target', v.key)}
-                                                >
-                                                    <span>{v.key}</span>
-                                                    <span className="text-gray-400 text-[10px] truncate max-w-[100px] group-hover:text-indigo-400">{v.value}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                  </div>
-                                  <div className="col-span-4 relative">
-                                    {step.action === 'RUN_MODULE' ? (
-                                        <div className="bg-purple-50 rounded-md border border-purple-100 p-2 space-y-2">
-                                            {(() => {
-                                                const selectedModule = activeProject?.modules.find(m => m.id === step.target);
-                                                if (!selectedModule) return <div className="text-[10px] text-gray-400 italic">Select a module to configure parameters</div>;
-                                                
-                                                if (!selectedModule.params || selectedModule.params.length === 0) {
-                                                    return <div className="text-[10px] text-gray-400 italic flex items-center gap-1"><Check size={10}/> No input parameters required</div>
-                                                }
-
-                                                let currentValues: Record<string, string> = {};
-                                                try { currentValues = JSON.parse(step.data || '{}'); } catch(e) {}
-
-                                                return selectedModule.params.map(param => (
-                                                    <div key={param.id} className="flex items-center gap-2">
-                                                        <label className="text-[10px] font-mono font-medium text-purple-700 w-16 truncate text-right shrink-0" title={param.name}>{param.name}</label>
-                                                        <div className="relative flex-1">
-                                                            <input 
-                                                                className="w-full bg-white border border-purple-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-200 outline-none"
-                                                                placeholder={param.defaultValue || '(Optional)'}
-                                                                value={currentValues[param.name] || ''}
-                                                                onChange={(e) => updateModuleParam(step.id, step.data, param.name, e.target.value)}
-                                                            />
-                                                            <button 
-                                                                className="absolute right-1 top-1/2 -translate-y-1/2 text-purple-300 hover:text-purple-600 p-0.5 rounded"
-                                                                onClick={(e) => { 
-                                                                    e.stopPropagation(); 
-                                                                    setVariableMenuOpen(
-                                                                        variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === param.name 
-                                                                        ? null 
-                                                                        : { stepId: step.id, field: 'data', paramName: param.name }
-                                                                    );
-                                                                }}
-                                                            >
-                                                                <Braces size={10} />
-                                                            </button>
-
-                                                            {/* Dropdown for Module Params */}
-                                                            {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === param.name && (
-                                                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Variable</div>
-                                                                    {(activeSuite.variables || []).length === 0 && <div className="px-2 py-2 text-gray-400 italic">No variables defined</div>}
-                                                                    {(activeSuite.variables || []).map(v => (
-                                                                        <button 
-                                                                            key={v.id}
-                                                                            className="w-full text-left px-3 py-1.5 hover:bg-purple-50 hover:text-purple-700 font-mono flex items-center justify-between group"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                insertVariable(step.id, 'data', v.key, param.name);
-                                                                            }}
-                                                                        >
-                                                                            <span>{v.key}</span>
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ));
-                                            })()}
-                                        </div>
-                                    ) : step.action.startsWith('API_') ? (
-                                        <div className="space-y-2">
-                                            {/* Configuration Row */}
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Headers</label>
-                                                    <div className="relative">
-                                                        <select 
-                                                            className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
-                                                            value={step.headerProfileId || ''}
-                                                            onChange={(e) => updateStep(step.id, { headerProfileId: e.target.value })}
-                                                        >
-                                                            <option value="">(None)</option>
-                                                            {headers.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                                                        </select>
-                                                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" size={10} />
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Body Template</label>
-                                                    <div className="relative">
-                                                        <select 
-                                                            className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
-                                                            value={step.bodyTemplateId || ''}
-                                                            onChange={(e) => updateStep(step.id, { bodyTemplateId: e.target.value })}
-                                                        >
-                                                            <option value="">(Raw)</option>
-                                                            {bodies.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                                        </select>
-                                                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" size={10} />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            
-                                            {/* Dynamic Variable Inputs for Header & Body */}
-                                            {(step.headerProfileId || step.bodyTemplateId) ? (
-                                                <div className="bg-gray-50 rounded-md border border-gray-200 p-2 space-y-3">
-                                                    {/* Header Variables */}
-                                                    {(() => {
-                                                        const profile = headers.find(h => h.id === step.headerProfileId);
-                                                        if (!profile) return null;
-                                                        
-                                                        // Extract variables from header values: {{VAR_NAME}}
-                                                        const headerVars = new Set<string>();
-                                                        profile.headers.forEach(h => {
-                                                            const matches = h.value.match(/\{\{([^}]+)\}\}/g);
-                                                            if (matches) {
-                                                                matches.forEach(m => headerVars.add(m.replace(/\{\{|\}\}/g, '')));
-                                                            }
-                                                        });
-
-                                                        if (headerVars.size === 0) return null;
-
-                                                        let currentValues: Record<string, string> = {};
-                                                        try { currentValues = JSON.parse(step.data || '{}'); } catch(e) {}
-
-                                                        return (
-                                                            <div>
-                                                                <div className="text-[9px] font-bold text-indigo-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileText size={10}/> Header Variables</div>
-                                                                <div className="space-y-1.5">
-                                                                    {Array.from(headerVars).map(varName => (
-                                                                        <div key={`header-${varName}`} className="flex items-center gap-2">
-                                                                            <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
-                                                                            <div className="relative flex-1">
-                                                                                <input 
-                                                                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
-                                                                                    placeholder="Value"
-                                                                                    value={currentValues[varName] || ''}
-                                                                                    onChange={(e) => {
-                                                                                        const newData = { ...currentValues, [varName]: e.target.value };
-                                                                                        updateStep(step.id, { data: JSON.stringify(newData) });
-                                                                                    }}
-                                                                                />
-                                                                                <button 
-                                                                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-indigo-600 p-0.5 rounded"
-                                                                                    onClick={(e) => { 
-                                                                                        e.stopPropagation(); 
-                                                                                        setVariableMenuOpen(
-                                                                                            variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName 
-                                                                                            ? null 
-                                                                                            : { stepId: step.id, field: 'data', paramName: varName }
-                                                                                        );
-                                                                                    }}
-                                                                                >
-                                                                                    <Braces size={10} />
-                                                                                </button>
-                                                                                {/* Variable Dropdown */}
-                                                                                {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName && (
-                                                                                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                                                                        {(activeSuite.variables || []).map(v => (
-                                                                                            <button 
-                                                                                                key={v.id}
-                                                                                                className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    const newData = { ...currentValues, [varName]: `\${${v.key}}` };
-                                                                                                    updateStep(step.id, { data: JSON.stringify(newData) });
-                                                                                                    setVariableMenuOpen(null);
-                                                                                                }}
-                                                                                            >
-                                                                                                <span>{v.key}</span>
-                                                                                            </button>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })()}
-
-                                                    {/* Body Variables */}
-                                                    {(() => {
-                                                        const template = bodies.find(b => b.id === step.bodyTemplateId);
-                                                        if (!template) return null;
-                                                        
-                                                        // Extract variables from body content: {{VAR_NAME}}
-                                                        const bodyVars = new Set<string>();
-                                                        const matches = template.content.match(/\{\{([^}]+)\}\}/g);
-                                                        if (matches) {
-                                                            matches.forEach(m => bodyVars.add(m.replace(/\{\{|\}\}/g, '')));
-                                                        }
-
-                                                        if (bodyVars.size === 0) return null;
-
-                                                        let currentValues: Record<string, string> = {};
-                                                        try { currentValues = JSON.parse(step.data || '{}'); } catch(e) {}
-
-                                                        return (
-                                                            <div>
-                                                                <div className="text-[9px] font-bold text-indigo-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileCode size={10}/> Body Variables</div>
-                                                                <div className="space-y-1.5">
-                                                                    {Array.from(bodyVars).map(varName => (
-                                                                        <div key={`body-${varName}`} className="flex items-center gap-2">
-                                                                            <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
-                                                                            <div className="relative flex-1">
-                                                                                <input 
-                                                                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
-                                                                                    placeholder="Value"
-                                                                                    value={currentValues[varName] || ''}
-                                                                                    onChange={(e) => {
-                                                                                        const newData = { ...currentValues, [varName]: e.target.value };
-                                                                                        updateStep(step.id, { data: JSON.stringify(newData) });
-                                                                                    }}
-                                                                                />
-                                                                                <button 
-                                                                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-indigo-600 p-0.5 rounded"
-                                                                                    onClick={(e) => { 
-                                                                                        e.stopPropagation(); 
-                                                                                        setVariableMenuOpen(
-                                                                                            variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName 
-                                                                                            ? null 
-                                                                                            : { stepId: step.id, field: 'data', paramName: varName }
-                                                                                        );
-                                                                                    }}
-                                                                                >
-                                                                                    <Braces size={10} />
-                                                                                </button>
-                                                                                {/* Variable Dropdown */}
-                                                                                {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName && (
-                                                                                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                                                                        {(activeSuite.variables || []).map(v => (
-                                                                                            <button 
-                                                                                                key={v.id}
-                                                                                                className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                                                                onClick={(e) => {
-                                                                                                    e.stopPropagation();
-                                                                                                    const newData = { ...currentValues, [varName]: `\${${v.key}}` };
-                                                                                                    updateStep(step.id, { data: JSON.stringify(newData) });
-                                                                                                    setVariableMenuOpen(null);
-                                                                                                }}
-                                                                                            >
-                                                                                                <span>{v.key}</span>
-                                                                                            </button>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            ) : (
-                                                <div className="relative">
-                                                    <textarea 
-                                                    className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
-                                                    value={step.data}
-                                                    onChange={(e) => updateStep(step.id, { data: e.target.value })}
-                                                    placeholder="Request Body (JSON)"
-                                                    />
-                                                    <button 
-                                                        className="absolute right-1 top-2 text-gray-400 hover:text-indigo-600 p-1 rounded"
-                                                        onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
-                                                        title="Insert Variable"
-                                                    >
-                                                        <Braces size={12} />
-                                                    </button>
-
-                                                    {/* Variable Autocomplete Dropdown - Data */}
-                                                    {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && !variableMenuOpen.paramName && (
-                                                        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                            <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Variable</div>
-                                                            {(activeSuite.variables || []).length === 0 && <div className="px-2 py-2 text-gray-400 italic">No variables defined in suite</div>}
-                                                            {(activeSuite.variables || []).map(v => (
-                                                                <button 
-                                                                    key={v.id}
-                                                                    className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                                    onClick={() => insertVariable(step.id, 'data', v.key)}
-                                                                >
-                                                                    <span>{v.key}</span>
-                                                                    <span className="text-gray-400 text-[10px] truncate max-w-[100px] group-hover:text-indigo-400">{v.value}</span>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="relative">
-                                            <input 
-                                              className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300 pr-8"
-                                              value={step.data}
-                                              onChange={(e) => updateStep(step.id, { data: e.target.value })}
-                                              placeholder={step.action.includes('ASSERT') ? 'Expected Value' : 'Input Data'}
-                                            />
-                                            <button 
-                                                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 p-1 rounded"
-                                                onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
-                                                title="Insert Variable"
-                                            >
-                                                <Braces size={12} />
-                                            </button>
-
-                                            {/* Variable Autocomplete Dropdown - Data */}
-                                            {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && (
-                                                <div className="absolute top-full left-0 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
-                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Variable</div>
-                                                    {(activeSuite.variables || []).length === 0 && <div className="px-2 py-2 text-gray-400 italic">No variables defined in suite</div>}
-                                                    {(activeSuite.variables || []).map(v => (
-                                                        <button 
-                                                            key={v.id}
-                                                            className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
-                                                            onClick={() => insertVariable(step.id, 'data', v.key)}
-                                                        >
-                                                            <span>{v.key}</span>
-                                                            <span className="text-gray-400 text-[10px] truncate max-w-[100px] group-hover:text-indigo-400">{v.value}</span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                  </div>
-                                  <div className="col-span-1 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                     <button onClick={() => deleteStep(step.id)} className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
-                                       <Trash2 size={14} />
-                                     </button>
-                                  </div>
-                              </div>
-                              
-                              {/* Step Description Row */}
-                              <div className="mt-2 pl-9 pr-8">
-                                 <div className="relative">
-                                    <input 
-                                        className="w-full bg-transparent border-b border-dashed border-gray-200 focus:border-indigo-300 text-[11px] text-gray-500 placeholder-gray-300 focus:bg-gray-50/50 outline-none transition-all py-1 px-1"
-                                        value={step.description || ''}
-                                        onChange={(e) => updateStep(step.id, { description: e.target.value })}
-                                        placeholder="Add step description (optional)..."
-                                    />
-                                    <TextQuote size={10} className="absolute -left-4 top-1/2 -translate-y-1/2 text-gray-300" />
-                                 </div>
-                              </div>
-                           </div>
-                         ))}
-
-                         <button 
-                          onClick={addStep}
-                          className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50/50 transition-all flex items-center justify-center gap-2 text-sm font-medium mt-6 group"
-                         >
-                           <Plus size={16} className="group-hover:scale-110 transition-transform" /> Add New Step
-                         </button>
+                        <StepList
+                            title="Teardown Steps"
+                            steps={activeCase.teardownSteps || []}
+                            onUpdateStep={caseTeardownSteps.update}
+                            onDeleteStep={caseTeardownSteps.delete}
+                            onMoveStep={caseTeardownSteps.move}
+                            onAddStep={caseTeardownSteps.add}
+                            activeProject={activeProject}
+                            activeSuite={activeSuite}
+                            endpoints={endpoints}
+                            headers={headers}
+                            bodies={bodies}
+                        />
                     </div>
                 </div>
             </div>
@@ -1172,17 +575,41 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
                                     onChange={(e) => updateSuite(activeSuite.id, { name: e.target.value })}
                                 />
                             </div>
-
-                            <div>
-                                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Description</label>
-                                <textarea 
-                                    className="w-full h-24 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 resize-none"
-                                    placeholder="Describe the scope and purpose of this test suite..."
-                                    value={activeSuite.description || ''}
-                                    onChange={(e) => updateSuite(activeSuite.id, { description: e.target.value })}
-                                />
-                            </div>
                         </div>
+                     </div>
+
+                     {/* Suite Setup Steps */}
+                     <div className="pt-6 border-t border-gray-100">
+                        <StepList
+                            title="Suite Setup Steps"
+                            steps={activeSuite.setupSteps || []}
+                            onUpdateStep={suiteSetupSteps.update}
+                            onDeleteStep={suiteSetupSteps.delete}
+                            onMoveStep={suiteSetupSteps.move}
+                            onAddStep={suiteSetupSteps.add}
+                            activeProject={activeProject}
+                            activeSuite={activeSuite}
+                            endpoints={endpoints}
+                            headers={headers}
+                            bodies={bodies}
+                        />
+                     </div>
+
+                     {/* Suite Teardown Steps */}
+                     <div className="pt-6 border-t border-gray-100">
+                        <StepList
+                            title="Suite Teardown Steps"
+                            steps={activeSuite.teardownSteps || []}
+                            onUpdateStep={suiteTeardownSteps.update}
+                            onDeleteStep={suiteTeardownSteps.delete}
+                            onMoveStep={suiteTeardownSteps.move}
+                            onAddStep={suiteTeardownSteps.add}
+                            activeProject={activeProject}
+                            activeSuite={activeSuite}
+                            endpoints={endpoints}
+                            headers={headers}
+                            bodies={bodies}
+                        />
                      </div>
 
                      {/* 2. Global Variables */}
@@ -1198,6 +625,12 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, setSuites, pro
                         </div>
                         
                         <div className="space-y-2">
+                             <div className="flex items-center gap-3">
+                                 <div className="flex-1 text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">Name</div>
+                                 <span className="text-transparent font-mono">=</span>
+                                 <div className="flex-[2] text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">Default Value</div>
+                                 <div className="w-[22px]"></div>
+                             </div>
                              {(activeSuite.variables || []).length === 0 && (
                                  <div className="text-center py-6 text-gray-400 text-xs italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
                                      No variables defined. Add variables to parameterize your test cases.

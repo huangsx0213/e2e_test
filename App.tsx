@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Layout, Box, PlaySquare, Layers, Settings as SettingsIcon, Activity, ChevronRight, BarChart3, Database, PlayCircle, Command, Search, Bell, Workflow, FileText, FileCode, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Layout, Box, PlaySquare, Layers, Settings as SettingsIcon, Activity, ChevronRight, BarChart3, Database, PlayCircle, Command, Search, Bell, Workflow, FileText, FileCode, Globe, Loader2 } from 'lucide-react';
 import { ElementRepo } from './components/ElementRepo';
 import { TestBuilder } from './components/TestBuilder';
 import { ModuleBuilder } from './components/ModuleBuilder';
@@ -11,25 +11,49 @@ import { EndpointManager } from './components/EndpointManager';
 import { Settings } from './components/Settings';
 import { Dashboard } from './components/Dashboard';
 import { TestRunner } from './components/TestRunner';
-import { MOCK_PROJECTS, MOCK_SUITES, MOCK_HEADERS, MOCK_BODIES, MOCK_ENDPOINTS } from './constants';
 import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from './types';
+import { api } from './services/api';
+import { useCrud, useEnvCrud } from './hooks/useCrud';
 
 function App() {
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'RUN' | 'ELEMENTS' | 'MODULES' | 'TESTS' | 'HEADERS' | 'BODIES' | 'ENDPOINTS' | 'SETTINGS'>('DASHBOARD');
-  const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
-  const [suites, setSuites] = useState<TestSuite[]>(MOCK_SUITES);
-  const [headers, setHeaders] = useState<HeaderProfile[]>(MOCK_HEADERS);
-  const [bodies, setBodies] = useState<BodyTemplate[]>(MOCK_BODIES);
-  const [endpoints, setEndpoints] = useState<ApiEndpoint[]>(MOCK_ENDPOINTS);
   
-  // Environment State
-  const [environments, setEnvironments] = useState<string[]>(['DEV', 'SIT', 'UAT', 'PROD']);
-  const [currentEnvironment, setCurrentEnvironment] = useState<string>('DEV');
+  const [projects, projectsApi, loadingProjects] = useCrud<Project>(api.projects);
+  const [suites, suitesApi, loadingSuites] = useCrud<TestSuite>(api.suites);
+  const [headers, headersApi, loadingHeaders] = useCrud<HeaderProfile>(api.headers);
+  const [bodies, bodiesApi, loadingBodies] = useCrud<BodyTemplate>(api.bodies);
+  const [endpoints, endpointsApi, loadingEndpoints] = useCrud<ApiEndpoint>(api.endpoints);
+  const [environments, environmentsApi, loadingEnvironments] = useEnvCrud(api.environments);
   
-  // Project State
-  const [currentProjectId, setCurrentProjectId] = useState<string>(projects[0]?.id || '');
+  const [currentEnvironment, setCurrentEnvironment] = useState<string>('');
+  const [currentProjectId, setCurrentProjectId] = useState<string>('');
+
+  useEffect(() => {
+    if (!currentProjectId && projects.length > 0) {
+      setCurrentProjectId(projects[0].id);
+    }
+  }, [projects, currentProjectId]);
+
+  useEffect(() => {
+    if (!currentEnvironment && environments.length > 0) {
+      setCurrentEnvironment(environments[0]);
+    }
+  }, [environments, currentEnvironment]);
 
   const [executionState, setExecutionState] = useState<{ suiteId: string; caseId: string } | null>(null);
+
+  const isLoading = loadingProjects || loadingSuites || loadingHeaders || loadingBodies || loadingEndpoints || loadingEnvironments;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin text-indigo-600" size={40} />
+          <p className="text-gray-500 font-medium animate-pulse">Loading workspace data...</p>
+        </div>
+      </div>
+    );
+  }
 
   const activeSuite = suites.find(s => s.id === executionState?.suiteId);
   const activeCase = activeSuite?.cases.find(c => c.id === executionState?.caseId);
@@ -121,7 +145,7 @@ function App() {
             {activeTab === 'ELEMENTS' && (
                 <ElementRepo 
                     projects={projects} 
-                    setProjects={setProjects} 
+                    projectsApi={projectsApi} 
                     currentProjectId={currentProjectId}
                 />
             )}
@@ -129,7 +153,7 @@ function App() {
             {activeTab === 'MODULES' && (
                 <ModuleBuilder 
                     projects={projects} 
-                    setProjects={setProjects} 
+                    projectsApi={projectsApi} 
                     headers={headers} 
                     bodies={bodies} 
                     endpoints={endpoints} 
@@ -140,7 +164,7 @@ function App() {
             {activeTab === 'TESTS' && (
             <TestBuilder 
                 suites={suites} 
-                setSuites={setSuites} 
+                suitesApi={suitesApi} 
                 projects={projects}
                 headers={headers}
                 bodies={bodies}
@@ -151,25 +175,25 @@ function App() {
             )}
 
             {activeTab === 'ENDPOINTS' && (
-                <EndpointManager endpoints={endpoints} setEndpoints={setEndpoints} environments={environments} />
+                <EndpointManager endpoints={endpoints} endpointsApi={endpointsApi} environments={environments} />
             )}
 
             {activeTab === 'HEADERS' && (
-                <HeadersManager headers={headers} setHeaders={setHeaders} />
+                <HeadersManager headers={headers} headersApi={headersApi} />
             )}
 
             {activeTab === 'BODIES' && (
-                <BodyManager bodies={bodies} setBodies={setBodies} />
+                <BodyManager bodies={bodies} bodiesApi={bodiesApi} />
             )}
             
             {activeTab === 'SETTINGS' && (
                 <Settings 
                     environments={environments} 
-                    setEnvironments={setEnvironments}
+                    environmentsApi={environmentsApi}
                     currentEnvironment={currentEnvironment}
                     setCurrentEnvironment={setCurrentEnvironment}
                     projects={projects}
-                    setProjects={setProjects}
+                    projectsApi={projectsApi}
                     currentProjectId={currentProjectId}
                     setCurrentProjectId={setCurrentProjectId}
                 />

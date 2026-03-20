@@ -4,10 +4,10 @@ import { HeaderProfile } from '../types';
 
 interface HeadersManagerProps {
   headers: HeaderProfile[];
-  setHeaders: React.Dispatch<React.SetStateAction<HeaderProfile[]>>;
+  headersApi: any;
 }
 
-export function HeadersManager({ headers, setHeaders }: HeadersManagerProps) {
+export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -25,28 +25,24 @@ export function HeadersManager({ headers, setHeaders }: HeadersManagerProps) {
     setEditHeaders([...profile.headers]);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const newProfile: HeaderProfile = {
       id: `h_${Date.now()}`,
       name: 'New Header Set',
       description: '',
       headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }]
     };
-    setHeaders([...headers, newProfile]);
+    await headersApi.create(newProfile);
     handleSelect(newProfile);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedId) return;
-    setHeaders(headers.map(p => 
-      p.id === selectedId 
-        ? { ...p, name: editName, description: editDesc, headers: editHeaders }
-        : p
-    ));
+    await headersApi.update(selectedId, { name: editName, description: editDesc, headers: editHeaders });
   };
 
-  const handleDelete = (id: string) => {
-    setHeaders(headers.filter(p => p.id !== id));
+  const handleDelete = async (id: string) => {
+    await headersApi.remove(id);
     if (selectedId === id) setSelectedId(null);
   };
 

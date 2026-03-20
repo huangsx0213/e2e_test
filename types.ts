@@ -66,6 +66,8 @@ export interface TestCase {
   name: string;
   description: string;
   steps: TestStep[];
+  setupSteps?: TestStep[];
+  teardownSteps?: TestStep[];
 }
 
 export interface SuiteVariable {
@@ -81,6 +83,8 @@ export interface TestSuite {
   cases: TestCase[];
   variables?: SuiteVariable[]; 
   dataRows?: Record<string, string>[]; 
+  setupSteps?: TestStep[];
+  teardownSteps?: TestStep[];
 }
 
 export interface ExecutionLog {

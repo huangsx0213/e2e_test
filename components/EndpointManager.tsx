@@ -4,11 +4,11 @@ import { ApiEndpoint } from '../types';
 
 interface EndpointManagerProps {
   endpoints: ApiEndpoint[];
-  setEndpoints: React.Dispatch<React.SetStateAction<ApiEndpoint[]>>;
+  endpointsApi: any;
   environments: string[];
 }
 
-export function EndpointManager({ endpoints, setEndpoints, environments }: EndpointManagerProps) {
+export function EndpointManager({ endpoints, endpointsApi, environments }: EndpointManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -26,7 +26,7 @@ export function EndpointManager({ endpoints, setEndpoints, environments }: Endpo
     setEditUrls({ ...endpoint.baseUrls });
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const initialUrls: Record<string, string> = {};
     environments.forEach(env => initialUrls[env] = '');
     
@@ -36,21 +36,17 @@ export function EndpointManager({ endpoints, setEndpoints, environments }: Endpo
       description: '',
       baseUrls: initialUrls
     };
-    setEndpoints([...endpoints, newEndpoint]);
+    await endpointsApi.create(newEndpoint);
     handleSelect(newEndpoint);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedId) return;
-    setEndpoints(endpoints.map(e => 
-      e.id === selectedId 
-        ? { ...e, name: editName, description: editDesc, baseUrls: editUrls }
-        : e
-    ));
+    await endpointsApi.update(selectedId, { name: editName, description: editDesc, baseUrls: editUrls });
   };
 
-  const handleDelete = (id: string) => {
-    setEndpoints(endpoints.filter(e => e.id !== id));
+  const handleDelete = async (id: string) => {
+    await endpointsApi.remove(id);
     if (selectedId === id) setSelectedId(null);
   };
 

@@ -6,11 +6,15 @@ import { suggestSelector } from '../services/geminiService';
 
 interface ElementRepoProps {
   projects: Project[];
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  projectsApi: {
+    create: (item: Project) => Promise<void>;
+    update: (id: string, item: Partial<Project>) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+  };
   currentProjectId: string;
 }
 
-export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, setProjects, currentProjectId }) => {
+export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi, currentProjectId }) => {
   const [activePageId, setActivePageId] = useState<string>('');
   const [activeElementId, setActiveElementId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +63,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, setProjects,
   // --- Page Actions ---
 
   const updateProject = (fn: (p: Project) => Project) => {
-    setProjects(prev => prev.map(p => p.id === currentProjectId ? fn(p) : p));
+    const project = projects.find(p => p.id === currentProjectId);
+    if (project) {
+      projectsApi.update(currentProjectId, fn(project));
+    }
   };
 
   const addPage = () => {

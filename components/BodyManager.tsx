@@ -4,10 +4,10 @@ import { BodyTemplate } from '../types';
 
 interface BodyManagerProps {
   bodies: BodyTemplate[];
-  setBodies: React.Dispatch<React.SetStateAction<BodyTemplate[]>>;
+  bodiesApi: any;
 }
 
-export function BodyManager({ bodies, setBodies }: BodyManagerProps) {
+export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -28,7 +28,7 @@ export function BodyManager({ bodies, setBodies }: BodyManagerProps) {
     }
   }, [selectedId, bodies]); // Re-run when selection changes
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const newTemplate: BodyTemplate = {
       id: `b_${Date.now()}`,
       name: 'New Body Template',
@@ -36,21 +36,17 @@ export function BodyManager({ bodies, setBodies }: BodyManagerProps) {
       contentType: 'application/json',
       content: '{\n  "key": "{{value}}"\n}'
     };
-    setBodies([...bodies, newTemplate]);
+    await bodiesApi.create(newTemplate);
     setSelectedId(newTemplate.id);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedId) return;
-    setBodies(bodies.map(t => 
-      t.id === selectedId 
-        ? { ...t, name: editName, description: editDesc, contentType: editType, content: editContent }
-        : t
-    ));
+    await bodiesApi.update(selectedId, { name: editName, description: editDesc, contentType: editType, content: editContent });
   };
 
-  const handleDelete = (id: string) => {
-    setBodies(bodies.filter(t => t.id !== id));
+  const handleDelete = async (id: string) => {
+    await bodiesApi.remove(id);
     if (selectedId === id) setSelectedId(null);
   };
 

@@ -5,7 +5,7 @@ import { Plus, ChevronDown, ChevronRight, Trash2, Edit2, Check, Search, Database
 
 interface ModuleBuilderProps {
   projects: Project[];
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  projectsApi: any;
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
   endpoints: ApiEndpoint[];
@@ -14,7 +14,7 @@ interface ModuleBuilderProps {
 
 const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE'];
 
-export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, setProjects, headers, bodies, endpoints, currentProjectId }) => {
+export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projectsApi, headers, bodies, endpoints, currentProjectId }) => {
   const [activeModuleId, setActiveModuleId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -41,7 +41,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, setProje
   }, [activeProject, searchTerm]);
 
   // --- Module Actions ---
-  const addModule = () => {
+  const addModule = async () => {
     if (!activeProject) return;
     const newModule: TestModule = {
         id: `mod-${Date.now()}`,
@@ -51,46 +51,31 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, setProje
         steps: []
     };
     
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProject.id) return p;
-        return { ...p, modules: [...p.modules, newModule] };
-    }));
+    await projectsApi.update(activeProject.id, { modules: [...activeProject.modules, newModule] });
     
     setActiveModuleId(newModule.id);
     setEditingModuleId(newModule.id);
     setEditModuleName('New Module');
   };
 
-  const updateModule = (updates: Partial<TestModule>) => {
+  const updateModule = async (updates: Partial<TestModule>) => {
     if (!activeProject || !activeModuleId) return;
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProject.id) return p;
-        return {
-            ...p,
-            modules: p.modules.map(m => m.id === activeModuleId ? { ...m, ...updates } : m)
-        };
-    }));
+    const newModules = activeProject.modules.map(m => m.id === activeModuleId ? { ...m, ...updates } : m);
+    await projectsApi.update(activeProject.id, { modules: newModules });
   };
 
-  const saveModuleName = () => {
+  const saveModuleName = async () => {
     if (editingModuleId && activeProject) {
-        setProjects(prev => prev.map(p => {
-            if (p.id !== activeProject.id) return p;
-            return {
-                ...p,
-                modules: p.modules.map(m => m.id === editingModuleId ? { ...m, name: editModuleName } : m)
-            };
-        }));
+        const newModules = activeProject.modules.map(m => m.id === editingModuleId ? { ...m, name: editModuleName } : m);
+        await projectsApi.update(activeProject.id, { modules: newModules });
         setEditingModuleId(null);
     }
   };
 
-  const deleteModule = (moduleId: string) => {
+  const deleteModule = async (moduleId: string) => {
     if (!activeProject) return;
-    setProjects(prev => prev.map(p => {
-        if (p.id !== activeProject.id) return p;
-        return { ...p, modules: p.modules.filter(m => m.id !== moduleId) };
-    }));
+    const newModules = activeProject.modules.filter(m => m.id !== moduleId);
+    await projectsApi.update(activeProject.id, { modules: newModules });
     if (activeModuleId === moduleId) setActiveModuleId('');
   };
 
@@ -325,10 +310,17 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, setProje
                                     </button>
                                 </div>
                                 <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 grid grid-cols-12 gap-2">
+                                            <div className="col-span-5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">Name</div>
+                                            <div className="col-span-7 text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">Default Value</div>
+                                        </div>
+                                        <div className="w-[26px]"></div>
+                                    </div>
                                     {(activeModule.params || []).map(param => (
                                         <div key={param.id} className="flex items-center gap-2 group">
                                             <div className="flex-1 grid grid-cols-12 gap-2">
-                                                <div className="col-span-3">
+                                                <div className="col-span-5">
                                                     <input 
                                                         className="w-full bg-purple-50 border border-purple-100 rounded px-2 py-1.5 text-xs font-mono font-medium text-purple-900 placeholder-purple-300 focus:border-purple-500 outline-none"
                                                         value={param.name}
@@ -336,20 +328,12 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, setProje
                                                         placeholder="PARAM_NAME"
                                                     />
                                                 </div>
-                                                <div className="col-span-4">
+                                                <div className="col-span-7">
                                                     <input 
                                                         className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-purple-500 outline-none placeholder-gray-300"
                                                         value={param.defaultValue || ''}
                                                         onChange={(e) => updateParam(param.id, { defaultValue: e.target.value })}
                                                         placeholder="Default Value"
-                                                    />
-                                                </div>
-                                                <div className="col-span-5">
-                                                     <input 
-                                                        className="w-full bg-transparent border-b border-transparent hover:border-gray-200 focus:border-purple-300 rounded-none px-2 py-1.5 text-xs text-gray-500 focus:bg-white outline-none placeholder-gray-300"
-                                                        value={param.description || ''}
-                                                        onChange={(e) => updateParam(param.id, { description: e.target.value })}
-                                                        placeholder="Description (e.g. 'User Email')"
                                                     />
                                                 </div>
                                             </div>
