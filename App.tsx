@@ -128,7 +128,7 @@ function App() {
               <Layers className="text-white fill-white/20" size={18} />
             </div>
             <span>
-              Nexus<span className="text-slate-400 font-normal">Auto</span>
+              Quantum<span className="text-blue-400 font-normal">QA</span>
             </span>
           </div>
         </div>

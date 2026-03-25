@@ -158,7 +158,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
-              <div className="max-w-4xl mx-auto">
+              <div className="w-full">
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center justify-between">
                     <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Key-Value Pairs</h3>

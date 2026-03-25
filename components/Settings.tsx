@@ -70,7 +70,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-        <div className="p-8 max-w-4xl mx-auto space-y-6 pb-20">
+        <div className="p-8 w-full mx-auto space-y-6 pb-20">
         
         {/* Settings Header & Tabs */}
         <div className="flex flex-col gap-6">

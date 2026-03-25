@@ -285,7 +285,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-6xl h-[800px] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-700/50 ring-1 ring-white/10">
+      <div className="bg-white w-full max-w-[95vw] h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-700/50 ring-1 ring-white/10">
         {/* Header */}
         <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-white shrink-0">
             <div className="flex items-center gap-4">
@@ -377,13 +377,13 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                    </div>
                    <div className="flex-1 bg-gray-50 hover:bg-white transition-colors rounded-md px-3 py-1.5 text-xs text-gray-500 font-mono truncate border border-gray-200 flex items-center gap-2">
                        <span className="text-green-600">🔒</span>
-                       https://staging.nexus-store.com/app
+                       https://staging.quantum-store.com/app
                    </div>
                 </div>
                 
                 <div className="flex-1 flex items-center justify-center p-8 relative overflow-hidden bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-gray-100">
                     {/* Simplified Visual Simulation of a Web Page */}
-                    <div className="bg-white shadow-2xl rounded-xl w-full h-full max-w-3xl mx-auto flex flex-col overflow-hidden opacity-100 relative border border-gray-200/50">
+                    <div className="bg-white shadow-2xl rounded-xl w-full h-full mx-auto flex flex-col overflow-hidden opacity-100 relative border border-gray-200/50">
                         {/* Fake Header */}
                         <div className="h-14 bg-white border-b border-gray-100 w-full flex items-center px-6 gap-6 justify-between">
                             <div className="flex items-center gap-4">

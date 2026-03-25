@@ -138,7 +138,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
 
             {/* Editor */}
             <div className="flex-1 overflow-y-auto p-8">
-              <div className="max-w-3xl space-y-8">
+              <div className="w-full space-y-8">
                 {/* Basic Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide border-b border-gray-100 pb-2">

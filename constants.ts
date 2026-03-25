@@ -4,7 +4,7 @@ import { Project, TestSuite } from './types';
 export const MOCK_PROJECTS: Project[] = [
   {
     id: 'p1',
-    name: 'Nexus E-Commerce',
+    name: 'Quantum E-Commerce',
     description: 'Main B2C storefront including catalog, cart, and checkout.',
     modules: [
         {
@@ -12,11 +12,11 @@ export const MOCK_PROJECTS: Project[] = [
             name: 'Login (Standard)',
             description: 'Standard login flow using variables',
             params: [
-                { id: 'mp1', name: 'USER', defaultValue: 'admin@nexus.com', description: 'User email' },
+                { id: 'mp1', name: 'USER', defaultValue: 'admin@quantum.com', description: 'User email' },
                 { id: 'mp2', name: 'PASS', defaultValue: 'Secure!23', description: 'User password' }
             ],
             steps: [
-                { id: 'ms1', action: 'OPEN', target: 'https://nexus-store.com/login', data: '', description: 'Open Login Page' },
+                { id: 'ms1', action: 'OPEN', target: 'https://quantum-store.com/login', data: '', description: 'Open Login Page' },
                 { id: 'ms2', action: 'TYPE', target: 'LoginPage/EmailField', data: '${USER}', description: 'Input Username' },
                 { id: 'ms3', action: 'TYPE', target: 'LoginPage/PasswordField', data: '${PASS}', description: 'Input Password' },
                 { id: 'ms4', action: 'CLICK', target: 'LoginPage/LoginButton', data: '', description: 'Click Submit' },
@@ -29,7 +29,7 @@ export const MOCK_PROJECTS: Project[] = [
             description: 'Removes all items from cart',
             params: [],
             steps: [
-                 { id: 'ms6', action: 'OPEN', target: 'https://nexus-store.com/cart', data: '', description: 'Go to Cart' },
+                 { id: 'ms6', action: 'OPEN', target: 'https://quantum-store.com/cart', data: '', description: 'Go to Cart' },
                  { id: 'ms7', action: 'CLICK', target: 'ShoppingCart/RemoveItem', data: '', description: 'Click Remove (Simulated)' }
             ]
         }
@@ -68,6 +68,25 @@ export const MOCK_PROJECTS: Project[] = [
           { id: 'el12', name: 'RemoveItem', selectorType: 'CSS', value: '.btn-remove-item', description: 'Delete item from cart' },
         ]
       }
+    ],
+    scenarios: [
+      {
+        id: 'sc1',
+        name: 'E2E Checkout Flow',
+        description: 'Complete user journey from login to purchase',
+        suites: [
+          { id: 'ss1', suiteId: 's1', variableOverrides: { USER: 'test@quantum.com' } },
+          { id: 'ss2', suiteId: 's2', variableOverrides: {} }
+        ]
+      },
+      {
+        id: 'sc2',
+        name: 'Smoke Test Suite',
+        description: 'Quick verification of critical paths',
+        suites: [
+          { id: 'ss3', suiteId: 's1', variableOverrides: {} }
+        ]
+      }
     ]
   },
   {
@@ -104,13 +123,13 @@ export const MOCK_SUITES: TestSuite[] = [
     name: 'Authentication Flow',
     description: 'Verify login, logout, and security limits.',
     variables: [
-        { id: 'v1', key: 'URL', value: 'https://nexus-store.com' },
-        { id: 'v2', key: 'USER', value: 'admin@nexus.com' },
+        { id: 'v1', key: 'URL', value: 'https://quantum-store.com' },
+        { id: 'v2', key: 'USER', value: 'admin@quantum.com' },
         { id: 'v3', key: 'PASS', value: 'Secure!23' }
     ],
     dataRows: [
-        { URL: 'https://nexus-store.com', USER: 'admin@nexus.com', PASS: 'Secure!23' },
-        { URL: 'https://nexus-store.com', USER: 'guest@nexus.com', PASS: 'guest123' }
+        { URL: 'https://quantum-store.com', USER: 'admin@quantum.com', PASS: 'Secure!23' },
+        { URL: 'https://quantum-store.com', USER: 'guest@quantum.com', PASS: 'guest123' }
     ],
     cases: [
       {
@@ -150,7 +169,7 @@ export const MOCK_SUITES: TestSuite[] = [
         name: 'Add to Cart & Checkout',
         description: 'Guest user adds item and proceeds to payment.',
         steps: [
-          { id: 'st12', action: 'OPEN', target: 'https://nexus-store.com', data: '', description: 'Go home' },
+          { id: 'st12', action: 'OPEN', target: 'https://quantum-store.com', data: '', description: 'Go home' },
           { id: 'st13', action: 'TYPE', target: 'ProductListing/SearchBar', data: '${ITEM}', description: 'Search item' },
           { id: 'st14', action: 'CLICK', target: 'ProductListing/ProductCard', data: '', description: 'Click first result' },
           { id: 'st15', action: 'CLICK', target: 'ProductListing/SortDropdown', data: '', description: 'Sort by price (Example action)' },
@@ -165,7 +184,7 @@ export const MOCK_SUITES: TestSuite[] = [
     name: 'API Integration Tests',
     description: 'Backend validation independently of UI.',
     variables: [
-        { id: 'v5', key: 'API_URL', value: 'https://api.nexus.com/v1' },
+        { id: 'v5', key: 'API_URL', value: 'https://api.quantum.com/v1' },
         { id: 'v6', key: 'NEW_USER', value: '{"name":"John", "role":"admin"}' },
         { id: 'v7', key: 'AUTH_TOKEN', value: 'eyJhGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' }
     ],
@@ -229,10 +248,10 @@ export const MOCK_ENDPOINTS: ApiEndpoint[] = [
     name: 'User Service',
     description: 'Core user management API',
     baseUrls: {
-      DEV: 'https://dev-api.nexus-store.com/users',
-      SIT: 'https://sit-api.nexus-store.com/users',
-      UAT: 'https://uat-api.nexus-store.com/users',
-      PROD: 'https://api.nexus-store.com/users'
+      DEV: 'https://dev-api.quantum-store.com/users',
+      SIT: 'https://sit-api.quantum-store.com/users',
+      UAT: 'https://uat-api.quantum-store.com/users',
+      PROD: 'https://api.quantum-store.com/users'
     }
   },
   {

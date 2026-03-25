@@ -256,7 +256,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               <>
                 {/* Scenario Header */}
                 <div className="bg-white border-b border-slate-200 px-8 py-6 shadow-sm z-10">
-                  <div className="max-w-5xl mx-auto">
+                  <div className="w-full">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         {isEditing ? (
@@ -338,7 +338,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
                 {/* Scenario Content */}
                 <div className="flex-1 overflow-y-auto p-8">
-                  <div className="max-w-5xl mx-auto flex gap-8">
+                  <div className="w-full flex gap-8">
                     {/* Left Column: Suites in Scenario */}
                     <div className="flex-1 space-y-4">
                       <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">

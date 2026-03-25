@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode } from 'lucide-react';
+import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode, CheckCircle2, Clock, Activity } from 'lucide-react';
 import { Project, TestSuite } from '../types';
 
 interface DashboardProps {
@@ -17,12 +17,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
   const totalScenarios = currentProject?.scenarios?.length || 0;
   const totalSuites = suites.length;
   const totalCases = suites.reduce((acc, s) => acc + s.cases.length, 0);
-  const totalModules = currentProject?.modules?.length || 0;
-  const totalElements = currentProject?.pages?.reduce((acc, p) => acc + p.elements.length, 0) || 0;
+
+  // Mock Recent Run Data (since we don't have persistent run history yet)
+  const recentRun = {
+    scenarioName: currentProject?.scenarios?.[0]?.name || "E2E Checkout Flow",
+    status: "PASSED",
+    env: environments[0] || "PROD",
+    time: "10 mins ago",
+    duration: "45s",
+    passedCases: 12,
+    totalCases: 12
+  };
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50">
-        <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="p-8 w-full mx-auto space-y-8 animate-in fade-in duration-500">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -33,7 +42,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
             <div className="flex gap-3">
                 <button 
                     onClick={() => onNavigate('RUN')}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-sm"
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-sm cursor-pointer"
                 >
                     <PlayCircle size={16} />
                     Run Scenarios
@@ -42,37 +51,59 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
         </div>
 
         {/* Primary Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <MetricCard 
                 title="Scenarios" 
                 value={totalScenarios} 
-                icon={<PlayCircle className="text-emerald-500" size={20} />} 
+                icon={<PlayCircle className="text-emerald-500" size={24} />} 
             />
             <MetricCard 
                 title="Test Suites" 
                 value={totalSuites} 
-                icon={<Layers className="text-blue-500" size={20} />} 
+                icon={<Layers className="text-blue-500" size={24} />} 
             />
             <MetricCard 
                 title="Test Cases" 
                 value={totalCases} 
-                icon={<FileText className="text-indigo-500" size={20} />} 
+                icon={<FileText className="text-indigo-500" size={24} />} 
             />
-            <MetricCard 
-                title="Modules" 
-                value={totalModules} 
-                icon={<Box className="text-purple-500" size={20} />} 
-            />
-            <MetricCard 
-                title="UI Elements" 
-                value={totalElements} 
-                icon={<Database className="text-amber-500" size={20} />} 
-            />
-            <MetricCard 
-                title="Environments" 
-                value={environments.length} 
-                icon={<Globe className="text-teal-500" size={20} />} 
-            />
+        </div>
+
+        {/* Recent Run Summary */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                <h3 className="font-semibold text-slate-900 flex items-center gap-2">
+                    <Activity size={18} className="text-slate-400" /> Recent Run Summary
+                </h3>
+                <button onClick={() => onNavigate('RUN')} className="text-sm text-blue-600 font-medium hover:text-blue-700 cursor-pointer">
+                    View Scenarios
+                </button>
+            </div>
+            <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                        <CheckCircle2 size={24} />
+                    </div>
+                    <div>
+                        <h4 className="text-lg font-bold text-slate-900">{recentRun.scenarioName}</h4>
+                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                            <span className="flex items-center gap-1.5"><Globe size={14} /> {recentRun.env}</span>
+                            <span className="flex items-center gap-1.5"><Clock size={14} /> {recentRun.time}</span>
+                            <span className="flex items-center gap-1.5"><Activity size={14} /> {recentRun.duration}</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-8">
+                    <div className="text-center">
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Status</p>
+                        <p className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">{recentRun.status}</p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Pass Rate</p>
+                        <p className="text-xl font-bold text-slate-900">{recentRun.passedCases}/{recentRun.totalCases}</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         {/* Quick Navigation Cards */}
@@ -134,16 +165,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
                     <p className="text-slate-500 text-sm mb-6">
                         Manage reusable headers and request bodies for API testing.
                     </p>
-                    <div className="flex gap-3 mt-auto">
+                    <div className="flex gap-3 mt-auto relative z-10">
                         <button 
-                            onClick={() => onNavigate('HEADERS')}
-                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2"
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onNavigate('HEADERS'); }}
+                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                         >
                             <FileText size={16} /> Headers
                         </button>
                         <button 
-                            onClick={() => onNavigate('BODIES')}
-                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2"
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onNavigate('BODIES'); }}
+                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                         >
                             <FileCode size={16} /> Bodies
                         </button>
@@ -159,13 +192,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
 };
 
 const MetricCard = ({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) => (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4">
-        <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 shrink-0">
+    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow flex items-center gap-5">
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 shrink-0">
             {icon}
         </div>
         <div>
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{title}</p>
-            <h3 className="text-2xl font-bold text-slate-900 mt-0.5">{value}</h3>
+            <p className="text-sm font-medium text-slate-500 uppercase tracking-wider">{title}</p>
+            <h3 className="text-3xl font-bold text-slate-900 mt-1">{value}</h3>
         </div>
     </div>
 );
