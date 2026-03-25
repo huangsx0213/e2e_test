@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { TestStep, Project, ActionType, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from '../types';
-import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe } from 'lucide-react';
+import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 
 interface StepListProps {
+  title?: string;
   steps: TestStep[];
   onUpdateStep: (id: string, updates: Partial<TestStep>) => void;
   onDeleteStep: (id: string) => void;
   onMoveStep: (fromIndex: number, toIndex: number) => void;
+  onAddStep?: () => void;
+  defaultExpanded?: boolean;
   activeProject: Project;
   activeSuite: TestSuite;
   endpoints: ApiEndpoint[];
@@ -17,16 +20,20 @@ interface StepListProps {
 const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'];
 
 export const StepList: React.FC<StepListProps> = ({
+  title,
   steps,
   onUpdateStep,
   onDeleteStep,
   onMoveStep,
+  onAddStep,
+  defaultExpanded = true,
   activeProject,
   activeSuite,
   endpoints,
   headers,
   bodies
 }) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
   const [elementMenuOpen, setElementMenuOpen] = useState<string | null>(null);
   const [variableMenuOpen, setVariableMenuOpen] = useState<{ stepId: string; field: 'target' | 'data'; paramName?: string } | null>(null);
@@ -59,11 +66,11 @@ export const StepList: React.FC<StepListProps> = ({
   };
 
   const getActionColorClass = (action: ActionType) => {
-     if (action === 'RUN_MODULE') return 'bg-purple-100 text-purple-800 border-purple-300';
+     if (action === 'RUN_MODULE') return 'bg-blue-100 text-blue-800 border-blue-300';
      if (action.startsWith('API_')) return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-     if (action.startsWith('ASSERT_')) return 'bg-amber-100 text-amber-800 border-amber-300';
+     if (action.startsWith('ASSERT_')) return 'bg-slate-100 text-slate-800 border-slate-300';
      if (action === 'WAIT') return 'bg-gray-100 text-gray-800 border-gray-300';
-     return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+     return 'bg-blue-100 text-blue-800 border-blue-300';
   };
 
   const insertVariable = (stepId: string, field: 'target' | 'data', variableKey: string, paramName?: string) => {
@@ -92,40 +99,63 @@ export const StepList: React.FC<StepListProps> = ({
      onUpdateStep(stepId, { data: JSON.stringify(dataObj) });
   };
 
-  if (steps.length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-400 text-xs italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
-          No steps defined. Add steps or generate them using AI.
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3" onClick={closeAllMenus}>
-      <div className="grid grid-cols-12 gap-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
-         <div className="col-span-1 text-center">Step</div>
-         <div className="col-span-2">Action</div>
-         <div className="col-span-4">Target / Module</div>
-         <div className="col-span-4">Value / Data</div>
-         <div className="col-span-1"></div>
-      </div>
-      
-      {steps.map((step, index) => (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      {title && (
         <div 
-             key={step.id} 
-             draggable={true}
-             onDragStart={(e) => handleDragStart(e, index)}
-             onDragOver={(e) => handleDragOver(e, index)}
-             onDrop={(e) => handleDrop(e, index)}
-             className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-indigo-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-indigo-300 ring-2 ring-indigo-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-indigo-300 border-indigo-400' : ''}`}
+          className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
+          onClick={() => setIsExpanded(!isExpanded)}
         >
+          <div className="flex items-center gap-2">
+            {isExpanded ? <ChevronDown size={16} className="text-gray-500" /> : <ChevronRight size={16} className="text-gray-500" />}
+            <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+            <span className="px-2 py-0.5 bg-gray-200 text-gray-600 rounded-full text-xs font-medium">
+              {steps.length}
+            </span>
+          </div>
+          {onAddStep && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); onAddStep(); if (!isExpanded) setIsExpanded(true); }}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+            >
+              <Plus size={14} /> Add Step
+            </button>
+          )}
+        </div>
+      )}
+
+      {isExpanded && (
+        <div className="p-4" onClick={closeAllMenus}>
+          {steps.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-xs italic bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                No steps defined. Add steps manually or generate them using AI.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-12 gap-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
+                 <div className="col-span-1 text-center">Step</div>
+                 <div className="col-span-2">Action</div>
+                 <div className="col-span-4">Target / Module</div>
+                 <div className="col-span-4">Value / Data</div>
+                 <div className="col-span-1"></div>
+              </div>
+              
+              {steps.map((step, index) => (
+                <div 
+                     key={step.id} 
+                     draggable={true}
+                     onDragStart={(e) => handleDragStart(e, index)}
+                     onDragOver={(e) => handleDragOver(e, index)}
+                     onDrop={(e) => handleDrop(e, index)}
+                     className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
+                >
            <div className="grid grid-cols-12 gap-4 items-center">
                {/* Drag Handle & Index */}
                <div className="col-span-1 flex justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 flex items-center justify-center drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative">
                   <GripVertical size={16} className="mr-1 text-gray-400" />
                   <div className="relative">
                      <select 
-                         className="appearance-none w-5 h-5 bg-gray-50 rounded-full text-xs font-mono font-medium text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer text-indigo-600 hover:bg-indigo-100 transition-colors"
+                         className="appearance-none w-5 h-5 bg-gray-50 rounded-full text-xs font-mono font-medium text-center focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-blue-600 hover:bg-blue-100 transition-colors"
                          value={index}
                          onChange={(e) => onMoveStep(index, parseInt(e.target.value))}
                          onMouseDown={(e) => e.stopPropagation()} 
@@ -154,7 +184,7 @@ export const StepList: React.FC<StepListProps> = ({
                <div className="col-span-4 relative">
                    {step.action === 'RUN_MODULE' ? (
                        <select 
-                           className="w-full bg-purple-50 text-purple-900 rounded-md border border-purple-200 px-3 py-1.5 text-xs font-medium focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none cursor-pointer"
+                           className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-1.5 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
                            value={step.target}
                            onChange={(e) => onUpdateStep(step.id, { target: e.target.value, data: '{}' })}
                        >
@@ -177,21 +207,21 @@ export const StepList: React.FC<StepListProps> = ({
                    ) : (
                        <div className="relative flex items-center">
                            <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-1.5 text-xs font-mono focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300"
+                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-1.5 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300"
                                value={step.target}
                                onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
                                placeholder="Selector or URL"
                            />
                            <div className="absolute right-1 flex items-center gap-0.5">
                                <button 
-                                   className="text-gray-400 hover:text-indigo-600 p-1 rounded"
+                                   className="text-gray-400 hover:text-blue-600 p-1 rounded"
                                    onClick={(e) => { e.stopPropagation(); setElementMenuOpen(elementMenuOpen === step.id ? null : step.id); setVariableMenuOpen(null); }}
                                    title="Select Element from Repo"
                                >
                                    <MousePointer2 size={12} />
                                </button>
                                <button 
-                                   className="text-gray-400 hover:text-indigo-600 p-1 rounded"
+                                   className="text-gray-400 hover:text-blue-600 p-1 rounded"
                                    onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'target' ? null : { stepId: step.id, field: 'target' }); setElementMenuOpen(null); }}
                                    title="Insert Variable"
                                >
@@ -213,7 +243,7 @@ export const StepList: React.FC<StepListProps> = ({
                                            {page.elements.map(el => (
                                                <button 
                                                    key={el.id}
-                                                   className="w-full text-left px-4 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 text-xs flex flex-col group"
+                                                   className="w-full text-left px-4 py-1.5 hover:bg-blue-50 hover:text-blue-700 text-xs flex flex-col group"
                                                    onClick={(e) => {
                                                        e.stopPropagation();
                                                        onUpdateStep(step.id, { target: el.selector });
@@ -221,7 +251,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                    }}
                                                >
                                                    <span className="font-medium">{el.name}</span>
-                                                   <span className="text-[10px] font-mono text-gray-400 group-hover:text-indigo-400 truncate w-full">{el.selector}</span>
+                                                   <span className="text-[10px] font-mono text-gray-400 group-hover:text-blue-400 truncate w-full">{el.selector}</span>
                                                </button>
                                            ))}
                                        </div>
@@ -236,7 +266,7 @@ export const StepList: React.FC<StepListProps> = ({
                                    {(activeSuite.variables || []).map(v => (
                                        <button 
                                            key={v.id}
-                                           className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                           className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                            onClick={(e) => {
                                                e.stopPropagation();
                                                insertVariable(step.id, 'target', v.key);
@@ -254,11 +284,11 @@ export const StepList: React.FC<StepListProps> = ({
                {/* Value / Data */}
                <div className="col-span-4">
                    {step.action === 'RUN_MODULE' ? (
-                       <div className="bg-purple-50/50 rounded-md border border-purple-100 p-2 space-y-2">
+                       <div className="bg-blue-50/50 rounded-md border border-blue-100 p-2 space-y-2">
                            {(() => {
                                const module = activeProject.modules?.find(m => m.id === step.target);
                                if (!module || !module.params || module.params.length === 0) {
-                                   return <div className="text-[10px] text-purple-400 italic text-center">No parameters required</div>;
+                                   return <div className="text-[10px] text-blue-400 italic text-center">No parameters required</div>;
                                }
                                
                                let currentData: Record<string, string> = {};
@@ -266,16 +296,16 @@ export const StepList: React.FC<StepListProps> = ({
 
                                return module.params.map(param => (
                                    <div key={param.id} className="flex items-center gap-2">
-                                       <label className="text-[10px] font-mono font-medium text-purple-700 w-20 truncate text-right shrink-0" title={param.name}>{param.name}</label>
+                                       <label className="text-[10px] font-mono font-medium text-blue-700 w-20 truncate text-right shrink-0" title={param.name}>{param.name}</label>
                                        <div className="relative flex-1">
                                            <input 
-                                               className="w-full bg-white border border-purple-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-200 outline-none"
+                                               className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
                                                placeholder={param.defaultValue || 'Value'}
                                                value={currentData[param.name] || ''}
                                                onChange={(e) => updateModuleParam(step.id, step.data, param.name, e.target.value)}
                                            />
                                            <button 
-                                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-purple-600 p-0.5 rounded"
+                                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
                                                onClick={(e) => { 
                                                    e.stopPropagation(); 
                                                    setVariableMenuOpen(
@@ -295,7 +325,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                    {(activeSuite.variables || []).map(v => (
                                                        <button 
                                                            key={v.id}
-                                                           className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                                           className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                            onClick={(e) => {
                                                                e.stopPropagation();
                                                                insertVariable(step.id, 'data', v.key, param.name);
@@ -361,14 +391,14 @@ export const StepList: React.FC<StepListProps> = ({
 
                                        return (
                                            <div>
-                                               <div className="text-[9px] font-bold text-indigo-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileText size={10}/> Header Variables</div>
+                                               <div className="text-[9px] font-bold text-blue-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileText size={10}/> Header Variables</div>
                                                <div className="space-y-1.5">
                                                    {Array.from(headerVars).map(varName => (
                                                        <div key={`header-${varName}`} className="flex items-center gap-2">
                                                            <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                            <div className="relative flex-1">
                                                                <input 
-                                                                   className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
+                                                                   className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
                                                                    placeholder="Value"
                                                                    value={currentValues[varName] || ''}
                                                                    onChange={(e) => {
@@ -377,7 +407,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                    }}
                                                                />
                                                                <button 
-                                                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-indigo-600 p-0.5 rounded"
+                                                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
                                                                    onClick={(e) => { 
                                                                        e.stopPropagation(); 
                                                                        setVariableMenuOpen(
@@ -396,7 +426,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                        {(activeSuite.variables || []).map(v => (
                                                                            <button 
                                                                                key={v.id}
-                                                                               className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                                                               className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
                                                                                    const newData = { ...currentValues, [varName]: `\${${v.key}}` };
@@ -435,14 +465,14 @@ export const StepList: React.FC<StepListProps> = ({
 
                                        return (
                                            <div>
-                                               <div className="text-[9px] font-bold text-indigo-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileCode size={10}/> Body Variables</div>
+                                               <div className="text-[9px] font-bold text-blue-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileCode size={10}/> Body Variables</div>
                                                <div className="space-y-1.5">
                                                    {Array.from(bodyVars).map(varName => (
                                                        <div key={`body-${varName}`} className="flex items-center gap-2">
                                                            <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                            <div className="relative flex-1">
                                                                <input 
-                                                                   className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
+                                                                   className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
                                                                    placeholder="Value"
                                                                    value={currentValues[varName] || ''}
                                                                    onChange={(e) => {
@@ -451,7 +481,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                    }}
                                                                />
                                                                <button 
-                                                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-indigo-600 p-0.5 rounded"
+                                                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
                                                                    onClick={(e) => { 
                                                                        e.stopPropagation(); 
                                                                        setVariableMenuOpen(
@@ -470,7 +500,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                        {(activeSuite.variables || []).map(v => (
                                                                            <button 
                                                                                key={v.id}
-                                                                               className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                                                               className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
                                                                                    const newData = { ...currentValues, [varName]: `\${${v.key}}` };
@@ -494,13 +524,13 @@ export const StepList: React.FC<StepListProps> = ({
                            ) : (
                                <div className="relative">
                                    <textarea 
-                                   className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
+                                   className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
                                    value={step.data}
                                    onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
                                    placeholder="Request Body (JSON)"
                                    />
                                    <button 
-                                       className="absolute right-1 top-2 text-gray-400 hover:text-indigo-600 p-1 rounded"
+                                       className="absolute right-1 top-2 text-gray-400 hover:text-blue-600 p-1 rounded"
                                        onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
                                        title="Insert Variable"
                                    >
@@ -512,7 +542,7 @@ export const StepList: React.FC<StepListProps> = ({
                                            {(activeSuite.variables || []).map(v => (
                                                <button 
                                                    key={v.id}
-                                                   className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                                   className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                    onClick={(e) => {
                                                        e.stopPropagation();
                                                        insertVariable(step.id, 'data', v.key);
@@ -529,13 +559,13 @@ export const StepList: React.FC<StepListProps> = ({
                    ) : (
                        <div className="relative">
                            <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-1.5 text-xs font-mono focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all placeholder-gray-300"
+                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-1.5 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300"
                                value={step.data}
                                onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
                                placeholder="Input value or expected text"
                            />
                            <button 
-                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 p-1 rounded"
+                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1 rounded"
                                onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
                                title="Insert Variable"
                            >
@@ -549,7 +579,7 @@ export const StepList: React.FC<StepListProps> = ({
                                    {(activeSuite.variables || []).map(v => (
                                        <button 
                                            key={v.id}
-                                           className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 hover:text-indigo-700 font-mono flex items-center justify-between group"
+                                           className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                            onClick={(e) => {
                                                e.stopPropagation();
                                                insertVariable(step.id, 'data', v.key);
@@ -577,6 +607,19 @@ export const StepList: React.FC<StepListProps> = ({
            </div>
         </div>
       ))}
+            </div>
+          )}
+          
+          {onAddStep && (
+            <button 
+              onClick={onAddStep} 
+              className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 text-sm font-medium group"
+            >
+              <Plus size={16} className="group-hover:scale-110 transition-transform" /> Add Step
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

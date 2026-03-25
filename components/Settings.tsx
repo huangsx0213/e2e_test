@@ -82,19 +82,19 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="flex items-center gap-1 border-b border-slate-200">
                 <button 
                     onClick={() => setActiveTab('PROJECTS')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'PROJECTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'PROJECTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                 >
                     Projects
                 </button>
                 <button 
                     onClick={() => setActiveTab('ENVIRONMENTS')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ENVIRONMENTS' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ENVIRONMENTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                 >
                     Environments
                 </button>
                 <button 
                     onClick={() => setActiveTab('SYSTEM')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'SYSTEM' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'SYSTEM' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'}`}
                 >
                     System
                 </button>
@@ -112,7 +112,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Current Project</label>
                         <select 
-                            className="w-full max-w-xs bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                            className="w-full max-w-xs bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                             value={currentProjectId}
                             onChange={(e) => setCurrentProjectId(e.target.value)}
                         >
@@ -149,7 +149,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                         <div className="flex gap-2">
                             <input 
-                                className="flex-1 bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder-slate-400"
+                                className="flex-1 bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none placeholder-slate-400"
                                 placeholder="New Project Name"
                                 value={newProjectName}
                                 onChange={(e) => setNewProjectName(e.target.value)}
@@ -158,7 +158,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button 
                                 onClick={handleAddProject}
                                 disabled={!newProjectName}
-                                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                             >
                                 <Plus size={16} /> Add
                             </button>
@@ -179,7 +179,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Current Environment</label>
                         <select 
-                            className="w-full max-w-xs bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                            className="w-full max-w-xs bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                             value={currentEnvironment}
                             onChange={(e) => setCurrentEnvironment(e.target.value)}
                         >
@@ -215,7 +215,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
                         <div className="flex gap-2">
                             <input 
-                                className="flex-1 bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase placeholder-slate-400"
+                                className="flex-1 bg-white border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none uppercase placeholder-slate-400"
                                 placeholder="NEW_ENV_NAME"
                                 value={newEnvName}
                                 onChange={(e) => setNewEnvName(e.target.value.toUpperCase())}
@@ -224,7 +224,7 @@ export const Settings: React.FC<SettingsProps> = ({
                             <button 
                                 onClick={handleAddEnvironment}
                                 disabled={!newEnvName || environments.includes(newEnvName)}
-                                className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                             >
                                 <Plus size={16} /> Add
                             </button>

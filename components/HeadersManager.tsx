@@ -73,7 +73,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
             <h2 className="font-semibold text-gray-900">Header Profiles</h2>
             <button 
               onClick={handleCreate}
-              className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               <Plus size={16} />
             </button>
@@ -83,7 +83,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
             <input 
               type="text" 
               placeholder="Search headers..." 
-              className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -97,18 +97,18 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
               onClick={() => handleSelect(profile)}
               className={`group flex items-center justify-between p-3 rounded-md cursor-pointer text-sm transition-all ${
                 selectedId === profile.id 
-                  ? 'bg-white shadow-sm border border-indigo-100 ring-1 ring-indigo-500/20' 
+                  ? 'bg-white shadow-sm border border-blue-100 ring-1 ring-blue-500/20' 
                   : 'hover:bg-gray-100 border border-transparent'
               }`}
             >
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${
-                  selectedId === profile.id ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-200 text-gray-500'
+                  selectedId === profile.id ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'
                 }`}>
                   <FileText size={16} />
                 </div>
                 <div className="min-w-0">
-                  <div className={`font-medium truncate ${selectedId === profile.id ? 'text-indigo-900' : 'text-gray-700'}`}>
+                  <div className={`font-medium truncate ${selectedId === profile.id ? 'text-blue-900' : 'text-gray-700'}`}>
                     {profile.name}
                   </div>
                   <div className="text-xs text-gray-400 truncate">
@@ -150,7 +150,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
               </div>
               <button 
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <Save size={16} />
                 <span>Save Changes</span>
@@ -173,7 +173,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
                             type="checkbox" 
                             checked={header.enabled}
                             onChange={(e) => updateHeaderRow(index, 'enabled', e.target.checked)}
-                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
                           />
                         </div>
                         <div className="flex-1 grid grid-cols-2 gap-4">
@@ -182,14 +182,14 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
                             value={header.key}
                             onChange={(e) => updateHeaderRow(index, 'key', e.target.value)}
                             placeholder="Key (e.g. Content-Type)"
-                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-gray-900 border-gray-200'}`}
+                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-gray-900 border-gray-200'}`}
                           />
                           <input 
                             type="text" 
                             value={header.value}
                             onChange={(e) => updateHeaderRow(index, 'value', e.target.value)}
                             placeholder="Value"
-                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-slate-700 border-gray-200'}`}
+                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-slate-700 border-gray-200'}`}
                           />
                         </div>
                         <button 
@@ -211,7 +211,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
                   <div className="p-4 bg-gray-50 border-t border-gray-200">
                     <button 
                       onClick={addHeaderRow}
-                      className="flex items-center gap-2 text-indigo-600 text-sm font-medium hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-50 transition-colors w-fit"
+                      className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors w-fit"
                     >
                       <Plus size={16} />
                       <span>Add Header</span>

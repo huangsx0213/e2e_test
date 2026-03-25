@@ -231,7 +231,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                 <input 
                     type="text"
                     placeholder="Filter pages..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -245,7 +245,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                 <button 
                     onClick={addPage}
                     disabled={!activeProject}
-                    className="text-gray-400 hover:text-indigo-600 p-1 rounded-md hover:bg-indigo-50 transition-colors disabled:opacity-50"
+                    className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
                     title="Add Page"
                 >
                     <Plus size={14} />
@@ -265,16 +265,16 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                         <div 
                             className={`group px-2 py-1.5 rounded-md text-sm font-medium cursor-pointer flex items-center justify-between transition-all duration-200 ${
                                 activePageId === page.id && !activeElementId
-                                ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
+                                ? 'bg-blue-50 text-blue-700 shadow-sm' 
                                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             }`}
                             onClick={() => { setActivePageId(page.id); setActiveElementId(''); }}
                         >
                             <div className="flex items-center gap-2 overflow-hidden w-full">
-                                <Layout size={14} className={activePageId === page.id ? 'text-indigo-500' : 'text-gray-400'} />
+                                <Layout size={14} className={activePageId === page.id ? 'text-blue-500' : 'text-gray-400'} />
                                 {editingPageId === page.id ? (
                                     <input 
-                                        className="w-full px-1 py-0.5 text-xs bg-white border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                        className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                         value={editPageName}
                                         onChange={e => setEditPageName(e.target.value)}
                                         onClick={e => e.stopPropagation()}
@@ -292,7 +292,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                     <button onClick={(e) => { e.stopPropagation(); savePageName(); }} className="p-1 text-green-600 hover:bg-green-100 rounded"><Check size={12}/></button>
                                 ) : (
                                     <div className="flex gap-0.5 relative z-20">
-                                        <button onClick={(e) => { e.stopPropagation(); setEditingPageId(page.id); setEditPageName(page.name); }} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Edit2 size={12}/></button>
+                                        <button onClick={(e) => { e.stopPropagation(); setEditingPageId(page.id); setEditPageName(page.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                         <button 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
@@ -316,16 +316,16 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                         key={el.id}
                                         className={`group text-xs py-1.5 px-2 rounded-md cursor-pointer truncate transition-colors flex items-center justify-between ${
                                             activeElementId === el.id 
-                                            ? 'bg-indigo-50 text-indigo-700 font-medium' 
+                                            ? 'bg-blue-50 text-blue-700 font-medium' 
                                             : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                                         }`}
                                         onClick={(e) => { e.stopPropagation(); setActivePageId(page.id); setActiveElementId(el.id); }}
                                     >
                                         <div className="flex items-center gap-2 overflow-hidden w-full">
-                                            <Code size={12} className={activeElementId === el.id ? 'text-indigo-500' : 'text-gray-300'} />
+                                            <Code size={12} className={activeElementId === el.id ? 'text-blue-500' : 'text-gray-300'} />
                                             {editingElementId === el.id ? (
                                                  <input 
-                                                    className="w-full px-1 py-0.5 text-xs bg-white border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                     value={editElementName}
                                                     onChange={e => setEditElementName(e.target.value)}
                                                     onClick={e => e.stopPropagation()}
@@ -343,7 +343,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                                 <button onClick={(e) => { e.stopPropagation(); saveElementName(page.id); }} className="p-1 text-green-600 hover:bg-green-100 rounded"><Check size={12}/></button>
                                             ) : (
                                                 <div className="flex gap-0.5 relative z-20">
-                                                    <button onClick={(e) => { e.stopPropagation(); setEditingElementId(el.id); setEditElementName(el.name); }} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Edit2 size={12}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingElementId(el.id); setEditElementName(el.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                                     <button 
                                                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer"
                                                         onClick={(e) => { 
@@ -361,7 +361,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                 ))}
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); addElement(page.id); }}
-                                    className="text-[11px] text-gray-400 hover:text-indigo-600 px-2 py-1.5 flex items-center gap-1.5 w-full hover:bg-gray-50 rounded transition-colors font-medium group"
+                                    className="text-[11px] text-gray-400 hover:text-blue-600 px-2 py-1.5 flex items-center gap-1.5 w-full hover:bg-gray-50 rounded transition-colors font-medium group"
                                 >
                                     <Plus size={10} className="group-hover:scale-110 transition-transform" /> New Element
                                 </button>
@@ -373,7 +373,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                 {activeProject && filteredPages.length === 0 && (
                     <div className="text-center py-8 px-4">
                         <p className="text-xs text-gray-400">No pages found.</p>
-                        <button onClick={addPage} className="text-xs text-indigo-600 hover:underline mt-1">Create Page</button>
+                        <button onClick={addPage} className="text-xs text-blue-600 hover:underline mt-1">Create Page</button>
                     </div>
                 )}
              </div>
@@ -388,7 +388,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                 <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                     <div>
                          <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
-                            <span className="hover:text-indigo-600 cursor-pointer transition-colors" onClick={() => setActiveElementId('')}>{activePage.name}</span>
+                            <span className="hover:text-blue-600 cursor-pointer transition-colors" onClick={() => setActiveElementId('')}>{activePage.name}</span>
                             <ChevronRight size={12} className="text-gray-300" />
                             <span>Edit Element</span>
                          </div>
@@ -399,7 +399,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                     <div className="flex gap-2">
                          <button 
                             onClick={() => setIsAiModalOpen(true)}
-                            className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-md flex items-center gap-2 transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md flex items-center gap-2 transition-colors"
                         >
                             <Sparkles size={14} /> AI Improve
                         </button>
@@ -411,7 +411,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1.5">Element Name</label>
                             <input 
-                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder-gray-400" 
+                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400" 
                                 value={activeElement.name}
                                 onChange={(e) => updateElement(activePage.id, activeElement.id, { name: e.target.value })}
                             />
@@ -420,7 +420,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                          <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
                             <textarea 
-                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 resize-none h-20" 
+                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400 resize-none h-20" 
                                 value={activeElement.description || ''}
                                 onChange={(e) => updateElement(activePage.id, activeElement.id, { description: e.target.value })}
                                 placeholder="Describe the element's purpose..."
@@ -432,7 +432,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Locator Strategy</label>
                                 <div className="relative">
                                     <select 
-                                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none appearance-none"
+                                        className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none appearance-none"
                                         value={activeElement.selectorType}
                                         onChange={(e) => updateElement(activePage.id, activeElement.id, { selectorType: e.target.value as SelectorType })}
                                     >
@@ -456,7 +456,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                             </label>
                             <div className="relative">
                                 <textarea 
-                                    className="w-full h-32 bg-slate-50 border border-gray-300 rounded-lg px-3 py-3 text-sm font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none leading-relaxed"
+                                    className="w-full h-32 bg-slate-50 border border-gray-300 rounded-lg px-3 py-3 text-sm font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none leading-relaxed"
                                     value={activeElement.value}
                                     onChange={(e) => updateElement(activePage.id, activeElement.id, { value: e.target.value })}
                                 />
@@ -473,15 +473,15 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
           <div className="flex-1 flex flex-col h-full animate-in fade-in duration-200 overflow-hidden">
              <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                 <div className="flex items-center gap-3">
-                    <Layout className="text-indigo-600" size={20} />
+                    <Layout className="text-blue-600" size={20} />
                     <h2 className="text-lg font-semibold text-gray-900">{activePage.name}</h2>
-                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold uppercase tracking-wide">Page Object</span>
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-bold uppercase tracking-wide">Page Object</span>
                 </div>
                 <div className="flex gap-3 items-center">
                     <span className="text-xs text-gray-400 font-medium mr-2">{activePage.elements.length} Elements</span>
                     <button 
                         onClick={() => setIsAiModalOpen(true)}
-                        className="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-md flex items-center gap-2 transition-colors"
+                        className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md flex items-center gap-2 transition-colors"
                     >
                         <Sparkles size={14} /> AI Import
                     </button>
@@ -490,7 +490,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
 
              <div className="px-6 pt-4 pb-0 bg-gray-50 shrink-0">
                  <input 
-                    className="w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder-gray-400"
+                    className="w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none placeholder-gray-400"
                     placeholder="Page Description (optional)"
                     value={activePage.description || ''}
                     onChange={(e) => updatePage(activePage.id, { description: e.target.value })}
@@ -511,13 +511,13 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                             <div key={el.id} className="grid grid-cols-12 gap-6 items-center px-6 py-3 hover:bg-gray-50/50 transition-colors group">
                                 <div className="col-span-3">
                                     <input 
-                                        className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 rounded-md px-2 py-1.5 text-sm text-gray-900 transition-all font-medium placeholder-gray-400" 
+                                        className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-md px-2 py-1.5 text-sm text-gray-900 transition-all font-medium placeholder-gray-400" 
                                         value={el.name}
                                         onChange={(e) => updateElement(activePage.id, el.id, { name: e.target.value })}
                                         placeholder="Element Name"
                                     />
                                     <input 
-                                        className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 rounded-md px-2 py-1 text-xs text-gray-500 transition-all placeholder-gray-300 mt-1" 
+                                        className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-md px-2 py-1 text-xs text-gray-500 transition-all placeholder-gray-300 mt-1" 
                                         value={el.description || ''}
                                         onChange={(e) => updateElement(activePage.id, el.id, { description: e.target.value })}
                                         placeholder="Description..."
@@ -525,7 +525,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                 </div>
                                 <div className="col-span-2">
                                     <select 
-                                        className="w-full bg-transparent text-xs rounded-md border border-transparent hover:border-gray-300 p-1.5 text-gray-600 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white outline-none transition-colors"
+                                        className="w-full bg-transparent text-xs rounded-md border border-transparent hover:border-gray-300 p-1.5 text-gray-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-colors"
                                         value={el.selectorType}
                                         onChange={(e) => updateElement(activePage.id, el.id, { selectorType: e.target.value as SelectorType })}
                                     >
@@ -541,7 +541,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                 <div className="col-span-6">
                                     <div className="relative">
                                         <input 
-                                            className="w-full bg-gray-50/50 text-xs font-mono text-gray-600 rounded-md border border-gray-200 px-3 py-1.5 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white outline-none transition-all placeholder-gray-400" 
+                                            className="w-full bg-gray-50/50 text-xs font-mono text-gray-600 rounded-md border border-gray-200 px-3 py-1.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all placeholder-gray-400" 
                                             value={el.value}
                                             onChange={(e) => updateElement(activePage.id, el.id, { value: e.target.value })}
                                             placeholder="Selector value"
@@ -576,7 +576,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                  <Layout size={32} className="text-gray-300" />
              </div>
              <p className="font-medium text-gray-500">Select a page or element from the explorer</p>
-             <button disabled={!activeProject} onClick={addPage} className="mt-4 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-md text-sm text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-all font-medium disabled:opacity-50">Create a new page</button>
+             <button disabled={!activeProject} onClick={addPage} className="mt-4 px-4 py-2 bg-white border border-gray-200 shadow-sm rounded-md text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 transition-all font-medium disabled:opacity-50">Create a new page</button>
           </div>
         )}
       </div>
@@ -586,7 +586,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
           <div className="bg-white p-0 rounded-xl w-[600px] shadow-2xl border border-gray-200 animate-in fade-in zoom-in duration-200 overflow-hidden">
             <div className="p-6 border-b border-gray-100 bg-gray-50/50">
                 <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-                <Sparkles className="text-purple-600" size={20}/> 
+                <Sparkles className="text-blue-600" size={20}/> 
                 {activeElementId ? 'AI Selector Improver' : 'AI Element Extractor'}
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">
@@ -599,7 +599,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
             
             <div className="p-6">
                 <textarea 
-                className="w-full h-48 bg-slate-50 border border-gray-200 rounded-lg p-4 text-xs font-mono text-slate-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none resize-none shadow-inner"
+                className="w-full h-48 bg-slate-50 border border-gray-200 rounded-lg p-4 text-xs font-mono text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none shadow-inner"
                 placeholder='<button class="submit-btn" data-testid="login">Login</button>'
                 value={htmlInput}
                 onChange={(e) => setHtmlInput(e.target.value)}
@@ -615,7 +615,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                 <button 
                     onClick={handleAiSuggest}
                     disabled={aiLoading}
-                    className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 font-medium shadow-sm transition-all hover:shadow-purple-500/20"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 font-medium shadow-sm transition-all hover:shadow-blue-500/20"
                 >
                     {aiLoading ? 'Analyzing...' : activeElementId ? 'Update Selector' : 'Generate Element'}
                 </button>

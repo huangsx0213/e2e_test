@@ -61,12 +61,12 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
         <div className="p-4 border-b border-gray-200 bg-white space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Globe size={18} className="text-indigo-600" />
+              <Globe size={18} className="text-blue-600" />
               Endpoints
             </h2>
             <button 
               onClick={handleCreate}
-              className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm"
+              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm"
               title="Create New Endpoint"
             >
               <Plus size={16} />
@@ -77,7 +77,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
             <input 
               type="text"
               placeholder="Search endpoints..."
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -91,12 +91,12 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
               onClick={() => handleSelect(endpoint)}
               className={`p-3 rounded-lg cursor-pointer border transition-all group ${
                 selectedId === endpoint.id 
-                  ? 'bg-white border-indigo-200 shadow-sm ring-1 ring-indigo-500/20' 
+                  ? 'bg-white border-blue-200 shadow-sm ring-1 ring-blue-500/20' 
                   : 'bg-transparent border-transparent hover:bg-white hover:border-gray-200'
               }`}
             >
               <div className="flex justify-between items-start mb-1">
-                <span className={`font-medium text-sm ${selectedId === endpoint.id ? 'text-indigo-700' : 'text-gray-700'}`}>
+                <span className={`font-medium text-sm ${selectedId === endpoint.id ? 'text-blue-700' : 'text-gray-700'}`}>
                   {endpoint.name}
                 </span>
                 <button 
@@ -129,7 +129,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
               </div>
               <button 
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <Save size={16} />
                 Save Changes
@@ -148,7 +148,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                       <input 
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
                         placeholder="e.g. User Service"
@@ -157,7 +157,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                       <input 
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                         value={editDesc}
                         onChange={(e) => setEditDesc(e.target.value)}
                         placeholder="Describe this service..."
@@ -177,7 +177,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                         <div className="col-span-2">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium border ${
                             env === 'PROD' ? 'bg-red-50 text-red-700 border-red-200' :
-                            env === 'UAT' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                            env === 'UAT' ? 'bg-teal-50 text-teal-700 border-teal-200' :
                             env === 'SIT' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                             'bg-green-50 text-green-700 border-green-200'
                           }`}>
@@ -186,7 +186,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                         </div>
                         <div className="col-span-10">
                           <input 
-                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-mono text-gray-600 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none placeholder-gray-300"
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md text-sm font-mono text-gray-600 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none placeholder-gray-300"
                             value={editUrls[env] || ''}
                             onChange={(e) => setEditUrls({ ...editUrls, [env]: e.target.value })}
                             placeholder={`https://${env.toLowerCase()}-api.example.com`}

@@ -289,7 +289,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
         {/* Header */}
         <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-white shrink-0">
             <div className="flex items-center gap-4">
-                <div className={`p-2 rounded-full ${status === 'RUNNING' ? 'bg-indigo-500/20 text-indigo-400' : status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : status === 'IDLE' ? 'bg-gray-500/20 text-gray-400' : 'bg-red-500/20 text-red-400'}`}>
+                <div className={`p-2 rounded-full ${status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' : status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : status === 'IDLE' ? 'bg-gray-500/20 text-gray-400' : 'bg-red-500/20 text-red-400'}`}>
                     {status === 'RUNNING' && <Loader2 className="animate-spin" size={20} />}
                     {status === 'COMPLETED' && <CheckCircle2 size={20} />}
                     {status === 'FAILED' && <XCircle size={20} />}
@@ -307,7 +307,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                         <div className="relative">
                             <Globe size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
                             <select 
-                                className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded pl-7 pr-2 py-1.5 focus:ring-1 focus:ring-indigo-500 outline-none cursor-pointer"
+                                className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded pl-7 pr-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
                                 value={selectedEnv}
                                 onChange={(e) => setSelectedEnv(e.target.value)}
                             >
@@ -318,7 +318,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                         </div>
                         <button 
                             onClick={startExecution}
-                            className="ml-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded shadow-lg shadow-indigo-500/20 transition-all"
+                            className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all"
                         >
                             Start Run
                         </button>
@@ -342,7 +342,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
         {/* Progress Line */}
         <div className="h-0.5 bg-slate-800 w-full">
             <div 
-                className={`h-full transition-all duration-300 ${status === 'FAILED' ? 'bg-red-500' : 'bg-indigo-500'} shadow-[0_0_10px_rgba(99,102,241,0.5)]`} 
+                className={`h-full transition-all duration-300 ${status === 'FAILED' ? 'bg-red-500' : 'bg-blue-500'} shadow-[0_0_10px_rgba(99,102,241,0.5)]`} 
                 style={{ width: `${progress}%` }}
             ></div>
         </div>
@@ -358,7 +358,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                     {logs.map((log, idx) => (
                         <div key={idx} className={`flex gap-3 text-xs leading-relaxed animate-in fade-in slide-in-from-left-2 duration-200 ${log.status === 'FAIL' ? 'text-red-400' : 'text-slate-400'}`}>
                             <span className="text-slate-600 shrink-0 select-none w-16">[{new Date(log.timestamp).toLocaleTimeString().split(' ')[0]}]</span>
-                            <span className={log.message.includes('Starting') ? 'text-indigo-400 font-bold' : log.message.includes('Passed') ? 'text-emerald-400' : ''}>
+                            <span className={log.message.includes('Starting') ? 'text-blue-400 font-bold' : log.message.includes('Passed') ? 'text-emerald-400' : ''}>
                                 {log.message}
                             </span>
                         </div>
@@ -372,7 +372,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                 <div className="bg-white border-b border-gray-200 p-3 flex items-center gap-3 shadow-sm z-10">
                    <div className="flex gap-1.5 ml-1">
                        <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                       <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
+                       <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
                        <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
                    </div>
                    <div className="flex-1 bg-gray-50 hover:bg-white transition-colors rounded-md px-3 py-1.5 text-xs text-gray-500 font-mono truncate border border-gray-200 flex items-center gap-2">
@@ -387,7 +387,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                         {/* Fake Header */}
                         <div className="h-14 bg-white border-b border-gray-100 w-full flex items-center px-6 gap-6 justify-between">
                             <div className="flex items-center gap-4">
-                                <div className="w-8 h-8 bg-indigo-600 rounded-md shadow-sm"></div>
+                                <div className="w-8 h-8 bg-blue-600 rounded-md shadow-sm"></div>
                                 <div className="flex gap-4">
                                     <div className="w-16 h-2 bg-gray-100 rounded-full"></div>
                                     <div className="w-16 h-2 bg-gray-100 rounded-full"></div>
@@ -408,7 +408,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             {status === 'RUNNING' && (
                                 <div className="bg-slate-900/90 px-6 py-4 rounded-xl shadow-2xl flex flex-col items-center border border-slate-700/50 backdrop-blur-md">
-                                    <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                                    <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                                     <span className="text-white font-semibold text-sm tracking-wide">Automating...</span>
                                 </div>
                             )}

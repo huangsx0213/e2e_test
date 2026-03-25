@@ -293,7 +293,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                 <input 
                     type="text"
                     placeholder="Filter test cases..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -305,7 +305,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                 <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Test Explorer</span>
                 <button 
                     onClick={addSuite}
-                    className="text-gray-400 hover:text-indigo-600 p-1 rounded-md hover:bg-indigo-50 transition-colors"
+                    className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
                     title="Add Suite"
                 >
                     <Plus size={14} />
@@ -318,17 +318,17 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                         <div 
                             className={`group px-2 py-1.5 rounded-md text-sm font-medium cursor-pointer flex items-center justify-between transition-all duration-200 ${
                                 activeSuiteId === suite.id && !activeCaseId
-                                ? 'bg-indigo-50 text-indigo-700' 
+                                ? 'bg-blue-50 text-blue-700' 
                                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             }`}
                             onClick={() => { setActiveSuiteId(suite.id); setActiveCaseId(''); }}
                         >
                             <div className="flex items-center gap-2 overflow-hidden w-full">
-                                {activeSuiteId === suite.id ? <ChevronDown size={14} className="shrink-0 text-indigo-500" /> : <ChevronRight size={14} className="shrink-0 text-gray-400" />}
-                                <Layers size={14} className={`shrink-0 ${activeSuiteId === suite.id ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                {activeSuiteId === suite.id ? <ChevronDown size={14} className="shrink-0 text-blue-500" /> : <ChevronRight size={14} className="shrink-0 text-gray-400" />}
+                                <Layers size={14} className={`shrink-0 ${activeSuiteId === suite.id ? 'text-blue-500' : 'text-gray-400'}`} />
                                 {editingSuiteId === suite.id ? (
                                     <input 
-                                        className="w-full px-1 py-0.5 text-xs bg-white border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                        className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                         value={editSuiteName}
                                         onChange={e => setEditSuiteName(e.target.value)}
                                         onClick={e => e.stopPropagation()}
@@ -346,7 +346,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                     <button onClick={(e) => { e.stopPropagation(); saveSuiteName(); }} className="p-1 text-green-600"><Check size={12}/></button>
                                 ) : (
                                     <div className="flex gap-0.5 relative z-20">
-                                        <button onClick={(e) => { e.stopPropagation(); setEditingSuiteId(suite.id); setEditSuiteName(suite.name); }} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Edit2 size={12}/></button>
+                                        <button onClick={(e) => { e.stopPropagation(); setEditingSuiteId(suite.id); setEditSuiteName(suite.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                         <button 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
@@ -367,14 +367,14 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 {suite.cases.map(tc => (
                                     <div 
                                     key={tc.id}
-                                    className={`group text-xs py-1.5 px-2 rounded-md cursor-pointer truncate transition-colors flex items-center justify-between ${activeCaseId === tc.id ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
+                                    className={`group text-xs py-1.5 px-2 rounded-md cursor-pointer truncate transition-colors flex items-center justify-between ${activeCaseId === tc.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
                                     onClick={(e) => { e.stopPropagation(); setActiveCaseId(tc.id); }}
                                     >
                                         <div className="flex items-center gap-2 overflow-hidden w-full">
-                                            <FlaskConical size={12} className={activeCaseId === tc.id ? 'text-indigo-500' : 'text-gray-300'} />
+                                            <FlaskConical size={12} className={activeCaseId === tc.id ? 'text-blue-500' : 'text-gray-300'} />
                                             {editingCaseId === tc.id ? (
                                                 <input 
-                                                    className="w-full px-1 py-0.5 text-xs bg-white border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                     value={editCaseName}
                                                     onChange={e => setEditCaseName(e.target.value)}
                                                     onClick={e => e.stopPropagation()}
@@ -391,7 +391,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                                 <button onClick={(e) => { e.stopPropagation(); saveCaseName(suite.id); }} className="p-1 text-green-600 hover:bg-green-100 rounded"><Check size={12}/></button>
                                             ) : (
                                                 <div className="flex gap-0.5 relative z-20">
-                                                    <button onClick={(e) => { e.stopPropagation(); setEditingCaseId(tc.id); setEditCaseName(tc.name); }} className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"><Edit2 size={12}/></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setEditingCaseId(tc.id); setEditCaseName(tc.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                                     <button 
                                                         className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
                                                         onClick={(e) => { 
@@ -409,7 +409,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 ))}
                                 <button 
                                     onClick={() => addCase(suite.id)}
-                                    className="text-[11px] text-gray-400 hover:text-indigo-600 px-2 py-1.5 flex items-center gap-1.5 w-full hover:bg-gray-50 rounded transition-colors font-medium group"
+                                    className="text-[11px] text-gray-400 hover:text-blue-600 px-2 py-1.5 flex items-center gap-1.5 w-full hover:bg-gray-50 rounded transition-colors font-medium group"
                                 >
                                     <Plus size={10} className="group-hover:scale-110 transition-transform" /> New Case
                                 </button>
@@ -434,7 +434,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
             <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                 <div>
                      <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
-                        <span className="hover:text-indigo-600 cursor-pointer transition-colors" onClick={() => setActiveCaseId('')}>{activeSuite.name}</span>
+                        <span className="hover:text-blue-600 cursor-pointer transition-colors" onClick={() => setActiveCaseId('')}>{activeSuite.name}</span>
                         <ChevronRight size={12} className="text-gray-300" />
                         <span>Edit Case</span>
                      </div>
@@ -469,10 +469,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                          {/* Description & AI */}
                          <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Sparkles size={14} className="text-purple-500" />
+                                <Sparkles size={14} className="text-blue-500" />
                             </div>
                             <input 
-                                className="w-full pl-9 pr-24 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 placeholder-gray-400 shadow-sm transition-all"
+                                className="w-full pl-9 pr-24 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
                                 value={activeCase.description}
                                 onChange={(e) => updateCase({ description: e.target.value })}
                                 placeholder="Describe the test flow to generate steps (e.g., 'Login with valid user')..."
@@ -481,7 +481,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 <button 
                                     onClick={handleAiGeneration}
                                     disabled={generating || !activeCase.description || !currentProjectId}
-                                    className="h-full px-3 bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-medium rounded-md flex items-center gap-1.5 disabled:opacity-50 transition-colors border border-purple-200"
+                                    className="h-full px-3 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-medium rounded-md flex items-center gap-1.5 disabled:opacity-50 transition-colors border border-blue-200"
                                     title={!currentProjectId ? "Select a project first" : ""}
                                 >
                                     <Wand2 size={12} className={generating ? 'animate-spin' : ''} />
@@ -491,10 +491,12 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                          </div>
                     </div>
 
-                    {/* Setup Steps */}
-                    <div className="px-6 pb-2 flex-1 space-y-3">
+                    {/* Steps Container */}
+                    <div className="px-6 pb-6 flex-1 flex flex-col gap-4">
+                        {/* Setup Steps */}
                         <StepList
                             title="Setup Steps"
+                            defaultExpanded={(activeCase.setupSteps?.length || 0) > 0}
                             steps={activeCase.setupSteps || []}
                             onUpdateStep={caseSetupSteps.update}
                             onDeleteStep={caseSetupSteps.delete}
@@ -506,12 +508,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             headers={headers}
                             bodies={bodies}
                         />
-                    </div>
 
-                    {/* Steps List */}
-                    <div className="px-6 pb-2 flex-1 space-y-3">
+                        {/* Steps List */}
                         <StepList
                             title="Test Steps"
+                            defaultExpanded={true}
                             steps={activeCase.steps}
                             onUpdateStep={caseSteps.update}
                             onDeleteStep={caseSteps.delete}
@@ -523,12 +524,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             headers={headers}
                             bodies={bodies}
                         />
-                    </div>
 
-                    {/* Teardown Steps */}
-                    <div className="px-6 pb-6 flex-1 space-y-3">
+                        {/* Teardown Steps */}
                         <StepList
                             title="Teardown Steps"
+                            defaultExpanded={(activeCase.teardownSteps?.length || 0) > 0}
                             steps={activeCase.teardownSteps || []}
                             onUpdateStep={caseTeardownSteps.update}
                             onDeleteStep={caseTeardownSteps.delete}
@@ -549,9 +549,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
           <div className="flex-1 flex flex-col h-full animate-in fade-in duration-200 overflow-hidden">
              <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                  <div className="flex items-center gap-3">
-                     <Layers className="text-indigo-600" size={20} />
+                     <Layers className="text-blue-600" size={20} />
                      <h2 className="text-lg font-semibold text-gray-900">{activeSuite.name}</h2>
-                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-bold uppercase tracking-wide">Test Suite</span>
+                     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-bold uppercase tracking-wide">Test Suite</span>
                  </div>
                  <div className="text-xs text-gray-400 font-medium">
                      {activeSuite.cases.length} Test Cases
@@ -570,7 +570,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             <div>
                                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Suite Name</label>
                                 <input 
-                                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all placeholder-gray-400"
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
                                     value={activeSuite.name}
                                     onChange={(e) => updateSuite(activeSuite.id, { name: e.target.value })}
                                 />
@@ -582,6 +582,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                      <div className="pt-6 border-t border-gray-100">
                         <StepList
                             title="Suite Setup Steps"
+                            defaultExpanded={(activeSuite.setupSteps?.length || 0) > 0}
                             steps={activeSuite.setupSteps || []}
                             onUpdateStep={suiteSetupSteps.update}
                             onDeleteStep={suiteSetupSteps.delete}
@@ -599,6 +600,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                      <div className="pt-6 border-t border-gray-100">
                         <StepList
                             title="Suite Teardown Steps"
+                            defaultExpanded={(activeSuite.teardownSteps?.length || 0) > 0}
                             steps={activeSuite.teardownSteps || []}
                             onUpdateStep={suiteTeardownSteps.update}
                             onDeleteStep={suiteTeardownSteps.delete}
@@ -619,7 +621,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 <Variable size={16} className="text-gray-400" />
                                 Suite Variables (Schema & Defaults)
                             </div>
-                            <button onClick={addSuiteVariable} className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium">
+                            <button onClick={addSuiteVariable} className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium">
                                 <Plus size={14} /> Add Variable
                             </button>
                         </div>
@@ -640,7 +642,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                  <div key={variable.id} className="flex items-center gap-3 group">
                                      <div className="flex-1 relative">
                                         <input 
-                                            className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-xs font-mono font-medium text-indigo-700 focus:bg-white focus:border-indigo-500 outline-none"
+                                            className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-xs font-mono font-medium text-blue-700 focus:bg-white focus:border-blue-500 outline-none"
                                             value={variable.key}
                                             onChange={(e) => updateSuiteVariableKey(variable.id, e.target.value)}
                                             placeholder="VAR_NAME"
@@ -649,7 +651,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                      <span className="text-gray-300 font-mono">=</span>
                                      <div className="flex-[2] relative">
                                          <input 
-                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-indigo-500 outline-none"
+                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 outline-none"
                                             value={variable.value}
                                             onChange={(e) => updateSuiteVariableValue(variable.id, e.target.value)}
                                             placeholder="Default Value"
@@ -670,7 +672,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 <Table2 size={16} className="text-gray-400" />
                                 Data Driven Execution
                             </div>
-                            <button onClick={addDataRow} className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-medium">
+                            <button onClick={addDataRow} className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium">
                                 <Plus size={14} /> Add Row
                             </button>
                         </div>
@@ -686,7 +688,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                         <tr>
                                             <th className="px-4 py-2 w-12 text-center">#</th>
                                             {(activeSuite.variables || []).map(v => (
-                                                <th key={v.id} className="px-4 py-2 border-l border-gray-200 font-mono text-indigo-600">{v.key}</th>
+                                                <th key={v.id} className="px-4 py-2 border-l border-gray-200 font-mono text-blue-600">{v.key}</th>
                                             ))}
                                             <th className="px-2 py-2 w-10"></th>
                                         </tr>
@@ -733,7 +735,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                <FlaskConical size={32} className="text-gray-300" />
             </div>
             <p className="font-medium text-gray-500">Select a test case or suite to start editing</p>
-            <button onClick={() => addSuite()} className="text-xs text-indigo-600 hover:underline">Or create a new suite</button>
+            <button onClick={() => addSuite()} className="text-xs text-blue-600 hover:underline">Or create a new suite</button>
           </div>
         )}
       </div>

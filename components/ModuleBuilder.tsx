@@ -165,7 +165,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
   };
 
   const getActionColorClass = (action: ActionType) => {
-     if (action.startsWith('ASSERT')) return 'bg-orange-50 text-orange-700 border-orange-200';
+     if (action.startsWith('ASSERT')) return 'bg-teal-50 text-teal-700 border-teal-200';
      if (action.startsWith('API')) return 'bg-sky-50 text-sky-700 border-sky-200';
      if (action === 'WAIT') return 'bg-gray-100 text-gray-700 border-gray-200';
      return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -194,7 +194,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                 <input 
                     type="text"
                     placeholder="Filter modules..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -207,7 +207,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                 <button 
                     onClick={addModule}
                     disabled={!activeProject}
-                    className="text-gray-400 hover:text-purple-600 p-1 rounded-md hover:bg-purple-50 transition-colors disabled:opacity-50"
+                    className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
                     title="Add Module"
                 >
                     <Plus size={14} />
@@ -226,16 +226,16 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                         key={mod.id}
                         className={`group px-2 py-1.5 rounded-md text-sm font-medium cursor-pointer flex items-center justify-between transition-all duration-200 ${
                             activeModuleId === mod.id
-                            ? 'bg-purple-50 text-purple-700' 
+                            ? 'bg-blue-50 text-blue-700' 
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                         }`}
                         onClick={() => setActiveModuleId(mod.id)}
                     >
                         <div className="flex items-center gap-2 overflow-hidden w-full">
-                            <Workflow size={14} className={`shrink-0 ${activeModuleId === mod.id ? 'text-purple-500' : 'text-gray-400'}`} />
+                            <Workflow size={14} className={`shrink-0 ${activeModuleId === mod.id ? 'text-blue-500' : 'text-gray-400'}`} />
                             {editingModuleId === mod.id ? (
                                 <input 
-                                    className="w-full px-1 py-0.5 text-xs bg-white border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                    className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                     value={editModuleName}
                                     onChange={e => setEditModuleName(e.target.value)}
                                     onClick={e => e.stopPropagation()}
@@ -253,7 +253,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                 <button onClick={(e) => { e.stopPropagation(); saveModuleName(); }} className="p-1 text-green-600"><Check size={12}/></button>
                             ) : (
                                 <div className="flex gap-0.5 relative z-20">
-                                    <button onClick={(e) => { e.stopPropagation(); setEditingModuleId(mod.id); setEditModuleName(mod.name); }} className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded"><Edit2 size={12}/></button>
+                                    <button onClick={(e) => { e.stopPropagation(); setEditingModuleId(mod.id); setEditModuleName(mod.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                     <button 
                                         onClick={(e) => { e.stopPropagation(); deleteModule(mod.id); }} 
                                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer"
@@ -276,12 +276,12 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                 <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
                     <div>
                         <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
-                            <span className="text-purple-600">Module Editor</span>
+                            <span className="text-blue-600">Module Editor</span>
                             <ChevronRight size={12} className="text-gray-300" />
                         </div>
                         <h2 className="text-lg font-semibold text-gray-900">{activeModule.name}</h2>
                     </div>
-                    <div className="px-3 py-1 bg-purple-50 text-purple-700 text-xs font-medium rounded-full border border-purple-100">
+                    <div className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-100">
                         {activeModule.steps.length} Steps
                     </div>
                 </div>
@@ -292,7 +292,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                              <div className="mb-4">
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Description</label>
                                 <input 
-                                    className="w-full mt-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 placeholder-gray-400 shadow-sm transition-all"
+                                    className="w-full mt-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
                                     value={activeModule.description || ''}
                                     onChange={(e) => updateModule({ description: e.target.value })}
                                     placeholder="Module description (e.g. 'Standard login flow for reuse')..."
@@ -305,7 +305,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                                         <Variable size={12} /> Input Parameters
                                     </label>
-                                    <button onClick={addParam} className="text-xs text-purple-600 hover:bg-purple-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                    <button onClick={addParam} className="text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
                                         <Plus size={12} /> Add Parameter
                                     </button>
                                 </div>
@@ -322,7 +322,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                             <div className="flex-1 grid grid-cols-12 gap-2">
                                                 <div className="col-span-5">
                                                     <input 
-                                                        className="w-full bg-purple-50 border border-purple-100 rounded px-2 py-1.5 text-xs font-mono font-medium text-purple-900 placeholder-purple-300 focus:border-purple-500 outline-none"
+                                                        className="w-full bg-blue-50 border border-blue-100 rounded px-2 py-1.5 text-xs font-mono font-medium text-blue-900 placeholder-blue-300 focus:border-blue-500 outline-none"
                                                         value={param.name}
                                                         onChange={(e) => updateParam(param.id, { name: e.target.value })}
                                                         placeholder="PARAM_NAME"
@@ -330,7 +330,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                 </div>
                                                 <div className="col-span-7">
                                                     <input 
-                                                        className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-purple-500 outline-none placeholder-gray-300"
+                                                        className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 outline-none placeholder-gray-300"
                                                         value={param.defaultValue || ''}
                                                         onChange={(e) => updateParam(param.id, { defaultValue: e.target.value })}
                                                         placeholder="Default Value"
@@ -363,7 +363,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                     onDragStart={(e) => handleDragStart(e, index)}
                                     onDragOver={(e) => handleDragOver(e, index)}
                                     onDrop={(e) => handleDrop(e, index)}
-                                    className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-purple-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-purple-300 ring-2 ring-purple-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-purple-300 border-purple-400' : ''}`}
+                                    className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
                                 >
                                     <div className="grid grid-cols-12 gap-4 items-center">
                                         {/* Drag Handle */}
@@ -391,7 +391,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                         <div className="relative">
                                                             <Globe className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={10} />
                                                             <select 
-                                                                className="w-full bg-white text-[10px] border border-gray-200 rounded pl-6 pr-6 py-1.5 focus:ring-1 focus:ring-purple-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
+                                                                className="w-full bg-white text-[10px] border border-gray-200 rounded pl-6 pr-6 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
                                                                 value={step.endpointId || ''}
                                                                 onChange={(e) => updateStep(step.id, { endpointId: e.target.value })}
                                                             >
@@ -407,13 +407,13 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                         </label>
                                                         <div className="relative">
                                                             <input 
-                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all placeholder-gray-300 pr-8"
+                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300 pr-8"
                                                                 value={step.target}
                                                                 onChange={(e) => updateStep(step.id, { target: e.target.value })}
                                                                 placeholder={step.endpointId ? '/v1/users' : 'https://api.example.com/v1/users'}
                                                             />
                                                             <button 
-                                                                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-purple-600 p-1 rounded"
+                                                                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1 rounded"
                                                                 onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'target' ? null : { stepId: step.id, field: 'target' }); }}
                                                                 title="Insert Parameter"
                                                             >
@@ -428,7 +428,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                     {(activeModule.params || []).map(p => (
                                                                         <button 
                                                                             key={p.id}
-                                                                            className="w-full text-left px-3 py-1.5 hover:bg-purple-50 hover:text-purple-700 font-mono flex items-center justify-between group"
+                                                                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                             onClick={() => {
                                                                                 updateStep(step.id, { target: `${step.target}\${${p.name}}` });
                                                                                 setVariableMenuOpen(null);
@@ -445,7 +445,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                              ) : (
                                                  <div className="relative">
                                                     <input 
-                                                        className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all placeholder-gray-300 pr-8"
+                                                        className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300 pr-8"
                                                         value={step.target}
                                                         onChange={(e) => updateStep(step.id, { target: e.target.value })}
                                                         onFocus={() => setElementMenuOpen(step.id)}
@@ -458,9 +458,9 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                 <div key={page.id}>
                                                                     <div className="px-3 py-1.5 text-[10px] font-bold text-gray-500 bg-gray-50 border-y border-gray-100 uppercase tracking-wider sticky top-0 z-10 flex items-center gap-1"><Layers size={10} />{page.name}</div>
                                                                     {page.elements.map(el => (
-                                                                        <div key={el.id} className="px-4 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 cursor-pointer flex items-center gap-2"
+                                                                        <div key={el.id} className="px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer flex items-center gap-2"
                                                                             onMouseDown={(e) => { e.preventDefault(); updateStep(step.id, { target: `${page.name}/${el.name}` }); setElementMenuOpen(null); }}>
-                                                                            <div className={`shrink-0 w-1.5 h-1.5 rounded-full ${el.selectorType === 'XPath' ? 'bg-purple-400' : 'bg-indigo-400'}`}></div>
+                                                                            <div className={`shrink-0 w-1.5 h-1.5 rounded-full ${el.selectorType === 'XPath' ? 'bg-blue-400' : 'bg-blue-400'}`}></div>
                                                                             <span className="font-medium">{el.name}</span>
                                                                         </div>
                                                                     ))}
@@ -482,7 +482,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                             <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Headers</label>
                                                             <div className="relative">
                                                                 <select 
-                                                                    className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-purple-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
+                                                                    className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
                                                                     value={step.headerProfileId || ''}
                                                                     onChange={(e) => updateStep(step.id, { headerProfileId: e.target.value })}
                                                                 >
@@ -496,7 +496,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                             <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">Body Template</label>
                                                             <div className="relative">
                                                                 <select 
-                                                                    className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-purple-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
+                                                                    className="w-full bg-white text-[10px] border border-gray-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none appearance-none cursor-pointer text-gray-700 font-medium"
                                                                     value={step.bodyTemplateId || ''}
                                                                     onChange={(e) => updateStep(step.id, { bodyTemplateId: e.target.value })}
                                                                 >
@@ -529,14 +529,14 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
 
                                                                 return (
                                                                     <div>
-                                                                        <div className="text-[9px] font-bold text-purple-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileText size={10}/> Header Variables</div>
+                                                                        <div className="text-[9px] font-bold text-blue-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileText size={10}/> Header Variables</div>
                                                                         <div className="space-y-1.5">
                                                                             {Array.from(headerVars).map(varName => (
                                                                                 <div key={`header-${varName}`} className="flex items-center gap-2">
                                                                                     <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                                                     <div className="relative flex-1">
                                                                                         <input 
-                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-200 outline-none"
+                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
                                                                                             placeholder="Value"
                                                                                             value={currentValues[varName] || ''}
                                                                                             onChange={(e) => {
@@ -545,7 +545,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                                             }}
                                                                                         />
                                                                                         <button 
-                                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-purple-600 p-0.5 rounded"
+                                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
                                                                                             onClick={(e) => { 
                                                                                                 e.stopPropagation(); 
                                                                                                 setVariableMenuOpen(
@@ -563,7 +563,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                                                 {(activeModule.params || []).map(p => (
                                                                                                     <button 
                                                                                                         key={p.id}
-                                                                                                        className="w-full text-left px-3 py-1.5 hover:bg-purple-50 hover:text-purple-700 font-mono flex items-center justify-between group"
+                                                                                                        className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                                         onClick={(e) => {
                                                                                                             e.stopPropagation();
                                                                                                             const newData = { ...currentValues, [varName]: `\${${p.name}}` };
@@ -600,14 +600,14 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
 
                                                                 return (
                                                                     <div>
-                                                                        <div className="text-[9px] font-bold text-purple-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileCode size={10}/> Body Variables</div>
+                                                                        <div className="text-[9px] font-bold text-blue-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><FileCode size={10}/> Body Variables</div>
                                                                         <div className="space-y-1.5">
                                                                             {Array.from(bodyVars).map(varName => (
                                                                                 <div key={`body-${varName}`} className="flex items-center gap-2">
                                                                                     <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                                                     <div className="relative flex-1">
                                                                                         <input 
-                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-200 outline-none"
+                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
                                                                                             placeholder="Value"
                                                                                             value={currentValues[varName] || ''}
                                                                                             onChange={(e) => {
@@ -616,7 +616,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                                             }}
                                                                                         />
                                                                                         <button 
-                                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-purple-600 p-0.5 rounded"
+                                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
                                                                                             onClick={(e) => { 
                                                                                                 e.stopPropagation(); 
                                                                                                 setVariableMenuOpen(
@@ -634,7 +634,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                                                 {(activeModule.params || []).map(p => (
                                                                                                     <button 
                                                                                                         key={p.id}
-                                                                                                        className="w-full text-left px-3 py-1.5 hover:bg-purple-50 hover:text-purple-700 font-mono flex items-center justify-between group"
+                                                                                                        className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                                         onClick={(e) => {
                                                                                                             e.stopPropagation();
                                                                                                             const newData = { ...currentValues, [varName]: `\${${p.name}}` };
@@ -658,13 +658,13 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                     ) : (
                                                         <div className="relative">
                                                             <textarea 
-                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
+                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
                                                                 value={step.data}
                                                                 onChange={(e) => updateStep(step.id, { data: e.target.value })}
                                                                 placeholder="Request Body (JSON)"
                                                             />
                                                             <button 
-                                                                className="absolute right-1 top-2 text-gray-400 hover:text-purple-600 p-1 rounded"
+                                                                className="absolute right-1 top-2 text-gray-400 hover:text-blue-600 p-1 rounded"
                                                                 onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); }}
                                                                 title="Insert Parameter"
                                                             >
@@ -677,7 +677,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                                     {(activeModule.params || []).map(p => (
                                                                         <button 
                                                                             key={p.id}
-                                                                            className="w-full text-left px-3 py-1.5 hover:bg-purple-50 hover:text-purple-700 font-mono flex items-center justify-between group"
+                                                                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                             onClick={() => {
                                                                                 updateStep(step.id, { data: `${step.data}\${${p.name}}` });
                                                                                 setVariableMenuOpen(null);
@@ -693,7 +693,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                                 </div>
                                             ) : (
                                                 <input 
-                                                    className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all placeholder-gray-300"
+                                                    className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-1.5 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300"
                                                     value={step.data}
                                                     onChange={(e) => updateStep(step.id, { data: e.target.value })}
                                                     placeholder="Data / Param: ${VAR}"
@@ -709,7 +709,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                     <div className="mt-2 pl-9 pr-8">
                                         <div className="relative">
                                             <input 
-                                                className="w-full bg-transparent border-b border-dashed border-gray-200 focus:border-purple-300 text-[11px] text-gray-500 placeholder-gray-300 focus:bg-gray-50/50 outline-none transition-all py-1 px-1"
+                                                className="w-full bg-transparent border-b border-dashed border-gray-200 focus:border-blue-300 text-[11px] text-gray-500 placeholder-gray-300 focus:bg-gray-50/50 outline-none transition-all py-1 px-1"
                                                 value={step.description || ''}
                                                 onChange={(e) => updateStep(step.id, { description: e.target.value })}
                                                 placeholder="Step description..."
@@ -720,7 +720,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                 </div>
                              ))}
                              
-                             <button onClick={addStep} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:text-purple-600 hover:border-purple-200 hover:bg-purple-50/50 transition-all flex items-center justify-center gap-2 text-sm font-medium mt-6 group">
+                             <button onClick={addStep} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 text-sm font-medium mt-6 group">
                                 <Plus size={16} className="group-hover:scale-110 transition-transform" /> Add Step
                              </button>
                         </div>
@@ -733,7 +733,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                     <Workflow size={32} className="text-gray-300" />
                 </div>
                 <p className="font-medium text-gray-500">Select a module to edit or create a new one</p>
-                <button onClick={addModule} className="text-xs text-purple-600 hover:underline">Create Shared Module</button>
+                <button onClick={addModule} className="text-xs text-blue-600 hover:underline">Create Shared Module</button>
             </div>
         )}
       </div>

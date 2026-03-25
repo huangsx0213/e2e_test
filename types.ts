@@ -53,12 +53,26 @@ export interface TestModule {
   steps: TestStep[];
 }
 
+export interface ScenarioSuite {
+  id: string;
+  suiteId: string;
+  variableOverrides: Record<string, string>;
+}
+
+export interface TestScenario {
+  id: string;
+  name: string;
+  description?: string;
+  suites: ScenarioSuite[];
+}
+
 export interface Project {
   id: string;
   name: string;
   description?: string;
   pages: Page[];
   modules: TestModule[]; // Reusable modules scoped to project
+  scenarios?: TestScenario[]; // Scenarios for test execution
 }
 
 export interface TestCase {

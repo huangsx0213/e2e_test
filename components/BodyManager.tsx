@@ -63,7 +63,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
             <h2 className="font-semibold text-gray-900">Body Templates</h2>
             <button 
               onClick={handleCreate}
-              className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               <Plus size={16} />
             </button>
@@ -73,7 +73,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
             <input 
               type="text" 
               placeholder="Search templates..." 
-              className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -87,18 +87,18 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
               onClick={() => setSelectedId(template.id)}
               className={`group flex items-center justify-between p-3 rounded-md cursor-pointer text-sm transition-all ${
                 selectedId === template.id 
-                  ? 'bg-white shadow-sm border border-indigo-100 ring-1 ring-indigo-500/20' 
+                  ? 'bg-white shadow-sm border border-blue-100 ring-1 ring-blue-500/20' 
                   : 'hover:bg-gray-100 border border-transparent'
               }`}
             >
               <div className="flex items-center gap-3 overflow-hidden">
                 <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${
-                  selectedId === template.id ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-200 text-gray-500'
+                  selectedId === template.id ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'
                 }`}>
                   <FileCode size={16} />
                 </div>
                 <div className="min-w-0">
-                  <div className={`font-medium truncate ${selectedId === template.id ? 'text-indigo-900' : 'text-gray-700'}`}>
+                  <div className={`font-medium truncate ${selectedId === template.id ? 'text-blue-900' : 'text-gray-700'}`}>
                     {template.name}
                   </div>
                   <div className="text-xs text-gray-400 truncate">
@@ -142,7 +142,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                  <select 
                     value={editType}
                     onChange={(e) => setEditType(e.target.value as any)}
-                    className="text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
                  >
                     <option value="application/json">JSON</option>
                     <option value="application/xml">XML</option>
@@ -151,7 +151,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                  </select>
                  <button 
                     onClick={handleSave}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
                  >
                     <Save size={16} />
                     <span>Save</span>
