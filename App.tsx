@@ -7,6 +7,7 @@ import {
   Settings as SettingsIcon,
   Activity,
   ChevronRight,
+  ChevronLeft,
   BarChart3,
   Database,
   PlayCircle,
@@ -69,6 +70,7 @@ function App() {
 
   const [currentEnvironment, setCurrentEnvironment] = useState<string>("");
   const [currentProjectId, setCurrentProjectId] = useState<string>("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentProjectId && projects.length > 0) {
@@ -121,72 +123,109 @@ function App() {
   return (
     <div className="flex h-screen bg-gray-50 text-slate-900 font-sans">
       {/* Professional Dark Sidebar */}
-      <nav className="w-64 flex flex-col bg-slate-900 border-r border-slate-800 text-slate-300 z-20 shrink-0">
-        <div className="h-14 flex items-center px-4 border-b border-slate-800/50">
-          <div className="flex items-center gap-2.5 text-white font-semibold tracking-tight">
-            <div className="bg-blue-600 p-1.5 rounded-md">
+      <nav className={`${isSidebarCollapsed ? 'w-16' : 'w-64'} transition-all duration-300 flex flex-col bg-slate-900 border-r border-slate-800 text-slate-300 z-20 shrink-0`}>
+        <div className={`h-14 flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-between px-4'} border-b border-slate-800/50`}>
+          <div className="flex items-center gap-2.5 text-white font-semibold tracking-tight overflow-hidden">
+            <div className="bg-blue-600 p-1.5 rounded-md shrink-0">
               <Layers className="text-white fill-white/20" size={18} />
             </div>
-            <span>
-              Quantum<span className="text-blue-400 font-normal">QA</span>
-            </span>
+            {!isSidebarCollapsed && (
+              <span className="truncate">
+                Quantum<span className="text-blue-400 font-normal">QA</span>
+              </span>
+            )}
           </div>
+          {!isSidebarCollapsed && (
+            <button 
+              onClick={() => setIsSidebarCollapsed(true)}
+              className="text-slate-400 hover:text-white transition-colors shrink-0"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          )}
         </div>
-
-        <div className="p-3 space-y-0.5 mt-2">
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3 pt-2">
-            Platform
+        
+        {isSidebarCollapsed && (
+          <div className="flex justify-center pt-2">
+            <button 
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="text-slate-400 hover:text-white transition-colors p-1"
+            >
+              <ChevronRight size={18} />
+            </button>
           </div>
+        )}
+
+        <div className="p-3 space-y-0.5 mt-2 overflow-y-auto overflow-x-hidden">
+          {isSidebarCollapsed ? (
+            <div className="h-px bg-slate-800 my-2 mx-2"></div>
+          ) : (
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3 pt-2">
+              Platform
+            </div>
+          )}
           <NavItem
             icon={<Activity />}
             label="Dashboard"
             active={activeTab === "DASHBOARD"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("DASHBOARD")}
           />
           <NavItem
             icon={<PlayCircle />}
             label="Run Tests"
             active={activeTab === "RUN"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("RUN")}
           />
           <NavItem
             icon={<PlaySquare />}
             label="Test Designer"
             active={activeTab === "TESTS"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("TESTS")}
           />
           <NavItem
             icon={<Database />}
             label="Object Repository"
             active={activeTab === "ELEMENTS"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("ELEMENTS")}
           />
           <NavItem
             icon={<Workflow />}
             label="Shared Modules"
             active={activeTab === "MODULES"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("MODULES")}
           />
 
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3 pt-4">
-            API Assets
-          </div>
+          {isSidebarCollapsed ? (
+            <div className="h-px bg-slate-800 my-2 mx-2"></div>
+          ) : (
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3 pt-4">
+              API Assets
+            </div>
+          )}
           <NavItem
             icon={<Globe />}
             label="Endpoints"
             active={activeTab === "ENDPOINTS"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("ENDPOINTS")}
           />
           <NavItem
             icon={<FileText />}
             label="Headers"
             active={activeTab === "HEADERS"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("HEADERS")}
           />
           <NavItem
             icon={<FileCode />}
             label="Body Templates"
             active={activeTab === "BODIES"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("BODIES")}
           />
         </div>
@@ -196,21 +235,30 @@ function App() {
             icon={<SettingsIcon />}
             label="Settings"
             active={activeTab === "SETTINGS"}
+            collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("SETTINGS")}
           />
-          <div className="mt-3 flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-md border border-slate-800">
-            <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30">
-              QA
+          {!isSidebarCollapsed ? (
+            <div className="mt-3 flex items-center gap-3 px-3 py-2 bg-slate-800/50 rounded-md border border-slate-800 overflow-hidden">
+              <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30 shrink-0">
+                QA
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-medium text-slate-200 truncate">
+                  QA Engineer
+                </span>
+                <span className="text-[10px] text-slate-500 truncate">
+                  admin@company.com
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-medium text-slate-200 truncate">
-                QA Engineer
-              </span>
-              <span className="text-[10px] text-slate-500 truncate">
-                admin@company.com
-              </span>
+          ) : (
+            <div className="mt-3 flex justify-center">
+              <div className="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30 shrink-0" title="QA Engineer">
+                QA
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </nav>
 
@@ -348,16 +396,19 @@ const NavItem = ({
   icon,
   label,
   active,
+  collapsed,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   active: boolean;
+  collapsed?: boolean;
   onClick: () => void;
 }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 group ${
+    title={collapsed ? label : undefined}
+    className={`w-full flex items-center ${collapsed ? 'justify-center px-0' : 'gap-3 px-3'} py-2 rounded-md text-sm font-medium transition-all duration-200 group ${
       active
         ? "bg-blue-600 text-white shadow-md shadow-blue-900/20"
         : "text-slate-400 hover:text-white hover:bg-slate-800/50"
@@ -369,7 +420,7 @@ const NavItem = ({
         ? "text-white"
         : "text-slate-500 group-hover:text-slate-300",
     })}
-    <span>{label}</span>
+    {!collapsed && <span className="truncate">{label}</span>}
   </button>
 );
 
