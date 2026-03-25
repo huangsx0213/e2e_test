@@ -11,7 +11,7 @@ interface StepListProps {
   onAddStep?: () => void;
   defaultExpanded?: boolean;
   activeProject: Project;
-  activeSuite: TestSuite;
+  variables?: { id: string, key: string, value?: string }[];
   endpoints: ApiEndpoint[];
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
@@ -28,7 +28,7 @@ export const StepList: React.FC<StepListProps> = ({
   onAddStep,
   defaultExpanded = true,
   activeProject,
-  activeSuite,
+  variables = [],
   endpoints,
   headers,
   bodies
@@ -263,7 +263,7 @@ export const StepList: React.FC<StepListProps> = ({
                            {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'target' && (
                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                   {(activeSuite.variables || []).map(v => (
+                                   {variables.map(v => (
                                        <button 
                                            key={v.id}
                                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
@@ -322,7 +322,7 @@ export const StepList: React.FC<StepListProps> = ({
                                            {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === param.name && (
                                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                                   {(activeSuite.variables || []).map(v => (
+                                                   {(variables || []).map(v => (
                                                        <button 
                                                            key={v.id}
                                                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
@@ -423,7 +423,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName && (
                                                                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                                                       {(activeSuite.variables || []).map(v => (
+                                                                       {(variables || []).map(v => (
                                                                            <button 
                                                                                key={v.id}
                                                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
@@ -497,7 +497,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName && (
                                                                    <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                                        <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                                                       {(activeSuite.variables || []).map(v => (
+                                                                       {(variables || []).map(v => (
                                                                            <button 
                                                                                key={v.id}
                                                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
@@ -539,7 +539,7 @@ export const StepList: React.FC<StepListProps> = ({
                                    {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && (
                                        <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                            <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                           {(activeSuite.variables || []).map(v => (
+                                           {(variables || []).map(v => (
                                                <button 
                                                    key={v.id}
                                                    className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
@@ -576,7 +576,7 @@ export const StepList: React.FC<StepListProps> = ({
                            {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && (
                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
-                                   {(activeSuite.variables || []).map(v => (
+                                   {(variables || []).map(v => (
                                        <button 
                                            key={v.id}
                                            className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
