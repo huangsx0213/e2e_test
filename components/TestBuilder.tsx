@@ -24,6 +24,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
   const [activeCaseId, setActiveCaseId] = useState<string>(''); 
   const [searchTerm, setSearchTerm] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
   
   // Suite Editing State
   const [editingSuiteId, setEditingSuiteId] = useState<string | null>(null);
@@ -274,7 +275,8 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
 
   const handleAiGeneration = async () => {
     if (!activeCase || !activeProject) {
-        alert("Please ensure a project is selected and elements are defined.");
+        setGenError("Please ensure a project is selected and elements are defined.");
+        setTimeout(() => setGenError(null), 3000);
         return;
     }
     setGenerating(true);
@@ -509,6 +511,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 </button>
                             </div>
                          </div>
+                         {genError && (
+                             <div className="text-xs text-red-500 mt-1">{genError}</div>
+                         )}
                     </div>
 
                     {/* Steps Container */}

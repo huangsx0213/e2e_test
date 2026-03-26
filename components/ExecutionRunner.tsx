@@ -112,6 +112,24 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
         let resolvedTarget = interpolate(step.target, context);
         let resolvedData = interpolate(step.data, context);
 
+        // Resolve PageName.ElementName or PageName/ElementName for UI steps
+        if (project && resolvedTarget && !step.action.startsWith('API_') && !['OPEN', 'WAIT', 'RUN_MODULE'].includes(step.action)) {
+            const separator = resolvedTarget.includes('.') ? '.' : (resolvedTarget.includes('/') ? '/' : null);
+            if (separator) {
+                const parts = resolvedTarget.split(separator);
+                if (parts.length === 2) {
+                    const [pageName, elementName] = parts;
+                    const page = project.pages.find(p => p.name === pageName);
+                    if (page) {
+                        const element = page.elements.find(e => e.name === elementName);
+                        if (element) {
+                            resolvedTarget = element.value;
+                        }
+                    }
+                }
+            }
+        }
+
         // API Specific Handling (Headers & Body Templates & Endpoints)
         if (step.action.startsWith('API_')) {
             // 1. Resolve Endpoint

@@ -17,6 +17,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const [editType, setEditType] = useState<BodyTemplate['contentType']>('application/json');
   const [editContent, setEditContent] = useState('');
   const [editDefaultValues, setEditDefaultValues] = useState<Record<string, string>>({});
+  const [formatError, setFormatError] = useState<string | null>(null);
 
   const selectedTemplate = bodies.find(t => t.id === selectedId);
 
@@ -57,9 +58,15 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const variables = Array.from(new Set(Array.from(editContent.matchAll(/\{\{([^}]+)\}\}/g)).map(m => m[1])));
 
   const handleFormat = () => {
+    setFormatError(null);
     const formatJson = (text: string) => {
-      const parsed = JSON.parse(text);
-      return JSON.stringify(parsed, null, 2);
+      // Temporarily replace unquoted {{var}} to make it valid JSON
+      let tempText = text.replace(/([:\[,]\s*)\{\{([^}]+)\}\}/g, '$1"___VAR_$2___"');
+      const parsed = JSON.parse(tempText);
+      let formatted = JSON.stringify(parsed, null, 2);
+      // Replace back
+      formatted = formatted.replace(/"___VAR_([^"]+)___"/g, '{{$1}}');
+      return formatted;
     };
 
     const formatXml = (text: string) => {
@@ -87,17 +94,22 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
       return formatted.trim();
     };
 
+    const showError = (msg: string) => {
+      setFormatError(msg);
+      setTimeout(() => setFormatError(null), 3000);
+    };
+
     if (editType === 'application/json') {
       try {
         setEditContent(formatJson(editContent));
       } catch (e) {
-        alert('Invalid JSON format. Please check for syntax errors.');
+        showError('Invalid JSON format. Please check for syntax errors.');
       }
     } else if (editType === 'application/xml') {
       try {
         setEditContent(formatXml(editContent));
       } catch (e) {
-        alert('Failed to format XML.');
+        showError('Failed to format XML.');
       }
     } else if (editType === 'text/plain') {
       const trimmed = editContent.trim();
@@ -121,7 +133,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
         }
       }
       
-      alert('Could not automatically detect JSON or XML format in raw text.');
+      showError('Could not automatically detect JSON or XML format in raw text.');
     }
   };
 
@@ -219,6 +231,9 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                 />
               </div>
               <div className="flex items-center gap-3">
+                 {formatError && (
+                   <span className="text-sm text-red-500 font-medium animate-pulse">{formatError}</span>
+                 )}
                  <select 
                     value={editType}
                     onChange={(e) => setEditType(e.target.value as any)}

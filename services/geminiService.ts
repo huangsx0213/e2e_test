@@ -30,7 +30,7 @@ export const generateStepsFromDescription = async (
     Available Elements Repository:
     ${elementsContext}
     
-    Output Format: JSON Array of objects with fields: action (OPEN, CLICK, TYPE, ASSERT_VISIBLE, ASSERT_TEXT, WAIT), target (PageName/ElementName), data (optional value).
+    Output Format: JSON Array of objects with fields: action (OPEN, CLICK, TYPE, ASSERT_VISIBLE, ASSERT_TEXT, WAIT), target (PageName.ElementName), data (optional value).
     Return ONLY the JSON array.
   `;
 

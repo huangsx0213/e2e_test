@@ -330,7 +330,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                    className="w-full text-left px-5 py-2 hover:bg-blue-50 hover:text-blue-700 text-sm flex flex-col group transition-colors border-l-2 border-transparent hover:border-blue-500"
                                                    onClick={(e) => {
                                                        e.stopPropagation();
-                                                       onUpdateStep(step.id, { target: el.value });
+                                                       onUpdateStep(step.id, { target: `${page.name}.${el.name}` });
                                                        setElementMenuOpen(null);
                                                    }}
                                                >
