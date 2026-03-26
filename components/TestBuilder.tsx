@@ -19,7 +19,7 @@ interface TestBuilderProps {
 const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'];
 
 export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, projects, headers, bodies, endpoints, onRunCase, currentProjectId }) => {
-  const [activeSuiteId, setActiveSuiteId] = useState<string>(suites[0]?.id || '');
+  const [activeSuiteId, setActiveSuiteId] = useState<string>('');
   // Default to empty to show Suite Overview first
   const [activeCaseId, setActiveCaseId] = useState<string>(''); 
   const [searchTerm, setSearchTerm] = useState('');
@@ -226,10 +226,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
     updateItems: (items: TestStep[]) => void
   ) => {
     return {
-      add: () => {
+      add: (action: ActionType = 'CLICK') => {
         const newStep: TestStep = {
           id: `step-${Date.now()}`,
-          action: 'CLICK',
+          action,
           target: '',
           data: '',
           description: ''
@@ -241,6 +241,18 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
       },
       delete: (stepId: string) => {
         updateItems((getItems() || []).filter(s => s.id !== stepId));
+      },
+      duplicate: (step: TestStep) => {
+        const items = getItems() || [];
+        const index = items.findIndex(s => s.id === step.id);
+        if (index === -1) return;
+        const newStep: TestStep = {
+          ...step,
+          id: `step-${Date.now()}`
+        };
+        const newSteps = [...items];
+        newSteps.splice(index + 1, 0, newStep);
+        updateItems(newSteps);
       },
       move: (fromIndex: number, toIndex: number) => {
         const items = getItems() || [];
@@ -321,7 +333,14 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 ? 'bg-blue-50 text-blue-700' 
                                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             }`}
-                            onClick={() => { setActiveSuiteId(suite.id); setActiveCaseId(''); }}
+                            onClick={() => { 
+                                if (activeSuiteId === suite.id && !activeCaseId) {
+                                    setActiveSuiteId('');
+                                } else {
+                                    setActiveSuiteId(suite.id); 
+                                    setActiveCaseId(''); 
+                                }
+                            }}
                         >
                             <div className="flex items-center gap-2 overflow-hidden w-full">
                                 {activeSuiteId === suite.id ? <ChevronDown size={14} className="shrink-0 text-blue-500" /> : <ChevronRight size={14} className="shrink-0 text-gray-400" />}
@@ -346,6 +365,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                     <button onClick={(e) => { e.stopPropagation(); saveSuiteName(); }} className="p-1 text-green-600"><Check size={12}/></button>
                                 ) : (
                                     <div className="flex gap-0.5 relative z-20">
+                                        <button onClick={(e) => { e.stopPropagation(); addCase(suite.id); }} className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded" title="Add Test Case"><Plus size={12}/></button>
                                         <button onClick={(e) => { e.stopPropagation(); setEditingSuiteId(suite.id); setEditSuiteName(suite.name); }} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={12}/></button>
                                         <button 
                                             onClick={(e) => { 
@@ -500,6 +520,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             steps={activeCase.setupSteps || []}
                             onUpdateStep={caseSetupSteps.update}
                             onDeleteStep={caseSetupSteps.delete}
+                            onDuplicateStep={caseSetupSteps.duplicate}
                             onMoveStep={caseSetupSteps.move}
                             onAddStep={caseSetupSteps.add}
                             activeProject={activeProject}
@@ -516,6 +537,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             steps={activeCase.steps}
                             onUpdateStep={caseSteps.update}
                             onDeleteStep={caseSteps.delete}
+                            onDuplicateStep={caseSteps.duplicate}
                             onMoveStep={caseSteps.move}
                             onAddStep={caseSteps.add}
                             activeProject={activeProject}
@@ -532,6 +554,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             steps={activeCase.teardownSteps || []}
                             onUpdateStep={caseTeardownSteps.update}
                             onDeleteStep={caseTeardownSteps.delete}
+                            onDuplicateStep={caseTeardownSteps.duplicate}
                             onMoveStep={caseTeardownSteps.move}
                             onAddStep={caseTeardownSteps.add}
                             activeProject={activeProject}
@@ -586,6 +609,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             steps={activeSuite.setupSteps || []}
                             onUpdateStep={suiteSetupSteps.update}
                             onDeleteStep={suiteSetupSteps.delete}
+                            onDuplicateStep={suiteSetupSteps.duplicate}
                             onMoveStep={suiteSetupSteps.move}
                             onAddStep={suiteSetupSteps.add}
                             activeProject={activeProject}
@@ -604,6 +628,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                             steps={activeSuite.teardownSteps || []}
                             onUpdateStep={suiteTeardownSteps.update}
                             onDeleteStep={suiteTeardownSteps.delete}
+                            onDuplicateStep={suiteTeardownSteps.duplicate}
                             onMoveStep={suiteTeardownSteps.move}
                             onAddStep={suiteTeardownSteps.add}
                             activeProject={activeProject}

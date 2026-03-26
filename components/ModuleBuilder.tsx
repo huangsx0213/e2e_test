@@ -98,11 +98,11 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
   };
 
   // --- Step Actions ---
-  const addStep = () => {
+  const addStep = (action?: ActionType) => {
     if (!activeModule) return;
     const newStep: TestStep = {
       id: `ms-${Date.now()}`,
-      action: 'CLICK',
+      action: action || 'CLICK',
       target: '',
       data: '',
       description: ''
@@ -122,6 +122,19 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
     updateModule({
       steps: activeModule.steps.filter(s => s.id !== stepId)
     });
+  };
+
+  const duplicateStep = (step: TestStep) => {
+    if (!activeModule) return;
+    const index = activeModule.steps.findIndex(s => s.id === step.id);
+    if (index === -1) return;
+    const newStep: TestStep = {
+      ...step,
+      id: `ms-${Date.now()}`
+    };
+    const newSteps = [...activeModule.steps];
+    newSteps.splice(index + 1, 0, newStep);
+    updateModule({ steps: newSteps });
   };
 
   const moveStep = (fromIndex: number, toIndex: number) => {
@@ -320,6 +333,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
                                  steps={activeModule.steps}
                                  onUpdateStep={updateStep}
                                  onDeleteStep={deleteStep}
+                                 onDuplicateStep={duplicateStep}
                                  onMoveStep={moveStep}
                                  onAddStep={addStep}
                                  activeProject={activeProject}

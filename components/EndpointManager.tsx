@@ -16,6 +16,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editUrls, setEditUrls] = useState<Record<string, string>>({});
+  const [editParams, setEditParams] = useState<{ key: string; value: string; enabled: boolean }[]>([]);
 
   const selectedEndpoint = endpoints.find(e => e.id === selectedId);
 
@@ -24,6 +25,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
     setEditName(endpoint.name);
     setEditDesc(endpoint.description || '');
     setEditUrls({ ...endpoint.baseUrls });
+    setEditParams(endpoint.parameters ? [...endpoint.parameters] : []);
   };
 
   const handleCreate = async () => {
@@ -34,7 +36,8 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
       id: `e_${Date.now()}`,
       name: 'New Service Endpoint',
       description: '',
-      baseUrls: initialUrls
+      baseUrls: initialUrls,
+      parameters: []
     };
     await endpointsApi.create(newEndpoint);
     handleSelect(newEndpoint);
@@ -42,7 +45,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
 
   const handleSave = async () => {
     if (!selectedId) return;
-    await endpointsApi.update(selectedId, { name: editName, description: editDesc, baseUrls: editUrls });
+    await endpointsApi.update(selectedId, { name: editName, description: editDesc, baseUrls: editUrls, parameters: editParams });
   };
 
   const handleDelete = async (id: string) => {
@@ -171,6 +174,9 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide border-b border-gray-100 pb-2 flex items-center gap-2">
                     Environment URLs
                   </h3>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Define the base URL for each environment. You can use <code className="bg-gray-100 px-1 rounded">{'{{variable}}'}</code> or <code className="bg-gray-100 px-1 rounded">{'{variable}'}</code> syntax for dynamic path segments (e.g., <code className="bg-gray-100 px-1 rounded">https://api.example.com/{'{version}'}</code>).
+                  </p>
                   <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4">
                     {environments.map(env => (
                       <div key={env} className="grid grid-cols-12 gap-4 items-center">
@@ -197,6 +203,80 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
                   </div>
                   <p className="text-xs text-gray-500">
                     Define the base URL for each environment. These will be used when executing tests against a specific environment.
+                  </p>
+                </div>
+
+                {/* URL Parameters */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                      URL Parameters
+                    </h3>
+                    <button 
+                      onClick={() => setEditParams([...editParams, { key: '', value: '', enabled: true }])}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      <Plus size={14} /> Add Parameter
+                    </button>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                    {editParams.length === 0 ? (
+                      <div className="p-8 text-center text-gray-400 text-sm">
+                        No URL parameters defined.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-200">
+                        {editParams.map((param, index) => (
+                          <div key={index} className="flex items-center gap-3 p-3 bg-white hover:bg-gray-50 transition-colors">
+                            <button 
+                              onClick={() => {
+                                const newParams = [...editParams];
+                                newParams[index].enabled = !newParams[index].enabled;
+                                setEditParams(newParams);
+                              }}
+                              className={`p-1 rounded-md transition-colors shrink-0 ${param.enabled ? 'text-blue-600 hover:bg-blue-50' : 'text-gray-400 hover:bg-gray-100'}`}
+                            >
+                              {param.enabled ? <Check size={16} /> : <X size={16} />}
+                            </button>
+                            <input 
+                              className={`flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none ${!param.enabled && 'opacity-50'}`}
+                              placeholder="Key"
+                              value={param.key}
+                              onChange={(e) => {
+                                const newParams = [...editParams];
+                                newParams[index].key = e.target.value;
+                                setEditParams(newParams);
+                              }}
+                            />
+                            <span className="text-gray-400 font-mono">=</span>
+                            <input 
+                              className={`flex-[2] px-3 py-1.5 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none ${!param.enabled && 'opacity-50'}`}
+                              placeholder="Value (can use {{variables}})"
+                              value={param.value}
+                              onChange={(e) => {
+                                const newParams = [...editParams];
+                                newParams[index].value = e.target.value;
+                                setEditParams(newParams);
+                              }}
+                            />
+                            <button 
+                              onClick={() => {
+                                const newParams = [...editParams];
+                                newParams.splice(index, 1);
+                                setEditParams(newParams);
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-50 transition-colors shrink-0"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    These parameters will be appended to the URL as query string (e.g., ?key=value). You can use {'{{variable}}'} or {'{variable}'} syntax for dynamic values.
                   </p>
                 </div>
               </div>

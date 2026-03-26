@@ -130,6 +130,7 @@ export interface BodyTemplate {
   id: string;
   name: string;
   description?: string;
-  contentType: 'application/json' | 'application/xml' | 'text/plain' | 'application/x-www-form-urlencoded';
+  contentType: 'application/json' | 'application/xml' | 'text/plain';
   content: string; // The raw template string with {{variables}}
+  defaultValues?: Record<string, string>;
 }

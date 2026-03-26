@@ -34,13 +34,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
   const activePage = activeProject?.pages.find(p => p.id === activePageId);
   const activeElement = activePage?.elements.find(e => e.id === activeElementId);
 
-  // Auto-select first page if none selected
-  useEffect(() => {
-    if (activeProject && activeProject.pages.length > 0 && !activePageId) {
-        setActivePageId(activeProject.pages[0].id);
-    }
-  }, [activeProject, activePageId]);
-
   // Handle Project Selection Reset on Delete
   useEffect(() => {
       if (!activeProject) {
@@ -268,10 +261,18 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
                                 ? 'bg-blue-50 text-blue-700 shadow-sm' 
                                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                             }`}
-                            onClick={() => { setActivePageId(page.id); setActiveElementId(''); }}
+                            onClick={() => { 
+                                if (activePageId === page.id && !activeElementId) {
+                                    setActivePageId('');
+                                } else {
+                                    setActivePageId(page.id); 
+                                    setActiveElementId(''); 
+                                }
+                            }}
                         >
                             <div className="flex items-center gap-2 overflow-hidden w-full">
-                                <Layout size={14} className={activePageId === page.id ? 'text-blue-500' : 'text-gray-400'} />
+                                {activePageId === page.id ? <ChevronDown size={14} className="shrink-0 text-blue-500" /> : <ChevronRight size={14} className="shrink-0 text-gray-400" />}
+                                <Layout size={14} className={`shrink-0 ${activePageId === page.id ? 'text-blue-500' : 'text-gray-400'}`} />
                                 {editingPageId === page.id ? (
                                     <input 
                                         className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"

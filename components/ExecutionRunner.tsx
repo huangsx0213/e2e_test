@@ -150,9 +150,13 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                 if (profile) {
                     const resolvedHeaders = profile.headers.map(h => {
                         let val = h.value;
-                        Object.keys(apiVars).forEach(key => {
-                            val = val.replaceAll(`{{${key}}}`, apiVars[key] || '');
-                        });
+                        const matches = val.match(/\{\{([^}]+)\}\}/g);
+                        if (matches) {
+                            matches.forEach(m => {
+                                const key = m.replace(/\{\{|\}\}/g, '');
+                                val = val.replaceAll(m, apiVars[key] || '');
+                            });
+                        }
                         return { key: h.key, value: val };
                     });
 
@@ -170,9 +174,16 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
                 const template = bodies.find(b => b.id === step.bodyTemplateId);
                 if (template) {
                     let bodyContent = template.content;
-                    Object.keys(apiVars).forEach(key => {
-                        bodyContent = bodyContent.replaceAll(`{{${key}}}`, apiVars[key] || '');
-                    });
+                    
+                    // Find all variables in the template
+                    const matches = bodyContent.match(/\{\{([^}]+)\}\}/g);
+                    if (matches) {
+                        matches.forEach(m => {
+                            const key = m.replace(/\{\{|\}\}/g, '');
+                            const val = apiVars[key] !== undefined ? apiVars[key] : interpolate(template.defaultValues?.[key] || '', context);
+                            bodyContent = bodyContent.replaceAll(m, val);
+                        });
+                    }
 
                     resolvedData = bodyContent;
 

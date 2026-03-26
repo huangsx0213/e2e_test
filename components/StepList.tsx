@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { TestStep, Project, ActionType, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from '../types';
-import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus, Copy } from 'lucide-react';
 
 interface StepListProps {
   title?: string;
   steps: TestStep[];
   onUpdateStep: (id: string, updates: Partial<TestStep>) => void;
   onDeleteStep: (id: string) => void;
+  onDuplicateStep?: (step: TestStep) => void;
   onMoveStep: (fromIndex: number, toIndex: number) => void;
-  onAddStep?: () => void;
+  onAddStep?: (action?: ActionType) => void;
   defaultExpanded?: boolean;
   activeProject: Project;
   variables?: { id: string, key: string, value?: string }[];
@@ -24,6 +25,7 @@ export const StepList: React.FC<StepListProps> = ({
   steps,
   onUpdateStep,
   onDeleteStep,
+  onDuplicateStep,
   onMoveStep,
   onAddStep,
   defaultExpanded = true,
@@ -85,7 +87,7 @@ export const StepList: React.FC<StepListProps> = ({
          dataObj[paramName] = newVal;
          onUpdateStep(stepId, { data: JSON.stringify(dataObj) });
     } else {
-        const currentValue = field === 'target' ? step.target : step.data;
+        const currentValue = (field === 'target' ? step.target : step.data) || '';
         const newValue = `${currentValue}\${${variableKey}}`;
         onUpdateStep(stepId, { [field]: newValue });
     }
@@ -100,7 +102,7 @@ export const StepList: React.FC<StepListProps> = ({
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
       {title && (
         <div 
           className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
@@ -132,12 +134,12 @@ export const StepList: React.FC<StepListProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-12 gap-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
-                 <div className="col-span-1 text-center">Step</div>
-                 <div className="col-span-2">Action</div>
-                 <div className="col-span-4">Target / Module</div>
-                 <div className="col-span-4">Value / Data</div>
-                 <div className="col-span-1"></div>
+              <div className="grid grid-cols-[30px_110px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
+                 <div className="text-center">Step</div>
+                 <div>Action</div>
+                 <div>Target / Module</div>
+                 <div>Value / Data</div>
+                 <div></div>
               </div>
               
               {steps.map((step, index) => (
@@ -149,9 +151,9 @@ export const StepList: React.FC<StepListProps> = ({
                      onDrop={(e) => handleDrop(e, index)}
                      className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
                 >
-           <div className="grid grid-cols-12 gap-4 items-center">
+           <div className="grid grid-cols-[30px_110px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 items-center">
                {/* Drag Handle & Index */}
-               <div className="col-span-1 flex justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 flex items-center justify-center drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative">
+               <div className="flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative">
                   <GripVertical size={16} className="mr-1 text-gray-400" />
                   <div className="relative">
                      <select 
@@ -168,23 +170,39 @@ export const StepList: React.FC<StepListProps> = ({
                </div>
                
                {/* Action Dropdown */}
-               <div className="col-span-2">
+               <div>
                  <select 
-                   className={`w-full text-[11px] font-bold rounded-md border px-2 py-1.5 focus:ring-2 focus:ring-opacity-50 outline-none uppercase cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
+                   className={`w-full text-xs font-bold rounded-md border px-2 py-2 focus:ring-2 focus:ring-opacity-50 outline-none uppercase cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
                    value={step.action}
                    onChange={(e) => onUpdateStep(step.id, { action: e.target.value as ActionType, target: '', data: '', headerProfileId: undefined, bodyTemplateId: undefined, endpointId: undefined })}
                  >
-                   {ACTION_TYPES.map(action => (
-                     <option key={action} value={action}>{action.replace('_', ' ')}</option>
-                   ))}
+                   <optgroup label="Web Actions">
+                     <option value="OPEN">Open URL</option>
+                     <option value="CLICK">Click Element</option>
+                     <option value="TYPE">Type Text</option>
+                   </optgroup>
+                   <optgroup label="Assertions">
+                     <option value="ASSERT_VISIBLE">Assert Visible</option>
+                     <option value="ASSERT_TEXT">Assert Text</option>
+                   </optgroup>
+                   <optgroup label="Logic & Modules">
+                     <option value="WAIT">Wait (ms)</option>
+                     <option value="RUN_MODULE">Run Module</option>
+                   </optgroup>
+                   <optgroup label="API Actions">
+                     <option value="API_GET">API GET</option>
+                     <option value="API_POST">API POST</option>
+                     <option value="API_PUT">API PUT</option>
+                     <option value="API_DELETE">API DELETE</option>
+                   </optgroup>
                  </select>
                </div>
 
                {/* Target / Module */}
-               <div className="col-span-4 relative">
+               <div className="relative">
                    {step.action === 'RUN_MODULE' ? (
                        <select 
-                           className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-1.5 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
+                           className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
                            value={step.target}
                            onChange={(e) => onUpdateStep(step.id, { target: e.target.value, data: '{}' })}
                        >
@@ -195,9 +213,73 @@ export const StepList: React.FC<StepListProps> = ({
                        </select>
                    ) : step.action.startsWith('API_') ? (
                        <select 
-                           className="w-full bg-emerald-50 text-emerald-900 rounded-md border border-emerald-200 px-3 py-1.5 text-xs font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                           className="w-full bg-emerald-50 text-emerald-900 rounded-md border border-emerald-200 px-3 py-2 text-xs font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
                            value={step.endpointId || ''}
-                           onChange={(e) => onUpdateStep(step.id, { endpointId: e.target.value })}
+                           onChange={(e) => {
+                               const newEndpointId = e.target.value || undefined;
+                               let currentValues: Record<string, string> = {};
+                               try { currentValues = JSON.parse(step.data || '{}'); } catch(err) {}
+                               
+                               let newValues: Record<string, string> = {};
+                               
+                               // Preserve header variables
+                               if (step.headerProfileId) {
+                                   const profile = headers.find(h => h.id === step.headerProfileId);
+                                   if (profile) {
+                                       profile.headers.forEach(h => {
+                                           const matches = h.value.match(/\{\{([^}]+)\}\}/g);
+                                           if (matches) {
+                                               matches.forEach(m => {
+                                                   const varName = m.replace(/\{\{|\}\}/g, '');
+                                                   if (currentValues[varName] !== undefined) {
+                                                       newValues[varName] = currentValues[varName];
+                                                   }
+                                               });
+                                           }
+                                       });
+                                   }
+                               }
+                               
+                               // Preserve body variables
+                               if (step.bodyTemplateId) {
+                                   const template = bodies.find(b => b.id === step.bodyTemplateId);
+                                   if (template) {
+                                       const matches = template.content.match(/\{\{([^}]+)\}\}/g);
+                                       if (matches) {
+                                           matches.forEach(m => {
+                                               const varName = m.replace(/\{\{|\}\}/g, '');
+                                               if (currentValues[varName] !== undefined) {
+                                                   newValues[varName] = currentValues[varName];
+                                               }
+                                           });
+                                       }
+                                   }
+                               }
+
+                               // Add new endpoint variables
+                               if (newEndpointId) {
+                                   const endpoint = endpoints.find(ep => ep.id === newEndpointId);
+                                   if (endpoint && endpoint.parameters) {
+                                       endpoint.parameters.forEach(p => {
+                                           if (!p.enabled) return;
+                                           const matches = p.value.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                           if (matches) {
+                                               matches.forEach(m => {
+                                                   const varName = m.replace(/\{\{|\}\}|\{|\}/g, '');
+                                                   if (currentValues[varName] !== undefined) {
+                                                       newValues[varName] = currentValues[varName];
+                                                   }
+                                               });
+                                           }
+                                       });
+                                   }
+                               }
+                               
+                               onUpdateStep(step.id, { 
+                                   endpointId: newEndpointId,
+                                   data: Object.keys(newValues).length > 0 ? JSON.stringify(newValues) : ''
+                               });
+                           }}
                        >
                            <option value="">Select Endpoint...</option>
                            {endpoints.map(ep => (
@@ -207,51 +289,53 @@ export const StepList: React.FC<StepListProps> = ({
                    ) : (
                        <div className="relative flex items-center">
                            <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-1.5 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300"
+                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400"
                                value={step.target}
                                onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
-                               placeholder="Selector or URL"
+                               placeholder={step.action === 'OPEN' ? 'URL (e.g., https://example.com)' : step.action === 'WAIT' ? 'Wait time in ms (e.g., 1000)' : 'CSS Selector or XPath'}
                            />
                            <div className="absolute right-1 flex items-center gap-0.5">
+                               {!['OPEN', 'WAIT'].includes(step.action) && (
+                                   <button 
+                                       className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                                       onClick={(e) => { e.stopPropagation(); setElementMenuOpen(elementMenuOpen === step.id ? null : step.id); setVariableMenuOpen(null); }}
+                                       title="Select Element from Repo"
+                                   >
+                                       <MousePointer2 size={14} />
+                                   </button>
+                               )}
                                <button 
-                                   className="text-gray-400 hover:text-blue-600 p-1 rounded"
-                                   onClick={(e) => { e.stopPropagation(); setElementMenuOpen(elementMenuOpen === step.id ? null : step.id); setVariableMenuOpen(null); }}
-                                   title="Select Element from Repo"
-                               >
-                                   <MousePointer2 size={12} />
-                               </button>
-                               <button 
-                                   className="text-gray-400 hover:text-blue-600 p-1 rounded"
+                                   className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
                                    onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'target' ? null : { stepId: step.id, field: 'target' }); setElementMenuOpen(null); }}
                                    title="Insert Variable"
                                >
-                                   <Braces size={12} />
+                                   <Braces size={14} />
                                </button>
                            </div>
                            
                            {/* Element Repo Dropdown */}
                            {elementMenuOpen === step.id && (
-                               <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
-                                   <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100 flex items-center gap-1"><Workflow size={10}/> Element Repository</div>
+                               <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-2 max-h-80 overflow-y-auto">
+                                   <div className="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-50 border-b border-gray-100 flex items-center gap-2 sticky top-0"><Workflow size={14}/> Element Repository</div>
                                    {activeProject.pages.length === 0 && (
-                                       <div className="px-3 py-4 text-xs text-gray-400 text-center italic">No pages defined in repository.</div>
+                                       <div className="px-4 py-6 text-sm text-gray-400 text-center italic">No pages defined in repository.</div>
                                    )}
                                    {activeProject.pages.map(page => (
-                                       <div key={page.id} className="mb-2 last:mb-0">
-                                           <div className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50/50 flex items-center gap-1"><Globe size={12} className="text-gray-400"/> {page.name}</div>
-                                           {page.elements.length === 0 && <div className="px-4 py-1 text-[10px] text-gray-400 italic">No elements</div>}
+                                       <div key={page.id} className="mb-3 last:mb-0">
+                                           <div className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-50/80 flex items-center gap-2 sticky top-8 backdrop-blur-sm"><Globe size={14} className="text-gray-400"/> {page.name}</div>
+                                           {page.elements.length === 0 && <div className="px-5 py-2 text-xs text-gray-400 italic">No elements</div>}
                                            {page.elements.map(el => (
                                                <button 
                                                    key={el.id}
-                                                   className="w-full text-left px-4 py-1.5 hover:bg-blue-50 hover:text-blue-700 text-xs flex flex-col group"
+                                                   className="w-full text-left px-5 py-2 hover:bg-blue-50 hover:text-blue-700 text-sm flex flex-col group transition-colors border-l-2 border-transparent hover:border-blue-500"
                                                    onClick={(e) => {
                                                        e.stopPropagation();
-                                                       onUpdateStep(step.id, { target: el.selector });
+                                                       onUpdateStep(step.id, { target: el.value });
                                                        setElementMenuOpen(null);
                                                    }}
                                                >
-                                                   <span className="font-medium">{el.name}</span>
-                                                   <span className="text-[10px] font-mono text-gray-400 group-hover:text-blue-400 truncate w-full">{el.selector}</span>
+                                                   <span className="font-medium text-gray-800 group-hover:text-blue-700">{el.name}</span>
+                                                   <span className="text-xs font-mono text-gray-400 group-hover:text-blue-500 truncate w-full mt-0.5">{el.value}</span>
                                                </button>
                                            ))}
                                        </div>
@@ -282,7 +366,7 @@ export const StepList: React.FC<StepListProps> = ({
                </div>
 
                {/* Value / Data */}
-               <div className="col-span-4">
+               <div>
                    {step.action === 'RUN_MODULE' ? (
                        <div className="bg-blue-50/50 rounded-md border border-blue-100 p-2 space-y-2">
                            {(() => {
@@ -347,7 +431,82 @@ export const StepList: React.FC<StepListProps> = ({
                                <select
                                    className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none"
                                    value={step.headerProfileId || ''}
-                                   onChange={(e) => onUpdateStep(step.id, { headerProfileId: e.target.value || undefined })}
+                                   onChange={(e) => {
+                                       const newHeaderId = e.target.value || undefined;
+                                       let currentValues: Record<string, string> = {};
+                                       try { currentValues = JSON.parse(step.data || '{}'); } catch(err) {}
+                                       
+                                       let newValues: Record<string, string> = {};
+                                       
+                                       // Preserve URL variables
+                                       const urlVars = new Set<string>();
+                                       if (step.target) {
+                                           const matches = step.target.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                           if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                       }
+                                       if (step.endpointId) {
+                                           const endpoint = endpoints.find(ep => ep.id === step.endpointId);
+                                           if (endpoint) {
+                                               Object.values(endpoint.baseUrls).forEach(url => {
+                                                   if (typeof url === 'string') {
+                                                       const matches = url.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                       if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                   }
+                                               });
+                                               if (endpoint.parameters) {
+                                                   endpoint.parameters.forEach(p => {
+                                                       if (!p.enabled) return;
+                                                       const matches = p.value.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                       if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                   });
+                                               }
+                                           }
+                                       }
+                                       urlVars.forEach(varName => {
+                                           if (currentValues[varName] !== undefined) {
+                                               newValues[varName] = currentValues[varName];
+                                           }
+                                       });
+                                       
+                                       // Preserve body variables
+                                       if (step.bodyTemplateId) {
+                                           const template = bodies.find(b => b.id === step.bodyTemplateId);
+                                           if (template) {
+                                               const matches = template.content.match(/\{\{([^}]+)\}\}/g);
+                                               if (matches) {
+                                                   matches.forEach(m => {
+                                                       const varName = m.replace(/\{\{|\}\}/g, '');
+                                                       if (currentValues[varName] !== undefined) {
+                                                           newValues[varName] = currentValues[varName];
+                                                       }
+                                                   });
+                                               }
+                                           }
+                                       }
+                                       
+                                       // Keep relevant header variables
+                                       if (newHeaderId) {
+                                           const profile = headers.find(h => h.id === newHeaderId);
+                                           if (profile) {
+                                               profile.headers.forEach(h => {
+                                                   const matches = h.value.match(/\{\{([^}]+)\}\}/g);
+                                                   if (matches) {
+                                                       matches.forEach(m => {
+                                                           const varName = m.replace(/\{\{|\}\}/g, '');
+                                                           if (currentValues[varName] !== undefined) {
+                                                               newValues[varName] = currentValues[varName];
+                                                           }
+                                                       });
+                                                   }
+                                               });
+                                           }
+                                       }
+                                       
+                                       onUpdateStep(step.id, { 
+                                           headerProfileId: newHeaderId,
+                                           data: Object.keys(newValues).length > 0 ? JSON.stringify(newValues) : ''
+                                       });
+                                   }}
                                >
                                    <option value="">No Headers</option>
                                    {headers.map(h => (
@@ -358,7 +517,85 @@ export const StepList: React.FC<StepListProps> = ({
                                    <select
                                        className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none"
                                        value={step.bodyTemplateId || ''}
-                                       onChange={(e) => onUpdateStep(step.id, { bodyTemplateId: e.target.value || undefined })}
+                                       onChange={(e) => {
+                                           const newTemplateId = e.target.value || undefined;
+                                           let currentValues: Record<string, string> = {};
+                                           try { currentValues = JSON.parse(step.data || '{}'); } catch(err) {}
+                                           
+                                           let newValues: Record<string, string> = {};
+                                           
+                                           // Preserve URL variables
+                                           const urlVars = new Set<string>();
+                                           if (step.target) {
+                                               const matches = step.target.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                               if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                           }
+                                           if (step.endpointId) {
+                                               const endpoint = endpoints.find(ep => ep.id === step.endpointId);
+                                               if (endpoint) {
+                                                   Object.values(endpoint.baseUrls).forEach(url => {
+                                                       if (typeof url === 'string') {
+                                                           const matches = url.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                           if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                       }
+                                                   });
+                                                   if (endpoint.parameters) {
+                                                       endpoint.parameters.forEach(p => {
+                                                           if (!p.enabled) return;
+                                                           const matches = p.value.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                           if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                       });
+                                                   }
+                                               }
+                                           }
+                                           urlVars.forEach(varName => {
+                                               if (currentValues[varName] !== undefined) {
+                                                   newValues[varName] = currentValues[varName];
+                                               }
+                                           });
+                                           
+                                           // Preserve header variables
+                                           if (step.headerProfileId) {
+                                               const profile = headers.find(h => h.id === step.headerProfileId);
+                                               if (profile) {
+                                                   profile.headers.forEach(h => {
+                                                       const matches = h.value.match(/\{\{([^}]+)\}\}/g);
+                                                       if (matches) {
+                                                           matches.forEach(m => {
+                                                               const varName = m.replace(/\{\{|\}\}/g, '');
+                                                               if (currentValues[varName] !== undefined) {
+                                                                   newValues[varName] = currentValues[varName];
+                                                               }
+                                                           });
+                                                       }
+                                                   });
+                                               }
+                                           }
+                                           
+                                           if (newTemplateId) {
+                                               const template = bodies.find(b => b.id === newTemplateId);
+                                               if (template) {
+                                                   const bodyVars = new Set<string>();
+                                                   const matches = template.content.match(/\{\{([^}]+)\}\}/g);
+                                                   if (matches) {
+                                                       matches.forEach(m => bodyVars.add(m.replace(/\{\{|\}\}/g, '')));
+                                                   }
+                                                   
+                                                   bodyVars.forEach(varName => {
+                                                       if (currentValues[varName] !== undefined) {
+                                                           newValues[varName] = currentValues[varName];
+                                                       } else if (template.defaultValues?.[varName]) {
+                                                           newValues[varName] = template.defaultValues[varName];
+                                                       }
+                                                   });
+                                               }
+                                           }
+                                           
+                                           onUpdateStep(step.id, { 
+                                               bodyTemplateId: newTemplateId,
+                                               data: Object.keys(newValues).length > 0 ? JSON.stringify(newValues) : ''
+                                           });
+                                       }}
                                    >
                                        <option value="">No Body</option>
                                        {bodies.map(b => (
@@ -368,9 +605,99 @@ export const StepList: React.FC<StepListProps> = ({
                                )}
                            </div>
                            
-                           {/* Dynamic Variable Inputs for Header & Body */}
-                           {(step.headerProfileId || step.bodyTemplateId) ? (
+                           {/* Dynamic Variable Inputs for URL, Header & Body */}
+                           {(step.headerProfileId || step.bodyTemplateId || step.endpointId || step.target?.includes('{{') || step.target?.includes('{')) ? (
                                <div className="bg-gray-50 rounded-md border border-gray-200 p-2 space-y-3">
+                                   {/* URL Variables */}
+                                   {(() => {
+                                       const urlVars = new Set<string>();
+                                       if (step.target) {
+                                           const matches = step.target.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                           if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                       }
+                                       if (step.endpointId) {
+                                           const endpoint = endpoints.find(e => e.id === step.endpointId);
+                                           if (endpoint) {
+                                               Object.values(endpoint.baseUrls).forEach(url => {
+                                                   if (typeof url === 'string') {
+                                                       const matches = url.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                       if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                   }
+                                               });
+                                               if (endpoint.parameters) {
+                                                   endpoint.parameters.forEach(p => {
+                                                       if (!p.enabled) return;
+                                                       const matches = p.value.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                                                       if (matches) matches.forEach(m => urlVars.add(m.replace(/\{\{|\}\}|\{|\}/g, '')));
+                                                   });
+                                               }
+                                           }
+                                       }
+
+                                       if (urlVars.size === 0) return null;
+
+                                       let currentValues: Record<string, string> = {};
+                                       try { currentValues = JSON.parse(step.data || '{}'); } catch(e) {}
+
+                                       return (
+                                           <div>
+                                               <div className="text-[9px] font-bold text-blue-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider"><Globe size={10}/> URL Variables</div>
+                                               <div className="space-y-1.5">
+                                                   {Array.from(urlVars).map(varName => (
+                                                       <div key={`url-${varName}`} className="flex items-center gap-2">
+                                                           <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
+                                                           <div className="relative flex-1">
+                                                               <input 
+                                                                   className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                                   placeholder="Value"
+                                                                   value={currentValues[varName] || ''}
+                                                                   onChange={(e) => {
+                                                                       const newData = { ...currentValues, [varName]: e.target.value };
+                                                                       onUpdateStep(step.id, { data: JSON.stringify(newData) });
+                                                                   }}
+                                                               />
+                                                               <button 
+                                                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
+                                                                   onClick={(e) => { 
+                                                                       e.stopPropagation(); 
+                                                                       setVariableMenuOpen(
+                                                                           variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName 
+                                                                           ? null 
+                                                                           : { stepId: step.id, field: 'data', paramName: varName }
+                                                                       );
+                                                                   }}
+                                                               >
+                                                                   <Braces size={10} />
+                                                               </button>
+                                                               {/* Variable Dropdown */}
+                                                               {variableMenuOpen?.stepId === step.id && variableMenuOpen?.paramName === varName && (
+                                                                   <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
+                                                                       <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
+                                                                       {(variables || []).map(v => (
+                                                                           <button 
+                                                                               key={v.id}
+                                                                               className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
+                                                                               onClick={(e) => {
+                                                                                   e.stopPropagation();
+                                                                                   const currentVal = currentValues[varName] || '';
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
+                                                                                   onUpdateStep(step.id, { data: JSON.stringify(newData) });
+                                                                                   setVariableMenuOpen(null);
+                                                                               }}
+                                                                           >
+                                                                               <span>{v.key}</span>
+                                                                           </button>
+                                                                       ))}
+                                                                   </div>
+                                                               )}
+                                                           </div>
+                                                       </div>
+                                                   ))}
+                                               </div>
+                                           </div>
+                                       );
+                                   })()}
+
                                    {/* Header Variables */}
                                    {(() => {
                                        const profile = headers.find(h => h.id === step.headerProfileId);
@@ -429,7 +756,8 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
-                                                                                   const newData = { ...currentValues, [varName]: `\${${v.key}}` };
+                                                                                   const currentVal = currentValues[varName] || '';
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
                                                                                    onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                    setVariableMenuOpen(null);
                                                                                }}
@@ -473,7 +801,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                            <div className="relative flex-1">
                                                                <input 
                                                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
-                                                                   placeholder="Value"
+                                                                   placeholder={template.defaultValues?.[varName] || "Value"}
                                                                    value={currentValues[varName] || ''}
                                                                    onChange={(e) => {
                                                                        const newData = { ...currentValues, [varName]: e.target.value };
@@ -503,7 +831,8 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                className="w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 font-mono flex items-center justify-between group"
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
-                                                                                   const newData = { ...currentValues, [varName]: `\${${v.key}}` };
+                                                                                   const currentVal = currentValues[varName] || '';
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
                                                                                    onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                    setVariableMenuOpen(null);
                                                                                }}
@@ -524,19 +853,19 @@ export const StepList: React.FC<StepListProps> = ({
                            ) : (
                                <div className="relative">
                                    <textarea 
-                                   className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300 min-h-[60px] resize-y"
+                                   className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 min-h-[60px] resize-y"
                                    value={step.data}
                                    onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
                                    placeholder="Request Body (JSON)"
                                    />
                                    <button 
-                                       className="absolute right-1 top-2 text-gray-400 hover:text-blue-600 p-1 rounded"
-                                       onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
+                                       className="absolute right-1 top-2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                                       onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' && !variableMenuOpen.paramName ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
                                        title="Insert Variable"
                                    >
-                                       <Braces size={12} />
+                                       <Braces size={14} />
                                    </button>
-                                   {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && (
+                                   {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && !variableMenuOpen?.paramName && (
                                        <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                            <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
                                            {(variables || []).map(v => (
@@ -559,21 +888,24 @@ export const StepList: React.FC<StepListProps> = ({
                    ) : (
                        <div className="relative">
                            <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-1.5 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-300"
+                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                value={step.data}
                                onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
-                               placeholder="Input value or expected text"
+                               placeholder={step.action === 'TYPE' ? 'Text to type...' : step.action === 'ASSERT_TEXT' ? 'Expected text...' : ['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action) ? 'Not required' : 'Value / Data'}
+                               disabled={['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action)}
                            />
-                           <button 
-                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1 rounded"
-                               onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
-                               title="Insert Variable"
-                           >
-                               <Braces size={12} />
-                           </button>
+                           {!['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action) && (
+                               <button 
+                                   className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                                   onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' && !variableMenuOpen.paramName ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
+                                   title="Insert Variable"
+                               >
+                                   <Braces size={14} />
+                               </button>
+                           )}
                            
                            {/* Variable Dropdown (Data) */}
-                           {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && (
+                           {variableMenuOpen?.stepId === step.id && variableMenuOpen?.field === 'data' && !variableMenuOpen?.paramName && (
                                <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                    <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">Insert Suite Variable</div>
                                    {(variables || []).map(v => (
@@ -594,8 +926,17 @@ export const StepList: React.FC<StepListProps> = ({
                    )}
                </div>
 
-               {/* Delete */}
-               <div className="col-span-1 flex justify-end">
+               {/* Actions */}
+               <div className="flex justify-end gap-0.5">
+                   {onDuplicateStep && (
+                       <button 
+                           onClick={() => onDuplicateStep(step)}
+                           className="text-gray-300 hover:text-blue-500 p-1.5 rounded-md hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                           title="Duplicate Step"
+                       >
+                           <Copy size={16} />
+                       </button>
+                   )}
                    <button 
                        onClick={() => onDeleteStep(step.id)}
                        className="text-gray-300 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
@@ -611,12 +952,28 @@ export const StepList: React.FC<StepListProps> = ({
           )}
           
           {onAddStep && (
-            <button 
-              onClick={onAddStep} 
-              className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2 text-sm font-medium group"
-            >
-              <Plus size={16} className="group-hover:scale-110 transition-transform" /> Add Step
-            </button>
+            <div className="mt-4 flex flex-col gap-2 pb-48">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => onAddStep('CLICK')} 
+                  className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
+                >
+                  <MousePointer2 size={14} className="group-hover:scale-110 transition-transform" /> Add Web Step
+                </button>
+                <button 
+                  onClick={() => onAddStep('API_GET')} 
+                  className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
+                >
+                  <Globe size={14} className="group-hover:scale-110 transition-transform" /> Add API Step
+                </button>
+                <button 
+                  onClick={() => onAddStep('RUN_MODULE')} 
+                  className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-purple-600 hover:border-purple-300 hover:bg-purple-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
+                >
+                  <Workflow size={14} className="group-hover:scale-110 transition-transform" /> Add Module
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

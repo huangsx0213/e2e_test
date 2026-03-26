@@ -136,6 +136,15 @@ export const ScenarioExecutionRunner: React.FC<
       let resolvedData = interpolate(step.data, context);
 
       if (step.action.startsWith("API_")) {
+        let apiVars: Record<string, string> = {};
+        const isVariableMode = step.headerProfileId || step.bodyTemplateId || step.endpointId;
+
+        if (isVariableMode) {
+          try {
+            apiVars = JSON.parse(resolvedData || "{}");
+          } catch (e) {}
+        }
+
         if (step.endpointId) {
           const endpoint = endpoints.find((e) => e.id === step.endpointId);
           if (endpoint) {
@@ -143,6 +152,27 @@ export const ScenarioExecutionRunner: React.FC<
             const cleanBase = baseUrl.replace(/\/$/, "");
             const cleanPath = resolvedTarget.replace(/^\//, "");
             resolvedTarget = `${cleanBase}/${cleanPath}`;
+
+            // Append URL Parameters
+            if (endpoint.parameters && endpoint.parameters.length > 0) {
+                const params = new URLSearchParams();
+                endpoint.parameters.forEach(p => {
+                    if (!p.enabled) return;
+                    let val = p.value;
+                    const matches = val.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+                    if (matches) {
+                        matches.forEach(m => {
+                            const key = m.replace(/\{\{|\}\}|\{|\}/g, '');
+                            val = val.replaceAll(m, apiVars[key] !== undefined ? apiVars[key] : interpolate(`\${${key}}`, context));
+                        });
+                    }
+                    params.append(p.key, val);
+                });
+                const queryString = params.toString();
+                if (queryString) {
+                    resolvedTarget += resolvedTarget.includes('?') ? `&${queryString}` : `?${queryString}`;
+                }
+            }
 
             addLog({
               stepId: step.id,
@@ -153,13 +183,13 @@ export const ScenarioExecutionRunner: React.FC<
           }
         }
 
-        let apiVars: Record<string, string> = {};
-        const isVariableMode = step.headerProfileId || step.bodyTemplateId;
-
-        if (isVariableMode) {
-          try {
-            apiVars = JSON.parse(resolvedData || "{}");
-          } catch (e) {}
+        // Interpolate URL variables in the resolvedTarget (path and base URL)
+        const urlMatches = resolvedTarget.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+        if (urlMatches) {
+            urlMatches.forEach(m => {
+                const key = m.replace(/\{\{|\}\}|\{|\}/g, '');
+                resolvedTarget = resolvedTarget.replaceAll(m, apiVars[key] !== undefined ? apiVars[key] : interpolate(`\${${key}}`, context));
+            });
         }
 
         if (step.headerProfileId) {
@@ -167,9 +197,13 @@ export const ScenarioExecutionRunner: React.FC<
           if (profile) {
             const resolvedHeaders = profile.headers.map((h) => {
               let val = h.value;
-              Object.keys(apiVars).forEach((key) => {
-                val = val.replaceAll(`{{${key}}}`, apiVars[key] || "");
-              });
+              const matches = val.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+              if (matches) {
+                matches.forEach(m => {
+                  const key = m.replace(/\{\{|\}\}|\{|\}/g, '');
+                  val = val.replaceAll(m, apiVars[key] || '');
+                });
+              }
               return { key: h.key, value: val };
             });
 
@@ -186,12 +220,15 @@ export const ScenarioExecutionRunner: React.FC<
           const template = bodies.find((b) => b.id === step.bodyTemplateId);
           if (template) {
             let bodyContent = template.content;
-            Object.keys(apiVars).forEach((key) => {
-              bodyContent = bodyContent.replaceAll(
-                `{{${key}}}`,
-                apiVars[key] || "",
-              );
-            });
+            
+            const matches = bodyContent.match(/\{\{([^}]+)\}\}|\{([^}]+)\}/g);
+            if (matches) {
+              matches.forEach(m => {
+                const key = m.replace(/\{\{|\}\}|\{|\}/g, '');
+                const val = apiVars[key] !== undefined ? apiVars[key] : interpolate(template.defaultValues?.[key] || '', context);
+                bodyContent = bodyContent.replaceAll(m, val);
+              });
+            }
 
             resolvedData = bodyContent;
 

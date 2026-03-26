@@ -302,7 +302,12 @@ export const MOCK_BODIES: BodyTemplate[] = [
         age: "{{age}}",
         role: "user"
       }
-    }, null, 2)
+    }, null, 2),
+    defaultValues: {
+      username: "testuser",
+      email: "test@example.com",
+      age: "25"
+    }
   },
   {
     id: 'b2',
@@ -317,5 +322,23 @@ export const MOCK_BODIES: BodyTemplate[] = [
       },
       size: 20
     }, null, 2)
+  },
+  {
+    id: 'b3',
+    name: 'Product Creation (With Defaults)',
+    description: 'Create a new product with default values',
+    contentType: 'application/json',
+    content: JSON.stringify({
+      name: "{{productName}}",
+      price: "{{productPrice}}",
+      category: "{{productCategory}}",
+      inStock: "{{inStock}}"
+    }, null, 2),
+    defaultValues: {
+      productName: "New Product",
+      productPrice: "99.99",
+      productCategory: "Electronics",
+      inStock: "true"
+    }
   }
 ];

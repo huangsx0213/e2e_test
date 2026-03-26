@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Search, FileCode } from 'lucide-react';
+import { Plus, Trash2, Save, Search, FileCode, AlignLeft } from 'lucide-react';
 import { BodyTemplate } from '../types';
 
 interface BodyManagerProps {
@@ -16,6 +16,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const [editDesc, setEditDesc] = useState('');
   const [editType, setEditType] = useState<BodyTemplate['contentType']>('application/json');
   const [editContent, setEditContent] = useState('');
+  const [editDefaultValues, setEditDefaultValues] = useState<Record<string, string>>({});
 
   const selectedTemplate = bodies.find(t => t.id === selectedId);
 
@@ -25,6 +26,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
       setEditDesc(selectedTemplate.description || '');
       setEditType(selectedTemplate.contentType);
       setEditContent(selectedTemplate.content);
+      setEditDefaultValues(selectedTemplate.defaultValues || {});
     }
   }, [selectedId, bodies]); // Re-run when selection changes
 
@@ -34,7 +36,8 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
       name: 'New Body Template',
       description: '',
       contentType: 'application/json',
-      content: '{\n  "key": "{{value}}"\n}'
+      content: '{\n  "key": "{{value}}"\n}',
+      defaultValues: { value: '' }
     };
     await bodiesApi.create(newTemplate);
     setSelectedId(newTemplate.id);
@@ -42,7 +45,84 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
 
   const handleSave = async () => {
     if (!selectedId) return;
-    await bodiesApi.update(selectedId, { name: editName, description: editDesc, contentType: editType, content: editContent });
+    await bodiesApi.update(selectedId, { 
+      name: editName, 
+      description: editDesc, 
+      contentType: editType, 
+      content: editContent,
+      defaultValues: editDefaultValues
+    });
+  };
+
+  const variables = Array.from(new Set(Array.from(editContent.matchAll(/\{\{([^}]+)\}\}/g)).map(m => m[1])));
+
+  const handleFormat = () => {
+    const formatJson = (text: string) => {
+      const parsed = JSON.parse(text);
+      return JSON.stringify(parsed, null, 2);
+    };
+
+    const formatXml = (text: string) => {
+      const PADDING = '  ';
+      const reg = /(>)(<)(\/*)/g;
+      let pad = 0;
+      let formatted = '';
+      let cleanXml = text.replace(/>\s+</g, '><').replace(reg, '$1\r\n$2$3');
+      cleanXml.split('\r\n').forEach((node) => {
+          let indent = 0;
+          if (node.match(/.+<\/\w[^>]*>$/)) {
+              indent = 0;
+          } else if (node.match(/^<\/\w/)) {
+              if (pad !== 0) {
+                  pad -= 1;
+              }
+          } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
+              indent = 1;
+          } else {
+              indent = 0;
+          }
+          formatted += PADDING.repeat(pad) + node + '\n';
+          pad += indent;
+      });
+      return formatted.trim();
+    };
+
+    if (editType === 'application/json') {
+      try {
+        setEditContent(formatJson(editContent));
+      } catch (e) {
+        alert('Invalid JSON format. Please check for syntax errors.');
+      }
+    } else if (editType === 'application/xml') {
+      try {
+        setEditContent(formatXml(editContent));
+      } catch (e) {
+        alert('Failed to format XML.');
+      }
+    } else if (editType === 'text/plain') {
+      const trimmed = editContent.trim();
+      if (!trimmed) return;
+      
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          setEditContent(formatJson(editContent));
+          return;
+        } catch (e) {
+          // Fall through
+        }
+      }
+      
+      if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
+        try {
+          setEditContent(formatXml(editContent));
+          return;
+        } catch (e) {
+          // Fall through
+        }
+      }
+      
+      alert('Could not automatically detect JSON or XML format in raw text.');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -146,9 +226,16 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                  >
                     <option value="application/json">JSON</option>
                     <option value="application/xml">XML</option>
-                    <option value="text/plain">Text</option>
-                    <option value="application/x-www-form-urlencoded">Form URL Encoded</option>
+                    <option value="text/plain">Raw</option>
                  </select>
+                 <button 
+                    onClick={handleFormat}
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors shadow-sm border border-gray-200"
+                    title="Format Content"
+                 >
+                    <AlignLeft size={16} />
+                    <span>Format</span>
+                 </button>
                  <button 
                     onClick={handleSave}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
@@ -173,6 +260,35 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                         placeholder={`{\n  "key": "{{variable}}"\n}`}
                         spellCheck={false}
                     />
+                </div>
+
+                {/* Right: Default Values */}
+                <div className="w-80 flex flex-col bg-white">
+                    <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Default Values</span>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {variables.length === 0 ? (
+                            <div className="text-sm text-gray-400 text-center py-4">
+                                No variables found in template. Use {'{{variable}}'} to add them.
+                            </div>
+                        ) : (
+                            variables.map(variable => (
+                                <div key={variable} className="space-y-1">
+                                    <label className="block text-xs font-medium text-gray-700">
+                                        {variable}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editDefaultValues[variable] || ''}
+                                        onChange={(e) => setEditDefaultValues({ ...editDefaultValues, [variable]: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                        placeholder={`Default for ${variable}`}
+                                    />
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
             </div>
           </>
