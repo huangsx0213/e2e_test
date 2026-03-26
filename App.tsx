@@ -30,6 +30,7 @@ import { EndpointManager } from "./components/EndpointManager";
 import { Settings } from "./components/Settings";
 import { Dashboard } from "./components/Dashboard";
 import { TestRunner } from "./components/TestRunner";
+import { TestReport } from "./components/TestReport";
 import {
   Project,
   TestSuite,
@@ -50,6 +51,7 @@ function App() {
     | "HEADERS"
     | "BODIES"
     | "ENDPOINTS"
+    | "REPORTS"
     | "SETTINGS"
   >("DASHBOARD");
 
@@ -184,6 +186,13 @@ function App() {
             active={activeTab === "TESTS"}
             collapsed={isSidebarCollapsed}
             onClick={() => setActiveTab("TESTS")}
+          />
+          <NavItem
+            icon={<BarChart3 />}
+            label="Test Reports"
+            active={activeTab === "REPORTS"}
+            collapsed={isSidebarCollapsed}
+            onClick={() => setActiveTab("REPORTS")}
           />
           <NavItem
             icon={<Database />}
@@ -357,6 +366,10 @@ function App() {
 
           {activeTab === "BODIES" && (
             <BodyManager bodies={bodies} bodiesApi={bodiesApi} />
+          )}
+
+          {activeTab === "REPORTS" && (
+            <TestReport />
           )}
 
           {activeTab === "SETTINGS" && (

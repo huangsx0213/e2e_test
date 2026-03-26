@@ -1,7 +1,30 @@
 
 export type SelectorType = 'CSS' | 'XPath' | 'getByRole' | 'getByText' | 'getByTestId' | 'getByLabel' | 'getByPlaceholder';
 
-export type ActionType = 'OPEN' | 'CLICK' | 'TYPE' | 'ASSERT_VISIBLE' | 'ASSERT_TEXT' | 'API_GET' | 'API_POST' | 'API_PUT' | 'API_DELETE' | 'WAIT' | 'RUN_MODULE';
+export type ActionType = 
+  | 'OPEN' 
+  | 'CLICK' 
+  | 'TYPE' 
+  | 'HOVER'
+  | 'SCROLL_TO'
+  | 'SELECT_OPTION'
+  | 'CHECK'
+  | 'UNCHECK'
+  | 'DRAG_AND_DROP'
+  | 'UPLOAD_FILE'
+  | 'ASSERT_VISIBLE' 
+  | 'ASSERT_HIDDEN'
+  | 'ASSERT_TEXT' 
+  | 'ASSERT_VALUE'
+  | 'EXTRACT_VAR'
+  | 'EVALUATE_JS'
+  | 'PRESS_KEY'
+  | 'API_GET' 
+  | 'API_POST' 
+  | 'API_PUT' 
+  | 'API_DELETE' 
+  | 'WAIT' 
+  | 'RUN_MODULE';
 
 export interface UIElement {
   id: string;
@@ -114,10 +137,15 @@ export interface ExecutionLog {
 export interface ExecutionReport {
   id: string;
   suiteId: string;
+  suiteName?: string;
+  environment?: string;
   startTime: number;
   endTime?: number;
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
   passRate: number;
+  totalCases?: number;
+  passedCases?: number;
+  failedCases?: number;
   logs: ExecutionLog[];
 }
 

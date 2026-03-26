@@ -1,5 +1,44 @@
 
-import { Project, TestSuite } from './types';
+import { Project, TestSuite, ExecutionReport } from './types';
+
+export const MOCK_REPORTS: ExecutionReport[] = [
+  {
+    id: 'r1',
+    suiteId: 's1',
+    suiteName: 'Authentication Flow',
+    environment: 'DEV',
+    startTime: Date.now() - 3600000 * 2,
+    endTime: Date.now() - 3600000 * 2 + 45000,
+    status: 'COMPLETED',
+    passRate: 100,
+    totalCases: 2,
+    passedCases: 2,
+    failedCases: 0,
+    logs: [
+      { stepId: 'init', timestamp: Date.now() - 3600000 * 2, status: 'PASS', message: '🚀 Starting Test Case: Valid Login Success' },
+      { stepId: 'st_mod_1', timestamp: Date.now() - 3600000 * 2 + 1000, status: 'PASS', message: '✅ Module Completed: Login (Standard)' },
+      { stepId: 'st6', timestamp: Date.now() - 3600000 * 2 + 2000, status: 'PASS', message: '✅ Step 2 Passed' }
+    ]
+  },
+  {
+    id: 'r2',
+    suiteId: 's2',
+    suiteName: 'Order Processing',
+    environment: 'SIT',
+    startTime: Date.now() - 86400000,
+    endTime: Date.now() - 86400000 + 120000,
+    status: 'FAILED',
+    passRate: 50,
+    totalCases: 2,
+    passedCases: 1,
+    failedCases: 1,
+    logs: [
+      { stepId: 'init', timestamp: Date.now() - 86400000, status: 'PASS', message: '🚀 Starting Test Case: Add to Cart & Checkout' },
+      { stepId: 'st12', timestamp: Date.now() - 86400000 + 1000, status: 'PASS', message: '✅ Step 1 Passed' },
+      { stepId: 'st13', timestamp: Date.now() - 86400000 + 2000, status: 'FAIL', message: '❌ Step 2 Failed: Element not found' }
+    ]
+  }
+];
 
 export const MOCK_PROJECTS: Project[] = [
   {
@@ -17,9 +56,9 @@ export const MOCK_PROJECTS: Project[] = [
             ],
             steps: [
                 { id: 'ms1', action: 'OPEN', target: 'https://quantum-store.com/login', data: '', description: 'Open Login Page' },
-                { id: 'ms2', action: 'TYPE', target: 'LoginPage/EmailField', data: '${USER}', description: 'Input Username' },
-                { id: 'ms3', action: 'TYPE', target: 'LoginPage/PasswordField', data: '${PASS}', description: 'Input Password' },
-                { id: 'ms4', action: 'CLICK', target: 'LoginPage/LoginButton', data: '', description: 'Click Submit' },
+                { id: 'ms2', action: 'TYPE', target: 'LoginPage.EmailField', data: '${USER}', description: 'Input Username' },
+                { id: 'ms3', action: 'TYPE', target: 'LoginPage.PasswordField', data: '${PASS}', description: 'Input Password' },
+                { id: 'ms4', action: 'CLICK', target: 'LoginPage.LoginButton', data: '', description: 'Click Submit' },
                 { id: 'ms5', action: 'WAIT', target: '', data: '1000', description: 'Wait for redirect' }
             ]
         },
@@ -30,7 +69,7 @@ export const MOCK_PROJECTS: Project[] = [
             params: [],
             steps: [
                  { id: 'ms6', action: 'OPEN', target: 'https://quantum-store.com/cart', data: '', description: 'Go to Cart' },
-                 { id: 'ms7', action: 'CLICK', target: 'ShoppingCart/RemoveItem', data: '', description: 'Click Remove (Simulated)' }
+                 { id: 'ms7', action: 'CLICK', target: 'ShoppingCart.RemoveItem', data: '', description: 'Click Remove (Simulated)' }
             ]
         }
     ],
@@ -139,7 +178,8 @@ export const MOCK_SUITES: TestSuite[] = [
         steps: [
           // Pre-filled with correct parameter structure for demo
           { id: 'st_mod_1', action: 'RUN_MODULE', target: 'mod_1', data: '{"USER":"${USER}","PASS":"${PASS}"}', description: 'Execute Standard Login Module' },
-          { id: 'st6', action: 'ASSERT_VISIBLE', target: 'ProductListing/SearchBar', data: '', description: 'Verify redirect' }
+          { id: 'st6', action: 'ASSERT_VISIBLE', target: 'ProductListing.SearchBar', data: '', description: 'Verify redirect' },
+          { id: 'st6_1', action: 'ASSERT_HIDDEN', target: 'LoginPage.ErrorMessage', data: '', description: 'Verify no error' }
         ]
       },
       {
@@ -148,10 +188,10 @@ export const MOCK_SUITES: TestSuite[] = [
         description: 'System should reject bad passwords.',
         steps: [
           { id: 'st7', action: 'OPEN', target: '${URL}/login', data: '', description: 'Open login' },
-          { id: 'st8', action: 'TYPE', target: 'LoginPage/EmailField', data: '${USER}', description: 'Enter valid email' },
-          { id: 'st9', action: 'TYPE', target: 'LoginPage/PasswordField', data: 'WrongPass', description: 'Enter invalid password' },
-          { id: 'st10', action: 'CLICK', target: 'LoginPage/LoginButton', data: '', description: 'Submit' },
-          { id: 'st11', action: 'ASSERT_TEXT', target: 'LoginPage/ErrorMessage', data: 'Invalid credentials', description: 'Check error msg' }
+          { id: 'st8', action: 'TYPE', target: 'LoginPage.EmailField', data: '${USER}', description: 'Enter valid email' },
+          { id: 'st9', action: 'TYPE', target: 'LoginPage.PasswordField', data: 'WrongPass', description: 'Enter invalid password' },
+          { id: 'st10', action: 'CLICK', target: 'LoginPage.LoginButton', data: '', description: 'Submit' },
+          { id: 'st11', action: 'ASSERT_TEXT', target: 'LoginPage.ErrorMessage', data: 'Invalid credentials', description: 'Check error msg' }
         ]
       }
     ]
@@ -170,11 +210,12 @@ export const MOCK_SUITES: TestSuite[] = [
         description: 'Guest user adds item and proceeds to payment.',
         steps: [
           { id: 'st12', action: 'OPEN', target: 'https://quantum-store.com', data: '', description: 'Go home' },
-          { id: 'st13', action: 'TYPE', target: 'ProductListing/SearchBar', data: '${ITEM}', description: 'Search item' },
-          { id: 'st14', action: 'CLICK', target: 'ProductListing/ProductCard', data: '', description: 'Click first result' },
-          { id: 'st15', action: 'CLICK', target: 'ProductListing/SortDropdown', data: '', description: 'Sort by price (Example action)' },
+          { id: 'st13', action: 'TYPE', target: 'ProductListing.SearchBar', data: '${ITEM}', description: 'Search item' },
+          { id: 'st13_1', action: 'PRESS_KEY', target: 'ProductListing.SearchBar', data: 'Enter', description: 'Press Enter to search' },
+          { id: 'st14', action: 'CLICK', target: 'ProductListing.ProductCard', data: '', description: 'Click first result' },
+          { id: 'st15', action: 'SELECT_OPTION', target: 'ProductListing.SortDropdown', data: 'Price: Low to High', description: 'Sort by price' },
           { id: 'st16', action: 'WAIT', target: '', data: '500', description: 'Wait for sort' },
-          { id: 'st17', action: 'CLICK', target: 'ShoppingCart/CheckoutButton', data: '', description: 'Start checkout' }
+          { id: 'st17', action: 'CLICK', target: 'ShoppingCart.CheckoutButton', data: '', description: 'Start checkout' }
         ]
       }
     ]

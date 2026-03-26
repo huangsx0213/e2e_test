@@ -18,7 +18,12 @@ interface StepListProps {
   bodies: BodyTemplate[];
 }
 
-const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'];
+const ACTION_TYPES: ActionType[] = [
+  'OPEN', 'CLICK', 'TYPE', 'HOVER', 'SCROLL_TO', 'SELECT_OPTION', 'CHECK', 'UNCHECK', 'DRAG_AND_DROP', 'UPLOAD_FILE',
+  'ASSERT_VISIBLE', 'ASSERT_HIDDEN', 'ASSERT_TEXT', 'ASSERT_VALUE',
+  'EXTRACT_VAR', 'EVALUATE_JS', 'PRESS_KEY',
+  'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'
+];
 
 export const StepList: React.FC<StepListProps> = ({
   title,
@@ -180,13 +185,25 @@ export const StepList: React.FC<StepListProps> = ({
                      <option value="OPEN">Open URL</option>
                      <option value="CLICK">Click Element</option>
                      <option value="TYPE">Type Text</option>
+                     <option value="HOVER">Hover Element</option>
+                     <option value="SCROLL_TO">Scroll To</option>
+                     <option value="SELECT_OPTION">Select Option</option>
+                     <option value="CHECK">Check Box</option>
+                     <option value="UNCHECK">Uncheck Box</option>
+                     <option value="DRAG_AND_DROP">Drag & Drop</option>
+                     <option value="UPLOAD_FILE">Upload File</option>
+                     <option value="PRESS_KEY">Press Key</option>
                    </optgroup>
                    <optgroup label="Assertions">
                      <option value="ASSERT_VISIBLE">Assert Visible</option>
+                     <option value="ASSERT_HIDDEN">Assert Hidden</option>
                      <option value="ASSERT_TEXT">Assert Text</option>
+                     <option value="ASSERT_VALUE">Assert Value</option>
                    </optgroup>
                    <optgroup label="Logic & Modules">
                      <option value="WAIT">Wait (ms)</option>
+                     <option value="EXTRACT_VAR">Extract Variable</option>
+                     <option value="EVALUATE_JS">Evaluate JS</option>
                      <option value="RUN_MODULE">Run Module</option>
                    </optgroup>
                    <optgroup label="API Actions">
@@ -292,10 +309,10 @@ export const StepList: React.FC<StepListProps> = ({
                                className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400"
                                value={step.target}
                                onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
-                               placeholder={step.action === 'OPEN' ? 'URL (e.g., https://example.com)' : step.action === 'WAIT' ? 'Wait time in ms (e.g., 1000)' : 'CSS Selector or XPath'}
+                               placeholder={step.action === 'OPEN' ? 'URL (e.g., https://example.com)' : step.action === 'WAIT' ? 'Wait time in ms (e.g., 1000)' : step.action === 'EVALUATE_JS' ? 'JavaScript expression' : 'PageName.ElementName or Selector'}
                            />
                            <div className="absolute right-1 flex items-center gap-0.5">
-                               {!['OPEN', 'WAIT'].includes(step.action) && (
+                               {!['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action) && (
                                    <button 
                                        className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
                                        onClick={(e) => { e.stopPropagation(); setElementMenuOpen(elementMenuOpen === step.id ? null : step.id); setVariableMenuOpen(null); }}

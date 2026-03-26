@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Save, Search, FileText } from 'lucide-react';
+import { Plus, Trash2, Save, Search, FileText, Check, X } from 'lucide-react';
 import { HeaderProfile } from '../types';
 
 interface HeadersManagerProps {
@@ -15,6 +15,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editHeaders, setEditHeaders] = useState<{ key: string; value: string; enabled: boolean }[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const selectedProfile = headers.find(p => p.id === selectedId);
 
@@ -23,6 +24,7 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
     setEditName(profile.name);
     setEditDesc(profile.description || '');
     setEditHeaders([...profile.headers]);
+    setSaveStatus('idle');
   };
 
   const handleCreate = async () => {
@@ -38,7 +40,15 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
 
   const handleSave = async () => {
     if (!selectedId) return;
-    await headersApi.update(selectedId, { name: editName, description: editDesc, headers: editHeaders });
+    setSaveStatus('saving');
+    try {
+      await headersApi.update(selectedId, { name: editName, description: editDesc, headers: editHeaders });
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -148,13 +158,21 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
                   placeholder="Add a description..."
                 />
               </div>
-              <button 
-                onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <Save size={16} />
-                <span>Save Changes</span>
-              </button>
+              <div className="flex items-center gap-4">
+                {saveStatus === 'saving' && <span className="text-xs text-gray-500 animate-pulse">Saving...</span>}
+                {saveStatus === 'success' && <span className="text-xs text-green-600 font-medium flex items-center gap-1"><Check size={14} /> Saved successfully</span>}
+                {saveStatus === 'error' && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><X size={14} /> Save failed</span>}
+                <button 
+                  onClick={handleSave}
+                  disabled={saveStatus === 'saving'}
+                  className={`flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                    saveStatus === 'saving' ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                >
+                  <Save size={16} />
+                  <span>Save Changes</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">

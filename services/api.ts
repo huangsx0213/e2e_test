@@ -1,5 +1,5 @@
-import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from '../types';
-import { MOCK_PROJECTS, MOCK_SUITES, MOCK_HEADERS, MOCK_BODIES, MOCK_ENDPOINTS } from '../constants';
+import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport } from '../types';
+import { MOCK_PROJECTS, MOCK_SUITES, MOCK_HEADERS, MOCK_BODIES, MOCK_ENDPOINTS, MOCK_REPORTS } from '../constants';
 
 // --- Simulated Database ---
 let db = {
@@ -8,6 +8,7 @@ let db = {
   headers: [...MOCK_HEADERS] as HeaderProfile[],
   bodies: [...MOCK_BODIES] as BodyTemplate[],
   endpoints: [...MOCK_ENDPOINTS] as ApiEndpoint[],
+  reports: [...MOCK_REPORTS] as ExecutionReport[],
 };
 
 let environmentsDb = ['DEV', 'SIT', 'UAT', 'PROD'];
@@ -113,6 +114,7 @@ export const api = {
   headers: createCrudService<HeaderProfile>('headers'),
   bodies: createCrudService<BodyTemplate>('bodies'),
   endpoints: createCrudService<ApiEndpoint>('endpoints'),
+  reports: createCrudService<ExecutionReport>('reports'),
   environments: {
     list: () => simulatedFetch<string[]>('environments'),
     create: (env: string) => simulatedFetch<string>('environments', {

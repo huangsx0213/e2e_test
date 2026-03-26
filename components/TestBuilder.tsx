@@ -16,7 +16,12 @@ interface TestBuilderProps {
   currentProjectId: string;
 }
 
-const ACTION_TYPES: ActionType[] = ['OPEN', 'CLICK', 'TYPE', 'ASSERT_VISIBLE', 'ASSERT_TEXT', 'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'];
+const ACTION_TYPES: ActionType[] = [
+  'OPEN', 'CLICK', 'TYPE', 'HOVER', 'SCROLL_TO', 'SELECT_OPTION', 'CHECK', 'UNCHECK', 'DRAG_AND_DROP', 'UPLOAD_FILE',
+  'ASSERT_VISIBLE', 'ASSERT_HIDDEN', 'ASSERT_TEXT', 'ASSERT_VALUE',
+  'EXTRACT_VAR', 'EVALUATE_JS', 'PRESS_KEY',
+  'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'
+];
 
 export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, projects, headers, bodies, endpoints, onRunCase, currentProjectId }) => {
   const [activeSuiteId, setActiveSuiteId] = useState<string>('');

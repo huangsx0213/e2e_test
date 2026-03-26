@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Search, FileCode, AlignLeft } from 'lucide-react';
+import { Plus, Trash2, Save, Search, FileCode, AlignLeft, Check, X } from 'lucide-react';
 import { BodyTemplate } from '../types';
 
 interface BodyManagerProps {
@@ -18,6 +18,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const [editContent, setEditContent] = useState('');
   const [editDefaultValues, setEditDefaultValues] = useState<Record<string, string>>({});
   const [formatError, setFormatError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
   const selectedTemplate = bodies.find(t => t.id === selectedId);
 
@@ -28,6 +29,7 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
       setEditType(selectedTemplate.contentType);
       setEditContent(selectedTemplate.content);
       setEditDefaultValues(selectedTemplate.defaultValues || {});
+      setSaveStatus('idle');
     }
   }, [selectedId, bodies]); // Re-run when selection changes
 
@@ -46,13 +48,21 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
 
   const handleSave = async () => {
     if (!selectedId) return;
-    await bodiesApi.update(selectedId, { 
-      name: editName, 
-      description: editDesc, 
-      contentType: editType, 
-      content: editContent,
-      defaultValues: editDefaultValues
-    });
+    setSaveStatus('saving');
+    try {
+      await bodiesApi.update(selectedId, { 
+        name: editName, 
+        description: editDesc, 
+        contentType: editType, 
+        content: editContent,
+        defaultValues: editDefaultValues
+      });
+      setSaveStatus('success');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (error) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    }
   };
 
   const variables = Array.from(new Set(Array.from(editContent.matchAll(/\{\{([^}]+)\}\}/g)).map(m => m[1])));
@@ -253,11 +263,24 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
                  </button>
                  <button 
                     onClick={handleSave}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                    disabled={saveStatus === 'saving'}
+                    className={`flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                      saveStatus === 'saving' ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                  >
                     <Save size={16} />
-                    <span>Save</span>
+                    <span>{saveStatus === 'saving' ? 'Saving...' : saveStatus === 'success' ? 'Saved!' : saveStatus === 'error' ? 'Failed' : 'Save'}</span>
                  </button>
+                 {saveStatus === 'success' && (
+                   <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                     <Check size={14} />
+                   </span>
+                 )}
+                 {saveStatus === 'error' && (
+                   <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                     <X size={14} />
+                   </span>
+                 )}
               </div>
             </div>
 
