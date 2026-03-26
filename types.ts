@@ -24,7 +24,9 @@ export interface ApiEndpoint {
   id: string;
   name: string;
   description?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   baseUrls: Record<string, string>;
+  parameters?: { key: string; value: string; enabled: boolean }[];
 }
 
 export interface TestStep {
