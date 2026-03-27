@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Project, TestModule, TestStep, ActionType, ModuleParameter, HeaderProfile, BodyTemplate, ApiEndpoint } from '../types';
 import { Plus, ChevronDown, ChevronRight, Trash2, Edit2, Check, Search, Database, Workflow, Variable } from 'lucide-react';
 import { StepList } from './StepList';
+import { HelpTooltip } from './HelpTooltip';
 
 interface ModuleBuilderProps {
   projects: Project[];
@@ -174,7 +175,10 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
 
          <div className="flex-1 overflow-y-auto px-2 py-3">
             <div className="flex items-center justify-between px-2 mb-2">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Shared Modules</span>
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+                  Shared Modules
+                  <HelpTooltip content="Create reusable sequences of test steps that can be included in multiple test cases." />
+                </span>
                 <button 
                     onClick={addModule}
                     disabled={!activeProject}

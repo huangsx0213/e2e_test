@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Save, Settings as SettingsIcon, Globe, FolderGit2 } from 'lucide-react';
 import { Project } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface SettingsProps {
   environments: string[];
@@ -75,7 +76,10 @@ export const Settings: React.FC<SettingsProps> = ({
         {/* Settings Header & Tabs */}
         <div className="flex flex-col gap-6">
             <div>
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Settings</h2>
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  Settings
+                  <HelpTooltip content="Configure projects, environments, and system settings." />
+                </h2>
                 <p className="text-slate-500 text-sm mt-1">Manage your workspace, environments, and system configuration.</p>
             </div>
 

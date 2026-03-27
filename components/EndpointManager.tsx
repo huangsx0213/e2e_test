@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Save, Search, Globe, Check, X } from 'lucide-react';
 import { ApiEndpoint } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface EndpointManagerProps {
   endpoints: ApiEndpoint[];
@@ -76,6 +77,7 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
             <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               <Globe size={18} className="text-blue-600" />
               Endpoints
+              <HelpTooltip content="Manage API endpoints and their base URLs across different environments." />
             </h2>
             <button 
               onClick={handleCreate}

@@ -7,6 +7,7 @@ import {
   Loader2, BarChart3, Search, ListChecks, AlertCircle,
   Copy, Check
 } from 'lucide-react';
+import { HelpTooltip } from './HelpTooltip';
 
 export const TestReport: React.FC = () => {
   const [reports, reportsApi, loading] = useCrud<ExecutionReport>(api.reports);
@@ -65,7 +66,10 @@ export const TestReport: React.FC = () => {
         <div className="p-4 border-b border-slate-200">
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 size={20} className="text-blue-600" />
-            <h2 className="font-semibold text-slate-800 text-lg">Test Reports</h2>
+            <h2 className="font-semibold text-slate-800 text-lg flex items-center gap-2">
+              Test Reports
+              <HelpTooltip content="View historical execution results, logs, and pass/fail metrics for your test suites and scenarios." />
+            </h2>
           </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

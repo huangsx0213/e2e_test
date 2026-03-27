@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, Search, FileCode, AlignLeft, Check, X } from 'lucide-react';
 import { BodyTemplate } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface BodyManagerProps {
   bodies: BodyTemplate[];
@@ -162,7 +163,10 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
       <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Body Templates</h2>
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              Body Templates
+              <HelpTooltip content="Create reusable request body templates with variables for your API calls." />
+            </h2>
             <button 
               onClick={handleCreate}
               className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode, CheckCircle2, Clock, Activity, BarChart3 } from 'lucide-react';
 import { Project, TestSuite } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface DashboardProps {
   projects: Project[];
@@ -36,7 +37,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
-                <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Workspace Overview</h1>
+                <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center">
+                  Workspace Overview
+                  <HelpTooltip content="This dashboard provides a high-level summary of your testing workspace, including scenarios, test suites, and recent execution results." />
+                </h1>
                 <p className="text-slate-500 mt-2">Managing <span className="font-semibold text-blue-600">{currentProject?.name || 'All Projects'}</span> across {environments.length} environments.</p>
             </div>
             <div className="flex gap-3">

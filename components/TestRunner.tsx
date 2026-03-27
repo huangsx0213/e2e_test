@@ -33,6 +33,8 @@ import {
 } from "../types";
 import { ScenarioExecutionRunner } from "./ScenarioExecutionRunner";
 
+import { HelpTooltip } from "./HelpTooltip";
+
 interface TestRunnerProps {
   projects: Project[];
   projectsApi: any;
@@ -204,6 +206,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               <h2 className="font-semibold text-slate-800 flex items-center gap-2">
                 <Layers size={18} className="text-blue-600" />
                 Scenarios
+                <HelpTooltip content="Manage test scenarios which combine multiple test suites for execution." />
               </h2>
               <button
                 onClick={handleCreateScenario}
@@ -344,6 +347,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                       <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <Layers size={16} className="text-blue-600" />
                         Execution Sequence
+                        <HelpTooltip content="Define the order of test suites to run in this scenario and override their variables." />
                       </h3>
 
                       {activeScenario.suites.length === 0 ? (
@@ -460,8 +464,9 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                     <div className="w-80 flex-shrink-0">
                       <div className="bg-white border border-slate-200 rounded-xl shadow-sm sticky top-0">
                         <div className="p-4 border-b border-slate-100 bg-slate-50/50 rounded-t-xl">
-                          <h3 className="text-sm font-semibold text-slate-900">
+                          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                             Available Suites
+                            <HelpTooltip content="Test suites available in this project. Click the plus icon to add them to the execution sequence." />
                           </h3>
                         </div>
                         <div className="p-2 max-h-[600px] overflow-y-auto">

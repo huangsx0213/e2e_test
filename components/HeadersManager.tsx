@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Save, Search, FileText, Check, X } from 'lucide-react';
 import { HeaderProfile } from '../types';
+import { HelpTooltip } from './HelpTooltip';
 
 interface HeadersManagerProps {
   headers: HeaderProfile[];
@@ -80,7 +81,10 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
       <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Header Profiles</h2>
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+              Header Profiles
+              <HelpTooltip content="Define reusable sets of HTTP headers to apply to your API requests." />
+            </h2>
             <button 
               onClick={handleCreate}
               className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"

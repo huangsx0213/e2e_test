@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Project, Page, UIElement, SelectorType } from '../types';
 import { Trash2, Plus, Sparkles, Database, File, Edit2, Check, Layout, Code, ChevronRight, ChevronDown, MousePointer2, Save, MoreHorizontal, Search, Filter, FolderPlus, Settings } from 'lucide-react';
 import { suggestSelector } from '../services/geminiService';
+import { HelpTooltip } from './HelpTooltip';
 
 interface ElementRepoProps {
   projects: Project[];
@@ -234,7 +235,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
          {/* Page Tree */}
          <div className="flex-1 overflow-y-auto px-2 py-3">
              <div className="flex items-center justify-between px-2 mb-2">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Object Repository</span>
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+                  Object Repository
+                  <HelpTooltip content="Manage UI elements organized by pages. These elements can be reused across multiple test cases." />
+                </span>
                 <button 
                     onClick={addPage}
                     disabled={!activeProject}

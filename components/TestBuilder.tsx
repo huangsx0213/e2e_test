@@ -4,6 +4,7 @@ import { TestSuite, TestCase, TestStep, Project, ActionType, SuiteVariable, Head
 import { Plus, Play, ChevronDown, ChevronRight, Wand2, Trash2, FileText, FlaskConical, Edit2, Check, X, Database, Search, Sparkles, Layers, TextQuote, Variable, Table2, Braces, MousePointer2, GripVertical, Workflow, FileCode, Globe } from 'lucide-react';
 import { generateStepsFromDescription } from '../services/geminiService';
 import { StepList } from './StepList';
+import { HelpTooltip } from './HelpTooltip';
 
 interface TestBuilderProps {
   suites: TestSuite[];
@@ -321,7 +322,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
 
         <div className="flex-1 overflow-y-auto px-2 py-3">
             <div className="flex items-center justify-between px-2 mb-2">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Test Explorer</span>
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+                  Test Explorer
+                  <HelpTooltip content="Organize your tests into suites and cases. Generate steps using AI or build them manually." />
+                </span>
                 <button 
                     onClick={addSuite}
                     className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
