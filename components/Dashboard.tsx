@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode, CheckCircle2, Clock, Activity } from 'lucide-react';
+import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode, CheckCircle2, Clock, Activity, BarChart3 } from 'lucide-react';
 import { Project, TestSuite } from '../types';
 
 interface DashboardProps {
@@ -7,7 +7,7 @@ interface DashboardProps {
   suites: TestSuite[];
   environments: string[];
   currentProjectId: string;
-  onNavigate: (tab: 'DASHBOARD' | 'RUN' | 'ELEMENTS' | 'MODULES' | 'TESTS' | 'HEADERS' | 'BODIES' | 'ENDPOINTS' | 'SETTINGS') => void;
+  onNavigate: (tab: 'DASHBOARD' | 'RUN' | 'ELEMENTS' | 'MODULES' | 'TESTS' | 'HEADERS' | 'BODIES' | 'ENDPOINTS' | 'SETTINGS' | 'REPORTS') => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environments, currentProjectId, onNavigate }) => {
@@ -146,39 +146,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
             />
 
             <NavCard 
-                title="API Endpoints"
-                description="Configure REST API endpoints for use in your test steps."
-                icon={<Network size={24} className="text-teal-600" />}
-                bgClass="bg-teal-50"
-                onClick={() => onNavigate('ENDPOINTS')}
-                actionText="Manage Endpoints"
+                title="Test Reports"
+                description="View execution history, analyze test results, and track quality metrics."
+                icon={<BarChart3 size={24} className="text-rose-600" />}
+                bgClass="bg-rose-50"
+                onClick={() => onNavigate('REPORTS')}
+                actionText="View Reports"
             />
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div className="p-6 flex-1">
                     <div className="flex items-center gap-3 mb-4">
-                        <div className="w-12 h-12 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                            <Workflow size={24} className="text-indigo-600" />
+                        <div className="w-12 h-12 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
+                            <Network size={24} className="text-teal-600" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900">API Templates</h3>
+                        <h3 className="text-lg font-bold text-slate-900">API Management</h3>
                     </div>
                     <p className="text-slate-500 text-sm mb-6">
-                        Manage reusable headers and request bodies for API testing.
+                        Configure REST endpoints, headers, and request bodies for API testing.
                     </p>
-                    <div className="flex gap-3 mt-auto relative z-10">
+                    <div className="flex gap-2 mt-auto relative z-10">
+                        <button 
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onNavigate('ENDPOINTS'); }}
+                            className="flex-1 py-2 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                            <Globe size={14} /> Endpoints
+                        </button>
                         <button 
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onNavigate('HEADERS'); }}
-                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                            className="flex-1 py-2 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                         >
-                            <FileText size={16} /> Headers
+                            <FileText size={14} /> Headers
                         </button>
                         <button 
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onNavigate('BODIES'); }}
-                            className="flex-1 py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                            className="flex-1 py-2 px-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
                         >
-                            <FileCode size={16} /> Bodies
+                            <FileCode size={14} /> Bodies
                         </button>
                     </div>
                 </div>
