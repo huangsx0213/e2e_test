@@ -46,8 +46,6 @@ export const StepList: React.FC<StepListProps> = ({
   const [variableMenuOpen, setVariableMenuOpen] = useState<{ stepId: string; field: 'target' | 'data'; paramName?: string } | null>(null);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    const target = e.target as HTMLElement;
-    if (!target.closest('.drag-handle')) return;
     setDraggedStepIndex(index);
     e.dataTransfer.setData("text/plain", String(index));
     e.dataTransfer.effectAllowed = "move";
@@ -62,8 +60,11 @@ export const StepList: React.FC<StepListProps> = ({
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     e.stopPropagation();
-    if (draggedStepIndex === null) return;
-    onMoveStep(draggedStepIndex, dropIndex);
+    const draggedIndexStr = e.dataTransfer.getData("text/plain");
+    if (!draggedIndexStr) return;
+    const draggedIndex = parseInt(draggedIndexStr, 10);
+    if (isNaN(draggedIndex) || draggedIndex === dropIndex) return;
+    onMoveStep(draggedIndex, dropIndex);
     setDraggedStepIndex(null);
   };
 
@@ -150,15 +151,28 @@ export const StepList: React.FC<StepListProps> = ({
               {steps.map((step, index) => (
                 <div 
                      key={step.id} 
-                     draggable={true}
                      onDragStart={(e) => handleDragStart(e, index)}
                      onDragOver={(e) => handleDragOver(e, index)}
                      onDrop={(e) => handleDrop(e, index)}
+                     onDragEnd={(e) => {
+                        setDraggedStepIndex(null);
+                        e.currentTarget.removeAttribute('draggable');
+                     }}
                      className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
                 >
            <div className="grid grid-cols-[30px_160px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 items-center">
                {/* Drag Handle & Index */}
-               <div className="flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative">
+               <div 
+                  className="flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative"
+                  onMouseEnter={(e) => {
+                     const row = e.currentTarget.closest('.group');
+                     if (row) row.setAttribute('draggable', 'true');
+                  }}
+                  onMouseLeave={(e) => {
+                     const row = e.currentTarget.closest('.group');
+                     if (row) row.removeAttribute('draggable');
+                  }}
+               >
                   <GripVertical size={16} className="mr-1 text-gray-400" />
                   <div className="relative">
                      <select 
