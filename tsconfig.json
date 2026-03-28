@@ -20,7 +20,7 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": [
-        "./*"
+        "./client/*"
       ]
     },
     "allowImportingTsExtensions": true,
