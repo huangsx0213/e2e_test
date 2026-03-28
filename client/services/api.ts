@@ -1,4 +1,4 @@
-import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport } from '../types';
+import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings } from '../types';
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -58,6 +58,7 @@ export const api = {
   bodies: createCrudService<BodyTemplate>('bodies'),
   endpoints: createCrudService<ApiEndpoint>('endpoints'),
   reports: createCrudService<ExecutionReport>('reports'),
+  settings: createCrudService<Settings>('settings'),
   environments: {
     list: () => apiFetch<string[]>('environments'),
     create: (env: string) => apiFetch<string>('environments', {

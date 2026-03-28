@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, Search, Globe, Check, X } from 'lucide-react';
 import { ApiEndpoint } from '../types';
 import { HelpTooltip } from './HelpTooltip';
@@ -7,9 +7,10 @@ interface EndpointManagerProps {
   endpoints: ApiEndpoint[];
   endpointsApi: any;
   environments: string[];
+  currentProjectId: string;
 }
 
-export function EndpointManager({ endpoints, endpointsApi, environments }: EndpointManagerProps) {
+export function EndpointManager({ endpoints, endpointsApi, environments, currentProjectId }: EndpointManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -22,6 +23,12 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
 
   const selectedEndpoint = endpoints.find(e => e.id === selectedId);
 
+  useEffect(() => {
+    if (selectedId && !endpoints.find(e => e.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [endpoints, selectedId]);
+
   const handleSelect = (endpoint: ApiEndpoint) => {
     setSelectedId(endpoint.id);
     setEditName(endpoint.name);
@@ -32,11 +39,13 @@ export function EndpointManager({ endpoints, endpointsApi, environments }: Endpo
   };
 
   const handleCreate = async () => {
+    if (!currentProjectId) return;
     const initialUrls: Record<string, string> = {};
     environments.forEach(env => initialUrls[env] = '');
     
     const newEndpoint: ApiEndpoint = {
       id: `e_${Date.now()}`,
+      projectId: currentProjectId,
       name: 'New Service Endpoint',
       description: '',
       baseUrls: initialUrls,

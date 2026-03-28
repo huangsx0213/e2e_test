@@ -140,7 +140,7 @@ export const StepList: React.FC<StepListProps> = ({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-[30px_160px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
+              <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
                  <div className="text-center">Step</div>
                  <div>Action</div>
                  <div>Target / Module</div>
@@ -160,7 +160,7 @@ export const StepList: React.FC<StepListProps> = ({
                      }}
                      className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
                 >
-           <div className="grid grid-cols-[30px_160px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 items-center">
+           <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 items-center">
                {/* Drag Handle & Index */}
                <div 
                   className="flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative"

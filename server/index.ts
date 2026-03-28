@@ -26,6 +26,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS endpoints (id TEXT PRIMARY KEY, data TEXT);
   CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, data TEXT);
   CREATE TABLE IF NOT EXISTS environments (name TEXT PRIMARY KEY);
+  CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, data TEXT);
 `);
 
 // Seed data if empty
@@ -87,12 +88,17 @@ const seedData = () => {
     });
     insertMany(['DEV', 'SIT', 'UAT', 'PROD']);
   }
+
+  if (getCount('settings').count === 0) {
+    const insert = db.prepare('INSERT INTO settings (id, data) VALUES (?, ?)');
+    insert.run('global', JSON.stringify({ currentProjectId: 'p1', currentEnvironment: 'DEV' }));
+  }
 };
 
 seedData();
 
 // Generic CRUD endpoints
-const resources = ['projects', 'suites', 'headers', 'bodies', 'endpoints', 'reports'];
+const resources = ['projects', 'suites', 'headers', 'bodies', 'endpoints', 'reports', 'settings'];
 
 resources.forEach(resource => {
   // GET all

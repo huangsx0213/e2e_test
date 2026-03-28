@@ -6,9 +6,10 @@ import { HelpTooltip } from './HelpTooltip';
 interface BodyManagerProps {
   bodies: BodyTemplate[];
   bodiesApi: any;
+  currentProjectId: string;
 }
 
-export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
+export function BodyManager({ bodies, bodiesApi, currentProjectId }: BodyManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -24,6 +25,12 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   const selectedTemplate = bodies.find(t => t.id === selectedId);
 
   useEffect(() => {
+    if (selectedId && !bodies.find(b => b.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [bodies, selectedId]);
+
+  useEffect(() => {
     if (selectedTemplate) {
       setEditName(selectedTemplate.name);
       setEditDesc(selectedTemplate.description || '');
@@ -35,8 +42,10 @@ export function BodyManager({ bodies, bodiesApi }: BodyManagerProps) {
   }, [selectedId, bodies]); // Re-run when selection changes
 
   const handleCreate = async () => {
+    if (!currentProjectId) return;
     const newTemplate: BodyTemplate = {
       id: `b_${Date.now()}`,
+      projectId: currentProjectId,
       name: 'New Body Template',
       description: '',
       contentType: 'application/json',

@@ -132,8 +132,31 @@ export const MOCK_PROJECTS: Project[] = [
     id: 'p2',
     name: 'CRM Internal',
     description: 'Employee-facing dashboard for lead management.',
-    modules: [],
+    modules: [
+      {
+        id: 'mod_crm_1',
+        name: 'Login (SSO)',
+        description: 'Single Sign-On flow for employees',
+        params: [
+          { id: 'mp_crm_1', name: 'EMP_ID', defaultValue: 'E12345', description: 'Employee ID' }
+        ],
+        steps: [
+          { id: 'ms_crm_1', action: 'OPEN', target: 'https://crm.internal.com/sso', data: '', description: 'Open SSO Portal' },
+          { id: 'ms_crm_2', action: 'TYPE', target: 'SSO.EmpIdField', data: '${EMP_ID}', description: 'Input Employee ID' },
+          { id: 'ms_crm_3', action: 'CLICK', target: 'SSO.LoginBtn', data: '', description: 'Click Login' }
+        ]
+      }
+    ],
     pages: [
+      {
+        id: 'pg_crm_sso',
+        name: 'SSO',
+        description: 'Single Sign-On page',
+        elements: [
+          { id: 'el_crm_sso_1', name: 'EmpIdField', selectorType: 'CSS', value: '#emp-id', description: 'Employee ID Input' },
+          { id: 'el_crm_sso_2', name: 'LoginBtn', selectorType: 'getByRole', value: 'button, name=Sign In', description: 'Sign In Button' }
+        ]
+      },
       {
         id: 'pg_crm_1',
         name: 'Dashboard',
@@ -149,7 +172,18 @@ export const MOCK_PROJECTS: Project[] = [
         description: 'Individual lead view',
         elements: [
           { id: 'el_crm_3', name: 'StatusDropdown', selectorType: 'CSS', value: 'select[name="status"]', description: 'Lead progression status' },
+          { id: 'el_crm_5', name: 'NameField', selectorType: 'CSS', value: 'input[name="leadName"]', description: 'Lead Name Input' },
           { id: 'el_crm_4', name: 'SaveBtn', selectorType: 'getByText', value: 'Save Changes', description: 'Persist updates' }
+        ]
+      }
+    ],
+    scenarios: [
+      {
+        id: 'sc_crm_1',
+        name: 'Lead Creation Flow',
+        description: 'Employee logs in and creates a new lead',
+        suites: [
+          { id: 'ss_crm_1', suiteId: 's_crm_1', variableOverrides: {} }
         ]
       }
     ]
@@ -159,6 +193,7 @@ export const MOCK_PROJECTS: Project[] = [
 export const MOCK_SUITES: TestSuite[] = [
   {
     id: 's1',
+    projectId: 'p1',
     name: 'Authentication Flow',
     description: 'Verify login, logout, and security limits.',
     variables: [
@@ -198,6 +233,7 @@ export const MOCK_SUITES: TestSuite[] = [
   },
   {
     id: 's2',
+    projectId: 'p1',
     name: 'Order Processing',
     description: 'End-to-end purchasing flows.',
     variables: [
@@ -222,6 +258,7 @@ export const MOCK_SUITES: TestSuite[] = [
   },
   {
     id: 's3',
+    projectId: 'p1',
     name: 'API Integration Tests',
     description: 'Backend validation independently of UI.',
     variables: [
@@ -278,6 +315,55 @@ export const MOCK_SUITES: TestSuite[] = [
         ]
       }
     ]
+  },
+  {
+    id: 's_crm_1',
+    projectId: 'p2',
+    name: 'Lead Management',
+    description: 'Verify lead creation and status updates.',
+    variables: [
+        { id: 'v_crm_1', key: 'LEAD_NAME', value: 'Acme Corp' }
+    ],
+    cases: [
+      {
+        id: 'c_crm_1',
+        name: 'Create New Lead',
+        description: 'Employee creates a new lead from the dashboard.',
+        steps: [
+          { id: 'st_crm_1', action: 'RUN_MODULE', target: 'mod_crm_1', data: '{"EMP_ID":"E99999"}', description: 'Login via SSO' },
+          { id: 'st_crm_2', action: 'CLICK', target: 'Dashboard.NewLeadBtn', data: '', description: 'Open New Lead Modal' },
+          { id: 'st_crm_3', action: 'TYPE', target: 'LeadDetail.NameField', data: '${LEAD_NAME}', description: 'Enter Lead Name' },
+          { id: 'st_crm_4', action: 'CLICK', target: 'LeadDetail.SaveBtn', data: '', description: 'Save Lead' }
+        ]
+      }
+    ]
+  },
+  {
+    id: 's_crm_2',
+    projectId: 'p2',
+    name: 'CRM API Tests',
+    description: 'Test internal CRM endpoints.',
+    variables: [
+        { id: 'v_crm_2', key: 'AUTH_TOKEN', value: 'crm_token_123' }
+    ],
+    cases: [
+      {
+        id: 'c_crm_2',
+        name: 'Fetch Leads API',
+        description: 'Get list of leads via API.',
+        steps: [
+          { 
+            id: 'st_crm_5', 
+            action: 'API_GET', 
+            target: '/leads', 
+            endpointId: 'e_crm_1',
+            headerProfileId: 'h_crm_1', 
+            data: '{"token":"${AUTH_TOKEN}"}', 
+            description: 'Fetch Leads' 
+          }
+        ]
+      }
+    ]
   }
 ];
 
@@ -286,6 +372,7 @@ import { HeaderProfile, BodyTemplate, ApiEndpoint } from '../client/types';
 export const MOCK_ENDPOINTS: ApiEndpoint[] = [
   {
     id: 'e1',
+    projectId: 'p1',
     name: 'User Service',
     description: 'Core user management API',
     baseUrls: {
@@ -297,6 +384,7 @@ export const MOCK_ENDPOINTS: ApiEndpoint[] = [
   },
   {
     id: 'e2',
+    projectId: 'p1',
     name: 'Payment Gateway',
     description: 'External payment processing',
     baseUrls: {
@@ -305,12 +393,25 @@ export const MOCK_ENDPOINTS: ApiEndpoint[] = [
       UAT: 'https://sandbox.payment-provider.com/v1',
       PROD: 'https://api.payment-provider.com/v1'
     }
+  },
+  {
+    id: 'e_crm_1',
+    projectId: 'p2',
+    name: 'Lead API',
+    description: 'Internal API for lead management',
+    baseUrls: {
+      DEV: 'https://dev-api.crm.internal.com/v1',
+      SIT: 'https://sit-api.crm.internal.com/v1',
+      UAT: 'https://uat-api.crm.internal.com/v1',
+      PROD: 'https://api.crm.internal.com/v1'
+    }
   }
 ];
 
 export const MOCK_HEADERS: HeaderProfile[] = [
   {
     id: 'h1',
+    projectId: 'p1',
     name: 'Standard JSON Auth',
     description: 'Default headers for JSON API with Bearer token',
     headers: [
@@ -321,11 +422,22 @@ export const MOCK_HEADERS: HeaderProfile[] = [
   },
   {
     id: 'h2',
+    projectId: 'p1',
     name: 'Multipart Upload',
     description: 'Headers for file upload endpoints',
     headers: [
       { key: 'Content-Type', value: 'multipart/form-data', enabled: true },
       { key: 'X-Custom-Trace', value: '{{traceId}}', enabled: true }
+    ]
+  },
+  {
+    id: 'h_crm_1',
+    projectId: 'p2',
+    name: 'CRM Internal Auth',
+    description: 'Headers for internal CRM APIs',
+    headers: [
+      { key: 'Content-Type', value: 'application/json', enabled: true },
+      { key: 'X-Internal-Token', value: '{{token}}', enabled: true }
     ]
   }
 ];
@@ -333,6 +445,7 @@ export const MOCK_HEADERS: HeaderProfile[] = [
 export const MOCK_BODIES: BodyTemplate[] = [
   {
     id: 'b1',
+    projectId: 'p1',
     name: 'Create User Payload',
     description: 'Standard user creation body',
     contentType: 'application/json',
@@ -352,6 +465,7 @@ export const MOCK_BODIES: BodyTemplate[] = [
   },
   {
     id: 'b2',
+    projectId: 'p1',
     name: 'Search Query',
     description: 'Elasticsearch style query body',
     contentType: 'application/json',
@@ -366,6 +480,7 @@ export const MOCK_BODIES: BodyTemplate[] = [
   },
   {
     id: 'b3',
+    projectId: 'p1',
     name: 'Product Creation (With Defaults)',
     description: 'Create a new product with default values',
     contentType: 'application/json',
@@ -380,6 +495,22 @@ export const MOCK_BODIES: BodyTemplate[] = [
       productPrice: "99.99",
       productCategory: "Electronics",
       inStock: "true"
+    }
+  },
+  {
+    id: 'b_crm_1',
+    projectId: 'p2',
+    name: 'New Lead Payload',
+    description: 'Payload for creating a new lead',
+    contentType: 'application/json',
+    content: JSON.stringify({
+      companyName: "{{companyName}}",
+      contactPerson: "{{contactPerson}}",
+      status: "NEW"
+    }, null, 2),
+    defaultValues: {
+      companyName: "Acme Corp",
+      contactPerson: "Jane Doe"
     }
   }
 ];

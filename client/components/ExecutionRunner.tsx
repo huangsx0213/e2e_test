@@ -13,10 +13,12 @@ interface ExecutionRunnerProps {
   environments: string[];
   initialEnvironment: string;
   onClose: () => void;
+  reportsApi: any;
 }
 
-export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCase, project, headers, bodies, endpoints, environments, initialEnvironment, onClose }) => {
+export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCase, project, headers, bodies, endpoints, environments, initialEnvironment, onClose, reportsApi }) => {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
+  const logsRef = useRef<ExecutionLog[]>([]);
   const [status, setStatus] = useState<'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED'>('IDLE');
   const [progress, setProgress] = useState(0);
   const [selectedEnv, setSelectedEnv] = useState<string>(initialEnvironment);
@@ -34,7 +36,11 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
   }, [logs]);
 
   const addLog = (log: ExecutionLog) => {
-    setLogs(prev => [...prev, log]);
+    setLogs(prev => {
+      const newLogs = [...prev, log];
+      logsRef.current = newLogs;
+      return newLogs;
+    });
   };
 
   const interpolate = (str: string, vars: Record<string, string>) => {
@@ -275,6 +281,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
   const startExecution = async () => {
     setStatus('RUNNING');
     setLogs([]);
+    logsRef.current = [];
     setProgress(0);
 
     // 1. Prepare Environment Variables
@@ -307,8 +314,38 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({ suite, testCas
             message: `🏁 Execution Completed Successfully`
         });
         setStatus('COMPLETED');
+        
+        // Save report
+        reportsApi.create({
+          id: `report-${Date.now()}`,
+          suiteId: testCase.id,
+          suiteName: `Execution: ${testCase.name}`,
+          startTime: Date.now(),
+          endTime: Date.now(),
+          status: 'COMPLETED',
+          passRate: 100,
+          totalCases: 1,
+          passedCases: 1,
+          failedCases: 0,
+          logs: logsRef.current,
+          environment: selectedEnv
+        });
     } catch (e) {
         setStatus('FAILED');
+        reportsApi.create({
+          id: `report-${Date.now()}`,
+          suiteId: testCase.id,
+          suiteName: `Execution: ${testCase.name}`,
+          startTime: Date.now(),
+          endTime: Date.now(),
+          status: 'FAILED',
+          passRate: 0,
+          totalCases: 1,
+          passedCases: 0,
+          failedCases: 1,
+          logs: logsRef.current,
+          environment: selectedEnv
+        });
     }
   };
 

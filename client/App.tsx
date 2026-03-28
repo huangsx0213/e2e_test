@@ -37,6 +37,7 @@ import {
   HeaderProfile,
   BodyTemplate,
   ApiEndpoint,
+  Settings as SettingsType,
 } from "./types";
 import { api } from "./services/api";
 import { useCrud, useEnvCrud } from "./hooks/useCrud";
@@ -69,22 +70,47 @@ function App() {
   const [environments, environmentsApi, loadingEnvironments] = useEnvCrud(
     api.environments,
   );
+  const [settings, settingsApi, loadingSettings] = useCrud<SettingsType>(api.settings);
 
   const [currentEnvironment, setCurrentEnvironment] = useState<string>("");
   const [currentProjectId, setCurrentProjectId] = useState<string>("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!currentProjectId && projects.length > 0) {
-      setCurrentProjectId(projects[0].id);
+    if (settings.length > 0) {
+      const globalSettings = settings.find(s => s.id === 'global');
+      if (globalSettings) {
+        if (!currentProjectId && globalSettings.currentProjectId) {
+            setCurrentProjectId(globalSettings.currentProjectId);
+        }
+        if (!currentEnvironment && globalSettings.currentEnvironment) {
+            setCurrentEnvironment(globalSettings.currentEnvironment);
+        }
+      }
     }
-  }, [projects, currentProjectId]);
+  }, [settings, currentProjectId, currentEnvironment]);
 
   useEffect(() => {
-    if (!currentEnvironment && environments.length > 0) {
+    if (!currentProjectId && projects.length > 0 && settings.length > 0) {
+      setCurrentProjectId(projects[0].id);
+    }
+  }, [projects, currentProjectId, settings]);
+
+  useEffect(() => {
+    if (!currentEnvironment && environments.length > 0 && settings.length > 0) {
       setCurrentEnvironment(environments[0]);
     }
-  }, [environments, currentEnvironment]);
+  }, [environments, currentEnvironment, settings]);
+
+  // Persist settings changes
+  useEffect(() => {
+    if (currentProjectId && currentEnvironment && settings.length > 0) {
+        const globalSettings = settings.find(s => s.id === 'global');
+        if (globalSettings && (globalSettings.currentProjectId !== currentProjectId || globalSettings.currentEnvironment !== currentEnvironment)) {
+            settingsApi.update('global', { currentProjectId, currentEnvironment });
+        }
+    }
+  }, [currentProjectId, currentEnvironment, settings, settingsApi]);
 
   const [executionState, setExecutionState] = useState<{
     suiteId: string;
@@ -97,7 +123,8 @@ function App() {
     loadingHeaders ||
     loadingBodies ||
     loadingEndpoints ||
-    loadingEnvironments;
+    loadingEnvironments ||
+    loadingSettings;
 
   if (isLoading) {
     return (
@@ -121,6 +148,11 @@ function App() {
   // We use the globally selected project for execution context
   const executionProject =
     projects.find((p) => p.id === currentProjectId) || projects[0];
+
+  const projectSuites = suites.filter(s => s.projectId === currentProjectId);
+  const projectHeaders = headers.filter(h => h.projectId === currentProjectId);
+  const projectBodies = bodies.filter(b => b.projectId === currentProjectId);
+  const projectEndpoints = endpoints.filter(e => e.projectId === currentProjectId);
 
   return (
     <div className="flex h-screen bg-gray-50 text-slate-900 font-sans">
@@ -297,7 +329,7 @@ function App() {
           {activeTab === "DASHBOARD" && (
             <Dashboard
               projects={projects}
-              suites={suites}
+              suites={projectSuites}
               environments={environments}
               currentProjectId={currentProjectId}
               onNavigate={setActiveTab}
@@ -308,11 +340,11 @@ function App() {
             <TestRunner
               projects={projects}
               projectsApi={projectsApi}
-              suites={suites}
+              suites={projectSuites}
               currentProjectId={currentProjectId}
-              headers={headers}
-              bodies={bodies}
-              endpoints={endpoints}
+              headers={projectHeaders}
+              bodies={projectBodies}
+              endpoints={projectEndpoints}
               environments={environments}
               initialEnvironment={currentEnvironment}
             />
@@ -330,21 +362,21 @@ function App() {
             <ModuleBuilder
               projects={projects}
               projectsApi={projectsApi}
-              headers={headers}
-              bodies={bodies}
-              endpoints={endpoints}
+              headers={projectHeaders}
+              bodies={projectBodies}
+              endpoints={projectEndpoints}
               currentProjectId={currentProjectId}
             />
           )}
 
           {activeTab === "TESTS" && (
             <TestBuilder
-              suites={suites}
+              suites={projectSuites}
               suitesApi={suitesApi}
               projects={projects}
-              headers={headers}
-              bodies={bodies}
-              endpoints={endpoints}
+              headers={projectHeaders}
+              bodies={projectBodies}
+              endpoints={projectEndpoints}
               onRunCase={(sId, cId) =>
                 setExecutionState({ suiteId: sId, caseId: cId })
               }
@@ -354,18 +386,27 @@ function App() {
 
           {activeTab === "ENDPOINTS" && (
             <EndpointManager
-              endpoints={endpoints}
+              endpoints={projectEndpoints}
               endpointsApi={endpointsApi}
               environments={environments}
+              currentProjectId={currentProjectId}
             />
           )}
 
           {activeTab === "HEADERS" && (
-            <HeadersManager headers={headers} headersApi={headersApi} />
+            <HeadersManager 
+              headers={projectHeaders} 
+              headersApi={headersApi} 
+              currentProjectId={currentProjectId}
+            />
           )}
 
           {activeTab === "BODIES" && (
-            <BodyManager bodies={bodies} bodiesApi={bodiesApi} />
+            <BodyManager 
+              bodies={projectBodies} 
+              bodiesApi={bodiesApi} 
+              currentProjectId={currentProjectId}
+            />
           )}
 
           {activeTab === "REPORTS" && (

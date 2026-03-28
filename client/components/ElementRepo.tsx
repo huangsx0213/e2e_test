@@ -40,8 +40,11 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({ projects, projectsApi,
       if (!activeProject) {
           setActivePageId('');
           setActiveElementId('');
+      } else if (activePageId && !activeProject.pages.find(p => p.id === activePageId)) {
+          setActivePageId('');
+          setActiveElementId('');
       }
-  }, [activeProject]);
+  }, [activeProject, activePageId]);
 
   // Filter Logic
   const filteredPages = useMemo(() => {

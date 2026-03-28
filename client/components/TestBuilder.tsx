@@ -57,8 +57,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
 
   // --- Suite Actions ---
   const addSuite = async () => {
+    if (!currentProjectId) return;
     const newSuite: TestSuite = { 
         id: `suite-${Date.now()}`, 
+        projectId: currentProjectId,
         name: 'New Test Suite', 
         description: '', 
         cases: [],

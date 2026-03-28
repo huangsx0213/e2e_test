@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, Search, FileText, Check, X } from 'lucide-react';
 import { HeaderProfile } from '../types';
 import { HelpTooltip } from './HelpTooltip';
@@ -6,9 +6,10 @@ import { HelpTooltip } from './HelpTooltip';
 interface HeadersManagerProps {
   headers: HeaderProfile[];
   headersApi: any;
+  currentProjectId: string;
 }
 
-export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
+export function HeadersManager({ headers, headersApi, currentProjectId }: HeadersManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -20,6 +21,12 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
 
   const selectedProfile = headers.find(p => p.id === selectedId);
 
+  useEffect(() => {
+    if (selectedId && !headers.find(h => h.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [headers, selectedId]);
+
   const handleSelect = (profile: HeaderProfile) => {
     setSelectedId(profile.id);
     setEditName(profile.name);
@@ -29,8 +36,10 @@ export function HeadersManager({ headers, headersApi }: HeadersManagerProps) {
   };
 
   const handleCreate = async () => {
+    if (!currentProjectId) return;
     const newProfile: HeaderProfile = {
       id: `h_${Date.now()}`,
+      projectId: currentProjectId,
       name: 'New Header Set',
       description: '',
       headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }]

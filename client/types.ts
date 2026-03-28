@@ -45,6 +45,7 @@ export type EnvironmentType = string;
 
 export interface ApiEndpoint {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -91,6 +92,12 @@ export interface TestScenario {
   suites: ScenarioSuite[];
 }
 
+export interface Settings {
+  id: string;
+  currentProjectId: string;
+  currentEnvironment: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -117,6 +124,7 @@ export interface SuiteVariable {
 
 export interface TestSuite {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   cases: TestCase[];
@@ -151,6 +159,7 @@ export interface ExecutionReport {
 
 export interface HeaderProfile {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   headers: { key: string; value: string; enabled: boolean }[];
@@ -158,6 +167,7 @@ export interface HeaderProfile {
 
 export interface BodyTemplate {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   contentType: 'application/json' | 'application/xml' | 'text/plain';

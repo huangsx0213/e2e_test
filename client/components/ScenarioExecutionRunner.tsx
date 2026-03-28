@@ -32,6 +32,7 @@ interface ScenarioExecutionRunnerProps {
   environments: string[];
   initialEnvironment: string;
   onClose: () => void;
+  reportsApi: any;
 }
 
 export const ScenarioExecutionRunner: React.FC<
@@ -46,8 +47,10 @@ export const ScenarioExecutionRunner: React.FC<
   environments,
   initialEnvironment,
   onClose,
+  reportsApi,
 }) => {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
+  const logsRef = useRef<ExecutionLog[]>([]);
   const [status, setStatus] = useState<
     "IDLE" | "RUNNING" | "COMPLETED" | "FAILED"
   >("IDLE");
@@ -60,7 +63,11 @@ export const ScenarioExecutionRunner: React.FC<
   }, [logs]);
 
   const addLog = (log: ExecutionLog) => {
-    setLogs((prev) => [...prev, log]);
+    setLogs((prev) => {
+      const newLogs = [...prev, log];
+      logsRef.current = newLogs;
+      return newLogs;
+    });
   };
 
   const interpolate = (str: string, vars: Record<string, string>) => {
@@ -318,6 +325,7 @@ export const ScenarioExecutionRunner: React.FC<
   const startExecution = async () => {
     setStatus("RUNNING");
     setLogs([]);
+    logsRef.current = [];
     setProgress(0);
 
     addLog({
@@ -402,6 +410,21 @@ export const ScenarioExecutionRunner: React.FC<
         message: `\n🏁 Scenario Execution Completed Successfully`,
       });
       setStatus("COMPLETED");
+      
+      reportsApi.create({
+        id: `report-${Date.now()}`,
+        suiteId: scenario.id,
+        suiteName: `Scenario: ${scenario.name}`,
+        startTime: Date.now(),
+        endTime: Date.now(),
+        status: 'COMPLETED',
+        passRate: 100,
+        totalCases: totalCases,
+        passedCases: totalCases,
+        failedCases: 0,
+        logs: logsRef.current,
+        environment: selectedEnv
+      });
     } catch (e) {
       addLog({
         stepId: "error",
@@ -410,6 +433,21 @@ export const ScenarioExecutionRunner: React.FC<
         message: `\n❌ Scenario Execution Failed: ${e}`,
       });
       setStatus("FAILED");
+      
+      reportsApi.create({
+        id: `report-${Date.now()}`,
+        suiteId: scenario.id,
+        suiteName: `Scenario: ${scenario.name}`,
+        startTime: Date.now(),
+        endTime: Date.now(),
+        status: 'FAILED',
+        passRate: Math.round((casesCompleted / totalCases) * 100) || 0,
+        totalCases: totalCases,
+        passedCases: casesCompleted,
+        failedCases: totalCases - casesCompleted,
+        logs: logsRef.current,
+        environment: selectedEnv
+      });
     }
   };
 

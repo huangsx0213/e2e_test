@@ -25,6 +25,15 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({ projects, projects
   const activeProject = projects.find(p => p.id === currentProjectId);
   const activeModule = activeProject?.modules.find(m => m.id === activeModuleId);
 
+  // Handle Project Selection Reset
+  React.useEffect(() => {
+      if (!activeProject) {
+          setActiveModuleId('');
+      } else if (activeModuleId && !activeProject.modules.find(m => m.id === activeModuleId)) {
+          setActiveModuleId('');
+      }
+  }, [activeProject, activeModuleId]);
+
   // Filter Logic
   const filteredModules = useMemo(() => {
     if (!activeProject) return [];
