@@ -1,8 +1,56 @@
-import Database from 'better-sqlite3';
+import fs from 'node:fs';
 import path from 'path';
 
-export const dbFile = path.join(process.cwd(), 'database.sqlite');
-export const db = new Database(dbFile);
+import Database from 'better-sqlite3';
 
-db.pragma('foreign_keys = ON');
-db.pragma('journal_mode = DELETE');
+export const dbFile = path.join(process.cwd(), 'database.sqlite');
+
+function configureDatabase(database: Database.Database): void {
+  database.pragma('foreign_keys = ON');
+  database.pragma('journal_mode = DELETE');
+}
+
+function isSqliteCorruptionError(error: unknown): error is Error & { code: string } {
+  return error instanceof Error && 'code' in error && error.code === 'SQLITE_CORRUPT';
+}
+
+function moveCorruptDatabase(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const parsed = path.parse(filePath);
+  const corruptFile = path.join(parsed.dir, `${parsed.name}.corrupt-${Date.now()}${parsed.ext}`);
+
+  fs.renameSync(filePath, corruptFile);
+
+  return corruptFile;
+}
+
+function createDatabase(): Database.Database {
+  const database = new Database(dbFile);
+
+  try {
+    configureDatabase(database);
+    return database;
+  } catch (error) {
+    database.close();
+
+    if (process.env.NODE_ENV === 'production' || !isSqliteCorruptionError(error)) {
+      throw error;
+    }
+
+    const corruptFile = moveCorruptDatabase(dbFile);
+    const recoveredDatabase = new Database(dbFile);
+
+    configureDatabase(recoveredDatabase);
+
+    if (corruptFile) {
+      console.warn(`Recovered from corrupt SQLite database. Original file moved to ${corruptFile}`);
+    }
+
+    return recoveredDatabase;
+  }
+}
+
+export const db = createDatabase();
