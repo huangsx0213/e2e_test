@@ -74,43 +74,55 @@ function App() {
 
   const [currentEnvironment, setCurrentEnvironment] = useState<string>("");
   const [currentProjectId, setCurrentProjectId] = useState<string>("");
+  const [settingsHydrated, setSettingsHydrated] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
-    if (settings.length > 0) {
-      const globalSettings = settings.find(s => s.id === 'global');
-      if (globalSettings) {
-        if (!currentProjectId && globalSettings.currentProjectId) {
-            setCurrentProjectId(globalSettings.currentProjectId);
-        }
-        if (!currentEnvironment && globalSettings.currentEnvironment) {
-            setCurrentEnvironment(globalSettings.currentEnvironment);
-        }
-      }
+    if (
+      settingsHydrated ||
+      loadingSettings ||
+      loadingProjects ||
+      loadingEnvironments
+    ) {
+      return;
     }
-  }, [settings, currentProjectId, currentEnvironment]);
 
-  useEffect(() => {
-    if (!currentProjectId && projects.length > 0 && settings.length > 0) {
-      setCurrentProjectId(projects[0].id);
-    }
-  }, [projects, currentProjectId, settings]);
+    const globalSettings = settings.find((s) => s.id === "global");
+    const savedProjectId = globalSettings?.currentProjectId;
+    const savedEnvironment = globalSettings?.currentEnvironment;
 
-  useEffect(() => {
-    if (!currentEnvironment && environments.length > 0 && settings.length > 0) {
-      setCurrentEnvironment(environments[0]);
-    }
-  }, [environments, currentEnvironment, settings]);
+    const nextProjectId =
+      savedProjectId && projects.some((project) => project.id === savedProjectId)
+        ? savedProjectId
+        : projects[0]?.id || "";
+
+    const nextEnvironment =
+      savedEnvironment && environments.includes(savedEnvironment)
+        ? savedEnvironment
+        : environments[0] || "";
+
+    setCurrentProjectId(nextProjectId);
+    setCurrentEnvironment(nextEnvironment);
+    setSettingsHydrated(true);
+  }, [
+    settingsHydrated,
+    loadingSettings,
+    loadingProjects,
+    loadingEnvironments,
+    settings,
+    projects,
+    environments,
+  ]);
 
   // Persist settings changes
   useEffect(() => {
-    if (currentProjectId && currentEnvironment && settings.length > 0) {
+    if (settingsHydrated && currentProjectId && currentEnvironment && settings.length > 0) {
         const globalSettings = settings.find(s => s.id === 'global');
         if (globalSettings && (globalSettings.currentProjectId !== currentProjectId || globalSettings.currentEnvironment !== currentEnvironment)) {
             settingsApi.update('global', { currentProjectId, currentEnvironment });
         }
     }
-  }, [currentProjectId, currentEnvironment, settings, settingsApi]);
+  }, [currentProjectId, currentEnvironment, settings, settingsApi, settingsHydrated]);
 
   const [executionState, setExecutionState] = useState<{
     suiteId: string;
