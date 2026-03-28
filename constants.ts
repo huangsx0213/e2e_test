@@ -1,5 +1,5 @@
 
-import { Project, TestSuite, ExecutionReport } from '../client/types';
+import { Project, TestSuite, ExecutionReport } from './types';
 
 export const MOCK_REPORTS: ExecutionReport[] = [
   {
@@ -281,7 +281,7 @@ export const MOCK_SUITES: TestSuite[] = [
   }
 ];
 
-import { HeaderProfile, BodyTemplate, ApiEndpoint } from '../client/types';
+import { HeaderProfile, BodyTemplate, ApiEndpoint } from './types';
 
 export const MOCK_ENDPOINTS: ApiEndpoint[] = [
   {
