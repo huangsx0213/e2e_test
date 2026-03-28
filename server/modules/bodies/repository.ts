@@ -1,8 +1,8 @@
-import type { BodyTemplate } from '../../../client/types';
-import { db } from '../../database.ts';
-import type { DbBodyDefaultValueRow, DbBodyRow } from '../../db-types.ts';
-import { nullableText, textFromDb } from '../../utils.ts';
-import { normalizeBodyTemplate } from './body.mapper.ts';
+import type { BodyTemplate } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
+import type { DbBodyDefaultValueRow, DbBodyRow } from '../../shared/db/types.ts';
+import { nullableText, textFromDb } from '../../shared/utils/index.ts';
+import { normalizeBodyTemplate } from './mapper.ts';
 
 export function saveBodyTemplate(templateInput: Partial<BodyTemplate>): BodyTemplate {
   const template = normalizeBodyTemplate(templateInput);

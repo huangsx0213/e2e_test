@@ -1,4 +1,4 @@
-import { db } from './database.ts';
+import { db } from './shared/db/client.ts';
 import { runMigrations } from './migrations/index.ts';
 import { createEnvironment } from './modules/environments/repository.ts';
 import { saveBodyTemplate } from './modules/bodies/repository.ts';

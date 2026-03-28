@@ -1,4 +1,4 @@
-import { db } from '../database.ts';
+import { db } from '../shared/db/client.ts';
 import { migration001InitialSchema } from './001_initial_schema.ts';
 import type { Migration } from './types.ts';
 

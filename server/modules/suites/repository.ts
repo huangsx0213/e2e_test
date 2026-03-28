@@ -1,14 +1,14 @@
-import type { TestCase, TestSuite } from '../../../client/types';
-import { db } from '../../database.ts';
+import type { TestCase, TestSuite } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
 import type {
   DbBaseSuiteRow,
   DbCaseRow,
   DbStepRow,
   DbSuiteVariableRow,
-} from '../../db-types.ts';
-import { nullableText, textFromDb } from '../../utils.ts';
-import { deserializeStep } from '../common/step.mapper.ts';
-import { normalizeSuite } from './suite.mapper.ts';
+} from '../../shared/db/types.ts';
+import { nullableText, textFromDb } from '../../shared/utils/index.ts';
+import { deserializeStep } from '../common/mapper.ts';
+import { normalizeSuite } from './mapper.ts';
 
 export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
   const suite = normalizeSuite(suiteInput);

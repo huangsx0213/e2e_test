@@ -1,8 +1,8 @@
-import type { ExecutionLog, ExecutionReport } from '../../../client/types';
-import { db } from '../../database.ts';
-import type { DbReportLogRow, DbReportRow } from '../../db-types.ts';
-import { nullableText, textFromDb } from '../../utils.ts';
-import { normalizeExecutionReport } from './report.mapper.ts';
+import type { ExecutionLog, ExecutionReport } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
+import type { DbReportLogRow, DbReportRow } from '../../shared/db/types.ts';
+import { nullableText, textFromDb } from '../../shared/utils/index.ts';
+import { normalizeExecutionReport } from './mapper.ts';
 
 export function saveExecutionReport(reportInput: Partial<ExecutionReport>): ExecutionReport {
   const report = normalizeExecutionReport(reportInput);

@@ -1,5 +1,5 @@
-import type { Page, Project, TestModule, TestScenario, UIElement } from '../../../client/types';
-import { db } from '../../database.ts';
+import type { Page, Project, TestModule, TestScenario, UIElement } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
 import type {
   DbBaseProjectRow,
   DbElementRow,
@@ -9,10 +9,10 @@ import type {
   DbScenarioRow,
   DbScenarioSuiteRow,
   DbStepRow,
-} from '../../db-types.ts';
-import { nullableText } from '../../utils.ts';
-import { deserializeStep } from '../common/step.mapper.ts';
-import { normalizeProject } from './project.mapper.ts';
+} from '../../shared/db/types.ts';
+import { nullableText } from '../../shared/utils/index.ts';
+import { deserializeStep } from '../common/mapper.ts';
+import { normalizeProject } from './mapper.ts';
 
 export function saveProject(projectInput: Partial<Project>): Project {
   const project = normalizeProject(projectInput);

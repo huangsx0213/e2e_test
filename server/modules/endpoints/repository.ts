@@ -1,12 +1,12 @@
-import type { ApiEndpoint } from '../../../client/types';
-import { db } from '../../database.ts';
+import type { ApiEndpoint } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
 import type {
   DbEndpointBaseUrlRow,
   DbEndpointParameterRow,
   DbEndpointRow,
-} from '../../db-types.ts';
-import { nullableText, textFromDb } from '../../utils.ts';
-import { normalizeApiEndpoint } from './endpoint.mapper.ts';
+} from '../../shared/db/types.ts';
+import { nullableText, textFromDb } from '../../shared/utils/index.ts';
+import { normalizeApiEndpoint } from './mapper.ts';
 
 export function saveApiEndpoint(endpointInput: Partial<ApiEndpoint>): ApiEndpoint {
   const endpoint = normalizeApiEndpoint(endpointInput);

@@ -1,5 +1,5 @@
-import { db } from '../../database.ts';
-import { asText } from '../../utils.ts';
+import { db } from '../../shared/db/client.ts';
+import { asText } from '../../shared/utils/index.ts';
 
 function normalizeEnvironmentPositions(): void {
   const rows = db.prepare(`

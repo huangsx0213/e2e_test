@@ -1,7 +1,7 @@
-import type { Settings } from '../../../client/types';
-import { db } from '../../database.ts';
-import type { DbSettingsRow } from '../../db-types.ts';
-import { normalizeSettings } from './settings.mapper.ts';
+import type { Settings } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
+import type { DbSettingsRow } from '../../shared/db/types.ts';
+import { normalizeSettings } from './mapper.ts';
 
 export function saveSettings(settingsInput: Partial<Settings>): Settings {
   const settings = normalizeSettings(settingsInput);

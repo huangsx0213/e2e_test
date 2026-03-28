@@ -1,8 +1,8 @@
-import type { HeaderProfile } from '../../../client/types';
-import { db } from '../../database.ts';
-import type { DbHeaderItemRow, DbHeaderRow } from '../../db-types.ts';
-import { nullableText, textFromDb } from '../../utils.ts';
-import { normalizeHeaderProfile } from './header.mapper.ts';
+import type { HeaderProfile } from '../../shared/contracts/index.ts';
+import { db } from '../../shared/db/client.ts';
+import type { DbHeaderItemRow, DbHeaderRow } from '../../shared/db/types.ts';
+import { nullableText, textFromDb } from '../../shared/utils/index.ts';
+import { normalizeHeaderProfile } from './mapper.ts';
 
 export function saveHeaderProfile(profileInput: Partial<HeaderProfile>): HeaderProfile {
   const profile = normalizeHeaderProfile(profileInput);

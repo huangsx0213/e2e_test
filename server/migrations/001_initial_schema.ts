@@ -1,4 +1,4 @@
-import { db } from '../database.ts';
+import { db } from '../shared/db/client.ts';
 import type { Migration } from './types.ts';
 
 export const migration001InitialSchema: Migration = {
