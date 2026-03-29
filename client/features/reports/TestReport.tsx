@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useCrud } from '@/shared/hooks/useCrud';
 import { api } from '@/shared/services/api';
-import { ExecutionReport } from '@/shared/types';
+import { ExecutionReport, TestSuite } from '@/shared/types';
 import { 
   CheckCircle2, XCircle, Clock, Calendar, Globe, Terminal, 
   Loader2, BarChart3, Search, ListChecks, AlertCircle,
@@ -9,7 +9,12 @@ import {
 } from 'lucide-react';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 
-export const TestReport: React.FC = () => {
+interface TestReportProps {
+  currentProjectId: string;
+  suites: TestSuite[];
+}
+
+export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites }) => {
   const [reports, reportsApi, loading] = useCrud<ExecutionReport>(api.reports);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,9 +25,13 @@ export const TestReport: React.FC = () => {
 
   const filteredReports = useMemo(() => {
     return [...reports]
+      .filter(r => {
+        const suite = suites.find(s => s.id === r.suiteId);
+        return !suite || suite.projectId === currentProjectId;
+      })
       .filter(r => (r.suiteName || r.suiteId).toLowerCase().includes(searchQuery.toLowerCase()))
       .sort((a, b) => b.startTime - a.startTime);
-  }, [reports, searchQuery]);
+  }, [reports, searchQuery, currentProjectId, suites]);
 
   const filteredLogs = useMemo(() => {
     if (!selectedReport) return [];

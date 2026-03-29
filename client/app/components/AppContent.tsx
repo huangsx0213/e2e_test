@@ -24,6 +24,7 @@ interface AppContentProps {
   projects: Project[];
   projectsApi: CrudActions<Project>;
   suites: TestSuite[];
+  allSuites: TestSuite[];
   suitesApi: CrudActions<TestSuite>;
   headers: HeaderProfile[];
   headersApi: CrudActions<HeaderProfile>;
@@ -46,6 +47,7 @@ export function AppContent({
   projects,
   projectsApi,
   suites,
+  allSuites,
   suitesApi,
   headers,
   headersApi,
@@ -145,7 +147,7 @@ export function AppContent({
         />
       );
     case 'REPORTS':
-      return <TestReport />;
+      return <TestReport currentProjectId={currentProjectId} suites={allSuites} />;
     case 'SETTINGS':
       return (
         <Settings

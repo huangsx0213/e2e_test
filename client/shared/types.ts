@@ -1,1 +1,1 @@
-export * from '../../shared/contracts/index.ts';
+export * from "../../shared/contracts/index.ts";

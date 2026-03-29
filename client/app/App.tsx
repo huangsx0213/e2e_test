@@ -113,6 +113,7 @@ function App() {
             projects={projects}
             projectsApi={projectsApi}
             suites={scopedData.suites}
+            allSuites={suites}
             suitesApi={suitesApi}
             headers={scopedData.headers}
             headersApi={headersApi}

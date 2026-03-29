@@ -1,151 +1,190 @@
+export type SelectorType = string;
+export type ActionType = string;
+export type EnvironmentType = string;
+
 export interface UIElement {
   id: string;
+  pageId?: string;
   name: string;
-  selectorType: string;
+  selectorType: SelectorType;
   value: string;
   description?: string;
+  position?: number;
 }
 
 export interface Page {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
   elements: UIElement[];
+  position?: number;
 }
 
 export interface ModuleParameter {
   id: string;
+  moduleId?: string;
   name: string;
   defaultValue?: string;
   description?: string;
+  position?: number;
 }
 
 export interface TestStep {
   id: string;
-  action: string;
+  moduleId?: string;
+  suiteId?: string;
+  caseId?: string;
+  stepGroup?: string;
+  action: ActionType;
   target?: string;
   data?: string;
   description?: string;
   endpointId?: string;
   headerProfileId?: string;
   bodyTemplateId?: string;
+  position?: number;
 }
 
 export interface TestModule {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
-  params: ModuleParameter[];
-  steps: TestStep[];
+  params?: ModuleParameter[];
+  steps?: TestStep[];
+  position?: number;
 }
 
 export interface ScenarioSuite {
   id: string;
+  scenarioId?: string;
   suiteId: string;
   variableOverrides?: Record<string, string>;
+  position?: number;
 }
 
 export interface TestScenario {
   id: string;
+  projectId?: string;
   name: string;
   description?: string;
-  suites: ScenarioSuite[];
+  suites?: ScenarioSuite[];
+  position?: number;
 }
 
 export interface Project {
   id: string;
   name: string;
   description?: string;
-  pages: Page[];
-  modules: TestModule[];
-  scenarios: TestScenario[];
+  pages?: Page[];
+  modules?: TestModule[];
+  scenarios?: TestScenario[];
 }
 
-export interface TestVariable {
+export interface SuiteVariable {
   id: string;
+  suiteId?: string;
   key: string;
   value: string;
+  position?: number;
 }
+export type TestVariable = SuiteVariable;
 
 export interface TestCase {
   id: string;
+  suiteId?: string;
   name: string;
   description?: string;
-  steps: TestStep[];
+  steps?: TestStep[];
+  setupSteps?: TestStep[];
+  teardownSteps?: TestStep[];
+  position?: number;
 }
 
 export interface TestSuite {
   id: string;
-  projectId: string;
+  projectId?: string;
   name: string;
   description?: string;
-  variables: TestVariable[];
-  dataRows: Record<string, string>[];
-  setupSteps: TestStep[];
-  cases: TestCase[];
-  teardownSteps: TestStep[];
+  variables?: SuiteVariable[];
+  dataRows?: Record<string, string>[];
+  setupSteps?: TestStep[];
+  cases?: TestCase[];
+  teardownSteps?: TestStep[];
 }
 
 export interface HeaderItem {
+  id?: string | number;
+  headerId?: string;
   key: string;
   value: string;
   enabled: boolean;
+  position?: number;
 }
 
 export interface HeaderProfile {
   id: string;
-  projectId: string;
+  projectId?: string;
   name: string;
   description?: string;
-  headers: HeaderItem[];
+  headers?: HeaderItem[];
 }
 
 export interface BodyTemplate {
   id: string;
-  projectId: string;
+  projectId?: string;
   name: string;
   description?: string;
-  contentType: string;
-  content: string;
-  defaultValues: Record<string, string>;
+  contentType?: string;
+  content?: string;
+  defaultValues?: Record<string, string>;
 }
 
 export interface ApiParameter {
+  id?: string | number;
+  endpointId?: string;
   key: string;
   value: string;
   enabled: boolean;
+  position?: number;
 }
 
 export interface ApiEndpoint {
   id: string;
-  projectId: string;
+  projectId?: string;
   name: string;
   description?: string;
-  method: string;
-  baseUrls: Record<string, string>;
-  parameters: ApiParameter[];
+  method?: string;
+  baseUrls?: Record<string, string>;
+  parameters?: ApiParameter[];
 }
 
-export interface LogEntry {
+export interface ExecutionLog {
+  id?: string | number;
+  reportId?: string;
   stepId: string;
   timestamp: number;
   status: string;
   message: string;
+  screenshot?: string;
+  position?: number;
 }
+export type LogEntry = ExecutionLog;
 
 export interface ExecutionReport {
   id: string;
   suiteId: string;
-  suiteName: string;
-  environment: string;
+  suiteName?: string;
+  environment?: string;
   startTime: number;
-  endTime: number;
+  endTime?: number;
   status: string;
   passRate: number;
-  totalCases: number;
-  passedCases: number;
-  failedCases: number;
-  logs: LogEntry[];
+  totalCases?: number;
+  passedCases?: number;
+  failedCases?: number;
+  logs: ExecutionLog[];
 }
 
 export interface Settings {
