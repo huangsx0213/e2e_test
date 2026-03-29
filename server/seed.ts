@@ -91,9 +91,9 @@ function seedProjects(): void {
         ],
         steps: [
           { id: 'step-web-open-login', action: 'OPEN', target: 'https://shop.qa.local/login', data: '', description: 'Open login page' },
-          { id: 'step-web-type-email', action: 'TYPE', target: 'Login Page/Email Input', data: '{{USER_EMAIL}}' },
-          { id: 'step-web-type-password', action: 'TYPE', target: 'Login Page/Password Input', data: '{{USER_PASSWORD}}' },
-          { id: 'step-web-submit-login', action: 'CLICK', target: 'Login Page/Login Button', data: '' },
+          { id: 'step-web-type-email', action: 'TYPE', target: 'Login Page.Email Input', data: '{{USER_EMAIL}}' },
+          { id: 'step-web-type-password', action: 'TYPE', target: 'Login Page.Password Input', data: '{{USER_PASSWORD}}' },
+          { id: 'step-web-submit-login', action: 'CLICK', target: 'Login Page.Login Button', data: '' },
         ],
       },
       {
@@ -104,9 +104,9 @@ function seedProjects(): void {
           { id: 'param-web-product', name: 'PRODUCT_NAME', defaultValue: 'wireless mouse' },
         ],
         steps: [
-          { id: 'step-web-search-product', action: 'TYPE', target: 'Catalog Page/Search Input', data: '{{PRODUCT_NAME}}' },
-          { id: 'step-web-add-product', action: 'CLICK', target: 'Catalog Page/Add To Cart Button', data: '' },
-          { id: 'step-web-assert-mini-cart', action: 'ASSERT_TEXT', target: 'Catalog Page/Mini Cart Badge', data: '1' },
+          { id: 'step-web-search-product', action: 'TYPE', target: 'Catalog Page.Search Input', data: '{{PRODUCT_NAME}}' },
+          { id: 'step-web-add-product', action: 'CLICK', target: 'Catalog Page.Add To Cart Button', data: '' },
+          { id: 'step-web-assert-mini-cart', action: 'ASSERT_TEXT', target: 'Catalog Page.Mini Cart Badge', data: '1' },
         ],
       },
     ],
@@ -177,9 +177,9 @@ function seedProjects(): void {
           { id: 'param-admin-user', name: 'SEARCH_TERM', defaultValue: 'qa.user@example.com' },
         ],
         steps: [
-          { id: 'step-admin-nav-users', action: 'CLICK', target: 'Dashboard/Users Nav Link', data: '' },
-          { id: 'step-admin-search-user', action: 'TYPE', target: 'Users Page/User Search', data: '{{SEARCH_TERM}}' },
-          { id: 'step-admin-assert-row', action: 'ASSERT_VISIBLE', target: 'Users Page/First User Row', data: '' },
+          { id: 'step-admin-nav-users', action: 'CLICK', target: 'Dashboard.Users Nav Link', data: '' },
+          { id: 'step-admin-search-user', action: 'TYPE', target: 'Users Page.User Search', data: '{{SEARCH_TERM}}' },
+          { id: 'step-admin-assert-row', action: 'ASSERT_VISIBLE', target: 'Users Page.First User Row', data: '' },
         ],
       },
       {
@@ -187,8 +187,8 @@ function seedProjects(): void {
         name: 'Open Orders View',
         description: 'Navigates to orders and validates first row.',
         steps: [
-          { id: 'step-admin-nav-orders', action: 'CLICK', target: 'Dashboard/Orders Nav Link', data: '' },
-          { id: 'step-admin-assert-order-row', action: 'ASSERT_VISIBLE', target: 'Orders Page/First Order Row', data: '' },
+          { id: 'step-admin-nav-orders', action: 'CLICK', target: 'Dashboard.Orders Nav Link', data: '' },
+          { id: 'step-admin-assert-order-row', action: 'ASSERT_VISIBLE', target: 'Orders Page.First Order Row', data: '' },
         ],
       },
     ],
@@ -238,7 +238,7 @@ function seedSuites(): void {
         description: 'Verifies login success path.',
         steps: [
           { id: 'case-web-login-module', action: 'RUN_MODULE', target: 'mod-web-login', data: '{"USER_EMAIL":"{{USER_EMAIL}}","USER_PASSWORD":"{{USER_PASSWORD}}"}' },
-          { id: 'case-web-login-assert', action: 'ASSERT_TEXT', target: 'Catalog Page/First Product Card', data: 'Featured Product' },
+          { id: 'case-web-login-assert', action: 'ASSERT_TEXT', target: 'Catalog Page.First Product Card', data: 'Featured Product' },
         ],
       },
       {
@@ -246,8 +246,8 @@ function seedSuites(): void {
         name: 'Customer adds item to cart',
         description: 'Checks add-to-cart button path.',
         steps: [
-          { id: 'case-web-search', action: 'TYPE', target: 'Catalog Page/Search Input', data: 'wireless mouse' },
-          { id: 'case-web-add-cart', action: 'CLICK', target: 'Catalog Page/Add To Cart Button', data: '' },
+          { id: 'case-web-search', action: 'TYPE', target: 'Catalog Page.Search Input', data: 'wireless mouse' },
+          { id: 'case-web-add-cart', action: 'CLICK', target: 'Catalog Page.Add To Cart Button', data: '' },
           { id: 'case-web-wait', action: 'WAIT', target: '', data: '500' },
         ],
       },
@@ -288,9 +288,9 @@ function seedSuites(): void {
         description: 'Submits checkout form and verifies success banner.',
         steps: [
           { id: 'case-web-open-checkout', action: 'OPEN', target: '{{BASE_URL}}/checkout', data: '' },
-          { id: 'case-web-fill-address', action: 'TYPE', target: 'Checkout Page/Shipping Address', data: '{{SHIPPING_ADDRESS}}' },
-          { id: 'case-web-place-order', action: 'CLICK', target: 'Checkout Page/Place Order Button', data: '' },
-          { id: 'case-web-order-success', action: 'ASSERT_VISIBLE', target: 'Checkout Page/Order Success Banner', data: '' },
+          { id: 'case-web-fill-address', action: 'TYPE', target: 'Checkout Page.Shipping Address', data: '{{SHIPPING_ADDRESS}}' },
+          { id: 'case-web-place-order', action: 'CLICK', target: 'Checkout Page.Place Order Button', data: '' },
+          { id: 'case-web-order-success', action: 'ASSERT_VISIBLE', target: 'Checkout Page.Order Success Banner', data: '' },
         ],
       },
     ],
@@ -348,7 +348,7 @@ function seedSuites(): void {
         description: 'Finds a user from the grid.',
         steps: [
           { id: 'case-admin-run-module', action: 'RUN_MODULE', target: 'mod-admin-search-user', data: '{"SEARCH_TERM":"{{SEARCH_TERM}}"}' },
-          { id: 'case-admin-status', action: 'ASSERT_VISIBLE', target: 'Users Page/Status Chip', data: '' },
+          { id: 'case-admin-status', action: 'ASSERT_VISIBLE', target: 'Users Page.Status Chip', data: '' },
         ],
       },
       {
@@ -382,7 +382,7 @@ function seedSuites(): void {
         description: 'Uses reusable navigation module.',
         steps: [
           { id: 'case-admin-run-orders-module', action: 'RUN_MODULE', target: 'mod-admin-open-orders', data: '{}' },
-          { id: 'case-admin-check-order-status', action: 'ASSERT_TEXT', target: 'Orders Page/Order Status Badge', data: '{{ORDER_STATUS}}' },
+          { id: 'case-admin-check-order-status', action: 'ASSERT_TEXT', target: 'Orders Page.Order Status Badge', data: '{{ORDER_STATUS}}' },
         ],
       },
     ],
