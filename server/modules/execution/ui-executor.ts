@@ -18,8 +18,10 @@ export class UIExecutor {
     if (!this.browser) {
       this.browser = await chromium.launch({
         headless: options.headless,
+        args: ['--start-maximized'],
       });
       this.context = await this.browser.newContext({
+        viewport: null, // Critical: let the page expand to the max window size
         recordVideo: { dir: 'videos/' },
       });
       this.page = await this.context.newPage();

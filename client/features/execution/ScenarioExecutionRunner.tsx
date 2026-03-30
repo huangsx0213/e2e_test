@@ -196,7 +196,7 @@ export const ScenarioExecutionRunner: React.FC<
             </div>
           </div>
           <div className="flex items-center gap-6">
-            {status === "IDLE" && (
+            {status !== "RUNNING" && (
               <div className="flex items-center gap-2 mr-4">
                 <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
                   Target Env:
@@ -220,9 +220,10 @@ export const ScenarioExecutionRunner: React.FC<
                 </div>
                 <button
                   onClick={startExecution}
-                  className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all"
+                  className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
                 >
-                  Start Run
+                  <PlayCircle size={14} />
+                  {status === "IDLE" ? "Start Run" : "Re-run"}
                 </button>
               </div>
             )}

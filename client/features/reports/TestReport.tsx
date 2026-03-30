@@ -69,7 +69,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
   }
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-slate-50">
+    <div className="h-full w-full flex overflow-hidden bg-slate-50">
       {/* Sidebar: Report List */}
       <div className="w-80 border-r border-slate-200 flex flex-col bg-white shrink-0 shadow-sm z-10">
         <div className="p-4 border-b border-slate-200">
@@ -153,9 +153,9 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
       </div>
 
       {/* Main Content: Report Details */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
+      <div className="flex-1 overflow-y-auto bg-slate-50/50">
         {selectedReport ? (
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <div>
             {/* Report Header */}
             <div className="p-8 bg-white border-b border-slate-200 shrink-0">
               <div className="flex items-start justify-between mb-8">
@@ -237,7 +237,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
             </div>
 
             {/* Execution Logs */}
-            <div className="flex-1 overflow-hidden flex flex-col bg-[#0f172a] m-6 rounded-xl shadow-xl border border-slate-800">
+            <div className="bg-[#0f172a] m-6 rounded-xl shadow-xl border border-slate-800">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900 shrink-0">
                 <div className="flex items-center gap-3">
                   <Terminal size={18} className="text-blue-400" />
@@ -272,7 +272,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
                 </div>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-5 font-mono text-[13px] space-y-1.5">
+              <div className="p-5 font-mono text-[13px] space-y-1.5">
                 {filteredLogs.map((log, idx) => (
                   <div key={idx} className="flex items-start gap-4 hover:bg-slate-800/50 p-1.5 rounded transition-colors group">
                     <span className="text-slate-500 shrink-0 select-none w-24 pt-0.5">
