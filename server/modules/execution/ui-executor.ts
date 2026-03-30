@@ -126,6 +126,18 @@ export class UIExecutor {
       return this.page!.locator(resolvedSelector);
     };
 
+    // Helper: Safely get the best single locator, preferring a visible one to avoid ghost elements and strict mode violations.
+    const getSmartLocator = async () => {
+      let base = getLocator();
+      if (await base.count() > 1) {
+        const visibleFilter = base.filter({ visible: true });
+        if (await visibleFilter.count() > 0) {
+          base = visibleFilter;
+        }
+      }
+      return base.first();
+    };
+
     // Execute the action
     switch (step.action) {
       case 'OPEN':
@@ -142,32 +154,60 @@ export class UIExecutor {
         }
         break;
 
-      case 'CLICK':
+      case 'CLICK': {
+        const locator = await getSmartLocator();
         try {
-          await getLocator().click({ timeout: 10000, force: true });
+          await locator.click({ timeout: 10000, force: true });
         } catch (e: any) {
-          // Playwright force true still requires element bounding box. Fallback for strict anti-bot layouts.
-          await getLocator().evaluate((node: any) => node.click());
+          await locator.evaluate((node: any) => node.click());
         }
         break;
+      }
 
-      case 'TYPE':
+      case 'TYPE': {
         if (data === undefined) throw new Error('Data is required for TYPE step');
+        const locator = await getSmartLocator();
         try {
-          await getLocator().fill(data, { timeout: 10000, force: true });
+          await locator.fill(data, { timeout: 10000, force: true });
         } catch (e: any) {
-          // Playwright fill might still reject invisible elements; directly assign and bubble events
-          await getLocator().evaluate((node: any, val: string) => {
+          await locator.evaluate((node: any, val: string) => {
             node.value = val;
             node.dispatchEvent(new Event('input', { bubbles: true }));
             node.dispatchEvent(new Event('change', { bubbles: true }));
           }, data);
         }
         break;
+      }
 
       case 'HOVER':
-        await getLocator().hover({ timeout: 10000, force: true });
+        await (await getSmartLocator()).hover({ timeout: 10000, force: true });
         break;
+
+      case 'HIGHLIGHT': {
+        const locator = await getSmartLocator();
+
+        await locator.evaluate(async (node: HTMLElement) => {
+          if (node.scrollIntoView) {
+            node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          await new Promise(r => setTimeout(r, 100));
+
+          // The authoritative Selenium/Playwright element highlighting method
+          const originalBorder = node.style.border;
+          const originalBackground = node.style.backgroundColor;
+
+          for (let i = 0; i < 4; i++) {
+            node.style.border = '3px solid red';
+            node.style.backgroundColor = 'yellow';
+            await new Promise(r => setTimeout(r, 250));
+            
+            node.style.border = originalBorder;
+            node.style.backgroundColor = originalBackground;
+            await new Promise(r => setTimeout(r, 250));
+          }
+        });
+        break;
+      }
 
       case 'SCROLL_TO':
         await getLocator().scrollIntoViewIfNeeded({ timeout: 10000 });
@@ -206,32 +246,32 @@ export class UIExecutor {
       case 'ASSERT_TEXT':
         if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
         {
-           const el = getLocator().first();
-           const text = await el.textContent({ timeout: 10000 });
-           if (!text || !text.includes(data)) {
-             throw new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
-           }
+          const el = getLocator().first();
+          const text = await el.textContent({ timeout: 10000 });
+          if (!text || !text.includes(data)) {
+            throw new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
+          }
         }
         break;
 
       case 'ASSERT_VALUE':
         if (data === undefined) throw new Error('Data is required for ASSERT_VALUE step');
         {
-           const el = getLocator().first();
-           const val = await el.inputValue({ timeout: 10000 });
-           if (val !== data) {
-             throw new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
-           }
+          const el = getLocator().first();
+          const val = await el.inputValue({ timeout: 10000 });
+          if (val !== data) {
+            throw new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
+          }
         }
         break;
 
       case 'EXTRACT_VAR':
         if (!data) throw new Error('Data (variable key) is required for EXTRACT_VAR step');
         {
-           const el = getLocator().first();
-           const text = await el.textContent({ timeout: 10000 });
-           extractedValue = text?.trim() || '';
-           executionContext.setRuntimeVar(data, extractedValue);
+          const el = getLocator().first();
+          const text = await el.textContent({ timeout: 10000 });
+          extractedValue = text?.trim() || '';
+          executionContext.setRuntimeVar(data, extractedValue);
         }
         break;
 
