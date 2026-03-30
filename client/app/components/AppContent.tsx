@@ -40,6 +40,8 @@ interface AppContentProps {
   setCurrentProjectId: Dispatch<SetStateAction<string>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   setExecutionState: Dispatch<SetStateAction<ExecutionState | null>>;
+  settings: import('@/shared/types').Settings[];
+  settingsApi: CrudActions<import('@/shared/types').Settings>;
 }
 
 export function AppContent({
@@ -63,6 +65,8 @@ export function AppContent({
   setCurrentProjectId,
   setActiveTab,
   setExecutionState,
+  settings,
+  settingsApi,
 }: AppContentProps) {
   switch (activeTab) {
     case 'DASHBOARD':
@@ -159,6 +163,8 @@ export function AppContent({
           projectsApi={projectsApi}
           currentProjectId={currentProjectId}
           setCurrentProjectId={setCurrentProjectId}
+          settings={settings}
+          settingsApi={settingsApi}
         />
       );
     default:

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Save, Settings as SettingsIcon, Globe, FolderGit2 } from 'lucide-react';
 import { CrudActions, EnvironmentActions } from '@/shared/hooks/useCrud';
-import { Project } from '@/shared/types';
+import { Project, Settings as SettingsType } from '@/shared/types';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 
 interface SettingsProps {
@@ -13,6 +13,8 @@ interface SettingsProps {
   projectsApi: CrudActions<Project>;
   currentProjectId: string;
   setCurrentProjectId: React.Dispatch<React.SetStateAction<string>>;
+  settings: SettingsType[];
+  settingsApi: CrudActions<SettingsType>;
 }
 
 export const Settings: React.FC<SettingsProps> = ({ 
@@ -23,7 +25,9 @@ export const Settings: React.FC<SettingsProps> = ({
   projects,
   projectsApi,
   currentProjectId,
-  setCurrentProjectId
+  setCurrentProjectId,
+  settings,
+  settingsApi
 }) => {
   const [newEnvName, setNewEnvName] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
@@ -248,6 +252,48 @@ export const Settings: React.FC<SettingsProps> = ({
                 </div>
                 <div className="p-6 space-y-6">
                     <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Playwright Headless Mode</label>
+                        <div className="flex items-center gap-3">
+                            <button
+                                role="switch"
+                                aria-checked={(() => {
+                                    const currentSettings = settings.find(s => s.currentProjectId === currentProjectId) || settings[0];
+                                    return currentSettings ? currentSettings.headlessMode !== false : true;
+                                })()}
+                                onClick={() => {
+                                    const currentSettings = settings.find(s => s.currentProjectId === currentProjectId) || settings[0];
+                                    if (currentSettings) {
+                                        const isHeadless = currentSettings.headlessMode !== false;
+                                        settingsApi.update(currentSettings.id, { ...currentSettings, headlessMode: !isHeadless });
+                                    }
+                                }}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${(() => {
+                                    const currentSettings = settings.find(s => s.currentProjectId === currentProjectId) || settings[0];
+                                    const isHeadless = currentSettings ? currentSettings.headlessMode !== false : true;
+                                    return isHeadless ? 'bg-blue-600' : 'bg-slate-200';
+                                })()}`}
+                            >
+                                <span className="sr-only">Toggle Headless Mode</span>
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(() => {
+                                        const currentSettings = settings.find(s => s.currentProjectId === currentProjectId) || settings[0];
+                                        const isHeadless = currentSettings ? currentSettings.headlessMode !== false : true;
+                                        return isHeadless ? 'translate-x-6' : 'translate-x-1';
+                                    })()}`}
+                                />
+                            </button>
+                            <span className="text-sm text-slate-600">
+                                {(() => {
+                                    const currentSettings = settings.find(s => s.currentProjectId === currentProjectId) || settings[0];
+                                    const isHeadless = currentSettings ? currentSettings.headlessMode !== false : true;
+                                    return isHeadless ? 'Runs tests invisibly (Headless)' : 'Opens browser visually (Headed)';
+                                })()}
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">Turning this off allows you to see the browser interacting with the UI in real-time, helpful for debugging UI execution.</p>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-6">
                         <label className="block text-sm font-medium text-slate-700 mb-1">Google Gemini API Key</label>
                         <div className="flex gap-2">
                             <input 
@@ -267,4 +313,3 @@ export const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 };
-

@@ -43,6 +43,7 @@ export interface TestStep {
   endpointId?: string;
   headerProfileId?: string;
   bodyTemplateId?: string;
+  screenshot?: boolean;
   position?: number;
 }
 
@@ -191,4 +192,40 @@ export interface Settings {
   id: string;
   currentProjectId: string;
   currentEnvironment: string;
+  headlessMode?: boolean;
+}
+
+// --- Execution Engine Types ---
+
+export type ExecutionRunType = 'case' | 'suite' | 'scenario';
+export type ExecutionRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED';
+
+export interface ExecutionRequest {
+  type: ExecutionRunType;
+  projectId: string;
+  environment: string;
+  suiteId?: string;
+  caseId?: string;
+  scenarioId?: string;
+}
+
+export interface ExecutionLogEvent {
+  stepId: string;
+  status: 'RUNNING' | 'PASS' | 'FAIL' | 'SKIP' | 'INFO';
+  message: string;
+  timestamp: number;
+  screenshot?: string;
+  details?: {
+    httpStatus?: number;
+    responseBody?: string;
+    responseHeaders?: Record<string, string>;
+    durationMs?: number;
+    extractedValue?: string;
+  };
+}
+
+export interface ExecutionProgressEvent {
+  completed: number;
+  total: number;
+  percent: number;
 }

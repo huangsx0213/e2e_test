@@ -70,6 +70,7 @@ export type DbStepRow = {
   header_profile_id: string | null;
   body_template_id: string | null;
   endpoint_id: string | null;
+  screenshot: number | null;
 };
 
 export type DbHeaderRow = {
@@ -144,4 +145,5 @@ export type DbSettingsRow = {
   id: string;
   current_project_id: string;
   current_environment: string;
+  headless_mode: number;
 };

@@ -1,9 +1,13 @@
 import { db } from '../shared/db/client.ts';
 import { migration001InitialSchema } from './001_initial_schema.ts';
+import { migration002ExecutionRuns } from './002_execution_runs.ts';
+import { migration003UiExecution } from './003_ui_execution.ts';
 import type { Migration } from './types.ts';
 
 const migrations: Migration[] = [
   migration001InitialSchema,
+  migration002ExecutionRuns,
+  migration003UiExecution,
 ];
 
 function appliedMigrationIds(): Set<string> {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TestStep, Project, ActionType, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from '@/shared/types';
-import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus, Copy } from 'lucide-react';
+import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus, Copy, Camera } from 'lucide-react';
 
 interface StepListProps {
   title?: string;
@@ -89,12 +89,12 @@ export const StepList: React.FC<StepListProps> = ({
          let dataObj: Record<string, string> = {};
          try { dataObj = JSON.parse(step.data || '{}'); } catch (e) {}
          const currentVal = dataObj[paramName] || '';
-         const newVal = `${currentVal}\${${variableKey}}`;
+         const newVal = `${currentVal}{{${variableKey}}}`;
          dataObj[paramName] = newVal;
          onUpdateStep(stepId, { data: JSON.stringify(dataObj) });
     } else {
         const currentValue = (field === 'target' ? step.target : step.data) || '';
-        const newValue = `${currentValue}\${${variableKey}}`;
+        const newValue = `${currentValue}{{${variableKey}}}`;
         onUpdateStep(stepId, { [field]: newValue });
     }
     setVariableMenuOpen(null);
@@ -319,12 +319,13 @@ export const StepList: React.FC<StepListProps> = ({
                        </select>
                    ) : (
                        <div className="relative flex items-center">
-                           <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400"
-                               value={step.target}
-                               onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
-                               placeholder={step.action === 'OPEN' ? 'URL (e.g., https://example.com)' : step.action === 'WAIT' ? 'Wait time in ms (e.g., 1000)' : step.action === 'EVALUATE_JS' ? 'JavaScript expression' : 'PageName.ElementName or Selector'}
-                           />
+                            <input 
+                                className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                value={step.target}
+                                onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
+                                placeholder={['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action) ? 'Not required' : 'PageName.ElementName or Selector'}
+                                disabled={['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action)}
+                            />
                            <div className="absolute right-1 flex items-center gap-0.5">
                                {!['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action) && (
                                    <button 
@@ -711,7 +712,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
                                                                                    const currentVal = currentValues[varName] || '';
-                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}{{${v.key}}}` };
                                                                                    onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                    setVariableMenuOpen(null);
                                                                                }}
@@ -788,7 +789,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
                                                                                    const currentVal = currentValues[varName] || '';
-                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}{{${v.key}}}` };
                                                                                    onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                    setVariableMenuOpen(null);
                                                                                }}
@@ -863,7 +864,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                onClick={(e) => {
                                                                                    e.stopPropagation();
                                                                                    const currentVal = currentValues[varName] || '';
-                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}\${${v.key}}` };
+                                                                                   const newData = { ...currentValues, [varName]: `${currentVal}{{${v.key}}}` };
                                                                                    onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                    setVariableMenuOpen(null);
                                                                                }}
@@ -919,13 +920,20 @@ export const StepList: React.FC<StepListProps> = ({
                    ) : (
                        <div className="relative">
                            <input 
-                               className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                               value={step.data}
-                               onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
-                               placeholder={step.action === 'TYPE' ? 'Text to type...' : step.action === 'ASSERT_TEXT' ? 'Expected text...' : ['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action) ? 'Not required' : 'Value / Data'}
-                               disabled={['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action)}
-                           />
-                           {!['OPEN', 'CLICK', 'WAIT', 'ASSERT_VISIBLE'].includes(step.action) && (
+                                className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                value={step.data}
+                                onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
+                                placeholder={
+                                    step.action === 'OPEN' ? 'URL (e.g., https://google.com)' :
+                                    step.action === 'WAIT' ? 'Duration in ms (e.g., 2000)' :
+                                    step.action === 'EVALUATE_JS' ? 'JS Expression' :
+                                    step.action === 'TYPE' ? 'Text to type...' :
+                                    step.action === 'ASSERT_TEXT' ? 'Expected text...' :
+                                    ['CLICK', 'ASSERT_VISIBLE', 'HOVER'].includes(step.action) ? 'Not required' : 'Value / Data'
+                                }
+                                disabled={['CLICK', 'HOVER', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_HIDDEN'].includes(step.action)}
+                            />
+                            {!['CLICK', 'HOVER', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_HIDDEN'].includes(step.action) && (
                                <button 
                                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
                                    onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' && !variableMenuOpen.paramName ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
@@ -958,7 +966,14 @@ export const StepList: React.FC<StepListProps> = ({
                </div>
 
                {/* Actions */}
-               <div className="flex justify-end gap-0.5">
+               <div className="flex justify-end gap-0.5 items-center">
+                   <button
+                       onClick={() => onUpdateStep(step.id, { screenshot: !step.screenshot })}
+                       className={`p-1.5 rounded-md transition-colors ${step.screenshot ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100'}`}
+                       title={step.screenshot ? "Screenshot Enabled" : "Enable Screenshot"}
+                   >
+                       <Camera size={16} />
+                   </button>
                    {onDuplicateStep && (
                        <button 
                            onClick={() => onDuplicateStep(step)}

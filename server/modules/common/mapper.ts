@@ -12,6 +12,7 @@ export function normalizeStep(input: Partial<TestStep>): TestStep {
     headerProfileId: asOptionalText(input.headerProfileId),
     bodyTemplateId: asOptionalText(input.bodyTemplateId),
     endpointId: asOptionalText(input.endpointId),
+    screenshot: typeof input.screenshot === 'boolean' ? input.screenshot : undefined,
   };
 }
 
@@ -25,5 +26,6 @@ export function deserializeStep(row: DbStepRow): TestStep {
     headerProfileId: textFromDb(row.header_profile_id),
     bodyTemplateId: textFromDb(row.body_template_id),
     endpointId: textFromDb(row.endpoint_id),
+    screenshot: row.screenshot === 1,
   };
 }

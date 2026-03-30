@@ -1,4 +1,4 @@
-import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings } from '@/shared/types';
+import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest } from '@/shared/types';
 
 export interface CrudService<T extends { id: string }> {
   list: () => Promise<T[]>;
@@ -83,4 +83,24 @@ export const api = {
       method: 'DELETE'
     }),
   } satisfies EnvironmentService,
+};
+
+// --- Execution API ---
+
+export const executionApi = {
+  execute: (request: ExecutionRequest) =>
+    apiFetch<{ reportId: string; runId: string; status: string }>('runners/execute', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
+  stream: (reportId: string): EventSource => {
+    return new EventSource(`/api/runners/stream/${reportId}`);
+  },
+
+  status: (reportId: string) =>
+    apiFetch<{ runId: string; reportId: string; status: string }>(`runners/status/${reportId}`),
+
+  abort: (reportId: string) =>
+    apiFetch<{ success: boolean }>(`runners/abort/${reportId}`, { method: 'POST' }),
 };

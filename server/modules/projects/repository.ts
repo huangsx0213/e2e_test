@@ -95,9 +95,10 @@ export function saveProject(projectInput: Partial<Project>): Project {
               header_profile_id,
               body_template_id,
               endpoint_id,
+              screenshot,
               position
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           step.id,
@@ -109,6 +110,7 @@ export function saveProject(projectInput: Partial<Project>): Project {
           nullableText(step.headerProfileId),
           nullableText(step.bodyTemplateId),
           nullableText(step.endpointId),
+          step.screenshot ? 1 : 0,
           stepIndex,
         );
       }

@@ -8,6 +8,7 @@ import { projectsModule } from '../modules/projects/index.ts';
 import { reportsModule } from '../modules/reports/index.ts';
 import { settingsModule } from '../modules/settings/index.ts';
 import { suitesModule } from '../modules/suites/index.ts';
+import { executionModule } from '../modules/execution/index.ts';
 
 export function registerRoutes(app: Express) {
   const modules = [
@@ -19,6 +20,7 @@ export function registerRoutes(app: Express) {
     reportsModule,
     settingsModule,
     environmentsModule,
+    executionModule,
   ];
 
   for (const module of modules) {

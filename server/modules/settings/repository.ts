@@ -8,13 +8,14 @@ export function saveSettings(settingsInput: Partial<Settings>): Settings {
 
   db.prepare(
     `
-      INSERT INTO settings (id, current_project_id, current_environment)
-      VALUES (?, ?, ?)
+      INSERT INTO settings (id, current_project_id, current_environment, headless_mode)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         current_project_id = excluded.current_project_id,
-        current_environment = excluded.current_environment
+        current_environment = excluded.current_environment,
+        headless_mode = excluded.headless_mode
     `,
-  ).run(settings.id, settings.currentProjectId, settings.currentEnvironment);
+  ).run(settings.id, settings.currentProjectId, settings.currentEnvironment, settings.headlessMode ? 1 : 0);
 
   return getSettings(settings.id) || settings;
 }
@@ -22,7 +23,7 @@ export function saveSettings(settingsInput: Partial<Settings>): Settings {
 export function getSettings(settingsId: string): Settings | undefined {
   const row = db
     .prepare(
-      'SELECT id, current_project_id, current_environment FROM settings WHERE id = ?',
+      'SELECT id, current_project_id, current_environment, headless_mode FROM settings WHERE id = ?',
     )
     .get(settingsId) as DbSettingsRow | undefined;
 
@@ -34,6 +35,7 @@ export function getSettings(settingsId: string): Settings | undefined {
     id: row.id,
     currentProjectId: row.current_project_id,
     currentEnvironment: row.current_environment,
+    headlessMode: row.headless_mode === 1,
   };
 }
 

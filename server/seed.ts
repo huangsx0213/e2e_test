@@ -90,7 +90,7 @@ function seedProjects(): void {
           { id: 'param-web-password', name: 'USER_PASSWORD', defaultValue: 'secret123' },
         ],
         steps: [
-          { id: 'step-web-open-login', action: 'OPEN', target: 'https://shop.qa.local/login', data: '', description: 'Open login page' },
+          { id: 'step-web-open-login', action: 'OPEN', target: '', data: 'https://shop.qa.local/login', description: 'Open login page' },
           { id: 'step-web-type-email', action: 'TYPE', target: 'Login Page.Email Input', data: '{{USER_EMAIL}}' },
           { id: 'step-web-type-password', action: 'TYPE', target: 'Login Page.Password Input', data: '{{USER_PASSWORD}}' },
           { id: 'step-web-submit-login', action: 'CLICK', target: 'Login Page.Login Button', data: '' },
@@ -212,6 +212,64 @@ function seedProjects(): void {
       },
     ],
   });
+
+  // ─── Baidu Demo Project (Real Runnable) ───
+  saveProject({
+    id: 'p-baidu-demo',
+    name: 'Baidu Search Demo',
+    description: 'A real, runnable hybrid API+UI demo project using baidu.com and httpbin.org.',
+    pages: [
+      {
+        id: 'pg-baidu-home',
+        name: 'Baidu Home',
+        description: 'Baidu search engine homepage.',
+        elements: [
+          { id: 'el-baidu-search-input', name: 'Search Input', selectorType: 'CSS', value: '#kw' },
+          { id: 'el-baidu-search-btn', name: 'Search Button', selectorType: 'CSS', value: '#su' },
+          { id: 'el-baidu-logo', name: 'Logo', selectorType: 'CSS', value: '#lg img' },
+          { id: 'el-baidu-settings', name: 'Settings Link', selectorType: 'CSS', value: '#s-usersetting-top' },
+        ],
+      },
+      {
+        id: 'pg-baidu-results',
+        name: 'Baidu Results',
+        description: 'Baidu search results page.',
+        elements: [
+          { id: 'el-baidu-result-container', name: 'Results Container', selectorType: 'CSS', value: '#content_left' },
+          { id: 'el-baidu-first-result', name: 'First Result Title', selectorType: 'CSS', value: '#content_left .c-container:first-child .t' },
+          { id: 'el-baidu-result-stats', name: 'Result Stats', selectorType: 'CSS', value: '.nums_text' },
+          { id: 'el-baidu-search-input-top', name: 'Top Search Input', selectorType: 'CSS', value: '#kw' },
+        ],
+      },
+    ],
+    modules: [
+      {
+        id: 'mod-baidu-search',
+        name: 'Baidu Search',
+        description: 'Reusable module: opens Baidu, types a keyword, clicks search.',
+        params: [
+          { id: 'param-baidu-keyword', name: 'KEYWORD', defaultValue: 'Playwright自动化测试' },
+        ],
+        steps: [
+          { id: 'step-baidu-open', action: 'OPEN', target: '', data: 'https://www.baidu.com', description: 'Open Baidu homepage', screenshot: true },
+          { id: 'step-baidu-type', action: 'TYPE', target: 'Baidu Home.Search Input', data: '{{KEYWORD}}', description: 'Type search keyword' },
+          { id: 'step-baidu-click', action: 'CLICK', target: 'Baidu Home.Search Button', data: '', description: 'Click search button' },
+          { id: 'step-baidu-wait', action: 'WAIT', target: '', data: '2000', description: 'Wait for results to load' },
+        ],
+      },
+    ],
+    scenarios: [
+      {
+        id: 'scenario-baidu-full',
+        name: 'Baidu Full Regression',
+        description: 'Runs API health check then UI search scenarios in sequence.',
+        suites: [
+          { id: 'scenario-suite-baidu-api', suiteId: 'suite-baidu-api', variableOverrides: {} },
+          { id: 'scenario-suite-baidu-ui', suiteId: 'suite-baidu-hybrid', variableOverrides: { SEARCH_KEYWORD: 'E2E测试框架' } },
+        ],
+      },
+    ],
+  });
 }
 
 function seedSuites(): void {
@@ -229,7 +287,7 @@ function seedSuites(): void {
       { USER_EMAIL: 'vip@example.com', USER_PASSWORD: 'secret123' },
     ],
     setupSteps: [
-      { id: 'suite-web-setup-open', action: 'OPEN', target: '{{BASE_URL}}/login', data: '', description: 'Open login page' },
+      { id: 'suite-web-setup-open', action: 'OPEN', target: '', data: '{{BASE_URL}}/login', description: 'Open login page' },
     ],
     cases: [
       {
@@ -271,7 +329,7 @@ function seedSuites(): void {
       { PRODUCT_NAME: 'ergonomic keyboard', SHIPPING_ADDRESS: '350 Fifth Avenue, New York' },
     ],
     setupSteps: [
-      { id: 'suite-web-checkout-open', action: 'OPEN', target: '{{BASE_URL}}/catalog', data: '', description: 'Open catalog before checkout scenario' },
+      { id: 'suite-web-checkout-open', action: 'OPEN', target: '', data: '{{BASE_URL}}/catalog', description: 'Open catalog before checkout scenario' },
     ],
     cases: [
       {
@@ -287,7 +345,7 @@ function seedSuites(): void {
         name: 'Customer places order successfully',
         description: 'Submits checkout form and verifies success banner.',
         steps: [
-          { id: 'case-web-open-checkout', action: 'OPEN', target: '{{BASE_URL}}/checkout', data: '' },
+          { id: 'case-web-open-checkout', action: 'OPEN', target: '', data: '{{BASE_URL}}/checkout' },
           { id: 'case-web-fill-address', action: 'TYPE', target: 'Checkout Page.Shipping Address', data: '{{SHIPPING_ADDRESS}}' },
           { id: 'case-web-place-order', action: 'CLICK', target: 'Checkout Page.Place Order Button', data: '' },
           { id: 'case-web-order-success', action: 'ASSERT_VISIBLE', target: 'Checkout Page.Order Success Banner', data: '' },
@@ -339,7 +397,7 @@ function seedSuites(): void {
       { SEARCH_TERM: 'ops.user@example.com' },
     ],
     setupSteps: [
-      { id: 'suite-admin-open', action: 'OPEN', target: '{{ADMIN_BASE_URL}}/dashboard', data: '' },
+      { id: 'suite-admin-open', action: 'OPEN', target: '', data: '{{ADMIN_BASE_URL}}/dashboard' },
     ],
     cases: [
       {
@@ -412,6 +470,86 @@ function seedSuites(): void {
         description: 'Checks orders queue contract.',
         steps: [
           { id: 'case-admin-api-orders-get', action: 'API_GET', target: '/orders', data: '', endpointId: 'endpoint-admin-orders', headerProfileId: 'header-admin-auth' },
+        ],
+      },
+    ],
+  });
+
+  // ─── Baidu Demo Suites ───
+
+  // Suite 1: Pure API smoke tests using httpbin.org
+  saveSuite({
+    id: 'suite-baidu-api',
+    projectId: 'p-baidu-demo',
+    name: 'API Health Check (httpbin)',
+    description: 'Validates API executor against real public httpbin.org endpoints.',
+    variables: [
+      { id: 'var-baidu-api-base', key: 'API_BASE', value: 'https://httpbin.org' },
+      { id: 'var-baidu-test-name', key: 'TEST_NAME', value: 'e2e_test_demo' },
+    ],
+    cases: [
+      {
+        id: 'case-baidu-api-get',
+        name: 'GET /get returns 200',
+        description: 'Simple GET request to httpbin.',
+        steps: [
+          { id: 'step-baidu-api-get', action: 'API_GET', target: '/get', data: '', endpointId: 'endpoint-baidu-httpbin-get', headerProfileId: 'header-baidu-json' },
+        ],
+      },
+      {
+        id: 'case-baidu-api-post',
+        name: 'POST /post echoes request body',
+        description: 'Sends POST with JSON body and validates response.',
+        steps: [
+          { id: 'step-baidu-api-post', action: 'API_POST', target: '/post', data: '', endpointId: 'endpoint-baidu-httpbin-post', headerProfileId: 'header-baidu-json', bodyTemplateId: 'body-baidu-post' },
+        ],
+      },
+    ],
+  });
+
+  // Suite 2: Hybrid — API first, then UI on Baidu
+  saveSuite({
+    id: 'suite-baidu-hybrid',
+    projectId: 'p-baidu-demo',
+    name: 'Baidu Hybrid Search Test',
+    description: 'Mixes API calls with real Baidu UI automation — the ultimate demo.',
+    variables: [
+      { id: 'var-baidu-search-keyword', key: 'SEARCH_KEYWORD', value: 'Playwright自动化测试' },
+      { id: 'var-baidu-api-base2', key: 'API_BASE', value: 'https://httpbin.org' },
+    ],
+    dataRows: [
+      { SEARCH_KEYWORD: 'Playwright自动化测试' },
+      { SEARCH_KEYWORD: '百度搜索引擎' },
+    ],
+    cases: [
+      {
+        id: 'case-baidu-hybrid-api-health',
+        name: 'Step 1: Verify API is reachable',
+        description: 'Warm-up API call to verify network connectivity.',
+        steps: [
+          { id: 'step-hybrid-api-get', action: 'API_GET', target: '/get', data: '', endpointId: 'endpoint-baidu-httpbin-get', headerProfileId: 'header-baidu-json' },
+        ],
+      },
+      {
+        id: 'case-baidu-hybrid-ui-search',
+        name: 'Step 2: Search Baidu and verify results',
+        description: 'Opens Baidu, searches a keyword, and asserts results appear.',
+        steps: [
+          { id: 'step-hybrid-open', action: 'OPEN', target: '', data: 'https://www.baidu.com', description: 'Open Baidu homepage', screenshot: true },
+          { id: 'step-hybrid-assert-logo', action: 'ASSERT_VISIBLE', target: 'Baidu Home.Search Input', data: '', description: 'Verify search input is visible' },
+          { id: 'step-hybrid-type', action: 'TYPE', target: 'Baidu Home.Search Input', data: '{{SEARCH_KEYWORD}}', description: 'Type search keyword' },
+          { id: 'step-hybrid-screenshot-typed', action: 'CLICK', target: 'Baidu Home.Search Button', data: '', description: 'Click search', screenshot: true },
+          { id: 'step-hybrid-wait-results', action: 'WAIT', target: '', data: '3000', description: 'Wait for search results page' },
+          { id: 'step-hybrid-assert-results', action: 'ASSERT_VISIBLE', target: 'Baidu Results.Results Container', data: '', description: 'Assert search results appeared', screenshot: true },
+          { id: 'step-hybrid-extract-title', action: 'EXTRACT_VAR', target: 'Baidu Results.First Result Title', data: 'FIRST_RESULT_TITLE', description: 'Extract the first result title into a variable' },
+        ],
+      },
+      {
+        id: 'case-baidu-hybrid-post-result',
+        name: 'Step 3: POST extracted title to API',
+        description: 'Sends the extracted Baidu result title to httpbin as proof of hybrid execution.',
+        steps: [
+          { id: 'step-hybrid-post-result', action: 'API_POST', target: '/post', data: '', endpointId: 'endpoint-baidu-httpbin-post', headerProfileId: 'header-baidu-json', bodyTemplateId: 'body-baidu-result' },
         ],
       },
     ],
@@ -574,6 +712,76 @@ function seedApiAssets(): void {
       { key: 'status', value: 'Pending Review', enabled: true },
       { key: 'pageSize', value: '50', enabled: true },
     ],
+  });
+
+  // ─── Baidu Demo API Assets ───
+
+  saveHeaderProfile({
+    id: 'header-baidu-json',
+    projectId: 'p-baidu-demo',
+    name: 'JSON Headers',
+    description: 'Standard JSON headers for httpbin requests.',
+    headers: [
+      { key: 'Content-Type', value: 'application/json', enabled: true },
+      { key: 'Accept', value: 'application/json', enabled: true },
+      { key: 'X-Test-Source', value: 'e2e-test-engine', enabled: true },
+    ],
+  });
+
+  saveBodyTemplate({
+    id: 'body-baidu-post',
+    projectId: 'p-baidu-demo',
+    name: 'Test Echo Body',
+    description: 'Simple POST body for httpbin echo test.',
+    contentType: 'application/json',
+    content: '{"testName":"{{TEST_NAME}}","timestamp":"{{TIMESTAMP}}","source":"e2e_engine"}',
+    defaultValues: {
+      TEST_NAME: 'e2e_test_demo',
+      TIMESTAMP: '2026-01-01T00:00:00Z',
+    },
+  });
+
+  saveBodyTemplate({
+    id: 'body-baidu-result',
+    projectId: 'p-baidu-demo',
+    name: 'Extracted Result Body',
+    description: 'Posts the extracted title from Baidu search to prove hybrid flow.',
+    contentType: 'application/json',
+    content: '{"searchEngine":"baidu","firstResultTitle":"{{FIRST_RESULT_TITLE}}","keyword":"{{SEARCH_KEYWORD}}"}',
+    defaultValues: {
+      FIRST_RESULT_TITLE: '(extracted at runtime)',
+      SEARCH_KEYWORD: 'Playwright自动化测试',
+    },
+  });
+
+  saveApiEndpoint({
+    id: 'endpoint-baidu-httpbin-get',
+    projectId: 'p-baidu-demo',
+    name: 'httpbin GET',
+    description: 'Public echo API — returns request info.',
+    method: 'GET',
+    baseUrls: {
+      DEV: 'https://httpbin.org',
+      SIT: 'https://httpbin.org',
+      UAT: 'https://httpbin.org',
+    },
+    parameters: [
+      { key: 'source', value: 'e2e_test', enabled: true },
+    ],
+  });
+
+  saveApiEndpoint({
+    id: 'endpoint-baidu-httpbin-post',
+    projectId: 'p-baidu-demo',
+    name: 'httpbin POST',
+    description: 'Public echo API — echoes back POST body.',
+    method: 'POST',
+    baseUrls: {
+      DEV: 'https://httpbin.org',
+      SIT: 'https://httpbin.org',
+      UAT: 'https://httpbin.org',
+    },
+    parameters: [],
   });
 }
 

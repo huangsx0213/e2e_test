@@ -129,6 +129,8 @@ function App() {
             setCurrentProjectId={setCurrentProjectId}
             setActiveTab={setActiveTab}
             setExecutionState={setExecutionState}
+            settings={settings}
+            settingsApi={settingsApi}
           />
         </div>
       </main>
