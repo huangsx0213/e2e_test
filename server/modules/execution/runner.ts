@@ -513,6 +513,16 @@ async function executeSteps(
     const step = steps[i];
     const indent = '  '.repeat(depth);
 
+    // ─── Skip disabled steps ───
+    if (step.enabled === false) {
+      logger.log({ 
+        stepId: step.id, 
+        status: 'SKIP', 
+        message: `${indent}⏭️ Step Skipped (disabled): ${step.action}` 
+      });
+      continue;
+    }
+
     // ─── RUN_MODULE ───
     if (step.action === 'RUN_MODULE') {
       if (depth >= MAX_MODULE_DEPTH) {

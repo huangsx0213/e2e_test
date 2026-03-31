@@ -13,6 +13,7 @@ export function normalizeStep(input: Partial<TestStep>): TestStep {
     bodyTemplateId: asOptionalText(input.bodyTemplateId),
     endpointId: asOptionalText(input.endpointId),
     screenshot: typeof input.screenshot === 'boolean' ? input.screenshot : undefined,
+    enabled: typeof input.enabled === 'boolean' ? input.enabled : true,
   };
 }
 
@@ -27,5 +28,6 @@ export function deserializeStep(row: DbStepRow): TestStep {
     bodyTemplateId: textFromDb(row.body_template_id),
     endpointId: textFromDb(row.endpoint_id),
     screenshot: row.screenshot === 1,
+    enabled: row.enabled !== 0,
   };
 }

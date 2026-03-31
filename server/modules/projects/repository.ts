@@ -96,9 +96,10 @@ export function saveProject(projectInput: Partial<Project>): Project {
               body_template_id,
               endpoint_id,
               screenshot,
+              enabled,
               position
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           step.id,
@@ -110,7 +111,8 @@ export function saveProject(projectInput: Partial<Project>): Project {
           nullableText(step.headerProfileId),
           nullableText(step.bodyTemplateId),
           nullableText(step.endpointId),
-          step.screenshot ? 1 : 0,
+          step.screenshot ? 1 : null,
+          step.enabled === false ? 0 : 1,
           stepIndex,
         );
       }
@@ -224,7 +226,7 @@ export function getProject(projectId: string): Project | undefined {
 
     const steps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled
         FROM module_steps
         WHERE module_id = ?
         ORDER BY position

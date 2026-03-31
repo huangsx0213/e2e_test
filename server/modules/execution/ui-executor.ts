@@ -1,4 +1,4 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import type { TestStep } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
@@ -9,10 +9,17 @@ export interface UIExecutionResult {
   extractedValue?: string;
 }
 
+// Constants for better maintainability
+const DEFAULT_TIMEOUT = 10000;
+const SCREENSHOT_QUALITY = 50;
+const HIGHLIGHT_ITERATIONS = 4;
+const HIGHLIGHT_DURATION = 250;
+
 export class UIExecutor {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private dialogHandler: ((dialog: any) => Promise<void>) | null = null;
 
   async initialize(options: { headless: boolean }): Promise<void> {
     if (!this.browser) {
@@ -103,7 +110,7 @@ export class UIExecutor {
     }
 
     // Helper: get a Playwright Locator from our resolved info
-    const getLocator = () => {
+    const getLocator = (): Locator => {
       if (usePlaywrightLocator && locatorMethod && locatorArg) {
         switch (locatorMethod) {
           case 'getbylabel':
@@ -128,16 +135,58 @@ export class UIExecutor {
       return this.page!.locator(resolvedSelector);
     };
 
-    // Helper: Safely get the best single locator, preferring a visible one to avoid ghost elements and strict mode violations.
-    const getSmartLocator = async () => {
+    // Helper: Safely get the best single locator with smart waiting and actionability checks
+    const getSmartLocator = async (options?: { skipActionabilityCheck?: boolean }): Promise<Locator> => {
       let base = getLocator();
-      if (await base.count() > 1) {
+      
+      // Wait for element to be attached to DOM first
+      try {
+        await base.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
+      } catch (e) {
+        throw new Error(`Element not found or not attached to DOM: ${resolvedSelector || 'unknown selector'}`);
+      }
+      
+      const count = await base.count();
+      if (count > 1) {
+        // Prefer visible elements when multiple matches exist
         const visibleFilter = base.filter({ visible: true });
-        if (await visibleFilter.count() > 0) {
+        const visibleCount = await visibleFilter.count();
+        if (visibleCount > 0) {
           base = visibleFilter;
         }
       }
-      return base.first();
+      
+      const locator = base.first();
+      
+      // For interactive actions, ensure element is actionable (visible, stable, enabled)
+      if (!options?.skipActionabilityCheck) {
+        try {
+          await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+        } catch (e) {
+          // Element exists but not visible - this might be intentional for some actions
+          console.warn(`Element is attached but not visible: ${resolvedSelector || 'unknown selector'}`);
+        }
+      }
+      
+      return locator;
+    };
+
+    // Helper: Perform action with fallback to JS evaluation
+    const performActionWithFallback = async (
+      locator: Locator,
+      action: () => Promise<void>,
+      fallbackEval?: (node: any, ...args: any[]) => void,
+      ...fallbackArgs: any[]
+    ): Promise<void> => {
+      try {
+        await action();
+      } catch (e: any) {
+        if (fallbackEval) {
+          await locator.evaluate(fallbackEval, ...fallbackArgs);
+        } else {
+          throw e;
+        }
+      }
     };
 
     // Execute the action
@@ -156,45 +205,84 @@ export class UIExecutor {
         }
         break;
 
-      case 'CLICK': {
-        const locator = await getSmartLocator();
-        try {
-          await locator.click({ timeout: 10000, force: true });
-        } catch (e: any) {
-          await locator.evaluate((node: any) => node.click());
-        }
+      case 'WAIT_FOR_VISIBLE': {
+        const locator = await getSmartLocator({ skipActionabilityCheck: true });
+        await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
         break;
       }
+
+      case 'WAIT_FOR_INVISIBLE': {
+        const locator = await getSmartLocator({ skipActionabilityCheck: true });
+        await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
+        break;
+      }
+
+      case 'CLICK': {
+        const locator = await getSmartLocator();
+        await performActionWithFallback(
+          locator,
+          () => locator.click({ timeout: DEFAULT_TIMEOUT, force: true }),
+          (node: any) => node.click()
+        );
+        break;
+      }
+
+      case 'DOUBLE_CLICK': {
+        const locator = await getSmartLocator();
+        await locator.dblclick({ timeout: DEFAULT_TIMEOUT, force: true });
+        break;
+      }
+
+      case 'RIGHT_CLICK': {
+        const locator = await getSmartLocator();
+        await locator.click({ button: 'right', timeout: DEFAULT_TIMEOUT, force: true });
+        break;
+      }
+
+
 
       case 'TYPE': {
         if (data === undefined) throw new Error('Data is required for TYPE step');
         const locator = await getSmartLocator();
-        try {
-          await locator.fill(data, { timeout: 10000, force: true });
-        } catch (e: any) {
-          await locator.evaluate((node: any, val: string) => {
+        await performActionWithFallback(
+          locator,
+          () => locator.fill(data, { timeout: DEFAULT_TIMEOUT, force: true }),
+          (node: any, val: string) => {
             node.value = val;
             node.dispatchEvent(new Event('input', { bubbles: true }));
             node.dispatchEvent(new Event('change', { bubbles: true }));
-          }, data);
-        }
+          },
+          data
+        );
+        break;
+      }
+
+      case 'CLEAR': {
+        const locator = await getSmartLocator();
+        await performActionWithFallback(
+          locator,
+          () => locator.clear({ timeout: DEFAULT_TIMEOUT, force: true }),
+          (node: any) => {
+            node.value = '';
+            node.dispatchEvent(new Event('input', { bubbles: true }));
+            node.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        );
         break;
       }
 
       case 'HOVER':
-        await (await getSmartLocator()).hover({ timeout: 10000, force: true });
+        await (await getSmartLocator()).hover({ timeout: DEFAULT_TIMEOUT, force: true });
         break;
 
       case 'HIGHLIGHT': {
-        const locator = await getSmartLocator();
-
+        const locator = await getSmartLocator({ skipActionabilityCheck: true });
         await locator.evaluate(async (node: HTMLElement) => {
           if (node.scrollIntoView) {
             node.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           await new Promise(r => setTimeout(r, 100));
 
-          // The authoritative Selenium/Playwright element highlighting method
           const originalBorder = node.style.border;
           const originalBackground = node.style.backgroundColor;
 
@@ -211,45 +299,83 @@ export class UIExecutor {
         break;
       }
 
-      case 'SCROLL_TO':
-        await getLocator().scrollIntoViewIfNeeded({ timeout: 10000 });
+      case 'SCROLL_TO': {
+        const locator = await getSmartLocator();
+        await locator.scrollIntoViewIfNeeded({ timeout: DEFAULT_TIMEOUT });
         break;
+      }
 
-      case 'CHECK':
-        await getLocator().check({ timeout: 10000, force: true });
+      case 'CHECK': {
+        const locator = await getSmartLocator();
+        await locator.check({ timeout: DEFAULT_TIMEOUT, force: true });
         break;
+      }
 
-      case 'UNCHECK':
-        await getLocator().uncheck({ timeout: 10000, force: true });
+      case 'UNCHECK': {
+        const locator = await getSmartLocator();
+        await locator.uncheck({ timeout: DEFAULT_TIMEOUT, force: true });
         break;
+      }
 
-      case 'SELECT_OPTION':
+      case 'TOGGLE': {
+        const locator = await getSmartLocator();
+        const isChecked = await locator.isChecked();
+        if (isChecked) {
+          await locator.uncheck({ timeout: DEFAULT_TIMEOUT, force: true });
+        } else {
+          await locator.check({ timeout: DEFAULT_TIMEOUT, force: true });
+        }
+        break;
+      }
+
+      case 'SELECT_OPTION': {
         if (data === undefined) throw new Error('Data is required for SELECT_OPTION step');
-        await getLocator().selectOption(data, { timeout: 10000 });
+        const locator = await getSmartLocator();
+        await locator.selectOption(data, { timeout: DEFAULT_TIMEOUT });
         break;
+      }
 
       case 'PRESS_KEY':
         if (data) {
+          // If there's a target element, focus it first
+          if (step.target && resolvedSelector) {
+            const locator = await getSmartLocator();
+            await locator.focus({ timeout: DEFAULT_TIMEOUT });
+          }
           await this.page.keyboard.press(data);
         } else if (resolvedSelector) {
           await this.page.keyboard.press(resolvedSelector);
+        } else {
+          throw new Error('Either data (key name) or target (element) is required for PRESS_KEY step');
         }
         break;
 
-      case 'ASSERT_VISIBLE':
-        // using 'attached' for E2E robustness against strictly visually hidden DOM hydration layers
-        await getLocator().waitFor({ state: 'attached', timeout: 10000 });
+      case 'ASSERT_VISIBLE': {
+        const locator = await getSmartLocator();
+        await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
         break;
+      }
 
-      case 'ASSERT_HIDDEN':
-        await getLocator().waitFor({ state: 'hidden', timeout: 10000 });
+      case 'ASSERT_INVISIBLE': {
+        const locator = await getSmartLocator();
+        await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
         break;
+      }
+
+      case 'ASSERT_DISABLED': {
+        const locator = await getSmartLocator();
+        const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
+        if (!isDisabled) {
+          throw new Error(`Assertion failed: Expected element to be disabled, but it is enabled`);
+        }
+        break;
+      }
 
       case 'ASSERT_TEXT':
         if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
         {
-          const el = getLocator().first();
-          const text = await el.textContent({ timeout: 10000 });
+          const locator = await getSmartLocator();
+          const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT });
           if (!text || !text.includes(data)) {
             throw new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
           }
@@ -259,10 +385,30 @@ export class UIExecutor {
       case 'ASSERT_VALUE':
         if (data === undefined) throw new Error('Data is required for ASSERT_VALUE step');
         {
-          const el = getLocator().first();
-          const val = await el.inputValue({ timeout: 10000 });
+          const locator = await getSmartLocator();
+          const val = await locator.inputValue({ timeout: DEFAULT_TIMEOUT });
           if (val !== data) {
             throw new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
+          }
+        }
+        break;
+
+      case 'ASSERT_URL':
+        if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
+        {
+          const currentUrl = this.page.url();
+          if (!currentUrl.includes(data) && currentUrl !== data) {
+            throw new Error(`Assertion failed: Expected URL to include "${data}", but got "${currentUrl}"`);
+          }
+        }
+        break;
+
+      case 'ASSERT_TITLE':
+        if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
+        {
+          const title = await this.page.title();
+          if (!title.includes(data)) {
+            throw new Error(`Assertion failed: Expected title to include "${data}", but got "${title}"`);
           }
         }
         break;
@@ -270,8 +416,8 @@ export class UIExecutor {
       case 'EXTRACT_VAR':
         if (!data) throw new Error('Data (variable key) is required for EXTRACT_VAR step');
         {
-          const el = getLocator().first();
-          const text = await el.textContent({ timeout: 10000 });
+          const locator = await getSmartLocator({ skipActionabilityCheck: true });
+          const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT });
           extractedValue = text?.trim() || '';
           executionContext.setRuntimeVar(data, extractedValue);
         }
@@ -283,6 +429,90 @@ export class UIExecutor {
           extractedValue = String(jsResult);
         }
         break;
+
+      case 'SWITCH_TO_WINDOW': {
+        const target = data || resolvedSelector;
+        if (!target) throw new Error('Target URL or title is required for SWITCH_TO_WINDOW step');
+        if (this.context) {
+          const pages = this.context.pages();
+          let found = false;
+          for (const page of pages) {
+            const url = page.url();
+            const title = await page.title();
+            if (url.includes(target) || url === target || title.includes(target)) {
+              this.page = page;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            throw new Error(`Window with URL or title matching "${target}" not found`);
+          }
+        }
+        break;
+      }
+
+      case 'SWITCH_TO_FRAME': {
+        if (!resolvedSelector) throw new Error('Frame selector is required for SWITCH_TO_FRAME step');
+        const locator = await getSmartLocator();
+        const frameElement = await locator.elementHandle({ timeout: DEFAULT_TIMEOUT });
+        if (!frameElement) throw new Error(`Frame element not found: ${resolvedSelector}`);
+        const frame = await frameElement.contentFrame();
+        if (!frame) throw new Error(`Could not access frame content: ${resolvedSelector}`);
+        this.page = frame as any;
+        break;
+      }
+
+      case 'ACCEPT_ALERT':
+        // Set up dialog handler for next dialog
+        if (this.dialogHandler) {
+          this.page.off('dialog', this.dialogHandler);
+        }
+        this.dialogHandler = async (dialog) => {
+          await dialog.accept(data || '');
+        };
+        this.page.once('dialog', this.dialogHandler);
+        break;
+
+      case 'DISMISS_ALERT':
+        // Set up dialog handler for next dialog
+        if (this.dialogHandler) {
+          this.page.off('dialog', this.dialogHandler);
+        }
+        this.dialogHandler = async (dialog) => {
+          await dialog.dismiss();
+        };
+        this.page.once('dialog', this.dialogHandler);
+        break;
+
+      case 'ATTACH_FILE': {
+        if (!data) throw new Error('Data (file path) is required for ATTACH_FILE step');
+        const locator = await getSmartLocator();
+        const filePaths = data.split(',').map(p => p.trim());
+        await locator.setInputFiles(filePaths, { timeout: DEFAULT_TIMEOUT });
+        break;
+      }
+
+      case 'DRAG_AND_DROP': {
+        if (!data) throw new Error('Data (target selector) is required for DRAG_AND_DROP step');
+        const sourceLocator = await getSmartLocator();
+        
+        // Also wait for target element
+        const targetLocator = this.page!.locator(data);
+        await targetLocator.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
+        
+        await sourceLocator.dragTo(targetLocator, { timeout: DEFAULT_TIMEOUT });
+        break;
+      }
+
+      case 'UPLOAD_FILE': {
+        // Alias for ATTACH_FILE for backward compatibility
+        if (!data) throw new Error('Data (file path) is required for UPLOAD_FILE step');
+        const locator = await getSmartLocator();
+        const filePaths = data.split(',').map(p => p.trim());
+        await locator.setInputFiles(filePaths, { timeout: DEFAULT_TIMEOUT });
+        break;
+      }
 
       default:
         throw new Error(`Unsupported UI action: ${step.action}`);
@@ -305,24 +535,39 @@ export class UIExecutor {
   async takeScreenshot(): Promise<string> {
     if (!this.page) return '';
     try {
-      const buffer = await this.page.screenshot({ type: 'jpeg', quality: 50 });
+      const buffer = await this.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
       return `data:image/jpeg;base64,${buffer.toString('base64')}`;
     } catch (e) {
+      console.error('Screenshot failed:', e);
       return '';
     }
   }
 
   async captureStateScreenshot(): Promise<string> {
-    // A silent screenshot used for logging on failure
     return this.takeScreenshot();
   }
 
   async cleanup(): Promise<void> {
-    if (this.page) await this.page.close();
-    if (this.context) await this.context.close();
-    if (this.browser) await this.browser.close();
-    this.page = null;
-    this.context = null;
-    this.browser = null;
+    try {
+      // Remove dialog handler if exists
+      if (this.dialogHandler && this.page) {
+        this.page.off('dialog', this.dialogHandler);
+        this.dialogHandler = null;
+      }
+
+      if (this.page) {
+        await this.page.close().catch(() => {});
+      }
+      if (this.context) {
+        await this.context.close().catch(() => {});
+      }
+      if (this.browser) {
+        await this.browser.close().catch(() => {});
+      }
+    } finally {
+      this.page = null;
+      this.context = null;
+      this.browser = null;
+    }
   }
 }

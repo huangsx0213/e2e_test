@@ -11,4 +11,6 @@ export const stepSchema = z.object({
   headerProfileId: optionalNonEmptyString,
   bodyTemplateId: optionalNonEmptyString,
   endpointId: optionalNonEmptyString,
+  screenshot: z.boolean().optional(),
+  enabled: z.boolean().optional(),
 });

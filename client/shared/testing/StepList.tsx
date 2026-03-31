@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TestStep, Project, ActionType, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint } from '@/shared/types';
-import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus, Copy, Camera } from 'lucide-react';
+import { GripVertical, Trash2, FileText, FileCode, Braces, MousePointer2, Workflow, Globe, ChevronDown, ChevronRight, Plus, Copy, Camera, Power, PowerOff } from 'lucide-react';
 
 interface StepListProps {
     title?: string;
@@ -20,9 +20,12 @@ interface StepListProps {
 
 const ACTION_TYPES: ActionType[] = [
     'OPEN', 'CLICK', 'TYPE', 'HOVER', 'HIGHLIGHT', 'SCROLL_TO', 'SELECT_OPTION', 'CHECK', 'UNCHECK', 'DRAG_AND_DROP', 'UPLOAD_FILE',
-    'ASSERT_VISIBLE', 'ASSERT_HIDDEN', 'ASSERT_TEXT', 'ASSERT_VALUE',
-    'EXTRACT_VAR', 'EVALUATE_JS', 'PRESS_KEY',
-    'WAIT', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE'
+    'ASSERT_VISIBLE', 'ASSERT_INVISIBLE', 'ASSERT_TEXT', 'ASSERT_VALUE', 'ASSERT_URL', 'ASSERT_TITLE', 'ASSERT_DISABLED',
+    'EXTRACT_VAR', 'EVALUATE_JS', 'PRESS_KEY', 'CLEAR',
+    'WAIT', 'WAIT_FOR_VISIBLE', 'WAIT_FOR_INVISIBLE', 'API_GET', 'API_POST', 'API_PUT', 'API_DELETE', 'RUN_MODULE',
+    'DOUBLE_CLICK', 'RIGHT_CLICK',
+    'SWITCH_TO_WINDOW', 'SWITCH_TO_FRAME', 'ACCEPT_ALERT', 'DISMISS_ALERT',
+    'ATTACH_FILE', 'TOGGLE'
 ];
 
 export const StepList: React.FC<StepListProps> = ({
@@ -140,7 +143,7 @@ export const StepList: React.FC<StepListProps> = ({
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
+                            <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.2fr)_70px] gap-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4">
                                 <div className="text-center">Step</div>
                                 <div>Action</div>
                                 <div>Target / Module</div>
@@ -158,9 +161,9 @@ export const StepList: React.FC<StepListProps> = ({
                                         setDraggedStepIndex(null);
                                         e.currentTarget.removeAttribute('draggable');
                                     }}
-                                    className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''}`}
+                                    className={`group bg-white border border-gray-200 p-3 rounded-lg shadow-sm hover:border-blue-300 hover:shadow-md transition-all relative ${elementMenuOpen === step.id ? 'z-50 border-blue-300 ring-2 ring-blue-500/20' : 'z-auto'} ${draggedStepIndex === index ? 'opacity-50 ring-2 ring-blue-300 border-blue-400' : ''} ${step.enabled === false ? 'opacity-60 bg-gray-50' : ''}`}
                                 >
-                                    <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.5fr)_55px] gap-2 items-center">
+                                    <div className="grid grid-cols-[30px_240px_minmax(0,1fr)_minmax(0,1.2fr)_70px] gap-2 items-center">
                                         {/* Drag Handle & Index */}
                                         <div
                                             className="flex items-center justify-center text-gray-300 cursor-grab active:cursor-grabbing group-hover:text-gray-400 drag-handle hover:bg-gray-50 rounded-md py-1 transition-colors relative"
@@ -194,29 +197,46 @@ export const StepList: React.FC<StepListProps> = ({
                                                 className={`w-full text-xs font-bold rounded-md border px-2 py-2 focus:ring-2 focus:ring-opacity-50 outline-none uppercase cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
                                                 value={step.action}
                                                 onChange={(e) => onUpdateStep(step.id, { action: e.target.value as ActionType, target: '', data: '', headerProfileId: undefined, bodyTemplateId: undefined, endpointId: undefined })}
+                                                disabled={step.enabled === false}
                                             >
                                                 <optgroup label="Web Actions">
                                                     <option value="OPEN">Open URL</option>
                                                     <option value="CLICK">Click Element</option>
+                                                    <option value="DOUBLE_CLICK">Double Click</option>
+                                                    <option value="RIGHT_CLICK">Right Click</option>
                                                     <option value="TYPE">Type Text</option>
+                                                    <option value="CLEAR">Clear Input</option>
                                                     <option value="HOVER">Hover Element</option>
                                                     <option value="HIGHLIGHT">Highlight Element</option>
                                                     <option value="SCROLL_TO">Scroll To</option>
                                                     <option value="SELECT_OPTION">Select Option</option>
                                                     <option value="CHECK">Check Box</option>
                                                     <option value="UNCHECK">Uncheck Box</option>
+                                                    <option value="TOGGLE">Toggle Element</option>
                                                     <option value="DRAG_AND_DROP">Drag & Drop</option>
                                                     <option value="UPLOAD_FILE">Upload File</option>
+                                                    <option value="ATTACH_FILE">Attach File</option>
                                                     <option value="PRESS_KEY">Press Key</option>
                                                 </optgroup>
                                                 <optgroup label="Assertions">
                                                     <option value="ASSERT_VISIBLE">Assert Visible</option>
-                                                    <option value="ASSERT_HIDDEN">Assert Hidden</option>
+                                                    <option value="ASSERT_INVISIBLE">Assert Invisible</option>
                                                     <option value="ASSERT_TEXT">Assert Text</option>
                                                     <option value="ASSERT_VALUE">Assert Value</option>
+                                                    <option value="ASSERT_URL">Assert URL</option>
+                                                    <option value="ASSERT_TITLE">Assert Title</option>
+                                                    <option value="ASSERT_DISABLED">Assert Disabled</option>
+                                                </optgroup>
+                                                <optgroup label="Browser & Alert Actions">
+                                                    <option value="SWITCH_TO_WINDOW">Switch to Window</option>
+                                                    <option value="SWITCH_TO_FRAME">Switch to Frame</option>
+                                                    <option value="ACCEPT_ALERT">Accept Alert</option>
+                                                    <option value="DISMISS_ALERT">Dismiss Alert</option>
                                                 </optgroup>
                                                 <optgroup label="Logic & Modules">
                                                     <option value="WAIT">Wait (ms)</option>
+                                                    <option value="WAIT_FOR_VISIBLE">Wait for Visible</option>
+                                                    <option value="WAIT_FOR_INVISIBLE">Wait for Invisible</option>
                                                     <option value="EXTRACT_VAR">Extract Variable</option>
                                                     <option value="EVALUATE_JS">Evaluate JS</option>
                                                     <option value="RUN_MODULE">Run Module</option>
@@ -234,9 +254,10 @@ export const StepList: React.FC<StepListProps> = ({
                                         <div className="relative">
                                             {step.action === 'RUN_MODULE' ? (
                                                 <select
-                                                    className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer"
+                                                    className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                     value={step.target}
                                                     onChange={(e) => onUpdateStep(step.id, { target: e.target.value, data: '{}' })}
+                                                    disabled={step.enabled === false}
                                                 >
                                                     <option value="">Select Module...</option>
                                                     {(activeProject.modules || []).map(m => (
@@ -245,8 +266,9 @@ export const StepList: React.FC<StepListProps> = ({
                                                 </select>
                                             ) : step.action.startsWith('API_') ? (
                                                 <select
-                                                    className="w-full bg-emerald-50 text-emerald-900 rounded-md border border-emerald-200 px-3 py-2 text-xs font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                                                    className="w-full bg-emerald-50 text-emerald-900 rounded-md border border-emerald-200 px-3 py-2 text-xs font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                     value={step.endpointId || ''}
+                                                    disabled={step.enabled === false}
                                                     onChange={(e) => {
                                                         const newEndpointId = e.target.value || undefined;
                                                         let currentValues: Record<string, string> = {};
@@ -324,8 +346,8 @@ export const StepList: React.FC<StepListProps> = ({
                                                         className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                         value={step.target}
                                                         onChange={(e) => onUpdateStep(step.id, { target: e.target.value })}
-                                                        placeholder={['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action) ? 'Not required' : 'PageName.ElementName or Selector'}
-                                                        disabled={['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action)}
+                                                        placeholder={['OPEN', 'WAIT', 'WAIT_FOR_VISIBLE', 'WAIT_FOR_INVISIBLE', 'EVALUATE_JS', 'SWITCH_TO_WINDOW', 'SWITCH_TO_FRAME', 'ACCEPT_ALERT', 'DISMISS_ALERT'].includes(step.action) ? 'Not required' : 'PageName.ElementName or Selector'}
+                                                        disabled={step.enabled === false || ['OPEN', 'WAIT', 'WAIT_FOR_VISIBLE', 'WAIT_FOR_INVISIBLE', 'EVALUATE_JS', 'SWITCH_TO_WINDOW', 'SWITCH_TO_FRAME', 'ACCEPT_ALERT', 'DISMISS_ALERT'].includes(step.action)}
                                                     />
                                                     <div className="absolute right-1 flex items-center gap-0.5">
                                                         {!['OPEN', 'WAIT', 'EVALUATE_JS'].includes(step.action) && (
@@ -416,10 +438,11 @@ export const StepList: React.FC<StepListProps> = ({
                                                                 <label className="text-[10px] font-mono font-medium text-blue-700 w-20 truncate text-right shrink-0" title={param.name}>{param.name}</label>
                                                                 <div className="relative flex-1">
                                                                     <input
-                                                                        className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                                        className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                         placeholder={param.defaultValue || 'Value'}
                                                                         value={currentData[param.name] || ''}
                                                                         onChange={(e) => updateModuleParam(step.id, step.data, param.name, e.target.value)}
+                                                                        disabled={step.enabled === false}
                                                                     />
                                                                     <button
                                                                         className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
@@ -462,8 +485,9 @@ export const StepList: React.FC<StepListProps> = ({
                                                 <div className="space-y-2">
                                                     <div className="flex gap-2">
                                                         <select
-                                                            className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none"
+                                                            className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                             value={step.headerProfileId || ''}
+                                                            disabled={step.enabled === false}
                                                             onChange={(e) => {
                                                                 const newHeaderId = e.target.value || undefined;
                                                                 let currentValues: Record<string, string> = {};
@@ -548,8 +572,9 @@ export const StepList: React.FC<StepListProps> = ({
                                                         </select>
                                                         {(step.action === 'API_POST' || step.action === 'API_PUT') && (
                                                             <select
-                                                                className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none"
+                                                                className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                 value={step.bodyTemplateId || ''}
+                                                                disabled={step.enabled === false}
                                                                 onChange={(e) => {
                                                                     const newTemplateId = e.target.value || undefined;
                                                                     let currentValues: Record<string, string> = {};
@@ -681,13 +706,14 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                     <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                                                     <div className="relative flex-1">
                                                                                         <input
-                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                                             placeholder="Value"
                                                                                             value={currentValues[varName] || ''}
                                                                                             onChange={(e) => {
                                                                                                 const newData = { ...currentValues, [varName]: e.target.value };
                                                                                                 onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                             }}
+                                                                                            disabled={step.enabled === false}
                                                                                         />
                                                                                         <button
                                                                                             className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
@@ -758,13 +784,14 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                     <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                                                     <div className="relative flex-1">
                                                                                         <input
-                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                                             placeholder="Value"
                                                                                             value={currentValues[varName] || ''}
                                                                                             onChange={(e) => {
                                                                                                 const newData = { ...currentValues, [varName]: e.target.value };
                                                                                                 onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                             }}
+                                                                                            disabled={step.enabled === false}
                                                                                         />
                                                                                         <button
                                                                                             className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
@@ -833,13 +860,14 @@ export const StepList: React.FC<StepListProps> = ({
                                                                                     <label className="text-[10px] font-mono font-medium text-gray-500 w-24 truncate text-right shrink-0" title={varName}>{varName}</label>
                                                                                     <div className="relative flex-1">
                                                                                         <input
-                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                                                            className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                                             placeholder={template.defaultValues?.[varName] || "Value"}
                                                                                             value={currentValues[varName] || ''}
                                                                                             onChange={(e) => {
                                                                                                 const newData = { ...currentValues, [varName]: e.target.value };
                                                                                                 onUpdateStep(step.id, { data: JSON.stringify(newData) });
                                                                                             }}
+                                                                                            disabled={step.enabled === false}
                                                                                         />
                                                                                         <button
                                                                                             className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-300 hover:text-blue-600 p-0.5 rounded"
@@ -886,10 +914,11 @@ export const StepList: React.FC<StepListProps> = ({
                                                     ) : (
                                                         <div className="relative">
                                                             <textarea
-                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 min-h-[60px] resize-y"
+                                                                className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 min-h-[60px] resize-y disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                                 value={step.data}
                                                                 onChange={(e) => onUpdateStep(step.id, { data: e.target.value })}
                                                                 placeholder="Request Body (JSON)"
+                                                                disabled={step.enabled === false}
                                                             />
                                                             <button
                                                                 className="absolute right-1 top-2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
@@ -927,14 +956,25 @@ export const StepList: React.FC<StepListProps> = ({
                                                         placeholder={
                                                             step.action === 'OPEN' ? 'URL (e.g., https://google.com)' :
                                                                 step.action === 'WAIT' ? 'Duration in ms (e.g., 2000)' :
-                                                                    step.action === 'EVALUATE_JS' ? 'JS Expression' :
-                                                                        step.action === 'TYPE' ? 'Text to type...' :
-                                                                            step.action === 'ASSERT_TEXT' ? 'Expected text...' :
-                                                                                ['CLICK', 'ASSERT_VISIBLE', 'HOVER', 'HIGHLIGHT'].includes(step.action) ? 'Not required' : 'Value / Data'
+                                                                    step.action === 'WAIT_FOR_VISIBLE' ? 'Element selector...' :
+                                                                        step.action === 'WAIT_FOR_INVISIBLE' ? 'Element selector...' :
+                                                                            step.action === 'EVALUATE_JS' ? 'JS Expression' :
+                                                                                step.action === 'TYPE' ? 'Text to type...' :
+                                                                                    step.action === 'ASSERT_TEXT' ? 'Expected text...' :
+                                                                                        step.action === 'ASSERT_VALUE' ? 'Expected value...' :
+                                                                                            step.action === 'ASSERT_URL' ? 'Expected URL...' :
+                                                                                                step.action === 'ASSERT_TITLE' ? 'Expected title...' :
+                                                                                                    step.action === 'ASSERT_DISABLED' ? 'Element selector...' :
+                                                                                                        step.action === 'SELECT_OPTION' ? 'Option value...' :
+                                                                                                            step.action === 'DRAG_AND_DROP' ? 'Target selector...' :
+                                                                                                                step.action === 'ATTACH_FILE' ? 'File path...' :
+                                                                                                                    step.action === 'SWITCH_TO_WINDOW' ? 'URL or title to match...' :
+                                                                                                                        step.action === 'SWITCH_TO_FRAME' ? 'Frame selector...' :
+                                                                                                                            ['CLICK', 'ASSERT_VISIBLE', 'ASSERT_INVISIBLE', 'HOVER', 'HIGHLIGHT', 'DOUBLE_CLICK', 'RIGHT_CLICK', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ACCEPT_ALERT', 'DISMISS_ALERT'].includes(step.action) ? 'Not required' : 'Value / Data'
                                                         }
-                                                        disabled={['CLICK', 'HOVER', 'HIGHLIGHT', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_HIDDEN'].includes(step.action)}
+                                                        disabled={step.enabled === false || ['CLICK', 'HOVER', 'HIGHLIGHT', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_INVISIBLE', 'DOUBLE_CLICK', 'RIGHT_CLICK', 'SWITCH_TO_WINDOW', 'SWITCH_TO_FRAME', 'ACCEPT_ALERT', 'DISMISS_ALERT'].includes(step.action)}
                                                     />
-                                                    {!['CLICK', 'HOVER', 'HIGHLIGHT', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_HIDDEN'].includes(step.action) && (
+                                                    {!['CLICK', 'HOVER', 'HIGHLIGHT', 'SCROLL_TO', 'CHECK', 'UNCHECK', 'ASSERT_VISIBLE', 'ASSERT_INVISIBLE', 'DOUBLE_CLICK', 'RIGHT_CLICK', 'SWITCH_TO_WINDOW', 'SWITCH_TO_FRAME', 'ACCEPT_ALERT', 'DISMISS_ALERT'].includes(step.action) && (
                                                         <button
                                                             className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
                                                             onClick={(e) => { e.stopPropagation(); setVariableMenuOpen(variableMenuOpen?.stepId === step.id && variableMenuOpen.field === 'data' && !variableMenuOpen.paramName ? null : { stepId: step.id, field: 'data' }); setElementMenuOpen(null); }}
@@ -967,29 +1007,48 @@ export const StepList: React.FC<StepListProps> = ({
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex justify-end gap-0.5 items-center">
+                                        <div className="grid grid-cols-2 gap-0.5 w-[70px]">
                                             <button
-                                                onClick={() => onUpdateStep(step.id, { screenshot: !step.screenshot })}
-                                                className={`p-1.5 rounded-md transition-colors ${step.screenshot ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100'}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onUpdateStep(step.id, { enabled: step.enabled === false ? true : false });
+                                                }}
+                                                className={`p-1 rounded-md transition-colors ${step.enabled === false ? 'text-gray-400 bg-gray-100 hover:bg-green-50 hover:text-green-600' : 'text-green-600 bg-green-50 hover:bg-green-100'}`}
+                                                title={step.enabled === false ? "Step Disabled (Click to Enable)" : "Step Enabled (Click to Disable)"}
+                                            >
+                                                {step.enabled === false ? <PowerOff size={14} /> : <Power size={14} />}
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onUpdateStep(step.id, { screenshot: !step.screenshot });
+                                                }}
+                                                className={`p-1 rounded-md transition-colors ${step.screenshot ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50 opacity-0 group-hover:opacity-100'}`}
                                                 title={step.screenshot ? "Screenshot Enabled" : "Enable Screenshot"}
                                             >
-                                                <Camera size={16} />
+                                                <Camera size={14} />
                                             </button>
                                             {onDuplicateStep && (
                                                 <button
-                                                    onClick={() => onDuplicateStep(step)}
-                                                    className="text-gray-300 hover:text-blue-500 p-1.5 rounded-md hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onDuplicateStep(step);
+                                                    }}
+                                                    className="text-gray-300 hover:text-blue-500 p-1 rounded-md hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
                                                     title="Duplicate Step"
                                                 >
-                                                    <Copy size={16} />
+                                                    <Copy size={14} />
                                                 </button>
                                             )}
                                             <button
-                                                onClick={() => onDeleteStep(step.id)}
-                                                className="text-gray-300 hover:text-red-500 p-1.5 rounded-md hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onDeleteStep(step.id);
+                                                }}
+                                                className="text-gray-300 hover:text-red-500 p-1 rounded-md hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                                                 title="Delete Step"
                                             >
-                                                <Trash2 size={16} />
+                                                <Trash2 size={14} />
                                             </button>
                                         </div>
                                     </div>

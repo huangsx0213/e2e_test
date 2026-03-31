@@ -44,6 +44,7 @@ export interface TestStep {
   headerProfileId?: string;
   bodyTemplateId?: string;
   screenshot?: boolean;
+  enabled?: boolean;
   position?: number;
 }
 

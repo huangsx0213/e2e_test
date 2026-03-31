@@ -136,18 +136,20 @@ function App() {
       </main>
 
       {executionState && activeSuite && activeCase && (
-        <ExecutionRunner
-          suite={activeSuite}
-          testCase={activeCase}
-          project={currentProject}
-          headers={headers}
-          bodies={bodies}
-          endpoints={endpoints}
-          environments={environments}
-          initialEnvironment={currentEnvironment}
-          reportsApi={api.reports}
-          onClose={() => setExecutionState(null)}
-        />
+        <div className="fixed inset-0 z-50">
+          <ExecutionRunner
+            suite={activeSuite}
+            testCase={activeCase}
+            project={currentProject}
+            headers={headers}
+            bodies={bodies}
+            endpoints={endpoints}
+            environments={environments}
+            initialEnvironment={currentEnvironment}
+            reportsApi={api.reports}
+            onClose={() => setExecutionState(null)}
+          />
+        </div>
       )}
     </div>
   );

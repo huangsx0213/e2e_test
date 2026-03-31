@@ -21,6 +21,7 @@ import {
   StopCircle,
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
+import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
 
 interface ScenarioExecutionRunnerProps {
   scenario: TestScenario;
@@ -271,41 +272,8 @@ export const ScenarioExecutionRunner: React.FC<
             <div className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
               <Terminal size={12} /> Console Output
             </div>
-            <div className="space-y-2 flex-1 whitespace-pre-wrap">
-              {logs.map((log, idx) => (
-                <div
-                  key={idx}
-                  className={`flex gap-3 text-xs leading-relaxed animate-in fade-in slide-in-from-left-2 duration-200 ${log.status === "FAIL" ? "text-red-400" : "text-slate-400"}`}
-                >
-                  <span className="text-slate-600 shrink-0 select-none w-16">
-                    [{new Date(log.timestamp).toLocaleTimeString().split(" ")[0]}]
-                  </span>
-                  <span
-                    className={
-                      log.message.includes("🚀") || log.message.includes("🎬")
-                        ? "text-blue-400 font-bold"
-                        : log.message.includes("✅") || log.message.includes("Completed Successfully")
-                          ? "text-emerald-400"
-                          : log.message.includes("📦")
-                            ? "text-purple-400"
-                            : log.message.includes("🌐")
-                              ? "text-cyan-400"
-                              : log.message.includes("📊")
-                                ? "text-yellow-400"
-                                : ""
-                    }
-                  >
-                    {log.message}
-                    {log.screenshot && (
-                      <div className="mt-2 text-slate-500">
-                        <img src={log.screenshot} alt="Step screenshot" className="rounded border border-slate-700 shadow-sm object-contain max-h-48 w-full bg-slate-800" />
-                      </div>
-                    )}
-                  </span>
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
+            <ExecutionLogs logs={logs} />
+            <div ref={logsEndRef} />
           </div>
         </div>
       </div>

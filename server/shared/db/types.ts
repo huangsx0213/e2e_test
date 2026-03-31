@@ -71,6 +71,7 @@ export type DbStepRow = {
   body_template_id: string | null;
   endpoint_id: string | null;
   screenshot: number | null;
+  enabled: number;
 };
 
 export type DbHeaderRow = {

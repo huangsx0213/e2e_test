@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
+import { ExecutionLogs } from '@/shared/execution/ExecutionLogs';
 
 interface TestReportProps {
   currentProjectId: string;
@@ -83,6 +84,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
   }
 
   return (
+    <>
     <div className="h-full w-full flex overflow-hidden bg-slate-50">
       <ConfirmModal
         isOpen={!!reportToDelete}
@@ -302,38 +304,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
               </div>
               
               <div className="p-5 font-mono text-[13px] space-y-1.5">
-                {filteredLogs.map((log, idx) => (
-                  <div key={idx} className="flex items-start gap-4 hover:bg-slate-800/50 p-1.5 rounded transition-colors group">
-                    <span className="text-slate-500 shrink-0 select-none w-24 pt-0.5">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </span>
-                    
-                    <span className={`shrink-0 w-20 font-bold pt-0.5 ${
-                      log.status === 'FAIL' ? 'text-red-400' : 
-                      log.status === 'PASS' ? 'text-emerald-400' : 
-                      log.status === 'RUNNING' ? 'text-blue-400' : 
-                      'text-slate-400'
-                    }`}>
-                      [{log.status}]
-                    </span>
-                    
-                    <div className="flex-1 min-w-0">
-                      <span className={`break-words whitespace-pre-wrap ${
-                        log.status === 'FAIL' ? 'text-red-300' : 
-                        log.status === 'PASS' && log.message.includes('Passed') ? 'text-emerald-300' :
-                        log.message.includes('Starting') ? 'text-blue-300 font-bold' :
-                        'text-slate-300'
-                      }`}>
-                        {log.message}
-                      </span>
-                      {log.screenshot && (
-                        <div className="mt-2 text-xs text-blue-400 flex items-center gap-1 cursor-pointer hover:text-blue-300">
-                          <AlertCircle size={12} /> View Screenshot attached
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                <ExecutionLogs logs={filteredLogs} />
                 {filteredLogs.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
                     <Terminal size={32} className="opacity-50" />
@@ -354,5 +325,6 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
         )}
       </div>
     </div>
+    </>
   );
 };
