@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useCrud } from '@/shared/hooks/useCrud';
 import { api } from '@/shared/services/api';
@@ -5,9 +6,10 @@ import { ExecutionReport, TestSuite } from '@/shared/types';
 import { 
   CheckCircle2, XCircle, Clock, Calendar, Globe, Terminal, 
   Loader2, BarChart3, Search, ListChecks, AlertCircle,
-  Copy, Check
+  Copy, Check, Trash2, AlertTriangle
 } from 'lucide-react';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
+import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 
 interface TestReportProps {
   currentProjectId: string;
@@ -17,6 +19,7 @@ interface TestReportProps {
 export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites }) => {
   const [reports, reportsApi, loading] = useCrud<ExecutionReport>(api.reports);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'ALL' | 'PASS' | 'FAIL'>('ALL');
   const [copied, setCopied] = useState(false);
@@ -60,6 +63,17 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const onConfirmDelete = async () => {
+    if (!reportToDelete) return;
+    try {
+      await reportsApi.remove(reportToDelete);
+      if (selectedReportId === reportToDelete) setSelectedReportId(null);
+      setReportToDelete(null);
+    } catch (err) {
+      alert('Delete failed');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-slate-50">
@@ -70,6 +84,16 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
 
   return (
     <div className="h-full w-full flex overflow-hidden bg-slate-50">
+      <ConfirmModal
+        isOpen={!!reportToDelete}
+        onClose={() => setReportToDelete(null)}
+        onConfirm={onConfirmDelete}
+        title="Delete Test Report?"
+        message="Are you sure you want to delete this historical execution result? This action is permanent and cannot be reversed."
+        confirmLabel="Permanent Delete"
+        type="danger"
+      />
+
       {/* Sidebar: Report List */}
       <div className="w-80 border-r border-slate-200 flex flex-col bg-white shrink-0 shadow-sm z-10">
         <div className="p-4 border-b border-slate-200">
@@ -123,14 +147,19 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
                 </div>
                 
                 <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={12} className="text-slate-400" />
-                    <span>{new Date(report.startTime).toLocaleDateString()}</span>
+                  <div className="flex items-center gap-1.5 overflow-hidden flex-1">
+                    <Calendar size={12} className="text-slate-400 shrink-0" />
+                    <span className="truncate">{new Date(report.startTime).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Globe size={12} className="text-slate-400" />
-                    <span className="font-medium">{report.environment || 'DEV'}</span>
-                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReportToDelete(report.id);
+                    }}
+                    className="p-1 px-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
 
                 {/* Mini Progress Bar */}
@@ -327,4 +356,3 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
     </div>
   );
 };
-

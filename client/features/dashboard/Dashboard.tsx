@@ -1,7 +1,10 @@
-import React from 'react';
-import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Workflow, Network, FileText, FileCode, CheckCircle2, Clock, Activity, BarChart3 } from 'lucide-react';
-import { Project, TestSuite } from '@/shared/types';
+
+import React, { useMemo } from 'react';
+import { Layers, PlayCircle, Database, ArrowRight, Globe, Box, Network, FileText, FileCode, CheckCircle2, XCircle, Loader2, Clock, Activity, BarChart3, AlertCircle } from 'lucide-react';
+import { Project, TestSuite, ExecutionReport } from '@/shared/types';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
+import { useCrud } from '@/shared/hooks/useCrud';
+import { api } from '@/shared/services/api';
 
 interface DashboardProps {
   projects: Project[];
@@ -12,6 +15,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environments, currentProjectId, onNavigate }) => {
+  const [reports] = useCrud<ExecutionReport>(api.reports);
   const currentProject = projects.find(p => p.id === currentProjectId);
   
   // Calculate Stats
@@ -19,15 +23,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
   const totalSuites = suites.length;
   const totalCases = suites.reduce((acc, s) => acc + s.cases.length, 0);
 
-  // Mock Recent Run Data (since we don't have persistent run history yet)
-  const recentRun = {
-    scenarioName: currentProject?.scenarios?.[0]?.name || "E2E Checkout Flow",
-    status: "PASSED",
-    env: environments[0] || "PROD",
-    time: "10 mins ago",
-    duration: "45s",
-    passedCases: 12,
-    totalCases: 12
+  // Get the real most recent run for this project
+  const latestReport = useMemo(() => {
+    if (!reports.length) return null;
+    return [...reports]
+      .filter(r => {
+        const suite = suites.find(s => s.id === r.suiteId);
+        return !suite || suite.projectId === currentProjectId;
+      })
+      .sort((a, b) => b.startTime - a.startTime)[0];
+  }, [reports, suites, currentProjectId]);
+
+  const formatDuration = (start: number, end?: number) => {
+    if (!end) return '-';
+    const ms = end - start;
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    if (m > 0) return `${m}m ${s % 60}s`;
+    return `${s}s`;
+  };
+
+  const getTimeAgo = (timestamp: number) => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return new Date(timestamp).toLocaleDateString();
   };
 
   return (
@@ -79,35 +102,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ projects, suites, environm
                 <h3 className="font-semibold text-slate-900 flex items-center gap-2">
                     <Activity size={18} className="text-slate-400" /> Recent Run Summary
                 </h3>
-                <button onClick={() => onNavigate('RUN')} className="text-sm text-blue-600 font-medium hover:text-blue-700 cursor-pointer">
-                    View Scenarios
-                </button>
+                {latestReport && (
+                  <button onClick={() => onNavigate('REPORTS')} className="text-sm text-blue-600 font-medium hover:text-blue-700 cursor-pointer">
+                      View Full Report
+                  </button>
+                )}
             </div>
-            <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                        <CheckCircle2 size={24} />
-                    </div>
-                    <div>
-                        <h4 className="text-lg font-bold text-slate-900">{recentRun.scenarioName}</h4>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
-                            <span className="flex items-center gap-1.5"><Globe size={14} /> {recentRun.env}</span>
-                            <span className="flex items-center gap-1.5"><Clock size={14} /> {recentRun.time}</span>
-                            <span className="flex items-center gap-1.5"><Activity size={14} /> {recentRun.duration}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-8">
-                    <div className="text-center">
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Status</p>
-                        <p className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">{recentRun.status}</p>
-                    </div>
-                    <div className="text-center">
-                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Pass Rate</p>
-                        <p className="text-xl font-bold text-slate-900">{recentRun.passedCases}/{recentRun.totalCases}</p>
-                    </div>
-                </div>
-            </div>
+            
+            {latestReport ? (
+              <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6 cursor-pointer hover:bg-slate-50/50 transition-colors" onClick={() => onNavigate('REPORTS')}>
+                  <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${
+                        latestReport.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-600' : 
+                        latestReport.status === 'FAILED' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'
+                      }`}>
+                          {latestReport.status === 'COMPLETED' && <CheckCircle2 size={24} />}
+                          {latestReport.status === 'FAILED' && <XCircle size={24} />}
+                          {latestReport.status === 'RUNNING' && <Loader2 size={24} className="animate-spin" />}
+                      </div>
+                      <div>
+                          <h4 className="text-lg font-bold text-slate-900">{latestReport.suiteName || latestReport.suiteId}</h4>
+                          <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+                              <span className="flex items-center gap-1.5"><Globe size={14} /> {latestReport.environment || 'DEV'}</span>
+                              <span className="flex items-center gap-1.5"><Clock size={14} /> {getTimeAgo(latestReport.startTime)}</span>
+                              <span className="flex items-center gap-1.5"><Activity size={14} /> {formatDuration(latestReport.startTime, latestReport.endTime)}</span>
+                          </div>
+                      </div>
+                  </div>
+                  <div className="flex items-center gap-8">
+                      <div className="text-center">
+                          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Status</p>
+                          <p className={`text-sm font-bold px-3 py-1 rounded-full ${
+                            latestReport.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-600' : 
+                            latestReport.status === 'FAILED' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'
+                          }`}>
+                            {latestReport.status}
+                          </p>
+                      </div>
+                      <div className="text-center">
+                          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Pass Rate</p>
+                          <p className={`text-xl font-bold ${
+                            latestReport.passRate === 100 ? 'text-emerald-600' :
+                            latestReport.passRate >= 50 ? 'text-amber-600' : 'text-red-600'
+                          }`}>
+                            {latestReport.passedCases}/{latestReport.totalCases}
+                          </p>
+                      </div>
+                  </div>
+              </div>
+            ) : (
+              <div className="p-12 flex flex-col items-center justify-center text-slate-400 gap-3">
+                <AlertCircle size={32} className="opacity-20" />
+                <p className="text-sm font-medium">No execution history found for this project</p>
+                <button onClick={() => onNavigate('RUN')} className="text-xs text-blue-600 hover:underline">Start your first run</button>
+              </div>
+            )}
         </div>
 
         {/* Quick Navigation Cards */}
