@@ -105,6 +105,7 @@ async function executeRunAsync(
 ): Promise<void> {
   const startTime = Date.now();
   let result: RunResult;
+  let displayName = `Execution: ${request.type}`;
   const uiExecutor = new UIExecutor();
 
   try {
@@ -121,14 +122,24 @@ async function executeRunAsync(
     logger.log({
       stepId: 'init',
       status: 'INFO',
-      message: `🚀 Starting execution (${request.type}) in environment: ${request.environment}`,
+      message: `🚀 Starting execution: ${displayName} in environment: ${request.environment}`,
     });
 
     if (request.type === 'case') {
+      const suite = suiteRepository.get(request.suiteId!);
+      const testCase = suite?.cases.find(c => c.id === request.caseId);
+      displayName = testCase ? testCase.name : `Execution: ${request.type}`;
+      console.log(`[EXEC] Starting case execution for: ${displayName}`);
       result = await executeSingleCase(request, project, assets, logger, signal, uiExecutor);
     } else if (request.type === 'suite') {
+      const suite = suiteRepository.get(request.suiteId!);
+      displayName = suite ? suite.name : `Execution: ${request.type}`;
+      console.log(`[EXEC] Starting suite execution for: ${displayName}`);
       result = await executeSuite(request, project, assets, logger, signal, uiExecutor);
     } else {
+      const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
+      displayName = scenario ? scenario.name : `Execution: ${request.type}`;
+      console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
       result = await executeScenario(request, project, assets, logger, signal, uiExecutor);
     }
 
@@ -138,6 +149,7 @@ async function executeRunAsync(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const isAborted = signal.aborted;
+    console.error(`[EXEC] Execution failed: ${message}`);
 
     logger.log({
       stepId: 'error',
@@ -162,10 +174,11 @@ async function executeRunAsync(
   await uiExecutor.cleanup();
 
   // Persist report
+  console.log(`[EXEC] Saving report: ${displayName} (${reportId})`);
   reportRepository.save({
     id: reportId,
     suiteId: request.suiteId || request.scenarioId || request.projectId,
-    suiteName: `Execution: ${request.type}`,
+    suiteName: displayName,
     environment: request.environment,
     startTime,
     endTime,
