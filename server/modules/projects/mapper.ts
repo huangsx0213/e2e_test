@@ -3,6 +3,7 @@ import type {
   Page,
   Project,
   ScenarioSuite,
+  SuiteVariable,
   TestModule,
   TestScenario,
   UIElement,
@@ -53,6 +54,15 @@ function normalizeScenarioSuite(input: Partial<ScenarioSuite>): ScenarioSuite {
     id: asId(input.id, 'ss'),
     suiteId: asText(input.suiteId),
     variableOverrides: normalizeStringRecord(input.variableOverrides),
+    iterationStrategy: (input.iterationStrategy === 'CROSS_MATRIX' || input.iterationStrategy === 'SUITE_DRIVEN') ? input.iterationStrategy : 'SCENARIO_DRIVEN',
+  };
+}
+
+function normalizeSuiteVariable(input: Partial<SuiteVariable>): SuiteVariable {
+  return {
+    id: asId(input.id, 'var'),
+    key: asText(input.key, 'VAR_1'),
+    value: asText(input.value),
   };
 }
 
@@ -61,6 +71,8 @@ function normalizeScenario(input: Partial<TestScenario>): TestScenario {
     id: asId(input.id, 'scenario'),
     name: asText(input.name, 'New Scenario'),
     description: asText(input.description),
+    variables: asArray<SuiteVariable>(input.variables).map((variable) => normalizeSuiteVariable(variable)),
+    dataRows: asArray<Record<string, unknown>>(input.dataRows).map((row) => normalizeStringRecord(row)),
     suites: asArray<ScenarioSuite>(input.suites).map((suite) => normalizeScenarioSuite(suite)),
   };
 }

@@ -26,13 +26,13 @@ export function saveProject(projectInput: Partial<Project>): Project {
           name = excluded.name,
           description = excluded.description
       `,
-    ).run(project.id, project.name, project.description);
+    ).run(project.id, project.name, project.description || '');
 
     db.prepare('DELETE FROM project_pages WHERE project_id = ?').run(project.id);
     db.prepare('DELETE FROM project_modules WHERE project_id = ?').run(project.id);
     db.prepare('DELETE FROM scenarios WHERE project_id = ?').run(project.id);
 
-    for (const [pageIndex, page] of project.pages.entries()) {
+    for (const [pageIndex, page] of (project.pages || []).entries()) {
       db.prepare(
         `
           INSERT INTO project_pages (id, project_id, name, description, position)
@@ -132,13 +132,42 @@ export function saveProject(projectInput: Partial<Project>): Project {
         scenarioIndex,
       );
 
+      db.prepare('DELETE FROM scenario_variables WHERE scenario_id = ?').run(scenario.id);
+      db.prepare('DELETE FROM scenario_data_rows WHERE scenario_id = ?').run(scenario.id);
+
+      for (const [variableIndex, variable] of (scenario.variables || []).entries()) {
+        db.prepare(
+          `
+            INSERT INTO scenario_variables (id, scenario_id, variable_key, variable_value, position)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+        ).run(variable.id, scenario.id, variable.key, variable.value, variableIndex);
+      }
+
+      for (const [rowIndex, row] of (scenario.dataRows || []).entries()) {
+        const rowResult = db
+          .prepare('INSERT INTO scenario_data_rows (scenario_id, row_index) VALUES (?, ?)')
+          .run(scenario.id, rowIndex);
+        const rowId = Number(rowResult.lastInsertRowid);
+
+        let colIndex = 0;
+        for (const [key, value] of Object.entries(row)) {
+          db.prepare(
+            `
+              INSERT INTO scenario_data_row_values (row_id, item_key, item_value, position)
+              VALUES (?, ?, ?, ?)
+            `,
+          ).run(rowId, key, value, colIndex++);
+        }
+      }
+
       for (const [suiteIndex, scenarioSuite] of scenario.suites.entries()) {
         db.prepare(
           `
-            INSERT INTO scenario_suites (id, scenario_id, suite_id, position)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO scenario_suites (id, scenario_id, suite_id, iteration_strategy, position)
+            VALUES (?, ?, ?, ?, ?)
           `,
-        ).run(scenarioSuite.id, scenario.id, scenarioSuite.suiteId, suiteIndex);
+        ).run(scenarioSuite.id, scenario.id, scenarioSuite.suiteId, scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN', suiteIndex);
 
         for (const [overrideIndex, [key, value]] of Object.entries(
           scenarioSuite.variableOverrides || {},
@@ -259,17 +288,58 @@ export function getProject(projectId: string): Project | undefined {
   const projectScenarios: TestScenario[] = scenarios.map((scenario) => {
     const suites = db.prepare(
       `
-        SELECT id, suite_id
+        SELECT id, suite_id, iteration_strategy
         FROM scenario_suites
         WHERE scenario_id = ?
         ORDER BY position
       `,
     ).all(scenario.id) as DbScenarioSuiteRow[];
 
+    const variables = db.prepare(
+      `
+        SELECT id, variable_key, variable_value
+        FROM scenario_variables
+        WHERE scenario_id = ?
+        ORDER BY position
+      `,
+    ).all(scenario.id) as Array<{ id: string; variable_key: string; variable_value: string }>;
+
+    const dataRowsRecords = db.prepare(
+      `
+        SELECT dr.id, dr.row_index, drv.item_key, drv.item_value
+        FROM scenario_data_rows dr
+        LEFT JOIN scenario_data_row_values drv ON dr.id = drv.row_id
+        WHERE dr.scenario_id = ?
+        ORDER BY dr.row_index, drv.position
+      `,
+    ).all(scenario.id) as Array<{ id: number; row_index: number; item_key: string; item_value: string }>;
+
+    const dataRows: Record<string, string>[] = [];
+    let currentRowIndex = -1;
+    let currentRow: Record<string, string> | null = null;
+
+    for (const record of dataRowsRecords) {
+      if (record.row_index !== currentRowIndex) {
+        if (currentRow) dataRows.push(currentRow);
+        currentRow = {};
+        currentRowIndex = record.row_index;
+      }
+      if (record.item_key && currentRow) {
+        currentRow[record.item_key] = record.item_value;
+      }
+    }
+    if (currentRow) dataRows.push(currentRow);
+
     return {
       id: scenario.id,
       name: scenario.name,
       description: scenario.description,
+      variables: variables.map((v) => ({
+        id: v.id,
+        key: v.variable_key,
+        value: v.variable_value,
+      })),
+      dataRows,
       suites: suites.map((scenarioSuite) => {
         const overrides = db.prepare(
           `
@@ -283,6 +353,7 @@ export function getProject(projectId: string): Project | undefined {
         return {
           id: scenarioSuite.id,
           suiteId: scenarioSuite.suite_id,
+          iterationStrategy: scenarioSuite.iteration_strategy as any,
           variableOverrides: Object.fromEntries(
             overrides.map((override) => [override.item_key, override.item_value]),
           ),

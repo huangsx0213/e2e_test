@@ -47,6 +47,7 @@ export type DbScenarioRow = {
 export type DbScenarioSuiteRow = {
   id: string;
   suite_id: string;
+  iteration_strategy: string;
 };
 
 export type DbSuiteVariableRow = {

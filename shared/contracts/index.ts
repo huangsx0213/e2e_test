@@ -63,6 +63,7 @@ export interface ScenarioSuite {
   scenarioId?: string;
   suiteId: string;
   variableOverrides?: Record<string, string>;
+  iterationStrategy?: 'SCENARIO_DRIVEN' | 'CROSS_MATRIX' | 'SUITE_DRIVEN';
   position?: number;
 }
 
@@ -71,6 +72,8 @@ export interface TestScenario {
   projectId?: string;
   name: string;
   description?: string;
+  variables?: SuiteVariable[];
+  dataRows?: Record<string, string>[];
   suites?: ScenarioSuite[];
   position?: number;
 }

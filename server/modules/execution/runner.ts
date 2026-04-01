@@ -243,7 +243,7 @@ async function executeSingleCase(
 
   const context = ExecutionContext.create({
     suiteVariables: suiteDefaults,
-    dataRowValues: firstRowData,
+    suiteDataRow: firstRowData,
   });
 
   logger.log({ stepId: 'env', status: 'INFO', message: `🔧 Environment: ${request.environment}` });
@@ -314,18 +314,35 @@ async function executeSuite(
   const suite = suiteRepository.get(request.suiteId!);
   if (!suite) throw new Error(`Suite ${request.suiteId} not found`);
 
-  return await runSuiteWithContext(suite, {}, project, assets, request.environment, logger, signal, uiExecutor);
+  return await runSuiteWithContext(
+    suite, 
+    {}, // scenarioVariables
+    {}, // scenarioDataRow
+    {}, // scenarioOverrides
+    'SUITE_DRIVEN', 
+    project, 
+    assets, 
+    request.environment, 
+    logger, 
+    signal, 
+    uiExecutor,
+    {} // sharedRuntimeVars
+  );
 }
 
 async function runSuiteWithContext(
   suite: TestSuite,
+  scenarioVariables: Record<string, string>,
+  scenarioDataRow: Record<string, string>,
   scenarioOverrides: Record<string, string>,
+  iterationStrategy: 'SCENARIO_DRIVEN' | 'CROSS_MATRIX' | 'SUITE_DRIVEN',
   project: Project,
   assets: ApiAssets,
   environment: string,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
+  sharedRuntimeVars: Record<string, string>
 ): Promise<RunResult> {
   logger.log({ stepId: `suite-${suite.id}`, status: 'INFO', message: `📦 Executing Suite: ${suite.name}` });
 
@@ -334,7 +351,13 @@ async function runSuiteWithContext(
     {} as Record<string, string>,
   );
 
-  const dataRows = suite.dataRows && suite.dataRows.length > 0 ? suite.dataRows : [{}];
+  let dataRows = suite.dataRows && suite.dataRows.length > 0 ? suite.dataRows : [{}];
+  
+  // If scenario-driven, we ignore the suite's internal data rows to prevent unwanted multiplication
+  if (iterationStrategy === 'SCENARIO_DRIVEN') {
+    dataRows = [{}];
+  }
+
   const totalCases = suite.cases.length * dataRows.length;
   let passedCases = 0;
   let failedCases = 0;
@@ -354,9 +377,14 @@ async function runSuiteWithContext(
 
     const context = ExecutionContext.create({
       suiteVariables: suiteDefaults,
+      suiteDataRow: rowData,
+      scenarioVariables,
+      scenarioDataRow,
       scenarioOverrides,
-      dataRowValues: rowData,
     });
+    
+    // Inject shared runtime variables (e.g. EXTRACT_VAR results) to carry across suites in a scenario iteration
+    context.setSharedRuntimeVars(sharedRuntimeVars);
 
     // Suite setup
     if (suite.setupSteps && suite.setupSteps.length > 0) {
@@ -445,33 +473,60 @@ async function executeScenario(
   let passedCases = 0;
   let failedCases = 0;
 
-  for (const scenarioSuite of scenario.suites || []) {
+  const scenarioVariables = (scenario.variables || []).reduce(
+    (acc, v) => ({ ...acc, [v.key]: v.value }),
+    {} as Record<string, string>
+  );
+
+  const scenarioDataRows = scenario.dataRows && scenario.dataRows.length > 0 ? scenario.dataRows : [{}];
+
+  for (let sRowIdx = 0; sRowIdx < scenarioDataRows.length; sRowIdx++) {
     if (signal.aborted) throw new Error('Execution aborted');
 
-    const suite = suiteRepository.get(scenarioSuite.suiteId);
-    if (!suite) {
+    const scenarioRow = scenarioDataRows[sRowIdx];
+    if (scenarioDataRows.length > 1) {
       logger.log({
-        stepId: `ss-${scenarioSuite.id}`,
-        status: 'FAIL',
-        message: `❌ Suite ${scenarioSuite.suiteId} not found`,
+        stepId: `scenario-row-${sRowIdx}`,
+        status: 'INFO',
+        message: `🔄 Scenario Iteration ${sRowIdx + 1}/${scenarioDataRows.length}`,
       });
-      continue;
     }
 
-    const suiteResult = await runSuiteWithContext(
-      suite,
-      scenarioSuite.variableOverrides || {},
-      project,
-      assets,
-      request.environment,
-      logger,
-      signal,
-      uiExecutor,
-    );
+    // A fresh runtime context per scenario iteration to share variables between suites
+    const sharedRuntimeVars: Record<string, string> = {};
 
-    totalCases += suiteResult.totalCases;
-    passedCases += suiteResult.passedCases;
-    failedCases += suiteResult.failedCases;
+    for (const scenarioSuite of scenario.suites || []) {
+      if (signal.aborted) throw new Error('Execution aborted');
+
+      const suite = suiteRepository.get(scenarioSuite.suiteId);
+      if (!suite) {
+        logger.log({
+          stepId: `ss-${scenarioSuite.id}`,
+          status: 'FAIL',
+          message: `❌ Suite ${scenarioSuite.suiteId} not found`,
+        });
+        continue;
+      }
+
+      const suiteResult = await runSuiteWithContext(
+        suite,
+        scenarioVariables,
+        scenarioRow,
+        scenarioSuite.variableOverrides || {},
+        scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN',
+        project,
+        assets,
+        request.environment,
+        logger,
+        signal,
+        uiExecutor,
+        sharedRuntimeVars
+      );
+
+      totalCases += suiteResult.totalCases;
+      passedCases += suiteResult.passedCases;
+      failedCases += suiteResult.failedCases;
+    }
   }
 
   const allPassed = failedCases === 0;

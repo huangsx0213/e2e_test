@@ -20,6 +20,9 @@ import {
   X,
   Workflow,
   Terminal,
+  Database,
+  Table2,
+  Sparkles,
 } from "lucide-react";
 import {
   Project,
@@ -27,6 +30,7 @@ import {
   TestCase,
   TestScenario,
   ScenarioSuite,
+  SuiteVariable,
   HeaderProfile,
   BodyTemplate,
   ApiEndpoint,
@@ -78,9 +82,175 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
 
-  const [expandedSuites, setExpandedSuites] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [expandedSuites, setExpandedSuites] = useState<Record<string, boolean>>({});
+
+  const handleAddDataRow = () => {
+    if (!activeScenario) return;
+    const currentRows = activeScenario.dataRows || [];
+    const newRow: Record<string, string> = {};
+    (activeScenario.variables || []).forEach(v => newRow[v.key] = '');
+    
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { ...s, dataRows: [...currentRows, newRow] } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleUpdateDataRow = (rowIndex: number, key: string, value: string) => {
+    if (!activeScenario || !activeScenario.dataRows) return;
+    const newRows = [...activeScenario.dataRows];
+    newRows[rowIndex] = { ...newRows[rowIndex], [key]: value };
+    
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { ...s, dataRows: newRows } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleDeleteDataRow = (rowIndex: number) => {
+    if (!activeScenario || !activeScenario.dataRows) return;
+    const newRows = activeScenario.dataRows.filter((_, i) => i !== rowIndex);
+    
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { ...s, dataRows: newRows } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleAddVariable = () => {
+    if (!activeScenario) return;
+    const newVar = {
+      id: `var-${Date.now()}`,
+      key: `VAR_${(activeScenario.variables || []).length + 1}`,
+      value: ''
+    };
+    const currentRows = activeScenario.dataRows || [];
+    const newRows = currentRows.map(row => ({ ...row, [newVar.key]: '' }));
+
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { 
+        ...s, 
+        variables: [...(s.variables || []), newVar],
+        dataRows: newRows
+      } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleDeleteVariable = (varId: string) => {
+    if (!activeScenario || !activeScenario.variables) return;
+    const v = activeScenario.variables.find(v => v.id === varId);
+    if (!v) return;
+    const keyToDelete = v.key;
+
+    const newVars = activeScenario.variables.filter(v => v.id !== varId);
+    const currentRows = activeScenario.dataRows || [];
+    const newRows = currentRows.map(row => {
+      const newRow = { ...row };
+      delete newRow[keyToDelete];
+      return newRow;
+    });
+
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { 
+        ...s, 
+        variables: newVars,
+        dataRows: newRows
+      } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleImportSuiteVariables = () => {
+    if (!activeScenario) return;
+    
+    // Get all variables from all suites in the scenario
+    const suiteVariables: SuiteVariable[] = [];
+    activeScenario.suites.forEach(ss => {
+      const suite = suites.find(s => s.id === ss.suiteId);
+      if (suite && suite.variables) {
+        suiteVariables.push(...suite.variables);
+      }
+    });
+
+    if (suiteVariables.length === 0) return;
+
+    // Filter out duplicates and variables already present in the scenario
+    const currentVars = activeScenario.variables || [];
+    const existingKeys = new Set(currentVars.map(v => v.key));
+    const newVarsToAdd: SuiteVariable[] = [];
+    const addedKeys = new Set<string>();
+
+    suiteVariables.forEach(v => {
+      if (!existingKeys.has(v.key) && !addedKeys.has(v.key)) {
+        newVarsToAdd.push({
+          id: `var-import-${v.id}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          key: v.key,
+          value: v.value
+        });
+        addedKeys.add(v.key);
+      }
+    });
+
+    if (newVarsToAdd.length === 0) return;
+
+    const updatedVars = [...currentVars, ...newVarsToAdd];
+    
+    // Also update dataRows with new keys
+    const currentRows = activeScenario.dataRows || [];
+    const newRows = currentRows.map(row => {
+      const newRow = { ...row };
+      newVarsToAdd.forEach(v => {
+        if (newRow[v.key] === undefined) {
+          newRow[v.key] = '';
+        }
+      });
+      return newRow;
+    });
+
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { 
+        ...s, 
+        variables: updatedVars,
+        dataRows: newRows
+      } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleUpdateVariable = (varId: string, field: 'key' | 'value', val: string) => {
+    if (!activeScenario || !activeScenario.variables) return;
+    
+    let updatedVars = [...activeScenario.variables];
+    let newRows = [...(activeScenario.dataRows || [])];
+
+    if (field === 'key') {
+      const oldVar = activeScenario.variables.find(v => v.id === varId);
+      if (!oldVar) return;
+      const oldKey = oldVar.key;
+      
+      updatedVars = updatedVars.map(v => v.id === varId ? { ...v, key: val } : v);
+      newRows = newRows.map(row => {
+        const newRow = { ...row };
+        if (newRow[oldKey] !== undefined) {
+          newRow[val] = newRow[oldKey];
+          delete newRow[oldKey];
+        }
+        return newRow;
+      });
+    } else {
+      updatedVars = updatedVars.map(v => v.id === varId ? { ...v, value: val } : v);
+    }
+
+    const updatedScenarios = scenarios.map(s => 
+      s.id === activeScenario.id ? { 
+        ...s, 
+        variables: updatedVars,
+        dataRows: newRows
+      } : s
+    );
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
 
   const handleCreateScenario = () => {
     const newScenario: TestScenario = {
@@ -162,6 +332,27 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               ...ss.variableOverrides,
               [key]: value,
             },
+          };
+        }),
+      };
+    });
+    projectsApi.update(currentProjectId, { scenarios: updatedScenarios });
+  };
+
+  const handleUpdateIterationStrategy = (
+    scenarioSuiteId: string,
+    strategy: 'SCENARIO_DRIVEN' | 'CROSS_MATRIX' | 'SUITE_DRIVEN'
+  ) => {
+    if (!activeScenario) return;
+    const updatedScenarios = scenarios.map((s) => {
+      if (s.id !== activeScenario.id) return s;
+      return {
+        ...s,
+        suites: s.suites.map((ss) => {
+          if (ss.id !== scenarioSuiteId) return ss;
+          return {
+            ...ss,
+            iterationStrategy: strategy,
           };
         }),
       };
@@ -342,9 +533,151 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
                 {/* Scenario Content */}
                 <div className="flex-1 overflow-y-auto p-8">
-                  <div className="w-full flex gap-8">
-                    {/* Left Column: Suites in Scenario */}
-                    <div className="flex-1 space-y-4">
+                  <div className="w-full flex flex-col gap-8">
+                    {/* Scenario Variables & Data Driven */}
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100">
+                        <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <Database size={16} className="text-blue-600" />
+                          Scenario Data & Variables
+                          <HelpTooltip content="Define scenario-level variables and data rows. This data will be available to all suites in the scenario and drive scenario execution." />
+                        </h3>
+                      </div>
+                      
+                      <div className="p-4 space-y-6">
+                        {/* Variables List */}
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                              Scenario Variables
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={handleImportSuiteVariables}
+                                className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-1 font-medium bg-emerald-50 px-2 py-1 rounded transition-colors"
+                                title="Import all unique variables from suites in this scenario"
+                              >
+                                <Sparkles size={12} /> Sync from Suites
+                              </button>
+                              <button
+                                onClick={handleAddVariable}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium bg-blue-50 px-2 py-1 rounded transition-colors"
+                              >
+                                <Plus size={12} /> Add Variable
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {(activeScenario.variables || []).length === 0 ? (
+                            <div className="text-center py-4 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                              <p className="text-xs text-slate-400">No variables defined</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {(activeScenario.variables || []).map((v) => (
+                                <div key={v.id} className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={v.key}
+                                    onChange={(e) => handleUpdateVariable(v.id, 'key', e.target.value)}
+                                    placeholder="Variable Key"
+                                    className="w-1/3 text-sm font-mono px-3 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:border-blue-400"
+                                  />
+                                  <span className="text-slate-400">=</span>
+                                  <input
+                                    type="text"
+                                    value={v.value}
+                                    onChange={(e) => handleUpdateVariable(v.id, 'value', e.target.value)}
+                                    placeholder="Default Value"
+                                    className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:border-blue-400"
+                                  />
+                                  <button
+                                    onClick={() => handleDeleteVariable(v.id)}
+                                    className="p-1.5 text-slate-400 hover:text-red-500 rounded"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Data Rows Table */}
+                        {((activeScenario.variables || []).length > 0) && (
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                <Table2 size={14} /> Data Driven Executions
+                                <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px] ml-2">
+                                  {((activeScenario.dataRows || []).length)} Iterations
+                                </span>
+                              </h4>
+                              <button
+                                onClick={handleAddDataRow}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium bg-blue-50 px-2 py-1 rounded"
+                              >
+                                <Plus size={12} /> Add Row
+                              </button>
+                            </div>
+                            
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                              <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left font-medium text-slate-500 w-12 text-center">#</th>
+                                    {(activeScenario.variables || []).map((v) => (
+                                      <th key={v.id} className="px-3 py-2 text-left font-mono text-xs font-semibold text-slate-600">
+                                        {v.key}
+                                      </th>
+                                    ))}
+                                    <th className="px-3 py-2 w-12"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(activeScenario.dataRows || []).length === 0 ? (
+                                    <tr>
+                                      <td colSpan={(activeScenario.variables || []).length + 2} className="px-3 py-4 text-center text-xs text-slate-400 bg-slate-50/50">
+                                        No data rows defined. The scenario will execute exactly once using default variable values.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    (activeScenario.dataRows || []).map((row, rowIndex) => (
+                                      <tr key={rowIndex} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 group">
+                                        <td className="px-3 py-2 text-center text-slate-400 text-xs">{rowIndex + 1}</td>
+                                        {(activeScenario.variables || []).map((v) => (
+                                          <td key={v.id} className="px-3 py-1">
+                                            <input
+                                              type="text"
+                                              className="w-full bg-transparent border-none focus:ring-0 text-xs text-slate-700 placeholder-slate-300 py-1"
+                                              value={row[v.key] || ''}
+                                              onChange={(e) => handleUpdateDataRow(rowIndex, v.key, e.target.value)}
+                                              placeholder="(default)"
+                                            />
+                                          </td>
+                                        ))}
+                                        <td className="px-2 py-1 text-center">
+                                          <button 
+                                            onClick={() => handleDeleteDataRow(rowIndex)} 
+                                            className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="w-full flex gap-8">
+                      {/* Left Column: Suites in Scenario */}
+                      <div className="flex-1 space-y-4">
                       <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
                         <Layers size={16} className="text-blue-600" />
                         Execution Sequence
@@ -412,6 +745,21 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
                               {isExpanded && (
                                 <div className="p-4 bg-white">
+                                  <div className="mb-4">
+                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                                      Execution Strategy
+                                    </label>
+                                    <select
+                                      className="w-full bg-slate-50 border border-slate-200 text-sm rounded-md px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                      value={scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN'}
+                                      onChange={(e) => handleUpdateIterationStrategy(scenarioSuite.id, e.target.value as any)}
+                                    >
+                                      <option value="SCENARIO_DRIVEN">Scenario Driven (Run once, ignore suite data)</option>
+                                      <option value="SUITE_DRIVEN">Suite Driven (Run for each suite data row)</option>
+                                      <option value="CROSS_MATRIX">Cross Matrix (Multiply scenario rows × suite rows)</option>
+                                    </select>
+                                  </div>
+
                                   <h5 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                                     <Variable size={14} /> Variable Overrides
                                   </h5>
@@ -506,6 +854,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               </>
             ) : (

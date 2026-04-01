@@ -4,10 +4,14 @@ import { interpolate } from './interpolator.ts';
  * ExecutionContext manages layered variable scopes for test execution.
  *
  * Priority (low → high):
- *  1. Suite Variables (defaults)
- *  2. Scenario Overrides
- *  3. Data Row Values
- *  4. Runtime Variables (EXTRACT_VAR etc.)
+ *  1. Global Settings (TBD)
+ *  2. Environment Variables (TBD)
+ *  3. Suite Variables (defaults)
+ *  4. Suite Data Row
+ *  5. Scenario Variables
+ *  6. Scenario Data Row
+ *  7. Scenario Overrides
+ *  8. Runtime Variables (EXTRACT_VAR etc.)
  *
  * Child contexts (for RUN_MODULE) inherit parent variables
  * and add module param defaults + overrides on top.
@@ -22,17 +26,28 @@ export class ExecutionContext {
   }
 
   /**
+   * Inject a shared runtime variables object (useful for cross-suite sharing in scenarios)
+   */
+  setSharedRuntimeVars(sharedVars: Record<string, string>) {
+    this.runtimeVars = sharedVars;
+  }
+
+  /**
    * Create context from typical execution scenario inputs.
    */
   static create(options: {
     suiteVariables?: Record<string, string>;
+    suiteDataRow?: Record<string, string>;
+    scenarioVariables?: Record<string, string>;
+    scenarioDataRow?: Record<string, string>;
     scenarioOverrides?: Record<string, string>;
-    dataRowValues?: Record<string, string>;
   }): ExecutionContext {
     const layers: Record<string, string>[] = [];
     if (options.suiteVariables) layers.push(options.suiteVariables);
+    if (options.suiteDataRow) layers.push(options.suiteDataRow);
+    if (options.scenarioVariables) layers.push(options.scenarioVariables);
+    if (options.scenarioDataRow) layers.push(options.scenarioDataRow);
     if (options.scenarioOverrides) layers.push(options.scenarioOverrides);
-    if (options.dataRowValues) layers.push(options.dataRowValues);
     return new ExecutionContext(layers);
   }
 

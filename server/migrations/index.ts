@@ -3,13 +3,15 @@ import { migration001InitialSchema } from './001_initial_schema.ts';
 import { migration002ExecutionRuns } from './002_execution_runs.ts';
 import { migration003UiExecution } from './003_ui_execution.ts';
 import { migration004StepEnabled } from './004_step_enabled.ts';
+import { migration005 } from './005_scenario_iteration_strategy.ts';
 import type { Migration } from './types.ts';
 
-const migrations: Migration[] = [
+export const migrations: Migration[] = [
   migration001InitialSchema,
   migration002ExecutionRuns,
   migration003UiExecution,
   migration004StepEnabled,
+  migration005,
 ];
 
 function appliedMigrationIds(): Set<string> {
