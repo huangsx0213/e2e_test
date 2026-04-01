@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ExecutionRunner } from "@/features/execution/ExecutionRunner";
+import { SuiteExecutionRunner } from "@/features/execution/SuiteExecutionRunner";
 import { AppContent } from "@/app/components/AppContent";
 import { AppHeader } from "@/app/components/AppHeader";
 import { AppLoadingScreen } from "@/app/components/AppLoadingScreen";
@@ -135,11 +136,27 @@ function App() {
         </div>
       </main>
 
-      {executionState && activeSuite && activeCase && (
+      {executionState && activeSuite && !executionState.runSuite && activeCase && (
         <div className="fixed inset-0 z-50">
           <ExecutionRunner
             suite={activeSuite}
             testCase={activeCase}
+            project={currentProject}
+            headers={headers}
+            bodies={bodies}
+            endpoints={endpoints}
+            environments={environments}
+            initialEnvironment={currentEnvironment}
+            reportsApi={api.reports}
+            onClose={() => setExecutionState(null)}
+          />
+        </div>
+      )}
+
+      {executionState && activeSuite && executionState.runSuite && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <SuiteExecutionRunner
+            suite={activeSuite}
             project={currentProject}
             headers={headers}
             bodies={bodies}

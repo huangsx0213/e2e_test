@@ -12,5 +12,6 @@ export type AppTab =
 
 export interface ExecutionState {
   suiteId: string;
-  caseId: string;
+  caseId?: string;
+  runSuite?: boolean;
 }

@@ -14,7 +14,7 @@ interface TestBuilderProps {
     headers: HeaderProfile[];
     bodies: BodyTemplate[];
     endpoints: ApiEndpoint[];
-    onRunCase: (suiteId: string, caseId: string) => void;
+    onRunCase: (suiteId: string, caseId?: string, runSuite?: boolean) => void;
     currentProjectId: string;
 }
 
@@ -488,12 +488,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 >
                                     <Play size={14} /> Run
                                 </button>
-                                <button
-                                    onClick={() => deleteCase(activeSuite.id, activeCase.id)}
-                                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-md flex items-center gap-2 transition-colors shadow-sm"
-                                >
-                                    <Trash2 size={14} /> Delete
-                                </button>
                             </div>
                         </div>
 
@@ -595,8 +589,16 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({ suites, suitesApi, pro
                                 <h2 className="text-lg font-semibold text-gray-900">{activeSuite.name}</h2>
                                 <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-bold uppercase tracking-wide">Test Suite</span>
                             </div>
-                            <div className="text-xs text-gray-400 font-medium">
-                                {activeSuite.cases.length} Test Cases
+                            <div className="flex items-center gap-4">
+                                <div className="text-xs text-gray-400 font-medium">
+                                    {activeSuite.cases.length} Test Cases
+                                </div>
+                                <button
+                                    onClick={() => onRunCase(activeSuite.id, activeSuite.cases[0]?.id || '', true)}
+                                    className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md flex items-center gap-2 transition-colors"
+                                >
+                                    <Play size={14} /> Run Suite
+                                </button>
                             </div>
                         </div>
 

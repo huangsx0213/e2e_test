@@ -224,8 +224,8 @@ function seedProjects(): void {
         name: 'Baidu Home',
         description: 'Baidu search engine homepage.',
         elements: [
-          { id: 'el-baidu-search-input', name: 'Search Input', selectorType: 'CSS', value: '#kw' },
-          { id: 'el-baidu-search-btn', name: 'Search Button', selectorType: 'CSS', value: '#su' },
+          { id: 'el-baidu-search-input', name: 'Search Input', selectorType: 'XPath', value: '//textarea[@id=\'chat-textarea\']' },
+          { id: 'el-baidu-search-btn', name: 'Search Button', selectorType: 'XPath', value: '//button[@id=\'chat-submit-button\']' },
           { id: 'el-baidu-logo', name: 'Logo', selectorType: 'CSS', value: '#lg img' },
           { id: 'el-baidu-settings', name: 'Settings Link', selectorType: 'CSS', value: '#s-usersetting-top' },
         ],

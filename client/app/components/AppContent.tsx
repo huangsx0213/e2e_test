@@ -121,7 +121,7 @@ export function AppContent({
           headers={headers}
           bodies={bodies}
           endpoints={endpoints}
-          onRunCase={(suiteId, caseId) => setExecutionState({ suiteId, caseId })}
+          onRunCase={(suiteId, caseId, runSuite) => setExecutionState({ suiteId, caseId, runSuite })}
           currentProjectId={currentProjectId}
         />
       );
