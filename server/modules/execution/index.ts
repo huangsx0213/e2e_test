@@ -27,6 +27,10 @@ router.post('/execute', withErrorHandling(async (req, res) => {
     throw new ValidationError('Scenario execution requires scenarioId');
   }
 
+  if (body.type === 'plan' && !body.planId) {
+    throw new ValidationError('Plan execution requires planId');
+  }
+
   if (isRunActive()) {
     res.status(409).json({ error: 'An execution is already running. Abort it first or wait for it to finish.' });
     return;
@@ -39,6 +43,7 @@ router.post('/execute', withErrorHandling(async (req, res) => {
     suiteId: body.suiteId,
     caseId: body.caseId,
     scenarioId: body.scenarioId,
+    planId: body.planId,
   };
 
   const { reportId, runId } = await startExecution(request);

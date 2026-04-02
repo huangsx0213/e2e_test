@@ -47,7 +47,6 @@ export type DbScenarioRow = {
 export type DbScenarioSuiteRow = {
   id: string;
   suite_id: string;
-  iteration_strategy: string;
 };
 
 export type DbSuiteVariableRow = {
@@ -148,4 +147,6 @@ export type DbSettingsRow = {
   current_project_id: string;
   current_environment: string;
   headless_mode: number;
+  viewport_width: number;
+  viewport_height: number;
 };

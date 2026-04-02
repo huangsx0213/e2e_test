@@ -21,14 +21,20 @@ export class UIExecutor {
   private page: Page | null = null;
   private dialogHandler: ((dialog: any) => Promise<void>) | null = null;
 
-  async initialize(options: { headless: boolean }): Promise<void> {
+  async initialize(options: { 
+    headless: boolean; 
+    viewportWidth?: number; 
+    viewportHeight?: number; 
+  }): Promise<void> {
     if (!this.browser) {
       this.browser = await chromium.launch({
         headless: options.headless,
-        args: ['--start-maximized'],
+        args: options.viewportWidth && options.viewportHeight ? [] : ['--start-maximized'],
       });
       this.context = await this.browser.newContext({
-        viewport: null, // Critical: let the page expand to the max window size
+        viewport: options.viewportWidth && options.viewportHeight 
+          ? { width: options.viewportWidth, height: options.viewportHeight } 
+          : null,
         recordVideo: { dir: 'videos/' },
       });
       this.page = await this.context.newPage();

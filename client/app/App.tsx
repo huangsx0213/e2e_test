@@ -41,7 +41,9 @@ function App() {
   );
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
-  const [executionState, setExecutionState] = useState<ExecutionState | null>(null);
+  const [executionState, setExecutionState] = useState<ExecutionState | null>(
+    null,
+  );
 
   const {
     currentEnvironment,
@@ -68,7 +70,9 @@ function App() {
     loadingSettings;
 
   const currentProject = useMemo(
-    () => projects.find((project) => project.id === currentProjectId) || projects[0],
+    () =>
+      projects.find((project) => project.id === currentProjectId) ||
+      projects[0],
     [projects, currentProjectId],
   );
 
@@ -78,7 +82,10 @@ function App() {
   );
 
   const activeCase = useMemo(
-    () => activeSuite?.cases.find((testCase) => testCase.id === executionState?.caseId),
+    () =>
+      activeSuite?.cases.find(
+        (testCase) => testCase.id === executionState?.caseId,
+      ),
     [activeSuite, executionState],
   );
 
@@ -136,22 +143,25 @@ function App() {
         </div>
       </main>
 
-      {executionState && activeSuite && !executionState.runSuite && activeCase && (
-        <div className="fixed inset-0 z-50">
-          <ExecutionRunner
-            suite={activeSuite}
-            testCase={activeCase}
-            project={currentProject}
-            headers={headers}
-            bodies={bodies}
-            endpoints={endpoints}
-            environments={environments}
-            initialEnvironment={currentEnvironment}
-            reportsApi={api.reports}
-            onClose={() => setExecutionState(null)}
-          />
-        </div>
-      )}
+      {executionState &&
+        activeSuite &&
+        !executionState.runSuite &&
+        activeCase && (
+          <div className="fixed inset-0 z-50">
+            <ExecutionRunner
+              suite={activeSuite}
+              testCase={activeCase}
+              project={currentProject}
+              headers={headers}
+              bodies={bodies}
+              endpoints={endpoints}
+              environments={environments}
+              initialEnvironment={currentEnvironment}
+              reportsApi={api.reports}
+              onClose={() => setExecutionState(null)}
+            />
+          </div>
+        )}
 
       {executionState && activeSuite && executionState.runSuite && (
         <div className="fixed inset-0 z-50 bg-white">

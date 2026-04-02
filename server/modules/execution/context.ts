@@ -47,7 +47,13 @@ export class ExecutionContext {
     if (options.suiteDataRow) layers.push(options.suiteDataRow);
     if (options.scenarioVariables) layers.push(options.scenarioVariables);
     if (options.scenarioDataRow) layers.push(options.scenarioDataRow);
-    if (options.scenarioOverrides) layers.push(options.scenarioOverrides);
+    if (options.scenarioOverrides) {
+      // Filter out empty strings so they fall back to previous layers
+      const filteredOverrides = Object.fromEntries(
+        Object.entries(options.scenarioOverrides).filter(([_, v]) => v !== '')
+      );
+      layers.push(filteredOverrides);
+    }
     return new ExecutionContext(layers);
   }
 
@@ -105,7 +111,9 @@ export class ExecutionContext {
     const parentVars = this.resolveAll();
     const resolvedOverrides: Record<string, string> = {};
     for (const [k, v] of Object.entries(callerOverrides)) {
-      resolvedOverrides[k] = interpolate(v, parentVars);
+      if (v !== '') {
+        resolvedOverrides[k] = interpolate(v, parentVars);
+      }
     }
 
     const childLayers = [

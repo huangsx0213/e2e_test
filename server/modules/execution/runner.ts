@@ -68,8 +68,8 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
 
   // Create execution_run record
   db.prepare(`
-    INSERT INTO execution_runs (id, report_id, type, project_id, environment, suite_id, case_id, scenario_id, status, started_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
+    INSERT INTO execution_runs (id, report_id, type, project_id, environment, suite_id, case_id, scenario_id, plan_id, status, started_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
   `).run(
     runId,
     reportId,
@@ -79,6 +79,7 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
     request.suiteId || null,
     request.caseId || null,
     request.scenarioId || null,
+    request.planId || null,
     Date.now(),
   );
 
@@ -136,11 +137,16 @@ async function executeRunAsync(
       displayName = suite ? suite.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting suite execution for: ${displayName}`);
       result = await executeSuite(request, project, assets, logger, signal, uiExecutor);
-    } else {
+    } else if (request.type === 'scenario') {
       const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
       displayName = scenario ? scenario.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
       result = await executeScenario(request, project, assets, logger, signal, uiExecutor);
+    } else {
+      const plan = project.plans?.find(p => p.id === request.planId);
+      displayName = plan ? plan.name : `Execution: ${request.type}`;
+      console.log(`[EXEC] Starting plan execution for: ${displayName}`);
+      result = await executePlan(request, project, assets, logger, signal, uiExecutor);
     }
 
     result.reportId = reportId;
@@ -177,7 +183,7 @@ async function executeRunAsync(
   console.log(`[EXEC] Saving report: ${displayName} (${reportId})`);
   reportRepository.save({
     id: reportId,
-    suiteId: request.suiteId || request.scenarioId || request.projectId,
+    suiteId: request.suiteId || request.scenarioId || request.planId || request.projectId,
     suiteName: displayName,
     environment: request.environment,
     startTime,
@@ -450,6 +456,125 @@ async function runSuiteWithContext(
   };
 }
 
+// ─── Plan Execution ───
+
+async function executePlan(
+  request: ExecutionRequest,
+  project: Project,
+  assets: ApiAssets,
+  logger: ExecutionLogger,
+  signal: AbortSignal,
+  uiExecutor: UIExecutor,
+): Promise<RunResult> {
+  const plan = project.plans?.find(p => p.id === request.planId);
+  if (!plan) throw new Error(`Plan ${request.planId} not found`);
+
+  logger.log({
+    stepId: 'plan',
+    status: 'INFO',
+    message: `📋 Executing Plan: ${plan.name}`,
+  });
+
+  let totalCases = 0;
+  let passedCases = 0;
+  let failedCases = 0;
+
+  for (const planScenario of plan.scenarios || []) {
+    if (signal.aborted) throw new Error('Execution aborted');
+
+    const scenario = project.scenarios?.find(s => s.id === planScenario.scenarioId);
+    if (!scenario) {
+      logger.log({
+        stepId: `ps-${planScenario.id}`,
+        status: 'FAIL',
+        message: `❌ Scenario ${planScenario.scenarioId} not found`,
+      });
+      continue;
+    }
+
+    logger.log({
+      stepId: `ps-${planScenario.id}`,
+      status: 'INFO',
+      message: `🎬 Executing Scenario: ${scenario.name}`,
+    });
+
+    const scenarioVariables = (scenario.variables || []).reduce(
+      (acc, v) => ({ ...acc, [v.key]: v.value }),
+      {} as Record<string, string>
+    );
+
+    const scenarioDataRows = scenario.dataRows && scenario.dataRows.length > 0 ? scenario.dataRows : [{}];
+
+    for (let sRowIdx = 0; sRowIdx < scenarioDataRows.length; sRowIdx++) {
+      if (signal.aborted) throw new Error('Execution aborted');
+
+      const scenarioRow = scenarioDataRows[sRowIdx];
+      if (scenarioDataRows.length > 1) {
+        logger.log({
+          stepId: `scenario-row-${sRowIdx}`,
+          status: 'INFO',
+          message: `🔄 Scenario Iteration ${sRowIdx + 1}/${scenarioDataRows.length}`,
+        });
+      }
+
+      // A fresh runtime context per scenario iteration to share variables between suites
+      const sharedRuntimeVars: Record<string, string> = {};
+
+      for (const scenarioSuite of scenario.suites || []) {
+        if (signal.aborted) throw new Error('Execution aborted');
+
+        const suite = suiteRepository.get(scenarioSuite.suiteId);
+        if (!suite) {
+          logger.log({
+            stepId: `ss-${scenarioSuite.id}`,
+            status: 'FAIL',
+            message: `❌ Suite ${scenarioSuite.suiteId} not found`,
+          });
+          continue;
+        }
+
+        const suiteResult = await runSuiteWithContext(
+          suite,
+          scenarioVariables,
+          scenarioRow,
+          scenarioSuite.variableOverrides || {},
+          scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN',
+          project,
+          assets,
+          request.environment,
+          logger,
+          signal,
+          uiExecutor,
+          sharedRuntimeVars
+        );
+
+        totalCases += suiteResult.totalCases;
+        passedCases += suiteResult.passedCases;
+        failedCases += suiteResult.failedCases;
+      }
+    }
+  }
+
+  const allPassed = failedCases === 0;
+  logger.log({
+    stepId: 'plan-finish',
+    status: allPassed ? 'PASS' : 'FAIL',
+    message: allPassed
+      ? `🏁 Plan Completed Successfully (${passedCases}/${totalCases} passed)`
+      : `🏁 Plan Completed with Failures (${passedCases}/${totalCases} passed)`,
+  });
+
+  return {
+    reportId: '',
+    status: allPassed ? 'COMPLETED' : 'FAILED',
+    passRate: totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 100,
+    totalCases,
+    passedCases,
+    failedCases,
+    durationMs: 0,
+  };
+}
+
 // ─── Scenario Execution ───
 
 async function executeScenario(
@@ -680,7 +805,11 @@ async function executeSteps(
       const settings = allSettings.find(s => s.currentProjectId === project.id) || allSettings[0];
       const isHeadless = settings ? settings.headlessMode !== false : true;
 
-      await uiExecutor.initialize({ headless: isHeadless });
+      await uiExecutor.initialize({ 
+        headless: isHeadless,
+        viewportWidth: settings?.viewportWidth,
+        viewportHeight: settings?.viewportHeight
+      });
 
       const resolvedTarget = context.interpolate(step.target || '');
       logger.log({

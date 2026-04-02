@@ -1,7 +1,11 @@
-import type { ComponentType } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { appBrand, navigationSections, settingsNavigationItem } from '@/app/navigation';
-import { AppTab } from '@/app/types';
+import type { ComponentType } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  appBrand,
+  navigationSections,
+  settingsNavigationItem,
+} from "@/app/navigation";
+import { AppTab } from "@/app/types";
 
 interface AppSidebarProps {
   activeTab: AppTab;
@@ -20,10 +24,10 @@ export function AppSidebar({
 
   return (
     <nav
-      className={`${isCollapsed ? 'w-16' : 'w-64'} z-20 flex shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-all duration-300`}
+      className={`${isCollapsed ? "w-16" : "w-64"} z-20 flex shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-all duration-300`}
     >
       <div
-        className={`flex h-14 items-center border-b border-slate-800/50 ${isCollapsed ? 'justify-center px-0' : 'justify-between px-4'}`}
+        className={`flex h-14 items-center border-b border-slate-800/50 ${isCollapsed ? "justify-center px-0" : "justify-between px-4"}`}
       >
         <div className="flex items-center gap-2.5 overflow-hidden font-semibold tracking-tight text-white">
           <div className="shrink-0 rounded-md bg-blue-600 p-1.5">
@@ -142,11 +146,13 @@ function SidebarNavItem({
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`group flex w-full items-center rounded-md py-2 text-sm font-medium transition-all duration-200 ${collapsed ? 'justify-center px-0' : 'gap-3 px-3'} ${active ? 'bg-blue-600 text-white shadow-md shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'}`}
+      className={`group flex w-full items-center rounded-md py-2 text-sm font-medium transition-all duration-200 ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${active ? "bg-blue-600 text-white shadow-md shadow-blue-900/20" : "text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}
     >
       <Icon
         size={18}
-        className={active ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}
+        className={
+          active ? "text-white" : "text-slate-500 group-hover:text-slate-300"
+        }
       />
       {!collapsed && <span className="truncate">{label}</span>}
     </button>

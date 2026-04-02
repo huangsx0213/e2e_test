@@ -34,14 +34,35 @@ const moduleSchema = z.object({
 const scenarioSuiteSchema = z.object({
   id: z.string().min(1),
   suiteId: z.string().min(1),
-  variableOverrides: z.record(z.string(), z.string()),
+  variableOverrides: z.record(z.string(), z.string()).optional(),
+});
+
+const suiteVariableSchema = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+  value: z.string(),
 });
 
 const scenarioSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
-  suites: z.array(scenarioSuiteSchema),
+  variables: z.array(suiteVariableSchema).optional(),
+  dataRows: z.array(z.record(z.string(), z.string())).optional(),
+  suites: z.array(scenarioSuiteSchema).optional(),
+});
+
+const planScenarioSchema = z.object({
+  id: z.string().min(1),
+  scenarioId: z.string().min(1),
+});
+
+const planSchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1).optional(),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  scenarios: z.array(planScenarioSchema),
 });
 
 export const projectPayloadSchema = z.object({
@@ -51,6 +72,7 @@ export const projectPayloadSchema = z.object({
   pages: z.array(pageSchema).optional(),
   modules: z.array(moduleSchema).optional(),
   scenarios: z.array(scenarioSchema).optional(),
+  plans: z.array(planSchema).optional(),
 });
 
 export const projectPatchSchema = projectPayloadSchema.partial().refine(

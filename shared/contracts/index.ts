@@ -66,6 +66,19 @@ export interface TestScenario {
   suites?: ScenarioSuite[];
 }
 
+export interface PlanScenario {
+  id: string;
+  scenarioId: string;
+}
+
+export interface TestPlan {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  scenarios: PlanScenario[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -73,6 +86,7 @@ export interface Project {
   pages?: Page[];
   modules?: TestModule[];
   scenarios?: TestScenario[];
+  plans?: TestPlan[];
 }
 
 export interface TestCase {
@@ -153,15 +167,18 @@ export interface Settings {
   currentProjectId?: string;
   currentEnvironment?: string;
   headlessMode?: boolean;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 export interface ExecutionRequest {
-  type: 'case' | 'suite' | 'scenario';
+  type: 'case' | 'suite' | 'scenario' | 'plan';
   projectId: string;
   environment: string;
   suiteId?: string;
   caseId?: string;
   scenarioId?: string;
+  planId?: string;
 }
 
 export type ExecutionRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED';

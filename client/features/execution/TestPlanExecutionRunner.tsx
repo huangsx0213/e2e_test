@@ -2,12 +2,12 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { CrudActions } from "@/shared/hooks/useCrud";
 import {
   TestSuite,
-  TestCase,
   ExecutionLog,
   Project,
   HeaderProfile,
   BodyTemplate,
   ApiEndpoint,
+  TestPlan,
   ExecutionReport,
 } from "@/shared/types";
 import {
@@ -16,7 +16,6 @@ import {
   Loader2,
   PlayCircle,
   Terminal,
-  Monitor,
   X,
   Globe,
   StopCircle,
@@ -24,9 +23,9 @@ import {
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
 
-interface ExecutionRunnerProps {
-  suite: TestSuite;
-  testCase: TestCase;
+interface TestPlanExecutionRunnerProps {
+  plan: TestPlan;
+  suites: TestSuite[];
   project?: Project;
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
@@ -37,9 +36,11 @@ interface ExecutionRunnerProps {
   reportsApi: CrudActions<ExecutionReport>;
 }
 
-export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
-  suite,
-  testCase,
+export const TestPlanExecutionRunner: React.FC<
+  TestPlanExecutionRunnerProps
+> = ({
+  plan,
+  suites,
   project,
   headers,
   bodies,
@@ -142,141 +143,165 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
     [stopTimer],
   );
 
-  const startExecution = async () => {
-    setStatus("RUNNING");
+  const handleRun = async () => {
+    if (!project) return;
     setLogs([]);
+    setStatus("RUNNING");
     setProgress(0);
-    startTimer();
+    setElapsedMs(0);
+    setReportId(null);
 
     try {
       const response = await executionApi.execute({
-        type: "case",
-        projectId: project?.id || "",
+        type: "plan",
+        projectId: project.id,
+        planId: plan.id,
         environment: selectedEnv,
-        suiteId: suite.id,
-        caseId: testCase.id,
       });
 
       setReportId(response.reportId);
+      startTimer();
       connectSSE(response.reportId);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+    } catch (error: any) {
+      console.error("Execution failed to start:", error);
+      setStatus("FAILED");
       setLogs([
         {
-          stepId: "error",
+          stepId: "system",
           timestamp: Date.now(),
-          status: "FAIL",
-          message: `❌ Failed to start execution: ${msg}`,
+          status: "FAILED",
+          message: `Failed to start execution: ${error.message}`,
         },
       ]);
-      setStatus("FAILED");
-      stopTimer();
     }
   };
 
-  const handleAbort = async () => {
-    if (!reportId) return;
-    try {
-      await executionApi.abort(reportId);
-    } catch {
-      // Best effort
+  const handleStop = async () => {
+    if (reportId) {
+      try {
+        await executionApi.abort(reportId);
+      } catch (e) {
+        console.error("Failed to abort execution", e);
+      }
     }
+    setStatus("FAILED");
+    stopTimer();
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setLogs((prev) => [
+      ...prev,
+      {
+        stepId: "system",
+        timestamp: Date.now(),
+        status: "FAILED",
+        message: "Execution aborted by user.",
+      },
+    ]);
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-900 overflow-hidden">
+    <div className="flex flex-col h-full bg-slate-900 text-slate-300 font-mono text-sm">
       {/* Header */}
-      <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-white shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 bg-slate-950 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-4">
-          <div
-            className={`p-2 rounded-full ${status === "RUNNING" ? "bg-blue-500/20 text-blue-400" : status === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : status === "IDLE" ? "bg-gray-500/20 text-gray-400" : "bg-red-500/20 text-red-400"}`}
-          >
-            {status === "RUNNING" && (
-              <Loader2 className="animate-spin" size={20} />
-            )}
-            {status === "COMPLETED" && <CheckCircle2 size={20} />}
-            {status === "FAILED" && <XCircle size={20} />}
-            {status === "IDLE" && <PlayCircle size={20} />}
+          <div className="flex items-center gap-2">
+            <Terminal size={18} className="text-indigo-400" />
+            <h2 className="font-semibold text-slate-100">Plan: {plan.name}</h2>
           </div>
-          <div>
-            <h3 className="font-semibold text-lg tracking-tight">
-              {testCase.name}
-            </h3>
-            <p className="text-xs text-slate-400 font-medium">{suite.name}</p>
+          <div className="h-4 w-px bg-slate-800" />
+          <div className="flex items-center gap-2 text-slate-400">
+            <Globe size={14} />
+            <select
+              value={selectedEnv}
+              onChange={(e) => setSelectedEnv(e.target.value)}
+              disabled={status === "RUNNING"}
+              className="bg-transparent border-none focus:ring-0 text-sm cursor-pointer hover:text-slate-200 disabled:opacity-50"
+            >
+              {environments.map((env) => (
+                <option key={env} value={env} className="bg-slate-900">
+                  {env}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          {status !== "RUNNING" && (
-            <div className="flex items-center gap-2 mr-4">
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                Target Env:
+
+        <div className="flex items-center gap-4">
+          {status === "RUNNING" && (
+            <div className="flex items-center gap-3 text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-full">
+              <Loader2 size={14} className="animate-spin" />
+              <span className="text-xs font-medium">Running</span>
+              <span className="text-xs font-mono ml-2">
+                {formatElapsed(elapsedMs)}
               </span>
-              <div className="relative">
-                <Globe
-                  size={14}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <select
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded pl-7 pr-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
-                  value={selectedEnv}
-                  onChange={(e) => setSelectedEnv(e.target.value)}
-                >
-                  {environments.map((env) => (
-                    <option key={env} value={env}>
-                      {env}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={startExecution}
-                className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
-              >
-                <PlayCircle size={14} />
-                {status === "IDLE" ? "Start Run" : "Re-run"}
-              </button>
+            </div>
+          )}
+          {status === "COMPLETED" && (
+            <div className="flex items-center gap-2 text-emerald-400 bg-emerald-400/10 px-3 py-1.5 rounded-full">
+              <CheckCircle2 size={14} />
+              <span className="text-xs font-medium">Completed</span>
+              <span className="text-xs font-mono ml-2">
+                {formatElapsed(elapsedMs)}
+              </span>
+            </div>
+          )}
+          {status === "FAILED" && (
+            <div className="flex items-center gap-2 text-red-400 bg-red-400/10 px-3 py-1.5 rounded-full">
+              <XCircle size={14} />
+              <span className="text-xs font-medium">Failed</span>
+              <span className="text-xs font-mono ml-2">
+                {formatElapsed(elapsedMs)}
+              </span>
             </div>
           )}
 
-          {status === "RUNNING" && (
+          <div className="h-4 w-px bg-slate-800" />
+
+          {status === "RUNNING" ? (
             <button
-              onClick={handleAbort}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs font-bold rounded border border-red-600/30 transition-all"
+              onClick={handleStop}
+              className="flex items-center gap-2 px-4 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md transition-colors"
             >
-              <StopCircle size={14} />
-              Abort
+              <StopCircle size={16} />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleRun}
+              className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded-md transition-colors"
+            >
+              <PlayCircle size={16} />
+              Run Plan
             </button>
           )}
 
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              Time Elapsed
-            </span>
-            <span className="font-mono text-sm text-slate-300 font-medium">
-              {formatElapsed(elapsedMs)}
-            </span>
-          </div>
-          <div className="h-6 w-px bg-slate-800 mx-2"></div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded-md transition-colors ml-2"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
       </div>
 
-      {/* Progress Line */}
-      <div className="h-0.5 bg-slate-800 w-full">
-        <div
-          className={`h-full transition-all duration-300 ${status === "FAILED" ? "bg-red-500" : "bg-blue-500"} shadow-[0_0_10px_rgba(99,102,241,0.5)]`}
-          style={{ width: `${progress}%` }}
-        ></div>
-      </div>
+      {/* Progress Bar */}
+      {(status === "RUNNING" || progress > 0) && (
+        <div className="h-1 w-full bg-slate-800 shrink-0">
+          <div
+            className={`h-full transition-all duration-300 ${
+              status === "FAILED" ? "bg-red-500" : "bg-indigo-500"
+            }`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
 
-      {/* Main Content - Terminal Log */}
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full bg-slate-950 p-6 overflow-y-auto font-mono text-sm space-y-3 flex flex-col">
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Terminal Log Area */}
+        <div className="flex-1 bg-slate-950 p-6 overflow-y-auto font-mono text-sm space-y-3 flex flex-col">
           <div className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
             <Terminal size={12} /> Console Output
           </div>

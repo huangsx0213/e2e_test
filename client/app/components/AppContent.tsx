@@ -1,23 +1,23 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { Dashboard } from '@/features/dashboard/Dashboard';
-import { ElementRepo } from '@/features/elements/ElementRepo';
-import { TestRunner } from '@/features/execution/TestRunner';
-import { ModuleBuilder } from '@/features/modules/ModuleBuilder';
-import { BodyManager } from '@/features/api-assets/BodyManager';
-import { EndpointManager } from '@/features/api-assets/EndpointManager';
-import { HeadersManager } from '@/features/api-assets/HeadersManager';
-import { TestReport } from '@/features/reports/TestReport';
-import { Settings } from '@/features/settings/Settings';
-import { TestBuilder } from '@/features/tests/TestBuilder';
-import { AppTab, ExecutionState } from '@/app/types';
-import { CrudActions, EnvironmentActions } from '@/shared/hooks/useCrud';
+import type { Dispatch, SetStateAction } from "react";
+import { Dashboard } from "@/features/dashboard/Dashboard";
+import { ElementRepo } from "@/features/elements/ElementRepo";
+import { TestRunner } from "@/features/execution/TestRunner";
+import { ModuleBuilder } from "@/features/modules/ModuleBuilder";
+import { BodyManager } from "@/features/api-assets/BodyManager";
+import { EndpointManager } from "@/features/api-assets/EndpointManager";
+import { HeadersManager } from "@/features/api-assets/HeadersManager";
+import { TestReport } from "@/features/reports/TestReport";
+import { Settings } from "@/features/settings/Settings";
+import { TestBuilder } from "@/features/tests/TestBuilder";
+import { AppTab, ExecutionState } from "@/app/types";
+import { CrudActions, EnvironmentActions } from "@/shared/hooks/useCrud";
 import {
   ApiEndpoint,
   BodyTemplate,
   HeaderProfile,
   Project,
   TestSuite,
-} from '@/shared/types';
+} from "@/shared/types";
 
 interface AppContentProps {
   activeTab: AppTab;
@@ -40,8 +40,8 @@ interface AppContentProps {
   setCurrentProjectId: Dispatch<SetStateAction<string>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   setExecutionState: Dispatch<SetStateAction<ExecutionState | null>>;
-  settings: import('@/shared/types').Settings[];
-  settingsApi: CrudActions<import('@/shared/types').Settings>;
+  settings: import("@/shared/types").Settings[];
+  settingsApi: CrudActions<import("@/shared/types").Settings>;
 }
 
 export function AppContent({
@@ -69,7 +69,7 @@ export function AppContent({
   settingsApi,
 }: AppContentProps) {
   switch (activeTab) {
-    case 'DASHBOARD':
+    case "DASHBOARD":
       return (
         <Dashboard
           projects={projects}
@@ -79,7 +79,7 @@ export function AppContent({
           onNavigate={setActiveTab}
         />
       );
-    case 'RUN':
+    case "RUN":
       return (
         <TestRunner
           projects={projects}
@@ -93,7 +93,7 @@ export function AppContent({
           initialEnvironment={currentEnvironment}
         />
       );
-    case 'ELEMENTS':
+    case "ELEMENTS":
       return (
         <ElementRepo
           projects={projects}
@@ -101,7 +101,7 @@ export function AppContent({
           currentProjectId={currentProjectId}
         />
       );
-    case 'MODULES':
+    case "MODULES":
       return (
         <ModuleBuilder
           projects={projects}
@@ -112,7 +112,7 @@ export function AppContent({
           currentProjectId={currentProjectId}
         />
       );
-    case 'TESTS':
+    case "TESTS":
       return (
         <TestBuilder
           suites={suites}
@@ -121,11 +121,13 @@ export function AppContent({
           headers={headers}
           bodies={bodies}
           endpoints={endpoints}
-          onRunCase={(suiteId, caseId, runSuite) => setExecutionState({ suiteId, caseId, runSuite })}
+          onRunCase={(suiteId, caseId, runSuite) =>
+            setExecutionState({ suiteId, caseId, runSuite })
+          }
           currentProjectId={currentProjectId}
         />
       );
-    case 'ENDPOINTS':
+    case "ENDPOINTS":
       return (
         <EndpointManager
           endpoints={endpoints}
@@ -134,7 +136,7 @@ export function AppContent({
           currentProjectId={currentProjectId}
         />
       );
-    case 'HEADERS':
+    case "HEADERS":
       return (
         <HeadersManager
           headers={headers}
@@ -142,7 +144,7 @@ export function AppContent({
           currentProjectId={currentProjectId}
         />
       );
-    case 'BODIES':
+    case "BODIES":
       return (
         <BodyManager
           bodies={bodies}
@@ -150,9 +152,11 @@ export function AppContent({
           currentProjectId={currentProjectId}
         />
       );
-    case 'REPORTS':
-      return <TestReport currentProjectId={currentProjectId} suites={allSuites} />;
-    case 'SETTINGS':
+    case "REPORTS":
+      return (
+        <TestReport currentProjectId={currentProjectId} suites={allSuites} />
+      );
+    case "SETTINGS":
       return (
         <Settings
           environments={environments}

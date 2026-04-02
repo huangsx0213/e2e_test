@@ -7,6 +7,8 @@ export function normalizeSettings(input: Partial<Settings>): Settings {
     currentProjectId: asText(input.currentProjectId),
     currentEnvironment: asText(input.currentEnvironment),
     headlessMode: input.headlessMode !== undefined ? input.headlessMode : true,
+    viewportWidth: input.viewportWidth !== undefined ? Number(input.viewportWidth) : 1920,
+    viewportHeight: input.viewportHeight !== undefined ? Number(input.viewportHeight) : 1080,
   };
 }
 
@@ -16,5 +18,7 @@ export function deserializeSettings(input: any): Settings {
     currentProjectId: input.currentProjectId,
     currentEnvironment: input.currentEnvironment,
     headlessMode: input.headlessMode,
+    viewportWidth: input.viewportWidth,
+    viewportHeight: input.viewportHeight,
   });
 }

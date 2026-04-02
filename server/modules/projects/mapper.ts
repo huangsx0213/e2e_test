@@ -6,6 +6,8 @@ import type {
   SuiteVariable,
   TestModule,
   TestScenario,
+  TestPlan,
+  PlanScenario,
   UIElement,
 } from '../../shared/contracts/index.ts';
 import { asArray, asId, asText, normalizeStringRecord } from '../../shared/utils/index.ts';
@@ -77,6 +79,23 @@ function normalizeScenario(input: Partial<TestScenario>): TestScenario {
   };
 }
 
+function normalizePlanScenario(input: Partial<PlanScenario>): PlanScenario {
+  return {
+    id: asId(input.id, 'ps'),
+    scenarioId: asText(input.scenarioId),
+  };
+}
+
+function normalizePlan(input: Partial<TestPlan>): TestPlan {
+  return {
+    id: asId(input.id, 'plan'),
+    projectId: asText(input.projectId),
+    name: asText(input.name, 'New Test Plan'),
+    description: asText(input.description),
+    scenarios: asArray<PlanScenario>(input.scenarios).map((scenario) => normalizePlanScenario(scenario)),
+  };
+}
+
 export function normalizeProject(input: Partial<Project>): Project {
   return {
     id: asId(input.id, 'project'),
@@ -85,5 +104,6 @@ export function normalizeProject(input: Partial<Project>): Project {
     pages: asArray<Page>(input.pages).map((page) => normalizePage(page)),
     modules: asArray<TestModule>(input.modules).map((module) => normalizeModule(module)),
     scenarios: asArray<TestScenario>(input.scenarios).map((scenario) => normalizeScenario(scenario)),
+    plans: asArray<TestPlan>(input.plans).map((plan) => normalizePlan(plan)),
   };
 }

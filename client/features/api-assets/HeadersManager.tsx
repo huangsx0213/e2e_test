@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Search, FileText, Check, X } from 'lucide-react';
-import { CrudActions } from '@/shared/hooks/useCrud';
-import { HeaderProfile } from '@/shared/types';
-import { HelpTooltip } from '@/shared/ui/HelpTooltip';
+import React, { useState, useEffect } from "react";
+import { Plus, Trash2, Save, Search, FileText, Check, X } from "lucide-react";
+import { CrudActions } from "@/shared/hooks/useCrud";
+import { HeaderProfile } from "@/shared/types";
+import { HelpTooltip } from "@/shared/ui/HelpTooltip";
+import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface HeadersManagerProps {
   headers: HeaderProfile[];
@@ -10,20 +11,32 @@ interface HeadersManagerProps {
   currentProjectId: string;
 }
 
-export function HeadersManager({ headers, headersApi, currentProjectId }: HeadersManagerProps) {
+export function HeadersManager({
+  headers,
+  headersApi,
+  currentProjectId,
+}: HeadersManagerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: "profile" | "row";
+    id: string | number;
+  } | null>(null);
 
   // Editing state
-  const [editName, setEditName] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editHeaders, setEditHeaders] = useState<{ key: string; value: string; enabled: boolean }[]>([]);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editHeaders, setEditHeaders] = useState<
+    { key: string; value: string; enabled: boolean }[]
+  >([]);
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "success" | "error"
+  >("idle");
 
-  const selectedProfile = headers.find(p => p.id === selectedId);
+  const selectedProfile = headers.find((p) => p.id === selectedId);
 
   useEffect(() => {
-    if (selectedId && !headers.find(h => h.id === selectedId)) {
+    if (selectedId && !headers.find((h) => h.id === selectedId)) {
       setSelectedId(null);
     }
   }, [headers, selectedId]);
@@ -31,9 +44,9 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
   const handleSelect = (profile: HeaderProfile) => {
     setSelectedId(profile.id);
     setEditName(profile.name);
-    setEditDesc(profile.description || '');
+    setEditDesc(profile.description || "");
     setEditHeaders([...profile.headers]);
-    setSaveStatus('idle');
+    setSaveStatus("idle");
   };
 
   const handleCreate = async () => {
@@ -41,9 +54,11 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
     const newProfile: HeaderProfile = {
       id: `h_${Date.now()}`,
       projectId: currentProjectId,
-      name: 'New Header Set',
-      description: '',
-      headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }]
+      name: "New Header Set",
+      description: "",
+      headers: [
+        { key: "Content-Type", value: "application/json", enabled: true },
+      ],
     };
     await headersApi.create(newProfile);
     handleSelect(newProfile);
@@ -51,14 +66,18 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
 
   const handleSave = async () => {
     if (!selectedId) return;
-    setSaveStatus('saving');
+    setSaveStatus("saving");
     try {
-      await headersApi.update(selectedId, { name: editName, description: editDesc, headers: editHeaders });
-      setSaveStatus('success');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      await headersApi.update(selectedId, {
+        name: editName,
+        description: editDesc,
+        headers: editHeaders,
+      });
+      setSaveStatus("success");
+      setTimeout(() => setSaveStatus("idle"), 3000);
     } catch (error) {
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
     }
   };
 
@@ -68,12 +87,12 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
   };
 
   const addHeaderRow = () => {
-    setEditHeaders([...editHeaders, { key: '', value: '', enabled: true }]);
+    setEditHeaders([...editHeaders, { key: "", value: "", enabled: true }]);
   };
 
   const updateHeaderRow = (
     index: number,
-    field: 'key' | 'value' | 'enabled',
+    field: "key" | "value" | "enabled",
     value: string | boolean,
   ) => {
     const newHeaders = [...editHeaders];
@@ -85,12 +104,33 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
     setEditHeaders(editHeaders.filter((_, i) => i !== index));
   };
 
-  const filteredProfiles = headers.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProfiles = headers.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
     <div className="flex h-full bg-white">
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        title={
+          deleteConfirm?.type === "profile"
+            ? "Delete Header Profile"
+            : "Remove Header Row"
+        }
+        message={
+          deleteConfirm?.type === "profile"
+            ? "Are you sure you want to delete this header profile? This action cannot be undone."
+            : "Are you sure you want to remove this header row?"
+        }
+        onConfirm={() => {
+          if (deleteConfirm?.type === "profile") {
+            handleDelete(deleteConfirm.id as string);
+          } else if (deleteConfirm?.type === "row") {
+            removeHeaderRow(deleteConfirm.id as number);
+          }
+        }}
+        onClose={() => setDeleteConfirm(null)}
+      />
       {/* Sidebar List */}
       <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
         <div className="p-4 border-b border-gray-200">
@@ -99,7 +139,7 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
               Header Profiles
               <HelpTooltip content="Define reusable sets of HTTP headers to apply to your API requests." />
             </h2>
-            <button 
+            <button
               onClick={handleCreate}
               className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
             >
@@ -107,36 +147,45 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
             </button>
           </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search headers..." 
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={14}
+            />
+            <input
+              type="text"
+              placeholder="Search headers..."
               className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {filteredProfiles.map(profile => (
-            <div 
+          {filteredProfiles.map((profile) => (
+            <div
               key={profile.id}
               onClick={() => handleSelect(profile)}
               className={`group flex items-center justify-between p-3 rounded-md cursor-pointer text-sm transition-all ${
-                selectedId === profile.id 
-                  ? 'bg-white shadow-sm border border-blue-100 ring-1 ring-blue-500/20' 
-                  : 'hover:bg-gray-100 border border-transparent'
+                selectedId === profile.id
+                  ? "bg-white shadow-sm border border-blue-100 ring-1 ring-blue-500/20"
+                  : "hover:bg-gray-100 border border-transparent"
               }`}
             >
               <div className="flex items-center gap-3 overflow-hidden">
-                <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${
-                  selectedId === profile.id ? 'bg-blue-50 text-blue-600' : 'bg-gray-200 text-gray-500'
-                }`}>
+                <div
+                  className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${
+                    selectedId === profile.id
+                      ? "bg-blue-50 text-blue-600"
+                      : "bg-gray-200 text-gray-500"
+                  }`}
+                >
                   <FileText size={16} />
                 </div>
                 <div className="min-w-0">
-                  <div className={`font-medium truncate ${selectedId === profile.id ? 'text-blue-900' : 'text-gray-700'}`}>
+                  <div
+                    className={`font-medium truncate ${selectedId === profile.id ? "text-blue-900" : "text-gray-700"}`}
+                  >
                     {profile.name}
                   </div>
                   <div className="text-xs text-gray-400 truncate">
@@ -144,8 +193,11 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
                   </div>
                 </div>
               </div>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleDelete(profile.id); }}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteConfirm({ type: "profile", id: profile.id });
+                }}
                 className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-all"
               >
                 <Trash2 size={14} />
@@ -161,15 +213,15 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
           <>
             <div className="h-16 border-b border-gray-200 px-8 flex items-center justify-between shrink-0 bg-white">
               <div>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="text-lg font-bold text-gray-900 bg-transparent border-none focus:ring-0 p-0 placeholder-gray-300 w-full"
                   placeholder="Profile Name"
                 />
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
                   className="text-sm text-gray-500 bg-transparent border-none focus:ring-0 p-0 placeholder-gray-300 w-full mt-1"
@@ -177,14 +229,28 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
                 />
               </div>
               <div className="flex items-center gap-4">
-                {saveStatus === 'saving' && <span className="text-xs text-gray-500 animate-pulse">Saving...</span>}
-                {saveStatus === 'success' && <span className="text-xs text-green-600 font-medium flex items-center gap-1"><Check size={14} /> Saved successfully</span>}
-                {saveStatus === 'error' && <span className="text-xs text-red-600 font-medium flex items-center gap-1"><X size={14} /> Save failed</span>}
-                <button 
+                {saveStatus === "saving" && (
+                  <span className="text-xs text-gray-500 animate-pulse">
+                    Saving...
+                  </span>
+                )}
+                {saveStatus === "success" && (
+                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <Check size={14} /> Saved successfully
+                  </span>
+                )}
+                {saveStatus === "error" && (
+                  <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                    <X size={14} /> Save failed
+                  </span>
+                )}
+                <button
                   onClick={handleSave}
-                  disabled={saveStatus === 'saving'}
+                  disabled={saveStatus === "saving"}
                   className={`flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
-                    saveStatus === 'saving' ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                    saveStatus === "saving"
+                      ? "bg-blue-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   <Save size={16} />
@@ -197,55 +263,74 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
               <div className="w-full">
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/50 flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Key-Value Pairs</h3>
-                    <span className="text-xs text-gray-500">Supports variables like {'{{token}}'}</span>
+                    <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">
+                      Key-Value Pairs
+                    </h3>
+                    <span className="text-xs text-gray-500">
+                      Supports variables like {"{{token}}"}
+                    </span>
                   </div>
-                  
+
                   <div className="divide-y divide-gray-100">
                     {editHeaders.map((header, index) => (
-                      <div key={index} className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors group">
+                      <div
+                        key={index}
+                        className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors group"
+                      >
                         <div className="pt-1.5">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={header.enabled}
-                            onChange={(e) => updateHeaderRow(index, 'enabled', e.target.checked)}
+                            onChange={(e) =>
+                              updateHeaderRow(
+                                index,
+                                "enabled",
+                                e.target.checked,
+                              )
+                            }
                             className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
                           />
                         </div>
                         <div className="flex-1 grid grid-cols-2 gap-4">
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={header.key}
-                            onChange={(e) => updateHeaderRow(index, 'key', e.target.value)}
+                            onChange={(e) =>
+                              updateHeaderRow(index, "key", e.target.value)
+                            }
                             placeholder="Key (e.g. Content-Type)"
-                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-gray-900 border-gray-200'}`}
+                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${!header.enabled ? "text-gray-400 bg-gray-50" : "text-gray-900 border-gray-200"}`}
                           />
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={header.value}
-                            onChange={(e) => updateHeaderRow(index, 'value', e.target.value)}
+                            onChange={(e) =>
+                              updateHeaderRow(index, "value", e.target.value)
+                            }
                             placeholder="Value"
-                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono ${!header.enabled ? 'text-gray-400 bg-gray-50' : 'text-slate-700 border-gray-200'}`}
+                            className={`w-full px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-mono ${!header.enabled ? "text-gray-400 bg-gray-50" : "text-slate-700 border-gray-200"}`}
                           />
                         </div>
-                        <button 
-                          onClick={() => removeHeaderRow(index)}
+                        <button
+                          onClick={() =>
+                            setDeleteConfirm({ type: "row", id: index })
+                          }
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
                         >
                           <Trash2 size={16} />
                         </button>
                       </div>
                     ))}
-                    
+
                     {editHeaders.length === 0 && (
                       <div className="p-8 text-center text-gray-400 text-sm">
                         No headers defined. Add one below.
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="p-4 bg-gray-50 border-t border-gray-200">
-                    <button 
+                    <button
                       onClick={addHeaderRow}
                       className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors w-fit"
                     >
@@ -262,8 +347,12 @@ export function HeadersManager({ headers, headersApi, currentProjectId }: Header
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <Search size={32} className="text-gray-300" />
             </div>
-            <p className="text-lg font-medium text-gray-900">Select a profile</p>
-            <p className="text-sm mt-1">Select a header profile from the sidebar or create a new one.</p>
+            <p className="text-lg font-medium text-gray-900">
+              Select a profile
+            </p>
+            <p className="text-sm mt-1">
+              Select a header profile from the sidebar or create a new one.
+            </p>
           </div>
         )}
       </div>

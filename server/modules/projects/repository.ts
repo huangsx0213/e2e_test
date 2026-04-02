@@ -164,10 +164,10 @@ export function saveProject(projectInput: Partial<Project>): Project {
       for (const [suiteIndex, scenarioSuite] of scenario.suites.entries()) {
         db.prepare(
           `
-            INSERT INTO scenario_suites (id, scenario_id, suite_id, iteration_strategy, position)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO scenario_suites (id, scenario_id, suite_id, position)
+            VALUES (?, ?, ?, ?)
           `,
-        ).run(scenarioSuite.id, scenario.id, scenarioSuite.suiteId, scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN', suiteIndex);
+        ).run(scenarioSuite.id, scenario.id, scenarioSuite.suiteId, suiteIndex);
 
         for (const [overrideIndex, [key, value]] of Object.entries(
           scenarioSuite.variableOverrides || {},
@@ -184,6 +184,32 @@ export function saveProject(projectInput: Partial<Project>): Project {
             `,
           ).run(scenarioSuite.id, key, value, overrideIndex);
         }
+      }
+    }
+
+    db.prepare('DELETE FROM test_plans WHERE project_id = ?').run(project.id);
+
+    for (const [planIndex, plan] of (project.plans || []).entries()) {
+      db.prepare(
+        `
+          INSERT INTO test_plans (id, project_id, name, description, position)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+      ).run(
+        plan.id,
+        project.id,
+        plan.name,
+        plan.description || '',
+        planIndex,
+      );
+
+      for (const [scenarioIndex, scenario] of (plan.scenarios || []).entries()) {
+        db.prepare(
+          `
+            INSERT INTO test_plan_scenarios (id, plan_id, scenario_id, position)
+            VALUES (?, ?, ?, ?)
+          `,
+        ).run(scenario.id, plan.id, scenario.scenarioId, scenarioIndex);
       }
     }
   });
@@ -288,7 +314,7 @@ export function getProject(projectId: string): Project | undefined {
   const projectScenarios: TestScenario[] = scenarios.map((scenario) => {
     const suites = db.prepare(
       `
-        SELECT id, suite_id, iteration_strategy
+        SELECT id, suite_id
         FROM scenario_suites
         WHERE scenario_id = ?
         ORDER BY position
@@ -353,12 +379,42 @@ export function getProject(projectId: string): Project | undefined {
         return {
           id: scenarioSuite.id,
           suiteId: scenarioSuite.suite_id,
-          iterationStrategy: scenarioSuite.iteration_strategy as any,
           variableOverrides: Object.fromEntries(
             overrides.map((override) => [override.item_key, override.item_value]),
           ),
         };
       }),
+    };
+  });
+
+  const plans = db.prepare(
+    `
+      SELECT id, name, description
+      FROM test_plans
+      WHERE project_id = ?
+      ORDER BY position
+    `,
+  ).all(projectId) as Array<{ id: string; name: string; description: string }>;
+
+  const projectPlans = plans.map((plan) => {
+    const planScenarios = db.prepare(
+      `
+        SELECT id, scenario_id
+        FROM test_plan_scenarios
+        WHERE plan_id = ?
+        ORDER BY position
+      `,
+    ).all(plan.id) as Array<{ id: string; scenario_id: string }>;
+
+    return {
+      id: plan.id,
+      projectId,
+      name: plan.name,
+      description: plan.description,
+      scenarios: planScenarios.map((ps) => ({
+        id: ps.id,
+        scenarioId: ps.scenario_id,
+      })),
     };
   });
 
@@ -369,6 +425,7 @@ export function getProject(projectId: string): Project | undefined {
     pages: projectPages,
     modules: projectModules,
     scenarios: projectScenarios,
+    plans: projectPlans,
   };
 }
 
