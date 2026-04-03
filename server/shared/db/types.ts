@@ -23,6 +23,8 @@ export type DbElementRow = {
   selector_type: string;
   value: string;
   description: string;
+  original_html: string | null;
+  page_url: string | null;
 };
 
 export type DbModuleRow = {

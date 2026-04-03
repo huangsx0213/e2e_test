@@ -7,6 +7,8 @@ export interface UIElement {
   selectorType: SelectorType;
   value: string;
   description?: string;
+  originalHtml?: string;
+  pageUrl?: string;
 }
 
 export interface Page {

@@ -9,6 +9,7 @@ import { reportsModule } from '../modules/reports/index.ts';
 import { settingsModule } from '../modules/settings/index.ts';
 import { suitesModule } from '../modules/suites/index.ts';
 import { executionModule } from '../modules/execution/index.ts';
+import { recordingModule } from '../modules/recording/index.ts';
 
 export function registerRoutes(app: Express) {
   const modules = [
@@ -21,6 +22,7 @@ export function registerRoutes(app: Express) {
     settingsModule,
     environmentsModule,
     executionModule,
+    recordingModule,
   ];
 
   for (const module of modules) {

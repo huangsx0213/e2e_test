@@ -6,6 +6,7 @@ import { migration004StepEnabled } from './004_step_enabled.ts';
 import { migration005 } from './005_scenario_iteration_strategy.ts';
 import * as migration006TestPlans from './006_test_plans.ts';
 import { migration007ViewportSettings } from './007_viewport_settings.ts';
+import { migration008ElementRecordingFields } from './008_element_recording_fields.ts';
 import type { Migration } from './types.ts';
 
 export const migrations: Migration[] = [
@@ -16,6 +17,7 @@ export const migrations: Migration[] = [
   migration005,
   { id: '006_test_plans', up: () => migration006TestPlans.up(db) },
   migration007ViewportSettings,
+  migration008ElementRecordingFields,
 ];
 
 function appliedMigrationIds(): Set<string> {

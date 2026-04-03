@@ -7,6 +7,8 @@ const elementSchema = z.object({
   selectorType: z.string().min(1),
   value: z.string(),
   description: z.string().optional(),
+  originalHtml: z.string().optional(),
+  pageUrl: z.string().optional(),
 });
 
 const pageSchema = z.object({

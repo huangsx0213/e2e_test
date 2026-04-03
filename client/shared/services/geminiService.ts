@@ -43,9 +43,10 @@ export const generateStepsFromDescription = async (
       }
     });
 
-    const text = response.text;
+    let text = response.text;
     if (!text) return [];
     
+    text = text.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
     const rawSteps = JSON.parse(text);
     return rawSteps.map((s: any, idx: number) => ({
       id: `gen-${Date.now()}-${idx}`,
@@ -81,7 +82,9 @@ export const suggestSelector = async (htmlSnippet: string): Promise<Partial<UIEl
         config: { responseMimeType: 'application/json' }
       });
       
-      return JSON.parse(response.text || '{}');
+      let text = response.text || '{}';
+      text = text.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+      return JSON.parse(text);
     } catch (e) {
       console.error(e);
       return { selectorType: 'CSS', value: '' };

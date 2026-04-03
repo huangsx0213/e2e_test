@@ -43,8 +43,8 @@ export function saveProject(projectInput: Partial<Project>): Project {
       for (const [elementIndex, element] of page.elements.entries()) {
         db.prepare(
           `
-            INSERT INTO project_elements (id, page_id, name, selector_type, value, description, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO project_elements (id, page_id, name, selector_type, value, description, original_html, page_url, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           element.id,
@@ -53,6 +53,8 @@ export function saveProject(projectInput: Partial<Project>): Project {
           element.selectorType,
           element.value,
           element.description || '',
+          element.originalHtml || null,
+          element.pageUrl || null,
           elementIndex,
         );
       }
@@ -239,7 +241,7 @@ export function getProject(projectId: string): Project | undefined {
   const projectPages: Page[] = pages.map((page) => {
     const elements = db.prepare(
       `
-        SELECT id, name, selector_type, value, description
+        SELECT id, name, selector_type, value, description, original_html, page_url
         FROM project_elements
         WHERE page_id = ?
         ORDER BY position
@@ -256,6 +258,8 @@ export function getProject(projectId: string): Project | undefined {
         selectorType: element.selector_type as UIElement['selectorType'],
         value: element.value,
         description: element.description,
+        originalHtml: element.original_html || undefined,
+        pageUrl: element.page_url || undefined,
       })),
     };
   });

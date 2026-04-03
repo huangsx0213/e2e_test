@@ -20,6 +20,9 @@ import {
   Filter,
   FolderPlus,
   Settings,
+  Video,
+  Square,
+  Loader2,
 } from "lucide-react";
 import { suggestSelector } from "@/shared/services/geminiService";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
@@ -43,6 +46,11 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [htmlInput, setHtmlInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Recording States
+  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
 
   // Edit States
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
@@ -263,6 +271,48 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
       setIsAiModalOpen(false);
     }
   };
+
+  const startRecording = async () => {
+    if (!recordingUrl.trim() || !activePageId || !currentProjectId) return;
+    setIsRecording(true);
+    setIsRecordingModalOpen(false);
+
+    try {
+      await fetch('/api/recording/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUrl: recordingUrl,
+          projectId: currentProjectId,
+          pageId: activePageId,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      await fetch('/api/recording/stop', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    } finally {
+      setIsRecording(false);
+    }
+  };
+
+  // Polling for new elements during recording
+  useEffect(() => {
+    if (!isRecording || !currentProjectId) return;
+
+    const interval = setInterval(() => {
+      projectsApi.refresh();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isRecording, currentProjectId, projectsApi]);
 
   return (
     <div className="h-full flex bg-gray-50 overflow-hidden relative">
@@ -694,6 +744,21 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                 <span className="text-xs text-gray-400 font-medium mr-2">
                   {activePage.elements.length} Elements
                 </span>
+                {isRecording ? (
+                  <button
+                    onClick={stopRecording}
+                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md flex items-center gap-2 transition-colors animate-pulse"
+                  >
+                    <Square size={14} className="fill-current" /> Stop Recording
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsRecordingModalOpen(true)}
+                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors"
+                  >
+                    <Video size={14} /> Smart Record
+                  </button>
+                )}
                 <button
                   onClick={() => setIsAiModalOpen(true)}
                   className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md flex items-center gap-2 transition-colors"
@@ -882,6 +947,52 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                     : activeElementId
                       ? "Update Selector"
                       : "Generate Element"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRecordingModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white p-0 rounded-xl w-[500px] shadow-2xl border border-gray-200 animate-in fade-in zoom-in duration-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
+                <Video className="text-green-600" size={20} />
+                Smart Recording
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Enter the URL you want to record. A new browser window will open. Click on elements to automatically extract and save them.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Target URL
+              </label>
+              <input
+                type="url"
+                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none transition-all placeholder-gray-400"
+                placeholder="https://example.com"
+                value={recordingUrl}
+                onChange={(e) => setRecordingUrl(e.target.value)}
+                autoFocus
+              />
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setIsRecordingModalOpen(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={startRecording}
+                  disabled={!recordingUrl.trim()}
+                  className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 font-medium shadow-sm transition-all hover:shadow-green-500/20"
+                >
+                  Start Recording
                 </button>
               </div>
             </div>
