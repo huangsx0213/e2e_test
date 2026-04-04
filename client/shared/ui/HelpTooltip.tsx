@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { HelpCircle } from "lucide-react";
 
-export const HelpTooltip = ({ content }: { content: React.ReactNode }) => {
+export const HelpTooltip = ({ content, maxWidthClass = "max-w-xs" }: { content: React.ReactNode, maxWidthClass?: string }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const [position, setPosition] = useState<"top" | "bottom">("top");
@@ -55,7 +55,7 @@ export const HelpTooltip = ({ content }: { content: React.ReactNode }) => {
       {isVisible &&
         createPortal(
           <div
-            className={`fixed z-[9999] pointer-events-none -translate-x-1/2 w-max max-w-xs ${position === "top" ? "-translate-y-full" : ""}`}
+            className={`fixed z-[9999] pointer-events-none -translate-x-1/2 w-max ${maxWidthClass} ${position === "top" ? "-translate-y-full" : ""}`}
             style={{ top: coords.top, left: coords.left }}
           >
             <div className="bg-slate-800 text-white text-xs rounded py-1.5 px-2.5 shadow-lg whitespace-normal text-left font-normal tracking-normal normal-case leading-relaxed">

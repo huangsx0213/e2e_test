@@ -249,7 +249,50 @@ export const StepList: React.FC<StepListProps> = ({
                 <div className="text-center">Step</div>
                 <div>Action</div>
                 <div>Target / Module</div>
-                <div>Value / Data</div>
+                <div className="flex items-center gap-1">
+                  Value / Data
+                  <HelpTooltip 
+                    maxWidthClass="max-w-[500px]"
+                    content={
+                    <div className="w-[480px] text-xs">
+                      <p className="font-semibold mb-2 text-sm border-b border-gray-700 pb-1">Dynamic Variables Cheat Sheet</p>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="font-semibold text-blue-300 mb-1">Generators (Start with $)</p>
+                          <ul className="space-y-1 text-gray-300">
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$uuid()}}"}</code> - UUID v4</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$timestamp()}}"}</code> - 13-digit ms</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$now('YYYY-MM-DD', 'Asia/Shanghai')}}"}</code></li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomInt(1, 100)}}"}</code> - Random int</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomString(8)}}"}</code> - Random string</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomEmail()}}"}</code> - Random email</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomPhone()}}"}</code> - Random phone</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomIp()}}"}</code> - Random IPv4</li>
+                          </ul>
+                        </div>
+
+                        <div>
+                          <p className="font-semibold text-green-300 mb-1">Transformers (Use | pipe)</p>
+                          <ul className="space-y-1 text-gray-300">
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| md5</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| sha256</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| base64</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| base64Decode</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| date('YYYY-MM-DD', 'UTC')</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| substring(0, 5)</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| replace('a', 'b')</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| default('N/A')</code></li>
+                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| jsonPath('$.id')</code></li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      <p className="font-semibold text-purple-300 mt-3 mb-1">Example Combinations</p>
+                      <div className="bg-gray-900 p-1.5 rounded text-gray-300">
+                        <code className="text-purple-200">{"{{ $timestamp() | md5 | uppercase }}"}</code>
+                      </div>
+                    </div>
+                  } />
+                </div>
                 <div></div>
               </div>
 
