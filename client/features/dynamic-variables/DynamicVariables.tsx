@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, Play, RefreshCw, Search, Variable, Info, Check, X, Copy, ChevronDown, ChevronRight, Wand2, Zap, Braces, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Save, Play, RefreshCw, Search, Variable, Info, Check, X, Copy, ChevronDown, ChevronRight, Wand2, Zap, Braces } from 'lucide-react';
 import { api } from '@/shared/services/api';
 import { DynamicVariable } from '@/shared/types';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
@@ -38,17 +38,16 @@ const SYSTEM_GENERATORS = [
     ]
   },
   {
-    category: 'User Data',
+    category: 'Text',
     items: [
       { name: 'Random Name', syntax: '{{$randomName()}}', desc: 'Generates a random full name with suffix.', example: 'Alice123' },
       { name: 'Random Email', syntax: '{{$randomEmail()}}', desc: 'Generates a random test email address.', example: 'test_a1b2c3d4@example.com' },
       { name: 'Random Phone', syntax: '{{$randomPhone()}}', desc: 'Generates a random 11-digit phone number.', example: '15550109999' },
       { name: 'Random Address', syntax: '{{$randomAddress()}}', desc: 'Generates a random street address.', example: '123 Maple St, Springfield' },
-      { name: 'Random IP', syntax: '{{$randomIp()}}', desc: 'Generates a random IPv4 address.', example: '192.168.1.1' },
     ]
   },
   {
-    category: 'Text',
+    category: 'User Data',
     items: [
       { name: 'Random String', syntax: '{{$randomString(8)}}', desc: 'Random alphanumeric string.', example: '{{$randomString(8)}} → aB3k9P1m', params: [
         { name: 'length', desc: 'Number of characters (default: 8).' }
@@ -126,18 +125,20 @@ const SYSTEM_TRANSFORMATIONS = [
   }
 ];
 
+// Outside the component
+let variablesCache: { projectId: string, data: DynamicVariable[] } | null = null;
+
 export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
   const [variables, setVariables] = useState<DynamicVariable[]>([]);
   const [selectedVarId, setSelectedVarId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!variablesCache || variablesCache.projectId !== currentProjectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'manage' | 'reference'>('manage');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Common': true,
-    'String': true,
+    'Text': true,
     'User Data': false,
-    'Text': false,
     'Crypto': false,
     'Math': false
   });
@@ -149,10 +150,6 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
   const [previewSamples, setPreviewSamples] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
-  
-  // Sidebar Editing State
-  const [editingVarId, setEditingVarId] = useState<string | null>(null);
-  const [editVarName, setEditVarName] = useState("");
 
   useEffect(() => {
     if (currentProjectId) {
@@ -160,13 +157,20 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
     }
   }, [currentProjectId]);
 
-  const loadVariables = async () => {
+  const loadVariables = async (forceRefresh = false) => {
     if (!currentProjectId) return;
+    
+    if (!forceRefresh && variablesCache && variablesCache.projectId === currentProjectId) {
+      setVariables(variablesCache.data);
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
       const data = await api.dynamicVariables.list(currentProjectId);
+      variablesCache = { projectId: currentProjectId, data };
       setVariables(data);
-      // Removed auto-selection of first variable
     } catch (error) {
       console.error('Failed to load dynamic variables', error);
     } finally {
@@ -206,7 +210,7 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
         const newVar = await api.dynamicVariables.create(currentProjectId, { name, expression, description });
         setSelectedVarId(newVar.id);
       }
-      await loadVariables();
+      await loadVariables(true);
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error) {
@@ -216,28 +220,13 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
     }
   };
 
-  const saveVarName = async () => {
-    if (editingVarId) {
-      try {
-        await api.dynamicVariables.update(editingVarId, { name: editVarName });
-        if (selectedVarId === editingVarId) {
-          setName(editVarName);
-        }
-        await loadVariables();
-        setEditingVarId(null);
-      } catch (error) {
-        console.error('Failed to update variable name', error);
-      }
-    }
-  };
-
   const handleDelete = async (id: string) => {
     try {
       await api.dynamicVariables.delete(id);
       if (selectedVarId === id) {
         handleCreateNew();
       }
-      await loadVariables();
+      await loadVariables(true);
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Failed to delete dynamic variable', error);
@@ -335,55 +324,19 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
                       size={14}
                       className={`shrink-0 ${selectedVarId === v.id ? "text-blue-500" : "text-gray-400"}`}
                     />
-                    {editingVarId === v.id ? (
-                      <input
-                        className="w-full px-1 py-0.5 text-xs bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                        value={editVarName}
-                        onChange={(e) => setEditVarName(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.key === "Enter" && saveVarName()}
-                        onBlur={saveVarName}
-                        autoFocus
-                      />
-                    ) : (
-                      <span className="truncate font-mono">{v.name}</span>
-                    )}
+                    <span className="truncate font-mono">{v.name}</span>
                   </div>
 
                   <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    {editingVarId === v.id ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          saveVarName();
-                        }}
-                        className="p-1 text-green-600"
-                      >
-                        <Check size={12} />
-                      </button>
-                    ) : (
-                      <div className="flex gap-0.5 relative z-20">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingVarId(v.id);
-                            setEditVarName(v.name);
-                          }}
-                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteConfirm(v.id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm(v.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 </div>
               ))

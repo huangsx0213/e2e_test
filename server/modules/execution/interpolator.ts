@@ -81,7 +81,6 @@ const generators: Record<string, (...args: string[]) => string> = {
     const names = ['Alice', 'Bob', 'Charlie', 'David', 'Eve', 'Frank', 'Grace', 'Helen', 'Ivan', 'Judy'];
     return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 1000);
   },
-  $randomIp: () => Array.from({length: 4}, () => Math.floor(Math.random() * 256)).join('.'),
   $randomMac: () => Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':'),
   $randomBool: () => Math.random() > 0.5 ? 'true' : 'false',
   $randomAddress: () => {
