@@ -24,8 +24,10 @@ import {
   Camera,
   Power,
   PowerOff,
+  HelpCircle,
 } from "lucide-react";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 
 interface StepListProps {
   title?: string;
@@ -1773,7 +1775,38 @@ export const StepList: React.FC<StepListProps> = ({
                   {/* Extractors Section */}
                   <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                      <span>Variable Extractors</span>
+                      <div className="flex items-center gap-1">
+                        <span>Variable Extractors</span>
+                        <HelpTooltip content={
+                          <div className="w-64">
+                            {step.action.startsWith('API_') ? (
+                              <>
+                                <p className="mb-1 font-semibold">JSON / XML Extraction</p>
+                                <p className="mb-1 text-gray-300">Use JSONPath syntax (e.g., <code className="text-blue-300">$.data.id</code>).</p>
+                                <p className="mb-1 text-gray-300">XML is auto-converted to JSON. Attributes get an <code className="text-blue-300">@_</code> prefix.</p>
+                                <div className="bg-gray-900 p-1.5 rounded mt-1">
+                                  <p className="text-gray-400 mb-1">XML: &lt;user id="1"&gt;John&lt;/user&gt;</p>
+                                  <p className="text-gray-400">Path: <code className="text-blue-300">$.user['@_id']</code> &rarr; 1</p>
+                                  <p className="text-gray-400">Path: <code className="text-blue-300">$.user['#text']</code> &rarr; John</p>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p className="mb-1 font-semibold">UI Variable Extraction</p>
+                                <ul className="list-disc pl-4 text-gray-300 space-y-1 mt-1">
+                                  <li><strong>Text / Value:</strong> Extracts text content or input value of the element.</li>
+                                  <li><strong>Attribute:</strong> Extracts an HTML attribute. Enter the attribute name (e.g., <code className="text-blue-300">href</code>, <code className="text-blue-300">src</code>) in the Expression field.</li>
+                                  <li><strong>Page URL / Title:</strong> Extracts the current page's URL or Title.</li>
+                                </ul>
+                              </>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-gray-700">
+                              <p className="font-semibold mb-1">How to use:</p>
+                              <p className="text-gray-300">Reference the extracted variable in subsequent steps using <code className="text-blue-300">{"{{"}variable_name{"}}"}</code>.</p>
+                            </div>
+                          </div>
+                        } />
+                      </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
