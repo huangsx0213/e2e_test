@@ -21,9 +21,6 @@ import {
   Database,
   Workflow,
   Variable,
-  X,
-  RefreshCw,
-  Save,
 } from "lucide-react";
 import { StepList } from "@/shared/testing/StepList";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
@@ -49,11 +46,6 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
   const [activeModuleId, setActiveModuleId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Manual Saving State
-  const [localModule, setLocalModule] = useState<TestModule | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
-
   // Module Editing State
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editModuleName, setEditModuleName] = useState("");
@@ -64,24 +56,9 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
   } | null>(null);
 
   const activeProject = projects.find((p) => p.id === currentProjectId);
-  const activeModule = localModule || activeProject?.modules.find(
+  const activeModule = activeProject?.modules.find(
     (m) => m.id === activeModuleId,
   );
-
-  // Sync localModule when activeModuleId changes or project updates
-  React.useEffect(() => {
-    const mod = activeProject?.modules.find((m) => m.id === activeModuleId);
-    if (mod) {
-      if (!isDirty || (localModule && localModule.id !== activeModuleId)) {
-        setLocalModule(JSON.parse(JSON.stringify(mod)));
-        setIsDirty(false);
-        setSaveStatus("idle");
-      }
-    } else {
-      setLocalModule(null);
-      setIsDirty(false);
-    }
-  }, [activeModuleId, activeProject]);
 
   // Handle Project Selection Reset
   React.useEffect(() => {
@@ -125,44 +102,20 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
     setEditModuleName("New Module");
   };
 
-  const updateModule = (updates: Partial<TestModule>) => {
-    if (localModule) {
-      setLocalModule({ ...localModule, ...updates });
-      setIsDirty(true);
-      setSaveStatus("idle");
-    }
+  const updateModule = async (updates: Partial<TestModule>) => {
+    if (!activeProject || !activeModuleId) return;
+    const newModules = activeProject.modules.map((m) =>
+      m.id === activeModuleId ? { ...m, ...updates } : m,
+    );
+    await projectsApi.update(activeProject.id, { modules: newModules });
   };
 
-  const handleSave = async () => {
-    if (localModule && activeProject && activeModuleId) {
-      setSaveStatus("saving");
-      try {
-        const newModules = activeProject.modules.map((m) =>
-          m.id === activeModuleId ? localModule : m,
-        );
-        await projectsApi.update(activeProject.id, { modules: newModules });
-        setIsDirty(false);
-        setSaveStatus("success");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-      } catch (error) {
-        console.error("Failed to save module", error);
-        setSaveStatus("error");
-      }
-    }
-  };
-
-  const handleDiscard = () => {
-    const mod = activeProject?.modules.find((m) => m.id === activeModuleId);
-    if (mod) {
-      setLocalModule(JSON.parse(JSON.stringify(mod)));
-      setIsDirty(false);
-      setSaveStatus("idle");
-    }
-  };
-
-  const saveModuleName = () => {
-    if (editingModuleId && localModule) {
-      updateModule({ name: editModuleName });
+  const saveModuleName = async () => {
+    if (editingModuleId && activeProject) {
+      const newModules = activeProject.modules.map((m) =>
+        m.id === editingModuleId ? { ...m, name: editModuleName } : m,
+      );
+      await projectsApi.update(activeProject.id, { modules: newModules });
       setEditingModuleId(null);
     }
   };
@@ -403,75 +356,27 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
         {activeModule ? (
           <>
             <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
-                  <span className="hover:text-blue-600 cursor-pointer transition-colors">
-                    Shared Modules
-                  </span>
-                  <ChevronRight size={12} className="text-gray-300" />
-                  <span>Edit Module</span>
-                </div>
-                <input
-                  className="text-lg font-semibold text-gray-900 border-none p-0 focus:ring-0 bg-transparent placeholder-gray-400 w-full max-w-lg"
-                  value={activeModule.name}
-                  onChange={(e) => updateModule({ name: e.target.value })}
-                  placeholder="Untitled Module"
-                />
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {activeModule.name}
+                </h2>
               </div>
-
-              <div className="flex items-center gap-3 ml-4">
-                {isDirty && (
-                  <>
-                    <button
-                      onClick={handleDiscard}
-                      className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md text-sm font-medium transition-colors"
-                    >
-                      <X size={16} />
-                      Discard
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saveStatus === "saving"}
-                      className={`flex items-center gap-2 px-4 py-1.5 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
-                        saveStatus === "saving"
-                          ? "bg-blue-400 cursor-not-allowed"
-                          : "bg-blue-600 hover:bg-blue-700"
-                      }`}
-                    >
-                      {saveStatus === "saving" ? (
-                        <RefreshCw size={16} className="animate-spin" />
-                      ) : (
-                        <Save size={16} />
-                      )}
-                      {saveStatus === "saving" ? "Saving..." : "Save Changes"}
-                    </button>
-                  </>
-                )}
-                {saveStatus === "success" && !isDirty && (
-                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                    <Check size={14} /> Saved
-                  </span>
-                )}
-                <div className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-100">
-                  {activeModule.steps.length} Steps
-                </div>
+              <div className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-100">
+                {activeModule.steps.length} Steps
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto bg-gray-50">
               <div className="flex flex-col min-h-full">
-                <div className="px-6 py-6 border-b border-gray-100">
-                  <div className="mb-4">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                      Description
-                    </label>
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <div className="mb-0">
                     <input
-                      className="w-full mt-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
+                      className="w-full px-0 py-1 bg-transparent border-none text-sm text-gray-500 focus:ring-0 placeholder-gray-300 transition-all"
                       value={activeModule.description || ""}
                       onChange={(e) =>
                         updateModule({ description: e.target.value })
                       }
-                      placeholder="Module description (e.g. 'Standard login flow for reuse')..."
+                      placeholder="Add a description for this module..."
                     />
                   </div>
 

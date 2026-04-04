@@ -84,6 +84,24 @@ const generators: Record<string, (...args: string[]) => string> = {
   $randomIp: () => Array.from({length: 4}, () => Math.floor(Math.random() * 256)).join('.'),
   $randomMac: () => Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':'),
   $randomBool: () => Math.random() > 0.5 ? 'true' : 'false',
+  $randomAddress: () => {
+    const streets = ['Maple St', 'Oak Ave', 'Main St', 'Washington Blvd', 'Lakeview Dr', 'Parkway Ave'];
+    const cities = ['Springfield', 'Riverside', 'Georgetown', 'Franklin', 'Clinton', 'Salem'];
+    return `${Math.floor(Math.random() * 9000) + 100} ${streets[Math.floor(Math.random() * streets.length)]}, ${cities[Math.floor(Math.random() * cities.length)]}`;
+  },
+  $randomWords: (countStr) => {
+    const count = parseInt(countStr || '3', 10);
+    const words = ['apple', 'banana', 'cherry', 'date', 'elderberry', 'fig', 'grape', 'honeydew', 'kiwi', 'lemon', 'mango', 'orange', 'papaya', 'quince', 'raspberry', 'strawberry', 'tangerine', 'ugli', 'vanilla', 'watermelon'];
+    return Array.from({length: count}, () => words[Math.floor(Math.random() * words.length)]).join(' ');
+  },
+  $date: (formatStr, offsetStr, unit, tzStr) => {
+    let d = dayjs();
+    if (offsetStr && unit) {
+      d = d.add(parseInt(offsetStr, 10), unit as any);
+    }
+    if (tzStr) d = d.tz(tzStr);
+    return formatStr ? d.format(formatStr) : d.toISOString();
+  },
 };
 
 // --- Transformers ---
@@ -127,7 +145,11 @@ const transformers: Record<string, (val: string, ...args: string[]) => string> =
     } catch {
       return '';
     }
-  }
+  },
+  round: (val) => Math.round(parseFloat(val || '0')).toString(),
+  floor: (val) => Math.floor(parseFloat(val || '0')).toString(),
+  ceil: (val) => Math.ceil(parseFloat(val || '0')).toString(),
+  abs: (val) => Math.abs(parseFloat(val || '0')).toString(),
 };
 
 // --- Helper to parse function calls like "name(arg1, 'arg2')" ---
