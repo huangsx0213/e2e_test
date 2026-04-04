@@ -3,6 +3,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 
 import { createApp } from './createApp.ts';
+import { initializeWebSocket } from '../shared/services/websocketService.ts';
 
 const PORT = 3000;
 
@@ -23,7 +24,9 @@ export async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  initializeWebSocket(server);
 }

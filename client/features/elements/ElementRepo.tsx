@@ -4,7 +4,6 @@ import { Project, Page, UIElement, SelectorType } from "@/shared/types";
 import {
   Trash2,
   Plus,
-  Sparkles,
   Database,
   File,
   Edit2,
@@ -24,7 +23,6 @@ import {
   Square,
   Loader2,
 } from "lucide-react";
-import { suggestSelector } from "@/shared/services/geminiService";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
@@ -43,9 +41,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   const [activeElementId, setActiveElementId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [htmlInput, setHtmlInput] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
 
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
@@ -233,44 +228,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
     if (activeElementId === elementId) setActiveElementId("");
   };
 
-  const handleAiSuggest = async () => {
-    if (!htmlInput.trim()) return;
-    setAiLoading(true);
-    const suggestion = await suggestSelector(htmlInput);
-    setAiLoading(false);
-
-    // If we are in element edit mode, apply to that element
-    if (activeElementId && activePageId) {
-      updateElement(activePageId, activeElementId, {
-        selectorType: (suggestion.selectorType as SelectorType) || "CSS",
-        value: suggestion.value,
-        name: suggestion.name || activeElement?.name,
-      });
-      setIsAiModalOpen(false);
-      setHtmlInput("");
-      return;
-    }
-
-    // If we are in page mode, add new element
-    if (suggestion.value && activePageId) {
-      const newElement: UIElement = {
-        id: `el-${Date.now()}`,
-        name: suggestion.name || "AI Generated Element",
-        selectorType: (suggestion.selectorType as SelectorType) || "CSS",
-        value: suggestion.value,
-      };
-
-      updateProject((p) => ({
-        ...p,
-        pages: p.pages.map((pg) => {
-          if (pg.id !== activePageId) return pg;
-          return { ...pg, elements: [...pg.elements, newElement] };
-        }),
-      }));
-      setHtmlInput("");
-      setIsAiModalOpen(false);
-    }
-  };
 
   const startRecording = async () => {
     if (!recordingUrl.trim() || !activePageId || !currentProjectId) return;
@@ -303,16 +260,31 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
     }
   };
 
-  // Polling for new elements during recording
+  // Real-time updates via WebSocket during recording
   useEffect(() => {
-    if (!isRecording || !currentProjectId) return;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    const ws = new WebSocket(wsUrl);
 
-    const interval = setInterval(() => {
-      projectsApi.refresh();
-    }, 2000);
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.event === 'element-recorded') {
+          console.log('New element recorded via WS, refreshing...');
+          projectsApi.refresh();
+        }
+      } catch (e) {
+        console.error('Failed to parse WS message:', e);
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, [isRecording, currentProjectId, projectsApi]);
+    ws.onopen = () => console.log('WS connected for real-time updates');
+    ws.onerror = (e) => console.error('WS error:', e);
+
+    return () => {
+      ws.close();
+    };
+  }, [projectsApi]);
 
   return (
     <div className="h-full flex bg-gray-50 overflow-hidden relative">
@@ -394,11 +366,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
               <div key={page.id} className="select-none">
                 {/* Page Header */}
                 <div
-                  className={`group px-2 py-1.5 rounded-md text-sm font-medium cursor-pointer flex items-center justify-between transition-all duration-200 ${
-                    activePageId === page.id && !activeElementId
+                  className={`group px-2 py-1.5 rounded-md text-sm font-medium cursor-pointer flex items-center justify-between transition-all duration-200 ${activePageId === page.id && !activeElementId
                       ? "bg-blue-50 text-blue-700 shadow-sm"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
+                    }`}
                   onClick={() => {
                     if (activePageId === page.id && !activeElementId) {
                       setActivePageId("");
@@ -483,11 +454,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                     {page.elements.map((el) => (
                       <div
                         key={el.id}
-                        className={`group text-xs py-1.5 px-2 rounded-md cursor-pointer truncate transition-colors flex items-center justify-between ${
-                          activeElementId === el.id
+                        className={`group text-xs py-1.5 px-2 rounded-md cursor-pointer truncate transition-colors flex items-center justify-between ${activeElementId === el.id
                             ? "bg-blue-50 text-blue-700 font-medium"
                             : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
-                        }`}
+                          }`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setActivePageId(page.id);
@@ -619,12 +589,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                 </h2>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setIsAiModalOpen(true)}
-                  className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md flex items-center gap-2 transition-colors"
-                >
-                  <Sparkles size={14} /> AI Improve
-                </button>
               </div>
             </div>
 
@@ -676,23 +640,15 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                           })
                         }
                       >
+                        <option value="getByRole">getByRole (Role)</option>
+                        <option value="getByTestId">getByTestId (Test ID)</option>
                         <option value="CSS">CSS Selector</option>
+                        <option value="getByText">getByText (Text)</option>
+                        <option value="getByLabel">getByLabel (Label)</option>
+                        <option value="getByPlaceholder">getByPlaceholder (Placeholder)</option>
+                        <option value="getByAltText">getByAltText (Alt Text)</option>
+                        <option value="getByTitle">getByTitle (Title)</option>
                         <option value="XPath">XPath</option>
-                        <option value="getByRole">
-                          getByRole (Playwright)
-                        </option>
-                        <option value="getByText">
-                          getByText (Playwright)
-                        </option>
-                        <option value="getByTestId">
-                          getByTestId (Playwright)
-                        </option>
-                        <option value="getByLabel">
-                          getByLabel (Playwright)
-                        </option>
-                        <option value="getByPlaceholder">
-                          getByPlaceholder (Playwright)
-                        </option>
                       </select>
                       <ChevronDown
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
@@ -756,15 +712,9 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                     onClick={() => setIsRecordingModalOpen(true)}
                     className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors"
                   >
-                    <Video size={14} /> Smart Record
+                    <Video size={14} /> Record Elements
                   </button>
                 )}
-                <button
-                  onClick={() => setIsAiModalOpen(true)}
-                  className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md flex items-center gap-2 transition-colors"
-                >
-                  <Sparkles size={14} /> AI Import
-                </button>
               </div>
             </div>
 
@@ -826,15 +776,15 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                             })
                           }
                         >
-                          <option value="CSS">CSS Selector</option>
-                          <option value="XPath">XPath</option>
                           <option value="getByRole">getByRole</option>
-                          <option value="getByText">getByText</option>
                           <option value="getByTestId">getByTestId</option>
+                          <option value="CSS">CSS Selector</option>
+                          <option value="getByText">getByText</option>
                           <option value="getByLabel">getByLabel</option>
-                          <option value="getByPlaceholder">
-                            getByPlaceholder
-                          </option>
+                          <option value="getByPlaceholder">getByPlaceholder</option>
+                          <option value="getByAltText">getByAltText</option>
+                          <option value="getByTitle">getByTitle</option>
+                          <option value="XPath">XPath</option>
                         </select>
                       </div>
                       <div className="col-span-6">
@@ -905,54 +855,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
         )}
       </div>
 
-      {isAiModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white p-0 rounded-xl w-[600px] shadow-2xl border border-gray-200 animate-in fade-in zoom-in duration-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-                <Sparkles className="text-blue-600" size={20} />
-                {activeElementId
-                  ? "AI Selector Improver"
-                  : "AI Element Extractor"}
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                {activeElementId
-                  ? "Paste the HTML of this element to generate a more robust selector."
-                  : "Paste an HTML snippet to automatically generate a Playwright selector."}
-              </p>
-            </div>
-
-            <div className="p-6">
-              <textarea
-                className="w-full h-48 bg-slate-50 border border-gray-200 rounded-lg p-4 text-xs font-mono text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none resize-none shadow-inner"
-                placeholder='<button class="submit-btn" data-testid="login">Login</button>'
-                value={htmlInput}
-                onChange={(e) => setHtmlInput(e.target.value)}
-              />
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setIsAiModalOpen(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAiSuggest}
-                  disabled={aiLoading}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 font-medium shadow-sm transition-all hover:shadow-blue-500/20"
-                >
-                  {aiLoading
-                    ? "Analyzing..."
-                    : activeElementId
-                      ? "Update Selector"
-                      : "Generate Element"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isRecordingModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
@@ -960,7 +862,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
             <div className="p-6 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
                 <Video className="text-green-600" size={20} />
-                Smart Recording
+                Record Elements
               </h3>
               <p className="text-sm text-gray-500 mt-1">
                 Enter the URL you want to record. A new browser window will open. Click on elements to automatically extract and save them.

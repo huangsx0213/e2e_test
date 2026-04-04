@@ -21,10 +21,10 @@ export class UIExecutor {
   private page: Page | null = null;
   private dialogHandler: ((dialog: any) => Promise<void>) | null = null;
 
-  async initialize(options: { 
-    headless: boolean; 
-    viewportWidth?: number; 
-    viewportHeight?: number; 
+  async initialize(options: {
+    headless: boolean;
+    viewportWidth?: number;
+    viewportHeight?: number;
   }): Promise<void> {
     if (!this.browser) {
       this.browser = await chromium.launch({
@@ -32,8 +32,8 @@ export class UIExecutor {
         args: options.viewportWidth && options.viewportHeight ? [] : ['--start-maximized'],
       });
       this.context = await this.browser.newContext({
-        viewport: options.viewportWidth && options.viewportHeight 
-          ? { width: options.viewportWidth, height: options.viewportHeight } 
+        viewport: options.viewportWidth && options.viewportHeight
+          ? { width: options.viewportWidth, height: options.viewportHeight }
           : null,
         recordVideo: { dir: 'videos/' },
       });
@@ -67,18 +67,21 @@ export class UIExecutor {
 
       if (interpolated.includes('.')) {
         const dotIdx = interpolated.indexOf('.');
-        const pageName = interpolated.slice(0, dotIdx).trim();
-        const elName = interpolated.slice(dotIdx + 1).trim();
-        const page = pages.find(p => p.name === pageName);
+        const pageName = interpolated.slice(0, dotIdx).trim().toLowerCase();
+        const elName = interpolated.slice(dotIdx + 1).trim().toLowerCase();
+        const page = pages.find(p => p.name.toLowerCase() === pageName);
         if (page) {
-          elementDef = page.elements.find(e => e.name === elName);
+          elementDef = (page.elements || []).find(e => e.name.toLowerCase() === elName);
         }
       }
 
-      // Fall back to flat search by id or name across all pages
+      // Fall back to flat search by id or name across all pages (case-insensitive)
       if (!elementDef) {
+        const flatInterp = interpolated.toLowerCase();
         for (const p of pages) {
-          elementDef = p.elements.find(e => e.id === interpolated || e.name === interpolated);
+          elementDef = (p.elements || []).find(e => 
+            e.id === interpolated || e.name.toLowerCase() === flatInterp
+          );
           if (elementDef) break;
         }
       }
@@ -95,7 +98,7 @@ export class UIExecutor {
           resolvedSelector = `text=${val}`;
         } else if (st === 'testid' || st === 'getbytestid') {
           resolvedSelector = `[data-testid="${val}"]`;
-        } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder'].includes(st)) {
+        } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext'].includes(st)) {
           usePlaywrightLocator = true;
           locatorMethod = st;
           locatorArg = val;
@@ -125,33 +128,57 @@ export class UIExecutor {
             return this.page!.getByText(locatorArg);
           case 'getbyplaceholder':
             return this.page!.getByPlaceholder(locatorArg);
+          case 'getbyalttext':
+            return this.page!.getByAltText(locatorArg);
           case 'getbyrole': {
-            // Parse "button[name=\"Sign in\"]" → role=button, name=Sign in
-            const roleMatch = locatorArg.match(/^(\w+)\[name="(.+)"\]$/);
-            if (roleMatch) {
-              return this.page!.getByRole(roleMatch[1] as any, { name: roleMatch[2] });
+            let role = locatorArg;
+            let options: any = {};
+
+            // Support format: "button, {name: 'Login', exact: true}"
+            if (locatorArg.includes('{')) {
+              const parts = locatorArg.split(/,(?=\s*\{)/);
+              role = parts[0].trim();
+              const optionsStr = parts[1]?.trim();
+              if (optionsStr) {
+                const nameMatch = optionsStr.match(/(?:['"]?name['"]?)\s*:\s*(['"])(.*?)\1/);
+                if (nameMatch) options.name = nameMatch[2];
+                const exactMatch = optionsStr.match(/(?:['"]?exact['"]?)\s*:\s*(true|false)/);
+                if (exactMatch) options.exact = exactMatch[1] === 'true';
+              }
+            } 
+            // Support format: "button[name='Login']"
+            else if (locatorArg.includes('[name=')) {
+              const bracketMatch = locatorArg.match(/^(\w+)\[name=['"](.+)['"]\]$/);
+              if (bracketMatch) {
+                role = bracketMatch[1];
+                options.name = bracketMatch[2];
+              }
             }
-            return this.page!.getByRole(locatorArg as any);
+
+            return this.page!.getByRole(role as any, options);
           }
           default:
             throw new Error(`Unknown locator method: ${locatorMethod}`);
         }
       }
-      if (!resolvedSelector) throw new Error('No target resolved for step');
+      if (!resolvedSelector) {
+        throw new Error(`Could not resolve target: ${step.target || 'no target specified'}`);
+      }
       return this.page!.locator(resolvedSelector);
     };
 
     // Helper: Safely get the best single locator with smart waiting and actionability checks
     const getSmartLocator = async (options?: { skipActionabilityCheck?: boolean }): Promise<Locator> => {
       let base = getLocator();
-      
+      const locatorInfo = usePlaywrightLocator ? `${locatorMethod}(${locatorArg})` : (resolvedSelector || 'unknown');
+
       // Wait for element to be attached to DOM first
       try {
         await base.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
       } catch (e) {
-        throw new Error(`Element not found or not attached to DOM: ${resolvedSelector || 'unknown selector'}`);
+        throw new Error(`Element not found or not attached to DOM: ${locatorInfo}`);
       }
-      
+
       const count = await base.count();
       if (count > 1) {
         // Prefer visible elements when multiple matches exist
@@ -161,9 +188,9 @@ export class UIExecutor {
           base = visibleFilter;
         }
       }
-      
+
       const locator = base.first();
-      
+
       // For interactive actions, ensure element is actionable (visible, stable, enabled)
       if (!options?.skipActionabilityCheck) {
         try {
@@ -173,7 +200,7 @@ export class UIExecutor {
           console.warn(`Element is attached but not visible: ${resolvedSelector || 'unknown selector'}`);
         }
       }
-      
+
       return locator;
     };
 
@@ -296,7 +323,7 @@ export class UIExecutor {
             node.style.border = '3px solid red';
             node.style.backgroundColor = 'yellow';
             await new Promise(r => setTimeout(r, 250));
-            
+
             node.style.border = originalBorder;
             node.style.backgroundColor = originalBackground;
             await new Promise(r => setTimeout(r, 250));
@@ -502,11 +529,11 @@ export class UIExecutor {
       case 'DRAG_AND_DROP': {
         if (!data) throw new Error('Data (target selector) is required for DRAG_AND_DROP step');
         const sourceLocator = await getSmartLocator();
-        
+
         // Also wait for target element
         const targetLocator = this.page!.locator(data);
         await targetLocator.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
-        
+
         await sourceLocator.dragTo(targetLocator, { timeout: DEFAULT_TIMEOUT });
         break;
       }
@@ -562,13 +589,13 @@ export class UIExecutor {
       }
 
       if (this.page) {
-        await this.page.close().catch(() => {});
+        await this.page.close().catch(() => { });
       }
       if (this.context) {
-        await this.context.close().catch(() => {});
+        await this.context.close().catch(() => { });
       }
       if (this.browser) {
-        await this.browser.close().catch(() => {});
+        await this.browser.close().catch(() => { });
       }
     } finally {
       this.page = null;

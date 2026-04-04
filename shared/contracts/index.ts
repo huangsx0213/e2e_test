@@ -9,6 +9,7 @@ export interface UIElement {
   description?: string;
   originalHtml?: string;
   pageUrl?: string;
+  locators?: { selectorType: SelectorType; value: string }[];
 }
 
 export interface Page {

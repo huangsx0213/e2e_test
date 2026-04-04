@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { startRecording, stopRecording } from './engine.ts';
 import { getProject, saveProject } from '../projects/repository.ts';
+import { broadcast } from '../../shared/services/websocketService.ts';
 
 const router = Router();
 
@@ -25,6 +26,9 @@ router.post('/start', async (req, res) => {
           }
           page.elements.push(element);
           saveProject(project);
+          
+          // Broadcast to frontend to refresh
+          broadcast('element-recorded', { projectId, pageId, element });
         }
       }
     });

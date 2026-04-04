@@ -16,7 +16,6 @@ import {
   Play,
   ChevronDown,
   ChevronRight,
-  Wand2,
   Trash2,
   FileText,
   FlaskConical,
@@ -25,7 +24,6 @@ import {
   X,
   Database,
   Search,
-  Sparkles,
   Layers,
   TextQuote,
   Variable,
@@ -37,7 +35,6 @@ import {
   FileCode,
   Globe,
 } from "lucide-react";
-import { generateStepsFromDescription } from "@/shared/services/geminiService";
 import { StepList } from "@/shared/testing/StepList";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
@@ -108,8 +105,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   // Default to empty to show Suite Overview first
   const [activeCaseId, setActiveCaseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState<string | null>(null);
 
   // Suite Editing State
   const [editingSuiteId, setEditingSuiteId] = useState<string | null>(null);
@@ -403,24 +398,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     (teardownSteps) => suitesApi.update(activeSuiteId, { teardownSteps }),
   );
 
-  const handleAiGeneration = async () => {
-    if (!activeCase || !activeProject) {
-      setGenError(
-        "Please ensure a project is selected and elements are defined.",
-      );
-      setTimeout(() => setGenError(null), 3000);
-      return;
-    }
-    setGenerating(true);
-    const steps = await generateStepsFromDescription(
-      activeCase.description,
-      activeProject,
-    );
-    if (steps.length > 0) {
-      updateCase({ steps: [...activeCase.steps, ...steps] });
-    }
-    setGenerating(false);
-  };
 
   return (
     <div className="h-full flex overflow-hidden bg-gray-50 relative">
@@ -493,7 +470,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
               Test Explorer
-              <HelpTooltip content="Organize your tests into suites and cases. Generate steps using AI or build them manually." />
+              <HelpTooltip content="Organize your tests into suites and cases." />
             </span>
             <button
               onClick={addSuite}
@@ -741,44 +718,15 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
             <div className="flex-1 overflow-y-auto bg-gray-50">
               <div className="flex flex-col min-h-full">
                 {/* Top Controls: Description */}
-                <div className="px-6 py-6 space-y-4">
-                  {/* Description & AI */}
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Sparkles size={14} className="text-blue-500" />
-                    </div>
+                <div className="px-6 py-6 pb-2">
                     <input
-                      className="w-full pl-9 pr-24 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
                       value={activeCase.description}
                       onChange={(e) =>
                         updateCase({ description: e.target.value })
                       }
-                      placeholder="Describe the test flow to generate steps (e.g., 'Login with valid user')..."
+                      placeholder="Add a description for this test case..."
                     />
-                    <div className="absolute right-1.5 top-1.5 bottom-1.5">
-                      <button
-                        onClick={handleAiGeneration}
-                        disabled={
-                          generating ||
-                          !activeCase.description ||
-                          !currentProjectId
-                        }
-                        className="h-full px-3 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-medium rounded-md flex items-center gap-1.5 disabled:opacity-50 transition-colors border border-blue-200"
-                        title={
-                          !currentProjectId ? "Select a project first" : ""
-                        }
-                      >
-                        <Wand2
-                          size={12}
-                          className={generating ? "animate-spin" : ""}
-                        />
-                        {generating ? "Generating..." : "Generate Steps"}
-                      </button>
-                    </div>
-                  </div>
-                  {genError && (
-                    <div className="text-xs text-red-500 mt-1">{genError}</div>
-                  )}
                 </div>
 
                 {/* Steps Container */}
