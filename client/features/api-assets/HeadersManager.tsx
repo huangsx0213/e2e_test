@@ -247,14 +247,14 @@ export function HeadersManager({
                 <button
                   onClick={handleSave}
                   disabled={saveStatus === "saving"}
-                  className={`flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                  className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-md transition-colors shadow-sm ${
                     saveStatus === "saving"
                       ? "bg-blue-400 cursor-not-allowed"
                       : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   <Save size={16} />
-                  <span>Save Changes</span>
+                  <span>Save</span>
                 </button>
               </div>
             </div>

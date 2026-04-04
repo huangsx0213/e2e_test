@@ -22,6 +22,8 @@ import {
   Video,
   Square,
   Loader2,
+  X,
+  RefreshCw,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
@@ -41,6 +43,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   const [activeElementId, setActiveElementId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Manual Saving State
+  const [localProject, setLocalProject] = useState<Project | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
 
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
@@ -60,11 +66,26 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
     pageId?: string;
   } | null>(null);
 
-  const activeProject = projects.find((p) => p.id === currentProjectId);
+  const activeProject = localProject || projects.find((p) => p.id === currentProjectId);
   const activePage = activeProject?.pages.find((p) => p.id === activePageId);
   const activeElement = activePage?.elements.find(
     (e) => e.id === activeElementId,
   );
+
+  // Sync localProject when currentProjectId changes or projects update
+  useEffect(() => {
+    const project = projects.find((p) => p.id === currentProjectId);
+    if (project) {
+      if (!isDirty || (localProject && localProject.id !== currentProjectId)) {
+        setLocalProject(JSON.parse(JSON.stringify(project)));
+        setIsDirty(false);
+        setSaveStatus("idle");
+      }
+    } else {
+      setLocalProject(null);
+      setIsDirty(false);
+    }
+  }, [currentProjectId, projects]);
 
   // Handle Project Selection Reset on Delete
   useEffect(() => {
@@ -108,9 +129,34 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   // --- Page Actions ---
 
   const updateProject = (fn: (p: Project) => Project) => {
+    if (localProject) {
+      setLocalProject(fn(localProject));
+      setIsDirty(true);
+      setSaveStatus("idle");
+    }
+  };
+
+  const handleSave = async () => {
+    if (localProject && currentProjectId) {
+      setSaveStatus("saving");
+      try {
+        await projectsApi.update(currentProjectId, localProject);
+        setIsDirty(false);
+        setSaveStatus("success");
+        setTimeout(() => setSaveStatus("idle"), 3000);
+      } catch (error) {
+        console.error("Failed to save project", error);
+        setSaveStatus("error");
+      }
+    }
+  };
+
+  const handleDiscard = () => {
     const project = projects.find((p) => p.id === currentProjectId);
     if (project) {
-      projectsApi.update(currentProjectId, fn(project));
+      setLocalProject(JSON.parse(JSON.stringify(project)));
+      setIsDirty(false);
+      setSaveStatus("idle");
     }
   };
 
@@ -309,7 +355,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
         onClose={() => setDeleteConfirm(null)}
       />
       {/* Sidebar Explorer - Light Theme Panel */}
-      <div className="w-72 border-r border-gray-200 bg-white flex flex-col z-10">
+      <div className="w-80 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
         {/* Project Selector Header */}
         <div className="p-3 border-b border-gray-100 space-y-3 bg-gray-50/50">
           <div className="flex items-center gap-2">
@@ -573,7 +619,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
           /* Single Element Editor View */
           <div className="flex-1 flex flex-col h-full animate-in fade-in duration-200 overflow-hidden">
             <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
                   <span
                     className="hover:text-blue-600 cursor-pointer transition-colors"
@@ -584,11 +630,47 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                   <ChevronRight size={12} className="text-gray-300" />
                   <span>Edit Element</span>
                 </div>
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  {activeElement.name}
-                </h2>
+                <input
+                  className="text-lg font-semibold text-gray-900 border-none p-0 focus:ring-0 bg-transparent placeholder-gray-400 w-full max-w-lg"
+                  value={activeElement.name}
+                  onChange={(e) => updateElement(activePage.id, activeElement.id, { name: e.target.value })}
+                  placeholder="Untitled Element"
+                />
               </div>
-              <div className="flex gap-2">
+
+              <div className="flex items-center gap-3 ml-4">
+                {isDirty && (
+                  <>
+                    <button
+                      onClick={handleDiscard}
+                      className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md text-sm font-medium transition-colors"
+                    >
+                      <X size={16} />
+                      Discard
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saveStatus === "saving"}
+                      className={`flex items-center gap-2 px-4 py-1.5 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                        saveStatus === "saving"
+                          ? "bg-blue-400 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      {saveStatus === "saving" ? (
+                        <RefreshCw size={16} className="animate-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      {saveStatus === "saving" ? "Saving..." : "Save Changes"}
+                    </button>
+                  </>
+                )}
+                {saveStatus === "success" && !isDirty && (
+                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <Check size={14} /> Saved
+                  </span>
+                )}
               </div>
             </div>
 

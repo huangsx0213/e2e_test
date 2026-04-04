@@ -307,10 +307,20 @@ export function BodyManager({
                   placeholder="Add a description..."
                 />
               </div>
-              <div className="flex items-center gap-3">
-                {formatError && (
-                  <span className="text-sm text-red-500 font-medium animate-pulse">
-                    {formatError}
+              <div className="flex items-center gap-4">
+                {saveStatus === "saving" && (
+                  <span className="text-xs text-gray-500 animate-pulse">
+                    Saving...
+                  </span>
+                )}
+                {saveStatus === "success" && (
+                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <Check size={14} /> Saved successfully
+                  </span>
+                )}
+                {saveStatus === "error" && (
+                  <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                    <X size={14} /> Save failed
                   </span>
                 )}
                 <select
@@ -335,33 +345,15 @@ export function BodyManager({
                 <button
                   onClick={handleSave}
                   disabled={saveStatus === "saving"}
-                  className={`flex items-center gap-2 px-4 py-2 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                  className={`flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-md transition-colors shadow-sm ${
                     saveStatus === "saving"
                       ? "bg-blue-400 cursor-not-allowed"
                       : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   <Save size={16} />
-                  <span>
-                    {saveStatus === "saving"
-                      ? "Saving..."
-                      : saveStatus === "success"
-                        ? "Saved!"
-                        : saveStatus === "error"
-                          ? "Failed"
-                          : "Save"}
-                  </span>
+                  <span>Save</span>
                 </button>
-                {saveStatus === "success" && (
-                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                    <Check size={14} />
-                  </span>
-                )}
-                {saveStatus === "error" && (
-                  <span className="text-xs text-red-600 font-medium flex items-center gap-1">
-                    <X size={14} />
-                  </span>
-                )}
               </div>
             </div>
 

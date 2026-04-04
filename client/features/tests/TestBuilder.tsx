@@ -28,6 +28,8 @@ import {
   TextQuote,
   Variable,
   Table2,
+  RefreshCw,
+  Save,
   Braces,
   MousePointer2,
   GripVertical,
@@ -106,6 +108,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [activeCaseId, setActiveCaseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Manual Saving State
+  const [localSuite, setLocalSuite] = useState<TestSuite | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+
   // Suite Editing State
   const [editingSuiteId, setEditingSuiteId] = useState<string | null>(null);
   const [editSuiteName, setEditSuiteName] = useState("");
@@ -120,10 +127,26 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     suiteId?: string;
   } | null>(null);
 
-  const activeSuite = suites.find((s) => s.id === activeSuiteId);
+  const activeSuite = localSuite || suites.find((s) => s.id === activeSuiteId);
   const activeCase = activeSuite?.cases.find((c) => c.id === activeCaseId);
 
   const activeProject = projects.find((p) => p.id === currentProjectId);
+
+  // Sync localSuite when activeSuiteId changes or suites update from outside
+  React.useEffect(() => {
+    const suite = suites.find((s) => s.id === activeSuiteId);
+    if (suite) {
+      // Only reset localSuite if we're not dirty or if we're switching suites
+      if (!isDirty || (localSuite && localSuite.id !== activeSuiteId)) {
+        setLocalSuite(JSON.parse(JSON.stringify(suite)));
+        setIsDirty(false);
+        setSaveStatus("idle");
+      }
+    } else {
+      setLocalSuite(null);
+      setIsDirty(false);
+    }
+  }, [activeSuiteId, suites]);
 
   // Filter Logic
   const filteredSuites = useMemo(() => {
@@ -166,8 +189,36 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     }
   };
 
-  const updateSuite = async (suiteId: string, updates: Partial<TestSuite>) => {
-    await suitesApi.update(suiteId, updates);
+  const updateSuite = (suiteId: string, updates: Partial<TestSuite>) => {
+    if (localSuite && localSuite.id === suiteId) {
+      setLocalSuite({ ...localSuite, ...updates });
+      setIsDirty(true);
+      setSaveStatus("idle");
+    }
+  };
+
+  const handleSave = async () => {
+    if (localSuite && activeSuiteId) {
+      setSaveStatus("saving");
+      try {
+        await suitesApi.update(activeSuiteId, localSuite);
+        setIsDirty(false);
+        setSaveStatus("success");
+        setTimeout(() => setSaveStatus("idle"), 3000);
+      } catch (error) {
+        console.error("Failed to save suite", error);
+        setSaveStatus("error");
+      }
+    }
+  };
+
+  const handleDiscard = () => {
+    const suite = suites.find((s) => s.id === activeSuiteId);
+    if (suite) {
+      setLocalSuite(JSON.parse(JSON.stringify(suite)));
+      setIsDirty(false);
+      setSaveStatus("idle");
+    }
   };
 
   const deleteSuite = async (suiteId: string) => {
@@ -268,64 +319,55 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   };
 
   // --- Case Actions ---
-  const addCase = async (suiteId: string) => {
+  const addCase = (suiteId: string) => {
     const newCase: TestCase = {
       id: `case-${Date.now()}`,
       name: "New Test Case",
       description: "",
       steps: [],
     };
-    const suite = suites.find((s) => s.id === suiteId);
-    if (suite) {
-      await suitesApi.update(suiteId, { cases: [...suite.cases, newCase] });
-    }
-    setActiveSuiteId(suiteId);
-    setActiveCaseId(newCase.id);
-    // Auto Enter Edit Mode
-    setEditingCaseId(newCase.id);
-    setEditCaseName("New Test Case");
-  };
-
-  const updateCase = async (updates: Partial<TestCase>) => {
-    if (!activeSuiteId || !activeCaseId) return;
-    const suite = suites.find((s) => s.id === activeSuiteId);
-    if (suite) {
-      const newCases = suite.cases.map((c) =>
-        c.id === activeCaseId ? { ...c, ...updates } : c,
-      );
-      await suitesApi.update(activeSuiteId, { cases: newCases });
+    if (localSuite && localSuite.id === suiteId) {
+      updateSuite(suiteId, { cases: [...localSuite.cases, newCase] });
+      setActiveCaseId(newCase.id);
+      setEditingCaseId(newCase.id);
+      setEditCaseName("New Test Case");
     }
   };
 
-  const updateCaseSpecific = async (
+  const updateCase = (updates: Partial<TestCase>) => {
+    if (!localSuite || !activeCaseId) return;
+    const newCases = localSuite.cases.map((c) =>
+      c.id === activeCaseId ? { ...c, ...updates } : c,
+    );
+    updateSuite(localSuite.id, { cases: newCases });
+  };
+
+  const updateCaseSpecific = (
     suiteId: string,
     caseId: string,
     updates: Partial<TestCase>,
   ) => {
-    const suite = suites.find((s) => s.id === suiteId);
-    if (suite) {
-      const newCases = suite.cases.map((c) =>
+    if (localSuite && localSuite.id === suiteId) {
+      const newCases = localSuite.cases.map((c) =>
         c.id === caseId ? { ...c, ...updates } : c,
       );
-      await suitesApi.update(suiteId, { cases: newCases });
+      updateSuite(suiteId, { cases: newCases });
     }
   };
 
-  const saveCaseName = async (suiteId: string) => {
+  const saveCaseName = (suiteId: string) => {
     if (editingCaseId) {
-      await updateCaseSpecific(suiteId, editingCaseId, { name: editCaseName });
+      updateCaseSpecific(suiteId, editingCaseId, { name: editCaseName });
       setEditingCaseId(null);
     }
   };
 
-  const deleteCase = async (suiteId: string, caseId: string) => {
-    // Immediate deletion without confirmation
-    const suite = suites.find((s) => s.id === suiteId);
-    if (suite) {
-      const newCases = suite.cases.filter((c) => c.id !== caseId);
-      await suitesApi.update(suiteId, { cases: newCases });
+  const deleteCase = (suiteId: string, caseId: string) => {
+    if (localSuite && localSuite.id === suiteId) {
+      const newCases = localSuite.cases.filter((c) => c.id !== caseId);
+      updateSuite(suiteId, { cases: newCases });
+      if (activeCaseId === caseId) setActiveCaseId("");
     }
-    if (activeCaseId === caseId) setActiveCaseId("");
   };
 
   const createStepHandler = (
@@ -391,11 +433,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
 
   const suiteSetupSteps = createStepHandler(
     () => activeSuite?.setupSteps,
-    (setupSteps) => suitesApi.update(activeSuiteId, { setupSteps }),
+    (setupSteps) => updateSuite(activeSuiteId, { setupSteps }),
   );
   const suiteTeardownSteps = createStepHandler(
     () => activeSuite?.teardownSteps,
-    (teardownSteps) => suitesApi.update(activeSuiteId, { teardownSteps }),
+    (teardownSteps) => updateSuite(activeSuiteId, { teardownSteps }),
   );
 
 
@@ -439,7 +481,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
         onClose={() => setDeleteConfirm(null)}
       />
       {/* Sidebar: Suites Explorer */}
-      <div className="w-72 border-r border-gray-200 bg-white flex flex-col z-10">
+      <div className="w-80 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
         {/* Project Context Selector */}
         <div className="p-3 border-b border-gray-100 space-y-3 bg-gray-50/50">
           <div className="relative">
@@ -687,13 +729,13 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
         {activeCase ? (
           <>
             <div className="h-14 px-6 border-b border-gray-200 flex justify-between items-center bg-white shrink-0">
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5 font-medium">
                   <span
                     className="hover:text-blue-600 cursor-pointer transition-colors"
                     onClick={() => setActiveCaseId("")}
                   >
-                    {activeSuite.name}
+                    {activeSuite?.name}
                   </span>
                   <ChevronRight size={12} className="text-gray-300" />
                   <span>Edit Case</span>
@@ -705,7 +747,39 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                   placeholder="Untitled Test Case"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-3 ml-4">
+                {isDirty && (
+                  <>
+                    <button
+                      onClick={handleDiscard}
+                      className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md text-sm font-medium transition-colors"
+                    >
+                      <X size={16} />
+                      Discard
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saveStatus === "saving"}
+                      className={`flex items-center gap-2 px-4 py-1.5 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
+                        saveStatus === "saving"
+                          ? "bg-blue-400 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      {saveStatus === "saving" ? (
+                        <RefreshCw size={16} className="animate-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      {saveStatus === "saving" ? "Saving..." : "Save Changes"}
+                    </button>
+                  </>
+                )}
+                {saveStatus === "success" && !isDirty && (
+                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <Check size={14} /> Saved
+                  </span>
+                )}
                 <button
                   onClick={() => onRunCase(activeSuite.id, activeCase.id)}
                   className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md flex items-center gap-2 transition-colors"

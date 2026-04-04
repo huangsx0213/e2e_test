@@ -1,4 +1,4 @@
-import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest } from '@/shared/types';
+import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest, DynamicVariable } from '@/shared/types';
 
 export interface CrudService<T extends { id: string }> {
   list: () => Promise<T[]>;
@@ -39,6 +39,10 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
       message = response.statusText;
     }
     throw new ApiError(response.status, message);
+  }
+
+  if (response.status === 204) {
+    return {} as T;
   }
 
   return response.json();
@@ -83,6 +87,24 @@ export const api = {
       method: 'DELETE'
     }),
   } satisfies EnvironmentService,
+  dynamicVariables: {
+    list: (projectId: string) => apiFetch<DynamicVariable[]>(`projects/${projectId}/dynamic-variables`),
+    create: (projectId: string, data: Omit<DynamicVariable, 'id' | 'projectId' | 'createdAt' | 'updatedAt'>) => apiFetch<DynamicVariable>(`projects/${projectId}/dynamic-variables`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    update: (id: string, data: Partial<DynamicVariable>) => apiFetch<DynamicVariable>(`dynamic-variables/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    delete: (id: string) => apiFetch<void>(`dynamic-variables/${id}`, {
+      method: 'DELETE',
+    }),
+    preview: (expression: string) => apiFetch<{ samples: string[] }>(`dynamic-variables/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ expression }),
+    }),
+  },
 };
 
 // --- Execution API ---

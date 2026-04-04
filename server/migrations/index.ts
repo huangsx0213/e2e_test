@@ -2,6 +2,7 @@ import { db } from '../shared/db/client.ts';
 import { migration001InitialSchema } from './001_initial_schema.ts';
 import { migration002EnvironmentVariables } from './002_environment_variables.ts';
 import { migration003StepExtractors } from './003_step_extractors.ts';
+import { migration004DynamicVariables } from './004_dynamic_variables.ts';
 import type { Migration } from './types.ts';
 
 import { runSeed } from './seed.ts';
@@ -10,6 +11,7 @@ export const migrations: Migration[] = [
   migration001InitialSchema,
   migration002EnvironmentVariables,
   migration003StepExtractors,
+  migration004DynamicVariables,
 ];
 
 function appliedMigrationIds(): Set<string> {

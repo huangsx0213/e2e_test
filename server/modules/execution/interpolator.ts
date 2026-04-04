@@ -48,6 +48,33 @@ const generators: Record<string, (...args: string[]) => string> = {
     }
     return result;
   },
+  $randomUpper: (lengthStr) => {
+    const length = parseInt(lengthStr || '8', 10);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  },
+  $randomLower: (lengthStr) => {
+    const length = parseInt(lengthStr || '8', 10);
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  },
+  $randomAlpha: (lengthStr) => {
+    const length = parseInt(lengthStr || '8', 10);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  },
   $randomEmail: () => `test_${crypto.randomBytes(4).toString('hex')}@example.com`,
   $randomPhone: () => `1${Math.floor(Math.random() * 9000000000) + 1000000000}`,
   $randomName: () => {

@@ -235,7 +235,7 @@ export function EndpointManager({
                   }`}
                 >
                   <Save size={16} />
-                  Save Changes
+                  Save
                 </button>
               </div>
             </div>

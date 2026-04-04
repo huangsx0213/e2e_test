@@ -120,8 +120,8 @@ export const TestReport: React.FC<TestReportProps> = ({
         />
 
         {/* Sidebar: Report List */}
-        <div className="w-80 border-r border-slate-200 flex flex-col bg-white shrink-0 shadow-sm z-10">
-          <div className="p-4 border-b border-slate-200">
+        <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50 shrink-0 shadow-sm z-10">
+          <div className="p-4 border-b border-gray-200">
             <div className="flex items-center gap-2 mb-4">
               <BarChart3 size={20} className="text-blue-600" />
               <h2 className="font-semibold text-slate-800 text-lg flex items-center gap-2">

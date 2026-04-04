@@ -151,8 +151,8 @@ export const TestPlanBuilder: React.FC<TestPlanBuilderProps> = ({
         onClose={() => setDeleteConfirm(null)}
       />
       {/* Left Sidebar - Plans List */}
-      <div className="w-64 bg-white border-r border-slate-200 flex flex-col z-10">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+      <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col z-10">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
           <h2 className="font-semibold text-slate-800 flex items-center gap-2">
             <Workflow size={18} className="text-indigo-600" />
             Test Plans

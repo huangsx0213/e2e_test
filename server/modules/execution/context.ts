@@ -46,6 +46,7 @@ export class ExecutionContext {
    */
   static create(options: {
     environmentVariables?: Record<string, string>;
+    dynamicVariables?: Record<string, string>;
     suiteVariables?: Record<string, string>;
     suiteDataRow?: Record<string, string>;
     scenarioVariables?: Record<string, string>;
@@ -54,6 +55,7 @@ export class ExecutionContext {
   }): ExecutionContext {
     const layers: Record<string, string>[] = [];
     if (options.environmentVariables) layers.push(options.environmentVariables);
+    if (options.dynamicVariables) layers.push(options.dynamicVariables);
     if (options.suiteVariables) layers.push(options.suiteVariables);
     if (options.suiteDataRow) layers.push(options.suiteDataRow);
     if (options.scenarioVariables) layers.push(options.scenarioVariables);

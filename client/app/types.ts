@@ -8,7 +8,8 @@ export type AppTab =
   | 'BODIES'
   | 'ENDPOINTS'
   | 'REPORTS'
-  | 'SETTINGS';
+  | 'SETTINGS'
+  | 'DYNAMIC_VARIABLES';
 
 export interface ExecutionState {
   suiteId: string;

@@ -32,3 +32,9 @@ export const stepSchema = z.object({
   enabled: z.boolean().optional(),
   extractors: z.array(extractorSchema).optional(),
 });
+
+export const dynamicVariableSchema = z.object({
+  name: z.string().min(1),
+  expression: z.string().min(1),
+  description: z.string().optional(),
+});

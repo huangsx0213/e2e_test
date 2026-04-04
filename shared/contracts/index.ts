@@ -93,6 +93,16 @@ export interface PlanScenario {
   scenarioId: string;
 }
 
+export interface DynamicVariable {
+  id: string;
+  projectId: string;
+  name: string;
+  expression: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface TestPlan {
   id: string;
   projectId: string;

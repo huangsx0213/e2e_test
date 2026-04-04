@@ -266,9 +266,9 @@ export const StepList: React.FC<StepListProps> = ({
                             <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$now('YYYY-MM-DD', 'Asia/Shanghai')}}"}</code></li>
                             <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomInt(1, 100)}}"}</code> - Random int</li>
                             <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomString(8)}}"}</code> - Random string</li>
+                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomUpper(3)}}"}</code> - Random uppercase</li>
                             <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomEmail()}}"}</code> - Random email</li>
                             <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomPhone()}}"}</code> - Random phone</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomIp()}}"}</code> - Random IPv4</li>
                           </ul>
                         </div>
 
@@ -287,8 +287,9 @@ export const StepList: React.FC<StepListProps> = ({
                       </div>
 
                       <p className="font-semibold text-purple-300 mt-3 mb-1">Example Combinations</p>
-                      <div className="bg-gray-900 p-1.5 rounded text-gray-300">
-                        <code className="text-purple-200">{"{{ $timestamp() | md5 | uppercase }}"}</code>
+                      <div className="bg-gray-900 p-1.5 rounded text-gray-300 space-y-1">
+                        <div><code className="text-purple-200">{"{{ $timestamp() | md5 | uppercase }}"}</code></div>
+                        <div><code className="text-purple-200">{"{{ $randomUpper(3) }}{{ $timestamp() }}"}</code> &rarr; ABC1712220000000</div>
                       </div>
                     </div>
                   } />

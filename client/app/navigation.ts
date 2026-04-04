@@ -35,6 +35,7 @@ export const navigationSections: NavigationSection[] = [
       { tab: 'REPORTS', label: 'Test Reports', icon: BarChart3 },
       { tab: 'ELEMENTS', label: 'Object Repository', icon: Database },
       { tab: 'MODULES', label: 'Shared Modules', icon: Workflow },
+      { tab: 'DYNAMIC_VARIABLES', label: 'Dynamic Variables', icon: Database },
     ],
   },
   {
