@@ -1,6 +1,24 @@
 export type ActionType = string;
 export type SelectorType = 'CSS' | 'XPATH' | 'TEXT' | 'ID' | 'TEST_ID' | string;
 
+export type ExtractorSource = 
+  | 'API_BODY_JSON'
+  | 'API_BODY_REGEX'
+  | 'API_HEADER'
+  | 'UI_TEXT'
+  | 'UI_VALUE'
+  | 'UI_ATTRIBUTE'
+  | 'UI_PAGE_URL'
+  | 'UI_PAGE_TITLE';
+
+export interface VariableExtractor {
+  id: string;
+  name: string;
+  source: ExtractorSource;
+  expression?: string;
+  scope: 'CASE' | 'SUITE' | 'ENVIRONMENT';
+}
+
 export interface UIElement {
   id: string;
   name: string;
@@ -37,6 +55,7 @@ export interface TestStep {
   endpointId?: string;
   screenshot?: boolean;
   enabled?: boolean;
+  extractors?: VariableExtractor[];
 }
 
 export interface TestModule {

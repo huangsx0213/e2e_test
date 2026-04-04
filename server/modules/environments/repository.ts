@@ -51,8 +51,24 @@ export function deleteEnvironment(name: string): void {
   normalizeEnvironmentPositions();
 }
 
+export function getEnvironmentVariables(name: string): Record<string, string> {
+  const row = db.prepare('SELECT variables FROM environments WHERE name = ?').get(name) as { variables: string } | undefined;
+  if (!row) return {};
+  try {
+    return JSON.parse(row.variables || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export function updateEnvironmentVariables(name: string, variables: Record<string, string>): void {
+  db.prepare('UPDATE environments SET variables = ? WHERE name = ?').run(JSON.stringify(variables), name);
+}
+
 export const environmentRepository = {
   list: listEnvironments,
   create: createEnvironment,
   remove: deleteEnvironment,
+  getVariables: getEnvironmentVariables,
+  updateVariables: updateEnvironmentVariables,
 };

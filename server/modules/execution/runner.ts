@@ -16,6 +16,7 @@ import { headerRepository } from '../headers/repository.ts';
 import { bodyRepository } from '../bodies/repository.ts';
 import { endpointRepository } from '../endpoints/repository.ts';
 import { reportRepository } from '../reports/repository.ts';
+import { environmentRepository } from '../environments/repository.ts';
 import { ExecutionContext } from './context.ts';
 import { executeApiStep, type ApiAssets } from './api-executor.ts';
 import { ExecutionLogger } from './logger.ts';
@@ -120,6 +121,8 @@ async function executeRunAsync(
       endpoints: endpointRepository.list().filter(e => e.projectId === request.projectId),
     };
 
+    const environmentVariables = environmentRepository.getVariables(request.environment);
+
     logger.log({
       stepId: 'init',
       status: 'INFO',
@@ -131,22 +134,22 @@ async function executeRunAsync(
       const testCase = suite?.cases.find(c => c.id === request.caseId);
       displayName = testCase ? testCase.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting case execution for: ${displayName}`);
-      result = await executeSingleCase(request, project, assets, logger, signal, uiExecutor);
+      result = await executeSingleCase(request, project, assets, environmentVariables, logger, signal, uiExecutor);
     } else if (request.type === 'suite') {
       const suite = suiteRepository.get(request.suiteId!);
       displayName = suite ? suite.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting suite execution for: ${displayName}`);
-      result = await executeSuite(request, project, assets, logger, signal, uiExecutor);
+      result = await executeSuite(request, project, assets, environmentVariables, logger, signal, uiExecutor);
     } else if (request.type === 'scenario') {
       const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
       displayName = scenario ? scenario.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
-      result = await executeScenario(request, project, assets, logger, signal, uiExecutor);
+      result = await executeScenario(request, project, assets, environmentVariables, logger, signal, uiExecutor);
     } else {
       const plan = project.plans?.find(p => p.id === request.planId);
       displayName = plan ? plan.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting plan execution for: ${displayName}`);
-      result = await executePlan(request, project, assets, logger, signal, uiExecutor);
+      result = await executePlan(request, project, assets, environmentVariables, logger, signal, uiExecutor);
     }
 
     result.reportId = reportId;
@@ -231,6 +234,7 @@ async function executeSingleCase(
   request: ExecutionRequest,
   project: Project,
   assets: ApiAssets,
+  environmentVariables: Record<string, string>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -248,6 +252,7 @@ async function executeSingleCase(
   const firstRowData = suite.dataRows && suite.dataRows.length > 0 ? suite.dataRows[0] : {};
 
   const context = ExecutionContext.create({
+    environmentVariables,
     suiteVariables: suiteDefaults,
     suiteDataRow: firstRowData,
   });
@@ -288,6 +293,8 @@ async function executeSingleCase(
     passed = false;
     const msg = error instanceof Error ? error.message : String(error);
     logger.log({ stepId: 'case-fail', status: 'FAIL', message: `❌ Case Failed: ${msg}` });
+  } finally {
+    context.clearCaseVars();
   }
 
   logger.log({
@@ -313,6 +320,7 @@ async function executeSuite(
   request: ExecutionRequest,
   project: Project,
   assets: ApiAssets,
+  environmentVariables: Record<string, string>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -329,6 +337,7 @@ async function executeSuite(
     project, 
     assets, 
     request.environment, 
+    environmentVariables,
     logger, 
     signal, 
     uiExecutor,
@@ -345,6 +354,7 @@ async function runSuiteWithContext(
   project: Project,
   assets: ApiAssets,
   environment: string,
+  environmentVariables: Record<string, string>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -382,6 +392,7 @@ async function runSuiteWithContext(
     }
 
     const context = ExecutionContext.create({
+      environmentVariables,
       suiteVariables: suiteDefaults,
       suiteDataRow: rowData,
       scenarioVariables,
@@ -424,6 +435,8 @@ async function runSuiteWithContext(
           status: 'FAIL',
           message: `  ❌ Case Failed: ${msg}`,
         });
+      } finally {
+        context.clearCaseVars();
       }
 
       if (casePassed) passedCases++;
@@ -462,6 +475,7 @@ async function executePlan(
   request: ExecutionRequest,
   project: Project,
   assets: ApiAssets,
+  environmentVariables: Record<string, string>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -542,6 +556,7 @@ async function executePlan(
           project,
           assets,
           request.environment,
+          environmentVariables,
           logger,
           signal,
           uiExecutor,
@@ -581,6 +596,7 @@ async function executeScenario(
   request: ExecutionRequest,
   project: Project,
   assets: ApiAssets,
+  environmentVariables: Record<string, string>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -642,6 +658,7 @@ async function executeScenario(
         project,
         assets,
         request.environment,
+        environmentVariables,
         logger,
         signal,
         uiExecutor,
@@ -818,7 +835,7 @@ async function executeSteps(
         message: `${indent}💻 [${step.action}] ${resolvedTarget ? resolvedTarget + ' ' : ''}${step.data ? '(' + context.interpolate(step.data) + ')' : ''}`,
       });
 
-      const uiResult = await uiExecutor.executeStep(step, context, project.pages || []);
+      const uiResult = await uiExecutor.executeStep(step, context, project.pages || [], environment);
 
       logger.log({
         stepId: step.id,

@@ -19,10 +19,12 @@ import { interpolate } from './interpolator.ts';
 export class ExecutionContext {
   private layers: Record<string, string>[];
   private runtimeVars: Record<string, string>;
+  private caseVars: Record<string, string>;
 
   constructor(layers: Record<string, string>[] = []) {
     this.layers = layers;
     this.runtimeVars = {};
+    this.caseVars = {};
   }
 
   /**
@@ -33,9 +35,17 @@ export class ExecutionContext {
   }
 
   /**
+   * Clear case-scoped variables. Call this after each case finishes.
+   */
+  clearCaseVars(): void {
+    this.caseVars = {};
+  }
+
+  /**
    * Create context from typical execution scenario inputs.
    */
   static create(options: {
+    environmentVariables?: Record<string, string>;
     suiteVariables?: Record<string, string>;
     suiteDataRow?: Record<string, string>;
     scenarioVariables?: Record<string, string>;
@@ -43,6 +53,7 @@ export class ExecutionContext {
     scenarioOverrides?: Record<string, string>;
   }): ExecutionContext {
     const layers: Record<string, string>[] = [];
+    if (options.environmentVariables) layers.push(options.environmentVariables);
     if (options.suiteVariables) layers.push(options.suiteVariables);
     if (options.suiteDataRow) layers.push(options.suiteDataRow);
     if (options.scenarioVariables) layers.push(options.scenarioVariables);
@@ -67,6 +78,7 @@ export class ExecutionContext {
       Object.assign(merged, layer);
     }
     Object.assign(merged, this.runtimeVars);
+    Object.assign(merged, this.caseVars);
     return merged;
   }
 
@@ -74,6 +86,8 @@ export class ExecutionContext {
    * Resolve a single variable key.
    */
   resolve(key: string): string | undefined {
+    // Check case vars first
+    if (this.caseVars[key] !== undefined) return this.caseVars[key];
     // Check runtime first  (highest priority)
     if (this.runtimeVars[key] !== undefined) return this.runtimeVars[key];
     // Walk layers in reverse (later layers have higher priority)
@@ -86,8 +100,12 @@ export class ExecutionContext {
   /**
    * Set a runtime variable (from EXTRACT_VAR, API response capture, etc.)
    */
-  setRuntimeVar(key: string, value: string): void {
-    this.runtimeVars[key] = value;
+  setRuntimeVar(key: string, value: string, scope: 'CASE' | 'SUITE' | 'ENVIRONMENT' = 'SUITE'): void {
+    if (scope === 'CASE') {
+      this.caseVars[key] = value;
+    } else {
+      this.runtimeVars[key] = value;
+    }
   }
 
   /**

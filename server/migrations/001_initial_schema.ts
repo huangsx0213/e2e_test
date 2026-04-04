@@ -12,7 +12,8 @@ export const migration001InitialSchema: Migration = {
 
       CREATE TABLE IF NOT EXISTS environments (
         name TEXT PRIMARY KEY,
-        position INTEGER NOT NULL DEFAULT 0
+        position INTEGER NOT NULL DEFAULT 0,
+        variables TEXT NOT NULL DEFAULT '{}'
       );
 
       CREATE TABLE IF NOT EXISTS projects (
@@ -69,7 +70,10 @@ export const migration001InitialSchema: Migration = {
       CREATE TABLE IF NOT EXISTS settings (
         id TEXT PRIMARY KEY,
         current_project_id TEXT NOT NULL DEFAULT '',
-        current_environment TEXT NOT NULL DEFAULT ''
+        current_environment TEXT NOT NULL DEFAULT '',
+        headless_mode INTEGER NOT NULL DEFAULT 1,
+        viewport_width INTEGER NOT NULL DEFAULT 1920,
+        viewport_height INTEGER NOT NULL DEFAULT 1080
       );
 
       CREATE TABLE IF NOT EXISTS project_pages (
@@ -87,6 +91,8 @@ export const migration001InitialSchema: Migration = {
         selector_type TEXT NOT NULL,
         value TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
+        original_html TEXT,
+        page_url TEXT,
         position INTEGER NOT NULL
       );
 
@@ -117,6 +123,8 @@ export const migration001InitialSchema: Migration = {
         header_profile_id TEXT,
         body_template_id TEXT,
         endpoint_id TEXT,
+        screenshot INTEGER,
+        enabled INTEGER NOT NULL DEFAULT 1,
         position INTEGER NOT NULL
       );
 
@@ -132,6 +140,7 @@ export const migration001InitialSchema: Migration = {
         id TEXT PRIMARY KEY,
         scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
         suite_id TEXT NOT NULL,
+        iteration_strategy TEXT DEFAULT 'SCENARIO_DRIVEN',
         position INTEGER NOT NULL
       );
 
@@ -184,6 +193,8 @@ export const migration001InitialSchema: Migration = {
         header_profile_id TEXT,
         body_template_id TEXT,
         endpoint_id TEXT,
+        screenshot INTEGER,
+        enabled INTEGER NOT NULL DEFAULT 1,
         position INTEGER NOT NULL
       );
 
@@ -198,6 +209,8 @@ export const migration001InitialSchema: Migration = {
         header_profile_id TEXT,
         body_template_id TEXT,
         endpoint_id TEXT,
+        screenshot INTEGER,
+        enabled INTEGER NOT NULL DEFAULT 1,
         position INTEGER NOT NULL
       );
 
@@ -246,6 +259,59 @@ export const migration001InitialSchema: Migration = {
         position INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS execution_runs (
+        id TEXT PRIMARY KEY,
+        report_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        suite_id TEXT,
+        case_id TEXT,
+        scenario_id TEXT,
+        plan_id TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        started_at INTEGER,
+        finished_at INTEGER,
+        error_message TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS scenario_variables (
+        id TEXT PRIMARY KEY,
+        scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+        variable_key TEXT NOT NULL,
+        variable_value TEXT NOT NULL,
+        position INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS scenario_data_rows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+        row_index INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS scenario_data_row_values (
+        row_id INTEGER NOT NULL REFERENCES scenario_data_rows(id) ON DELETE CASCADE,
+        item_key TEXT NOT NULL,
+        item_value TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (row_id, item_key)
+      );
+
+      CREATE TABLE IF NOT EXISTS test_plans (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS test_plan_scenarios (
+        id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL REFERENCES test_plans(id) ON DELETE CASCADE,
+        scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE INDEX IF NOT EXISTS idx_project_pages_project ON project_pages(project_id, position);
       CREATE INDEX IF NOT EXISTS idx_project_elements_page ON project_elements(page_id, position);
       CREATE INDEX IF NOT EXISTS idx_project_modules_project ON project_modules(project_id, position);
@@ -263,6 +329,10 @@ export const migration001InitialSchema: Migration = {
       CREATE INDEX IF NOT EXISTS idx_endpoint_base_urls_endpoint ON endpoint_base_urls(endpoint_id, position);
       CREATE INDEX IF NOT EXISTS idx_endpoint_parameters_endpoint ON endpoint_parameters(endpoint_id, position);
       CREATE INDEX IF NOT EXISTS idx_report_logs_report ON report_logs(report_id, position);
+      CREATE INDEX IF NOT EXISTS idx_execution_runs_status ON execution_runs(status);
+      CREATE INDEX IF NOT EXISTS idx_execution_runs_report ON execution_runs(report_id);
+      CREATE INDEX IF NOT EXISTS idx_scenario_variables_scenario ON scenario_variables(scenario_id, position);
+      CREATE INDEX IF NOT EXISTS idx_scenario_rows_scenario ON scenario_data_rows(scenario_id, row_index);
     `);
   },
 };

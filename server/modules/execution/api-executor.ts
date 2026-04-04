@@ -1,6 +1,9 @@
 import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint } from '../../shared/contracts/index.ts';
 import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
+import { JSONPath } from 'jsonpath-plus';
+
+import { environmentRepository } from '../environments/repository.ts';
 
 export interface ApiAssets {
   headers: HeaderProfile[];
@@ -149,6 +152,61 @@ export async function executeApiStep(
   response.headers.forEach((value, key) => {
     responseHeaders[key] = value;
   });
+
+  // ─── 5. Process Extractors ───
+  if (step.extractors && step.extractors.length > 0) {
+    let parsedJsonBody: any = null;
+    let jsonParsed = false;
+
+    for (const extractor of step.extractors) {
+      if (!extractor.name) continue;
+      let extractedValue: string | undefined;
+
+      try {
+        if (extractor.source === 'API_BODY_JSON' && extractor.expression) {
+          if (!jsonParsed) {
+            try {
+              parsedJsonBody = JSON.parse(responseBody);
+            } catch {
+              // ignore parse error
+            }
+            jsonParsed = true;
+          }
+          if (parsedJsonBody) {
+            const result = JSONPath({ path: extractor.expression, json: parsedJsonBody });
+            if (result && result.length > 0) {
+              extractedValue = typeof result[0] === 'object' ? JSON.stringify(result[0]) : String(result[0]);
+            }
+          }
+        } else if (extractor.source === 'API_HEADER' && extractor.expression) {
+          const headerKey = extractor.expression.toLowerCase();
+          const foundKey = Object.keys(responseHeaders).find(k => k.toLowerCase() === headerKey);
+          if (foundKey) {
+            extractedValue = responseHeaders[foundKey];
+          }
+        } else if (extractor.source === 'API_BODY_REGEX' && extractor.expression) {
+          const regex = new RegExp(extractor.expression);
+          const match = responseBody.match(regex);
+          if (match && match.length > 1) {
+            extractedValue = match[1]; // First capture group
+          } else if (match && match.length === 1) {
+            extractedValue = match[0]; // Full match if no capture groups
+          }
+        }
+
+        if (extractedValue !== undefined) {
+          context.setRuntimeVar(extractor.name, extractedValue, extractor.scope);
+          if (extractor.scope === 'ENVIRONMENT') {
+            const currentVars = environmentRepository.getVariables(environment);
+            currentVars[extractor.name] = extractedValue;
+            environmentRepository.updateVariables(environment, currentVars);
+          }
+        }
+      } catch (err) {
+        console.error(`Extractor ${extractor.name} failed:`, err);
+      }
+    }
+  }
 
   return {
     status: response.status,

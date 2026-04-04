@@ -82,6 +82,7 @@ const ACTION_TYPES: ActionType[] = [
   "DISMISS_ALERT",
   "ATTACH_FILE",
   "TOGGLE",
+  "UI_EXTRACT",
 ];
 
 export const StepList: React.FC<StepListProps> = ({
@@ -1767,6 +1768,101 @@ export const StepList: React.FC<StepListProps> = ({
                         <Trash2 size={14} />
                       </button>
                     </div>
+                  </div>
+
+                  {/* Extractors Section */}
+                  <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                      <span>Variable Extractors</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT', scope: 'SUITE' }];
+                          onUpdateStep(step.id, { extractors: newExtractors });
+                        }}
+                        className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      >
+                        <Plus size={10} /> Add Extractor
+                      </button>
+                    </div>
+                    {step.extractors && step.extractors.length > 0 && (
+                      <div className="space-y-2">
+                        {step.extractors.map((ext, extIndex) => (
+                          <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
+                            <input
+                              className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                              placeholder="Variable Name"
+                              value={ext.name}
+                              onChange={(e) => {
+                                const newExts = [...step.extractors!];
+                                newExts[extIndex] = { ...ext, name: e.target.value };
+                                onUpdateStep(step.id, { extractors: newExts });
+                              }}
+                            />
+                            <select
+                              className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                              value={ext.source}
+                              onChange={(e) => {
+                                const newExts = [...step.extractors!];
+                                newExts[extIndex] = { ...ext, source: e.target.value as any };
+                                onUpdateStep(step.id, { extractors: newExts });
+                              }}
+                            >
+                              {step.action.startsWith('API_') ? (
+                                <>
+                                  <option value="API_BODY_JSON">Body (JSONPath)</option>
+                                  <option value="API_BODY_REGEX">Body (Regex)</option>
+                                  <option value="API_HEADER">Header</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="UI_TEXT">Element Text</option>
+                                  <option value="UI_VALUE">Input Value</option>
+                                  <option value="UI_ATTRIBUTE">Attribute</option>
+                                  <option value="UI_PAGE_URL">Page URL</option>
+                                  <option value="UI_PAGE_TITLE">Page Title</option>
+                                </>
+                              )}
+                            </select>
+                            {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
+                              <input
+                                className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                placeholder={ext.source === 'API_BODY_JSON' ? '$.data.id' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
+                                value={ext.expression || ''}
+                                onChange={(e) => {
+                                  const newExts = [...step.extractors!];
+                                  newExts[extIndex] = { ...ext, expression: e.target.value };
+                                  onUpdateStep(step.id, { extractors: newExts });
+                                }}
+                              />
+                            )}
+                            <select
+                              className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                              value={ext.scope || 'SUITE'}
+                              onChange={(e) => {
+                                const newExts = [...step.extractors!];
+                                newExts[extIndex] = { ...ext, scope: e.target.value as any };
+                                onUpdateStep(step.id, { extractors: newExts });
+                              }}
+                            >
+                              <option value="CASE">Case</option>
+                              <option value="SUITE">Suite</option>
+                              <option value="ENVIRONMENT">Environment</option>
+                            </select>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newExts = step.extractors!.filter((_, i) => i !== extIndex);
+                                onUpdateStep(step.id, { extractors: newExts });
+                              }}
+                              className="text-gray-400 hover:text-red-500 p-1"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

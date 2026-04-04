@@ -2,6 +2,7 @@ import { chromium, type Browser, type BrowserContext, type Page, type Locator } 
 import type { TestStep } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
+import { environmentRepository } from '../environments/repository.ts';
 
 export interface UIExecutionResult {
   durationMs: number;
@@ -45,6 +46,7 @@ export class UIExecutor {
     step: TestStep,
     executionContext: ExecutionContext,
     pages: import('../../shared/contracts/index.ts').Page[],
+    environment: string,
   ): Promise<UIExecutionResult> {
     if (!this.page) {
       throw new Error('UIExecutor not initialized. Call initialize() first.');
@@ -547,8 +549,59 @@ export class UIExecutor {
         break;
       }
 
+      case 'UI_EXTRACT':
+        // Do nothing, just wait for the element if there is a target
+        if (resolvedSelector) {
+           await getSmartLocator({ skipActionabilityCheck: true });
+        }
+        break;
+
       default:
         throw new Error(`Unsupported UI action: ${step.action}`);
+    }
+
+    // ─── Process Extractors ───
+    if (step.extractors && step.extractors.length > 0) {
+      for (const extractor of step.extractors) {
+        if (!extractor.name) continue;
+        let extVal: string | undefined;
+
+        try {
+          if (extractor.source === 'UI_PAGE_URL') {
+            extVal = this.page.url();
+          } else if (extractor.source === 'UI_PAGE_TITLE') {
+            extVal = await this.page.title();
+          } else {
+            // For element-based extractors, we need a target
+            if (!resolvedSelector) {
+              console.warn(`Extractor ${extractor.name} requires a target element.`);
+              continue;
+            }
+            const locator = await getSmartLocator({ skipActionabilityCheck: true });
+            
+            if (extractor.source === 'UI_TEXT') {
+              extVal = await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || undefined;
+            } else if (extractor.source === 'UI_VALUE') {
+              extVal = await locator.inputValue({ timeout: DEFAULT_TIMEOUT });
+            } else if (extractor.source === 'UI_ATTRIBUTE' && extractor.expression) {
+              extVal = await locator.getAttribute(extractor.expression, { timeout: DEFAULT_TIMEOUT }) || undefined;
+            }
+          }
+
+          if (extVal !== undefined) {
+            executionContext.setRuntimeVar(extractor.name, extVal, extractor.scope);
+            if (extractor.scope === 'ENVIRONMENT') {
+              const currentVars = environmentRepository.getVariables(environment);
+              currentVars[extractor.name] = extVal;
+              environmentRepository.updateVariables(environment, currentVars);
+            }
+            // If it's the only extractor and we don't have extractedValue yet, set it for the result
+            if (!extractedValue) extractedValue = extVal;
+          }
+        } catch (err) {
+          console.error(`UI Extractor ${extractor.name} failed:`, err);
+        }
+      }
     }
 
     const durationMs = Date.now() - startTime;
