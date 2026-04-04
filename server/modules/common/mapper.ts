@@ -14,10 +14,20 @@ export function normalizeStep(input: Partial<TestStep>): TestStep {
     endpointId: asOptionalText(input.endpointId),
     screenshot: typeof input.screenshot === 'boolean' ? input.screenshot : undefined,
     enabled: typeof input.enabled === 'boolean' ? input.enabled : true,
+    extractors: Array.isArray(input.extractors) ? input.extractors : undefined,
   };
 }
 
 export function deserializeStep(row: DbStepRow): TestStep {
+  let extractors;
+  try {
+    if (row.extractors) {
+      extractors = JSON.parse(row.extractors);
+    }
+  } catch (e) {
+    console.error('Failed to parse extractors', e);
+  }
+
   return {
     id: row.id,
     action: row.action as TestStep['action'],
@@ -29,5 +39,6 @@ export function deserializeStep(row: DbStepRow): TestStep {
     endpointId: textFromDb(row.endpoint_id),
     screenshot: row.screenshot === 1,
     enabled: row.enabled !== 0,
+    extractors,
   };
 }

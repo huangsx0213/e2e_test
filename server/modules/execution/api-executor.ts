@@ -168,7 +168,16 @@ export async function executeApiStep(
             try {
               parsedJsonBody = JSON.parse(responseBody);
             } catch {
-              // ignore parse error
+              // If JSON parsing fails, try XML parsing
+              if (responseBody.trim().startsWith('<')) {
+                try {
+                  const { XMLParser } = require('fast-xml-parser');
+                  const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+                  parsedJsonBody = parser.parse(responseBody);
+                } catch (xmlErr) {
+                  // ignore xml parse error
+                }
+              }
             }
             jsonParsed = true;
           }

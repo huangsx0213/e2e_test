@@ -1810,7 +1810,7 @@ export const StepList: React.FC<StepListProps> = ({
                             >
                               {step.action.startsWith('API_') ? (
                                 <>
-                                  <option value="API_BODY_JSON">Body (JSONPath)</option>
+                                  <option value="API_BODY_JSON">API Body (JSON/XML)</option>
                                   <option value="API_BODY_REGEX">Body (Regex)</option>
                                   <option value="API_HEADER">Header</option>
                                 </>
@@ -1827,7 +1827,7 @@ export const StepList: React.FC<StepListProps> = ({
                             {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
                               <input
                                 className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                                placeholder={ext.source === 'API_BODY_JSON' ? '$.data.id' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
+                                placeholder={ext.source === 'API_BODY_JSON' ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
                                 value={ext.expression || ''}
                                 onChange={(e) => {
                                   const newExts = [...step.extractors!];

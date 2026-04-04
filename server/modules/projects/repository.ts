@@ -99,9 +99,10 @@ export function saveProject(projectInput: Partial<Project>): Project {
               endpoint_id,
               screenshot,
               enabled,
+              extractors,
               position
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           step.id,
@@ -115,6 +116,7 @@ export function saveProject(projectInput: Partial<Project>): Project {
           nullableText(step.endpointId),
           step.screenshot ? 1 : null,
           step.enabled === false ? 0 : 1,
+          step.extractors ? JSON.stringify(step.extractors) : null,
           stepIndex,
         );
       }
@@ -285,7 +287,7 @@ export function getProject(projectId: string): Project | undefined {
 
     const steps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
         FROM module_steps
         WHERE module_id = ?
         ORDER BY position

@@ -74,6 +74,7 @@ export type DbStepRow = {
   endpoint_id: string | null;
   screenshot: number | null;
   enabled: number;
+  extractors?: string | null;
 };
 
 export type DbHeaderRow = {
