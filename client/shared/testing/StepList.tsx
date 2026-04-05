@@ -1816,6 +1816,150 @@ export const StepList: React.FC<StepListProps> = ({
                     </div>
                   </div>
 
+                  {/* Advanced Options (Wait For Network) */}
+                  {!step.action.startsWith("API_") &&
+                    !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
+                      <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="checkbox"
+                            id={`wait-network-${step.id}`}
+                            checked={step.waitForNetwork?.enabled || false}
+                            onChange={(e) => {
+                              onUpdateStep(step.id, {
+                                waitForNetwork: {
+                                  ...(step.waitForNetwork || { urlPattern: "", method: "ANY", expectedStatus: 200, timeoutMs: 10000, extractors: [] }),
+                                  enabled: e.target.checked,
+                                }
+                              });
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <label htmlFor={`wait-network-${step.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer">
+                            Wait for API Response (Smart Wait)
+                          </label>
+                        </div>
+                        
+                        {step.waitForNetwork?.enabled && (
+                          <div className="bg-gray-50 p-2 rounded-md border border-gray-200 mt-1 space-y-2">
+                            <div className="grid grid-cols-5 gap-2">
+                              <div className="col-span-2">
+                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern / Keyword</label>
+                                <input
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  placeholder="/api/v1/orders"
+                                  value={step.waitForNetwork.urlPattern || ""}
+                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: e.target.value } })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
+                                <select
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  value={step.waitForNetwork.method || "ANY"}
+                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, method: e.target.value } })}
+                                >
+                                  <option value="ANY">ANY</option>
+                                  <option value="GET">GET</option>
+                                  <option value="POST">POST</option>
+                                  <option value="PUT">PUT</option>
+                                  <option value="DELETE">DELETE</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Expected Status</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  placeholder="200"
+                                  value={step.waitForNetwork.expectedStatus || ""}
+                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(e.target.value) || undefined } })}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Timeout (ms)</label>
+                                <input
+                                  type="number"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  placeholder="10000"
+                                  value={step.waitForNetwork.timeoutMs || ""}
+                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(e.target.value) || undefined } })}
+                                />
+                              </div>
+                            </div>
+                            
+                            {/* API Extractors inside Smart Wait */}
+                            <div className="pt-2 border-t border-gray-200">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] font-medium text-gray-500">API Extractors (Hybrid Extraction)</span>
+                                <button
+                                  onClick={() => {
+                                    const exts = step.waitForNetwork!.extractors || [];
+                                    onUpdateStep(step.id, {
+                                      waitForNetwork: {
+                                        ...step.waitForNetwork!,
+                                        extractors: [...exts, { id: crypto.randomUUID(), name: "", source: "API_BODY_JSON", expression: "", scope: "CASE" }]
+                                      }
+                                    });
+                                  }}
+                                  className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                                >
+                                  <Plus size={10} /> Add Extractor
+                                </button>
+                              </div>
+                              
+                              {(step.waitForNetwork.extractors || []).map((ext, idx) => (
+                                <div key={ext.id} className="flex items-center gap-2 mt-1">
+                                  <input
+                                    className="w-1/4 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                    placeholder="Variable Name"
+                                    value={ext.name}
+                                    onChange={(e) => {
+                                      const newExts = [...step.waitForNetwork!.extractors!];
+                                      newExts[idx].name = e.target.value;
+                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                    }}
+                                  />
+                                  <select
+                                    className="w-1/4 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                    value={ext.source}
+                                    onChange={(e) => {
+                                      const newExts = [...step.waitForNetwork!.extractors!];
+                                      newExts[idx].source = e.target.value as any;
+                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                    }}
+                                  >
+                                    <option value="API_BODY_JSON">JSONPath</option>
+                                    <option value="API_BODY_REGEX">Regex</option>
+                                  </select>
+                                  <input
+                                    className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                    placeholder={ext.source === 'API_BODY_JSON' ? "$.data.id" : "id=([0-9]+)"}
+                                    value={ext.expression || ""}
+                                    onChange={(e) => {
+                                      const newExts = [...step.waitForNetwork!.extractors!];
+                                      newExts[idx].expression = e.target.value;
+                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const newExts = [...step.waitForNetwork!.extractors!];
+                                      newExts.splice(idx, 1);
+                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                    }}
+                                    className="text-gray-400 hover:text-red-500"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                   {/* Extractors Section */}
                   <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">

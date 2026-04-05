@@ -44,6 +44,15 @@ export interface ModuleParameter {
   description?: string;
 }
 
+export interface NetworkWaitConfig {
+  enabled: boolean;
+  urlPattern: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'ANY' | string;
+  expectedStatus?: number;
+  timeoutMs?: number;
+  extractors?: VariableExtractor[];
+}
+
 export interface TestStep {
   id: string;
   action: ActionType;
@@ -56,6 +65,7 @@ export interface TestStep {
   screenshot?: boolean;
   enabled?: boolean;
   extractors?: VariableExtractor[];
+  waitForNetwork?: NetworkWaitConfig;
 }
 
 export interface TestModule {

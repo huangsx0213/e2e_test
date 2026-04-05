@@ -1,4 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
+import { JSONPath } from 'jsonpath-plus';
 import type { TestStep } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
@@ -225,7 +226,21 @@ export class UIExecutor {
     };
 
     // Execute the action
-    switch (step.action) {
+    let waitPromise: Promise<import('playwright').Response> | undefined;
+    if (step.waitForNetwork?.enabled && step.waitForNetwork.urlPattern) {
+      const { urlPattern, method, expectedStatus, timeoutMs = 10000 } = step.waitForNetwork;
+      
+      waitPromise = this.page.waitForResponse((response) => {
+        const urlMatch = response.url().includes(urlPattern) || new RegExp(urlPattern).test(response.url());
+        const methodMatch = !method || method === 'ANY' || response.request().method().toUpperCase() === method.toUpperCase();
+        const statusMatch = !expectedStatus || response.status() === expectedStatus;
+        
+        return urlMatch && methodMatch && statusMatch;
+      }, { timeout: timeoutMs });
+    }
+
+    const actionPromise = (async () => {
+      switch (step.action) {
       case 'OPEN':
         if (!data) throw new Error('Data (URL) is required for OPEN step');
         await this.page.goto(data, { waitUntil: 'domcontentloaded' });
@@ -558,6 +573,60 @@ export class UIExecutor {
 
       default:
         throw new Error(`Unsupported UI action: ${step.action}`);
+      }
+    })();
+
+    if (waitPromise) {
+      try {
+        const [apiResponse] = await Promise.all([waitPromise, actionPromise]);
+        
+        // Process API Extractors if any
+        if (step.waitForNetwork?.extractors && step.waitForNetwork.extractors.length > 0) {
+          let responseBody: any;
+          let responseText: string | undefined;
+          
+          try { responseBody = await apiResponse.json(); } catch (e) { /* ignore */ }
+          try { responseText = await apiResponse.text(); } catch (e) { /* ignore */ }
+
+          for (const ext of step.waitForNetwork.extractors) {
+            if (!ext.name) continue;
+            let extVal: string | undefined;
+
+            try {
+              if (ext.source === 'API_BODY_JSON' && responseBody && ext.expression) {
+                const result = JSONPath({ path: ext.expression, json: responseBody });
+                extVal = result && result.length > 0 ? String(result[0]) : undefined;
+              } else if (ext.source === 'API_BODY_REGEX' && responseText && ext.expression) {
+                const match = new RegExp(ext.expression).exec(responseText);
+                if (match && match[1]) {
+                  extVal = match[1];
+                } else if (match && match[0]) {
+                  extVal = match[0];
+                }
+              }
+
+              if (extVal !== undefined) {
+                executionContext.setRuntimeVar(ext.name, extVal, ext.scope);
+                if (ext.scope === 'ENVIRONMENT') {
+                  const currentVars = environmentRepository.getVariables(environment);
+                  currentVars[ext.name] = extVal;
+                  environmentRepository.updateVariables(environment, currentVars);
+                }
+                if (!extractedValue) extractedValue = extVal;
+              }
+            } catch (err) {
+              console.error(`Network Extractor ${ext.name} failed:`, err);
+            }
+          }
+        }
+      } catch (error: any) {
+        if (error.message.includes('Timeout') || error.name === 'TimeoutError') {
+          throw new Error(`UI Action executed, but expected API (${step.waitForNetwork.urlPattern}) did not respond or status did not match within ${step.waitForNetwork.timeoutMs || 10000}ms.`);
+        }
+        throw error;
+      }
+    } else {
+      await actionPromise;
     }
 
     // ─── Process Extractors ───
