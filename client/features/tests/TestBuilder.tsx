@@ -28,8 +28,6 @@ import {
   TextQuote,
   Variable,
   Table2,
-  RefreshCw,
-  Save,
   Braces,
   MousePointer2,
   GripVertical,
@@ -108,10 +106,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [activeCaseId, setActiveCaseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Manual Saving State
-  const [localSuite, setLocalSuite] = useState<TestSuite | null>(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
 
   // Suite Editing State
   const [editingSuiteId, setEditingSuiteId] = useState<string | null>(null);
@@ -127,26 +121,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     suiteId?: string;
   } | null>(null);
 
-  const activeSuite = localSuite || suites.find((s) => s.id === activeSuiteId);
+  const activeSuite = suites.find((s) => s.id === activeSuiteId);
   const activeCase = activeSuite?.cases.find((c) => c.id === activeCaseId);
 
   const activeProject = projects.find((p) => p.id === currentProjectId);
 
-  // Sync localSuite when activeSuiteId changes or suites update from outside
-  React.useEffect(() => {
-    const suite = suites.find((s) => s.id === activeSuiteId);
-    if (suite) {
-      // Only reset localSuite if we're not dirty or if we're switching suites
-      if (!isDirty || (localSuite && localSuite.id !== activeSuiteId)) {
-        setLocalSuite(JSON.parse(JSON.stringify(suite)));
-        setIsDirty(false);
-        setSaveStatus("idle");
-      }
-    } else {
-      setLocalSuite(null);
-      setIsDirty(false);
-    }
-  }, [activeSuiteId, suites]);
 
   // Filter Logic
   const filteredSuites = useMemo(() => {
@@ -190,36 +169,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   };
 
   const updateSuite = (suiteId: string, updates: Partial<TestSuite>) => {
-    if (localSuite && localSuite.id === suiteId) {
-      setLocalSuite({ ...localSuite, ...updates });
-      setIsDirty(true);
-      setSaveStatus("idle");
-    }
+    suitesApi.update(suiteId, updates);
   };
 
-  const handleSave = async () => {
-    if (localSuite && activeSuiteId) {
-      setSaveStatus("saving");
-      try {
-        await suitesApi.update(activeSuiteId, localSuite);
-        setIsDirty(false);
-        setSaveStatus("success");
-        setTimeout(() => setSaveStatus("idle"), 3000);
-      } catch (error) {
-        console.error("Failed to save suite", error);
-        setSaveStatus("error");
-      }
-    }
-  };
-
-  const handleDiscard = () => {
-    const suite = suites.find((s) => s.id === activeSuiteId);
-    if (suite) {
-      setLocalSuite(JSON.parse(JSON.stringify(suite)));
-      setIsDirty(false);
-      setSaveStatus("idle");
-    }
-  };
 
   const deleteSuite = async (suiteId: string) => {
     // Immediate deletion without confirmation
@@ -326,8 +278,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       description: "",
       steps: [],
     };
-    if (localSuite && localSuite.id === suiteId) {
-      updateSuite(suiteId, { cases: [...localSuite.cases, newCase] });
+    const suite = suites.find((s) => s.id === suiteId);
+    if (suite) {
+      updateSuite(suiteId, { cases: [...suite.cases, newCase] });
       setActiveCaseId(newCase.id);
       setEditingCaseId(newCase.id);
       setEditCaseName("New Test Case");
@@ -335,11 +288,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   };
 
   const updateCase = (updates: Partial<TestCase>) => {
-    if (!localSuite || !activeCaseId) return;
-    const newCases = localSuite.cases.map((c) =>
+    if (!activeSuite || !activeCaseId) return;
+    const newCases = activeSuite.cases.map((c) =>
       c.id === activeCaseId ? { ...c, ...updates } : c,
     );
-    updateSuite(localSuite.id, { cases: newCases });
+    updateSuite(activeSuite.id, { cases: newCases });
   };
 
   const updateCaseSpecific = (
@@ -347,8 +300,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     caseId: string,
     updates: Partial<TestCase>,
   ) => {
-    if (localSuite && localSuite.id === suiteId) {
-      const newCases = localSuite.cases.map((c) =>
+    const suite = suites.find((s) => s.id === suiteId);
+    if (suite) {
+      const newCases = suite.cases.map((c) =>
         c.id === caseId ? { ...c, ...updates } : c,
       );
       updateSuite(suiteId, { cases: newCases });
@@ -363,8 +317,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   };
 
   const deleteCase = (suiteId: string, caseId: string) => {
-    if (localSuite && localSuite.id === suiteId) {
-      const newCases = localSuite.cases.filter((c) => c.id !== caseId);
+    const suite = suites.find((s) => s.id === suiteId);
+    if (suite) {
+      const newCases = suite.cases.filter((c) => c.id !== caseId);
       updateSuite(suiteId, { cases: newCases });
       if (activeCaseId === caseId) setActiveCaseId("");
     }
@@ -748,38 +703,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                 />
               </div>
               <div className="flex items-center gap-3 ml-4">
-                {isDirty && (
-                  <>
-                    <button
-                      onClick={handleDiscard}
-                      className="flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md text-sm font-medium transition-colors"
-                    >
-                      <X size={16} />
-                      Discard
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saveStatus === "saving"}
-                      className={`flex items-center gap-2 px-4 py-1.5 text-white rounded-md text-sm font-medium transition-colors shadow-sm ${
-                        saveStatus === "saving"
-                          ? "bg-blue-400 cursor-not-allowed"
-                          : "bg-blue-600 hover:bg-blue-700"
-                      }`}
-                    >
-                      {saveStatus === "saving" ? (
-                        <RefreshCw size={16} className="animate-spin" />
-                      ) : (
-                        <Save size={16} />
-                      )}
-                      {saveStatus === "saving" ? "Saving..." : "Save Changes"}
-                    </button>
-                  </>
-                )}
-                {saveStatus === "success" && !isDirty && (
-                  <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                    <Check size={14} /> Saved
-                  </span>
-                )}
                 <button
                   onClick={() => onRunCase(activeSuite.id, activeCase.id)}
                   className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md flex items-center gap-2 transition-colors"
