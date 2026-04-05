@@ -40,15 +40,6 @@ const SYSTEM_GENERATORS = [
   {
     category: 'Text',
     items: [
-      { name: 'Random Name', syntax: '{{$randomName()}}', desc: 'Generates a random full name with suffix.', example: 'Alice123' },
-      { name: 'Random Email', syntax: '{{$randomEmail()}}', desc: 'Generates a random test email address.', example: 'test_a1b2c3d4@example.com' },
-      { name: 'Random Phone', syntax: '{{$randomPhone()}}', desc: 'Generates a random 11-digit phone number.', example: '15550109999' },
-      { name: 'Random Address', syntax: '{{$randomAddress()}}', desc: 'Generates a random street address.', example: '123 Maple St, Springfield' },
-    ]
-  },
-  {
-    category: 'User Data',
-    items: [
       { name: 'Random String', syntax: '{{$randomString(8)}}', desc: 'Random alphanumeric string.', example: '{{$randomString(8)}} → aB3k9P1m', params: [
         { name: 'length', desc: 'Number of characters (default: 8).' }
       ]},
@@ -64,6 +55,15 @@ const SYSTEM_GENERATORS = [
       { name: 'Random Words', syntax: '{{$randomWords(3)}}', desc: 'Generates random words.', example: '{{$randomWords(3)}} → apple banana cherry', params: [
         { name: 'count', desc: 'Number of words (default: 3).' }
       ]},
+    ]
+  },
+  {
+    category: 'User Data',
+    items: [
+      { name: 'Random Name', syntax: '{{$randomName()}}', desc: 'Generates a random full name with suffix.', example: 'Alice123' },
+      { name: 'Random Email', syntax: '{{$randomEmail()}}', desc: 'Generates a random test email address.', example: 'test_a1b2c3d4@example.com' },
+      { name: 'Random Phone', syntax: '{{$randomPhone()}}', desc: 'Generates a random 11-digit phone number.', example: '15550109999' },
+      { name: 'Random Address', syntax: '{{$randomAddress()}}', desc: 'Generates a random street address.', example: '123 Maple St, Springfield' },
     ]
   }
 ];
@@ -137,8 +137,8 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
   const [activeTab, setActiveTab] = useState<'manage' | 'reference'>('manage');
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Common': true,
+    'User Data': true,
     'Text': true,
-    'User Data': false,
     'Crypto': false,
     'Math': false
   });
@@ -543,6 +543,7 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
                                   key={item.name}
                                   onClick={() => insertSystemVar(item.syntax)}
                                   className="w-full text-left p-2 rounded border border-transparent hover:border-blue-100 hover:bg-blue-50/50 transition-all group"
+                                  title={`Click to insert: ${item.syntax}`}
                                 >
                                   <div className="flex items-center justify-between mb-0.5">
                                     <span className="text-[11px] font-medium text-gray-700 group-hover:text-blue-700">
@@ -588,14 +589,15 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
                               {cat.items.map((item) => (
                                 <button
                                   key={item.name}
-                                  onClick={() => insertSystemVar(item.syntax)}
+                                  onClick={() => navigator.clipboard.writeText(item.syntax)}
                                   className="w-full text-left p-2 rounded border border-transparent hover:border-blue-100 hover:bg-purple-50/50 transition-all group"
+                                  title={`Click to copy: ${item.syntax}`}
                                 >
                                   <div className="flex items-center justify-between mb-0.5">
                                     <span className="text-[11px] font-medium text-gray-700 group-hover:text-purple-700">
                                       {item.name}
                                     </span>
-                                    <Plus size={10} className="text-gray-300 group-hover:text-purple-400" />
+                                    <Copy size={10} className="text-gray-300 group-hover:text-purple-400" />
                                   </div>
                                   <div className="text-[9px] font-mono text-purple-500 truncate">
                                     {item.syntax}
