@@ -2,6 +2,7 @@ import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint } from '../../s
 import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
 import { JSONPath } from 'jsonpath-plus';
+import { processApiAssertions } from './assertion-utils.ts';
 
 import { environmentRepository } from '../environments/repository.ts';
 
@@ -21,6 +22,7 @@ export interface ApiExecutionResult {
   resolvedMethod: string;
   resolvedHeaders: Record<string, string>;
   resolvedBody: string;
+  assertionResults?: any[];
 }
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -217,6 +219,16 @@ export async function executeApiStep(
     }
   }
 
+  // ─── 6. Process Assertions ───
+  let assertionResults: any[] = [];
+  if (step.assertions && step.assertions.length > 0) {
+    assertionResults = processApiAssertions(step.assertions, {
+      status: response.status,
+      headers: responseHeaders,
+      body: responseBody,
+    });
+  }
+
   return {
     status: response.status,
     statusText: response.statusText,
@@ -227,6 +239,7 @@ export async function executeApiStep(
     resolvedMethod: method,
     resolvedHeaders: requestHeaders,
     resolvedBody: requestBody,
+    assertionResults,
   };
 }
 

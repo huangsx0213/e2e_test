@@ -112,6 +112,7 @@ export const StepList: React.FC<StepListProps> = ({
   } | null>(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [expandedAdvancedOptions, setExpandedAdvancedOptions] = useState<Set<string>>(new Set());
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedStepIndex(index);
@@ -1816,11 +1817,33 @@ export const StepList: React.FC<StepListProps> = ({
                     </div>
                   </div>
 
-                  {/* Advanced Options (Wait For Network) */}
-                  {!step.action.startsWith("API_") &&
-                    !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
-                      <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
-                        <div className="flex items-center gap-2 mb-2">
+                  {/* Advanced Settings Toggle */}
+                  <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newExpanded = new Set(expandedAdvancedOptions);
+                        if (newExpanded.has(step.id)) {
+                          newExpanded.delete(step.id);
+                        } else {
+                          newExpanded.add(step.id);
+                        }
+                        setExpandedAdvancedOptions(newExpanded);
+                      }}
+                      className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider hover:text-gray-700 transition-colors"
+                    >
+                      {expandedAdvancedOptions.has(step.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      Advanced Settings
+                    </button>
+                  </div>
+
+                  {expandedAdvancedOptions.has(step.id) && (
+                    <div className="bg-gray-50/30 rounded-b-md pb-2 mt-2 border-t border-gray-100">
+                      {/* Advanced Options (Wait For Network) */}
+                      {!step.action.startsWith("API_") &&
+                        !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
+                          <div className="pl-8 pt-2">
+                            <div className="flex items-center gap-2 mb-2">
                           <input
                             type="checkbox"
                             id={`wait-network-${step.id}`}
@@ -1835,9 +1858,18 @@ export const StepList: React.FC<StepListProps> = ({
                             }}
                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
-                          <label htmlFor={`wait-network-${step.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer">
-                            Wait for API Response (Smart Wait)
-                          </label>
+                          <div className="flex items-center gap-1">
+                            <label htmlFor={`wait-network-${step.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer">
+                              Wait for API Response (Smart Wait)
+                            </label>
+                            <HelpTooltip content={
+                              <div className="w-64">
+                                <p className="mb-1 font-semibold">Smart Wait & Hybrid Extraction</p>
+                                <p className="mb-1 text-gray-300">Wait for a specific API request to complete after this UI action.</p>
+                                <p className="mb-1 text-gray-300">You can also extract data directly from the API response (e.g., using JSONPath) for subsequent steps.</p>
+                              </div>
+                            } />
+                          </div>
                         </div>
                         
                         {step.waitForNetwork?.enabled && (
@@ -2224,9 +2256,11 @@ export const StepList: React.FC<StepListProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              )}
+              </div>
+            ))}
+          </div>
+        )}
 
           {onAddStep && (
             <div className="mt-4 flex flex-col gap-2 pb-48">

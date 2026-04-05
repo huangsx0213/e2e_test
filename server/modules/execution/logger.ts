@@ -93,8 +93,8 @@ export class ExecutionLogger {
    */
   persistLogs(): void {
     const insert = db.prepare(`
-      INSERT INTO report_logs (report_id, step_id, timestamp, status, message, screenshot, position)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO report_logs (report_id, step_id, timestamp, status, level, message, screenshot, metadata, position)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = db.transaction(() => {
@@ -104,8 +104,10 @@ export class ExecutionLogger {
           log.stepId,
           log.timestamp,
           log.status,
+          log.level || 'info',
           log.message,
           log.screenshot || null,
+          log.metadata ? JSON.stringify(log.metadata) : null,
           this.logPosition++,
         );
       }

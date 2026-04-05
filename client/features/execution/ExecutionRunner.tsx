@@ -111,8 +111,10 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
             stepId: data.stepId,
             timestamp: data.timestamp,
             status: data.status,
+            level: data.level,
             message: data.message,
             screenshot: data.screenshot,
+            metadata: data.metadata,
           },
         ]);
       });

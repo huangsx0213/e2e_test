@@ -204,8 +204,10 @@ async function executeRunAsync(
       stepId: l.stepId,
       timestamp: l.timestamp,
       status: l.status,
+      level: l.level,
       message: l.message,
       screenshot: l.screenshot,
+      metadata: l.metadata,
     })),
   });
 
@@ -784,29 +786,46 @@ async function executeSteps(
       logger.log({
         stepId: step.id,
         status: 'RUNNING',
+        level: 'info',
         message: `${indent}🌐 [${step.action}] ${resolvedTarget}`,
       });
 
       try {
         const result = await executeApiStep(step, context, assets, environment);
 
-        const isSuccess = result.status >= 200 && result.status < 400;
+        const isNetworkSuccess = result.status >= 200 && result.status < 400;
+        const failedAssertion = result.assertionResults?.find(a => !a.success);
+        const isSuccess = isNetworkSuccess && !failedAssertion;
+
         const bodyPreview = result.body.length > 200 ? result.body.slice(0, 200) + '…' : result.body;
 
         logger.log({
           stepId: step.id,
           status: isSuccess ? 'PASS' : 'FAIL',
+          level: isSuccess ? 'success' : 'error',
           message: `${indent}${isSuccess ? '✅' : '❌'} ${result.resolvedMethod} ${result.resolvedUrl} → ${result.status} ${result.statusText} (${result.durationMs}ms)`,
-          details: {
-            httpStatus: result.status,
-            responseBody: bodyPreview,
-            responseHeaders: result.headers,
-            durationMs: result.durationMs,
+          metadata: {
+            network: {
+              url: result.resolvedUrl,
+              method: result.resolvedMethod,
+              status: result.status,
+              requestHeaders: result.resolvedHeaders,
+              requestBody: result.resolvedBody,
+              responseHeaders: result.headers,
+              responseBody: result.body,
+              durationMs: result.durationMs,
+            },
+            variables: context.resolveAll(),
+            assertionResults: result.assertionResults
           },
         });
 
-        if (!isSuccess) {
+        if (!isNetworkSuccess) {
           throw new Error(`API request failed: ${result.status} ${result.statusText}`);
+        }
+
+        if (failedAssertion) {
+          throw new Error(failedAssertion.message);
         }
 
         // Store response body as runtime variable if step has EXTRACT_VAR-like intent
@@ -822,7 +841,12 @@ async function executeSteps(
         logger.log({
           stepId: step.id,
           status: 'FAIL',
+          level: 'error',
           message: `${indent}❌ Request Error: ${msg}`,
+          metadata: {
+            errorStack: error instanceof Error ? error.stack : undefined,
+            variables: context.resolveAll()
+          }
         });
         throw error;
       }
@@ -839,13 +863,15 @@ async function executeSteps(
       await uiExecutor.initialize({ 
         headless: isHeadless,
         viewportWidth: settings?.viewportWidth,
-        viewportHeight: settings?.viewportHeight
+        viewportHeight: settings?.viewportHeight,
+        logger
       });
 
       const resolvedTarget = context.interpolate(step.target || '');
       logger.log({
         stepId: step.id,
         status: 'RUNNING',
+        level: 'info',
         message: `${indent}💻 [${step.action}] ${resolvedTarget ? resolvedTarget + ' ' : ''}${step.data ? '(' + context.interpolate(step.data) + ')' : ''}`,
       });
 
@@ -854,9 +880,15 @@ async function executeSteps(
       logger.log({
         stepId: step.id,
         status: 'PASS',
+        level: 'success',
         message: `${indent}✅ [${step.action}] Completed (${uiResult.durationMs}ms)`,
         screenshot: uiResult.screenshot,
-        details: uiResult.extractedValue ? { extractedValue: uiResult.extractedValue } : undefined,
+        metadata: {
+          variables: context.resolveAll(),
+          extractedValue: uiResult.extractedValue,
+          assertionDetails: uiResult.assertionDetails,
+          apiAssertionResults: uiResult.apiAssertionResults
+        }
       });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -867,8 +899,15 @@ async function executeSteps(
       logger.log({
         stepId: step.id,
         status: 'FAIL',
+        level: 'error',
         message: `${indent}❌ UI Action Failed: ${msg}`,
         screenshot: failScreenshot || undefined,
+        metadata: {
+          errorStack: error instanceof Error ? error.stack : undefined,
+          variables: context.resolveAll(),
+          assertionDetails: (error as any).assertionDetails,
+          apiAssertionResults: (error as any).apiAssertionResults
+        }
       });
       throw error;
     }

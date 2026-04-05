@@ -141,8 +141,10 @@ export type DbReportLogRow = {
   step_id: string;
   timestamp: number;
   status: string;
+  level: string | null;
   message: string;
   screenshot: string | null;
+  metadata: string | null;
 };
 
 export type DbSettingsRow = {

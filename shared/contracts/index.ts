@@ -11,6 +11,18 @@ export type ExtractorSource =
   | 'UI_PAGE_URL'
   | 'UI_PAGE_TITLE';
 
+export type AssertionOperator = 'EQUALS' | 'CONTAINS' | 'MATCHES' | 'GT' | 'LT' | 'NOT_EQUALS' | 'NOT_CONTAINS';
+
+export interface StepAssertion {
+  id: string;
+  enabled: boolean;
+  source: 'API_BODY' | 'API_HEADER' | 'API_STATUS' | 'UI_TEXT' | 'UI_VALUE';
+  expression?: string;
+  expectedValue: string;
+  operator: AssertionOperator;
+  urlPattern?: string;
+}
+
 export interface VariableExtractor {
   id: string;
   name: string;
@@ -75,6 +87,7 @@ export interface TestStep {
   screenshot?: boolean;
   enabled?: boolean;
   extractors?: VariableExtractor[];
+  assertions?: StepAssertion[];
   waitForNetwork?: NetworkWaitConfig;
   networkMocks?: NetworkMockConfig[];
 }
@@ -192,12 +205,17 @@ export interface ApiEndpoint {
   parameters?: { key: string; value: string; enabled: boolean }[];
 }
 
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'success';
+
 export interface ExecutionLog {
+  id?: string;
   stepId: string;
   timestamp: number;
-  status: string;
+  status: string; // Keep for backward compatibility, but map to level
+  level?: LogLevel;
   message: string;
   screenshot?: string;
+  metadata?: any;
 }
 
 export interface ExecutionReport {
@@ -240,9 +258,10 @@ export interface ExecutionLogEvent {
   stepId: string;
   timestamp: number;
   status: string;
+  level?: LogLevel;
   message: string;
   screenshot?: string;
-  details?: any;
+  metadata?: any;
 }
 
 export interface ExecutionProgressEvent {

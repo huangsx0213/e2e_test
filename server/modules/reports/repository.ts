@@ -55,16 +55,18 @@ export function saveExecutionReport(reportInput: Partial<ExecutionReport>): Exec
     for (const [index, log] of report.logs.entries()) {
       db.prepare(
         `
-          INSERT INTO report_logs (report_id, step_id, timestamp, status, message, screenshot, position)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO report_logs (report_id, step_id, timestamp, status, level, message, screenshot, metadata, position)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       ).run(
         report.id,
         log.stepId,
         log.timestamp,
         log.status,
+        log.level || 'info',
         log.message,
         nullableText(log.screenshot),
+        log.metadata ? JSON.stringify(log.metadata) : null,
         index,
       );
     }
@@ -91,7 +93,7 @@ export function getExecutionReport(reportId: string): ExecutionReport | undefine
 
   const logs = db.prepare(
     `
-      SELECT step_id, timestamp, status, message, screenshot
+      SELECT step_id, timestamp, status, level, message, screenshot, metadata
       FROM report_logs
       WHERE report_id = ?
       ORDER BY position
@@ -114,8 +116,10 @@ export function getExecutionReport(reportId: string): ExecutionReport | undefine
       stepId: log.step_id,
       timestamp: log.timestamp,
       status: log.status as ExecutionLog['status'],
+      level: log.level as any,
       message: log.message,
       screenshot: textFromDb(log.screenshot),
+      metadata: log.metadata ? JSON.parse(log.metadata) : undefined,
     })),
   };
 }

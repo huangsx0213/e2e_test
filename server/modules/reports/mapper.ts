@@ -2,12 +2,23 @@ import type { ExecutionLog, ExecutionReport } from '../../shared/contracts/index
 import { asArray, asId, asOptionalText, asText } from '../../shared/utils/index.ts';
 
 function normalizeExecutionLog(input: Partial<ExecutionLog>): ExecutionLog {
+  let metadata = input.metadata;
+  if (typeof metadata === 'string') {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch (e) {
+      metadata = undefined;
+    }
+  }
+
   return {
     stepId: asText(input.stepId),
     timestamp: typeof input.timestamp === 'number' ? input.timestamp : Date.now(),
     status: asText(input.status, 'PENDING') as ExecutionLog['status'],
+    level: asOptionalText(input.level) as any,
     message: asText(input.message),
     screenshot: asOptionalText(input.screenshot),
+    metadata,
   };
 }
 

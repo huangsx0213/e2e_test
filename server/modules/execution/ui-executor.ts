@@ -1,14 +1,22 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import { JSONPath } from 'jsonpath-plus';
-import type { TestStep } from '../../shared/contracts/index.ts';
+import type { TestStep, StepAssertion } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import { environmentRepository } from '../environments/repository.ts';
+import type { ExecutionLogger } from './logger.ts';
+import { processApiAssertions } from './assertion-utils.ts';
 
 export interface UIExecutionResult {
   durationMs: number;
   screenshot?: string;
   extractedValue?: string;
+  assertionDetails?: {
+    expected: string;
+    actual: string;
+    target?: string;
+  };
+  apiAssertionResults?: any[];
 }
 
 // Constants for better maintainability
@@ -22,12 +30,15 @@ export class UIExecutor {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private dialogHandler: ((dialog: any) => Promise<void>) | null = null;
+  private logger?: ExecutionLogger;
 
   async initialize(options: {
     headless: boolean;
     viewportWidth?: number;
     viewportHeight?: number;
+    logger?: ExecutionLogger;
   }): Promise<void> {
+    this.logger = options.logger;
     if (!this.browser) {
       this.browser = await chromium.launch({
         headless: options.headless,
@@ -40,6 +51,51 @@ export class UIExecutor {
         recordVideo: { dir: 'videos/' },
       });
       this.page = await this.context.newPage();
+
+      if (this.logger) {
+        this.page.on('console', msg => {
+          this.logger?.log({
+            stepId: 'system-console',
+            status: 'INFO',
+            level: msg.type() === 'error' ? 'error' : msg.type() === 'warning' ? 'warn' : 'debug',
+            message: `[Browser Console] ${msg.text()}`,
+          });
+        });
+
+        this.page.on('request', request => {
+          this.logger?.log({
+            stepId: 'system-network',
+            status: 'INFO',
+            level: 'debug',
+            message: `[Network Request] ${request.method()} ${request.url()}`,
+            metadata: {
+              network: {
+                url: request.url(),
+                method: request.method(),
+                isMocked: false,
+              }
+            }
+          });
+        });
+
+        this.page.on('response', async response => {
+          const request = response.request();
+          this.logger?.log({
+            stepId: 'system-network',
+            status: 'INFO',
+            level: response.status() >= 400 ? 'warn' : 'debug',
+            message: `[Network Response] ${request.method()} ${request.url()} - ${response.status()}`,
+            metadata: {
+              network: {
+                url: request.url(),
+                method: request.method(),
+                status: response.status(),
+                isMocked: false,
+              }
+            }
+          });
+        });
+      }
     }
   }
 
@@ -55,6 +111,18 @@ export class UIExecutor {
 
     const startTime = Date.now();
     let extractedValue: string | undefined;
+    let assertionDetails: UIExecutionResult['assertionDetails'] = undefined;
+    let apiAssertionResults: any[] = [];
+
+    const apiAssertions = step.assertions?.filter(a => a.enabled && a.urlPattern);
+    let responsePromises: Promise<any>[] = [];
+
+    if (apiAssertions && apiAssertions.length > 0) {
+      const patterns = [...new Set(apiAssertions.map(a => a.urlPattern!))];
+      responsePromises = patterns.map(pattern => 
+        this.page!.waitForResponse(pattern, { timeout: DEFAULT_TIMEOUT }).catch(() => null)
+      );
+    }
 
     // Resolve element locator if target exists
     let resolvedSelector: string | undefined;
@@ -240,6 +308,22 @@ export class UIExecutor {
             await new Promise(resolve => setTimeout(resolve, mock.delayMs));
           }
           
+          this.logger?.log({
+            stepId: step.id,
+            status: 'INFO',
+            level: 'info',
+            message: `[Mock Hit] ${request.method()} ${request.url()} -> ${mock.status || 200}`,
+            metadata: {
+              network: {
+                url: request.url(),
+                method: request.method(),
+                status: mock.status || 200,
+                isMocked: true,
+                responseBody: mock.body,
+              }
+            }
+          });
+
           await route.fulfill({
             status: mock.status || 200,
             contentType: 'application/json',
@@ -426,21 +510,38 @@ export class UIExecutor {
 
       case 'ASSERT_VISIBLE': {
         const locator = await getSmartLocator();
-        await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+        assertionDetails = { expected: 'visible', actual: 'visible', target: resolvedSelector };
+        try {
+          await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+        } catch (e: any) {
+          assertionDetails.actual = 'hidden/missing';
+          e.assertionDetails = assertionDetails;
+          throw e;
+        }
         break;
       }
 
       case 'ASSERT_INVISIBLE': {
         const locator = await getSmartLocator();
-        await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
+        assertionDetails = { expected: 'hidden', actual: 'hidden', target: resolvedSelector };
+        try {
+          await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
+        } catch (e: any) {
+          assertionDetails.actual = 'visible';
+          e.assertionDetails = assertionDetails;
+          throw e;
+        }
         break;
       }
 
       case 'ASSERT_DISABLED': {
         const locator = await getSmartLocator();
         const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
+        assertionDetails = { expected: 'disabled', actual: isDisabled ? 'disabled' : 'enabled', target: resolvedSelector };
         if (!isDisabled) {
-          throw new Error(`Assertion failed: Expected element to be disabled, but it is enabled`);
+          const err = new Error(`Assertion failed: Expected element to be disabled, but it is enabled`);
+          (err as any).assertionDetails = assertionDetails;
+          throw err;
         }
         break;
       }
@@ -449,9 +550,12 @@ export class UIExecutor {
         if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
         {
           const locator = await getSmartLocator();
-          const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT });
-          if (!text || !text.includes(data)) {
-            throw new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
+          const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || '';
+          assertionDetails = { expected: `includes "${data}"`, actual: text, target: resolvedSelector };
+          if (!text.includes(data)) {
+            const err = new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
+            (err as any).assertionDetails = assertionDetails;
+            throw err;
           }
         }
         break;
@@ -461,8 +565,11 @@ export class UIExecutor {
         {
           const locator = await getSmartLocator();
           const val = await locator.inputValue({ timeout: DEFAULT_TIMEOUT });
+          assertionDetails = { expected: data, actual: val, target: resolvedSelector };
           if (val !== data) {
-            throw new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
+            const err = new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
+            (err as any).assertionDetails = assertionDetails;
+            throw err;
           }
         }
         break;
@@ -471,8 +578,11 @@ export class UIExecutor {
         if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
         {
           const currentUrl = this.page.url();
+          assertionDetails = { expected: `includes "${data}"`, actual: currentUrl };
           if (!currentUrl.includes(data) && currentUrl !== data) {
-            throw new Error(`Assertion failed: Expected URL to include "${data}", but got "${currentUrl}"`);
+            const err = new Error(`Assertion failed: Expected URL to include "${data}", but got "${currentUrl}"`);
+            (err as any).assertionDetails = assertionDetails;
+            throw err;
           }
         }
         break;
@@ -481,8 +591,11 @@ export class UIExecutor {
         if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
         {
           const title = await this.page.title();
+          assertionDetails = { expected: `includes "${data}"`, actual: title };
           if (!title.includes(data)) {
-            throw new Error(`Assertion failed: Expected title to include "${data}", but got "${title}"`);
+            const err = new Error(`Assertion failed: Expected title to include "${data}", but got "${title}"`);
+            (err as any).assertionDetails = assertionDetails;
+            throw err;
           }
         }
         break;
@@ -697,6 +810,49 @@ export class UIExecutor {
       }
     }
 
+    if (responsePromises.length > 0) {
+      const responses = await Promise.all(responsePromises);
+      const patterns = [...new Set(apiAssertions!.map(a => a.urlPattern!))];
+      
+      for (let i = 0; i < patterns.length; i++) {
+        const pattern = patterns[i];
+        const resp = responses[i];
+        
+        if (resp) {
+          try {
+            const body = await resp.text();
+            const headers: Record<string, string> = {};
+            const headersArray = await resp.allHeaders();
+            Object.assign(headers, headersArray);
+            
+            const results = processApiAssertions(apiAssertions!.filter(a => a.urlPattern === pattern), {
+              status: resp.status(),
+              headers,
+              body
+            });
+            apiAssertionResults.push(...results);
+          } catch (err) {
+            console.error(`Failed to process API assertion for ${pattern}:`, err);
+          }
+        } else {
+          // Timeout or failed to intercept
+          apiAssertionResults.push({
+            success: false,
+            actualValue: 'timeout',
+            expectedValue: 'response',
+            message: `API Interception failed: No response received for pattern ${pattern}`
+          });
+        }
+      }
+    }
+
+    const failedApiAssertion = apiAssertionResults.find(a => !a.success);
+    if (failedApiAssertion) {
+      const err = new Error(failedApiAssertion.message);
+      (err as any).apiAssertionResults = apiAssertionResults;
+      throw err;
+    }
+
     const durationMs = Date.now() - startTime;
     let screenshotBase64: string | undefined;
 
@@ -708,6 +864,8 @@ export class UIExecutor {
       durationMs,
       screenshot: screenshotBase64,
       extractedValue,
+      assertionDetails,
+      apiAssertionResults,
     };
   }
 

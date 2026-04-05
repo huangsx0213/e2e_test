@@ -36,7 +36,6 @@ export const TestReport: React.FC<TestReportProps> = ({
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [logFilter, setLogFilter] = useState<"ALL" | "PASS" | "FAIL">("ALL");
   const [copied, setCopied] = useState(false);
 
   const selectedReport = reports.find((r) => r.id === selectedReportId);
@@ -55,12 +54,6 @@ export const TestReport: React.FC<TestReportProps> = ({
       .sort((a, b) => b.startTime - a.startTime);
   }, [reports, searchQuery, currentProjectId, suites]);
 
-  const filteredLogs = useMemo(() => {
-    if (!selectedReport) return [];
-    if (logFilter === "ALL") return selectedReport.logs;
-    return selectedReport.logs.filter((log) => log.status === logFilter);
-  }, [selectedReport, logFilter]);
-
   const formatDuration = (start: number, end?: number) => {
     if (!end) return "-";
     const ms = end - start;
@@ -76,10 +69,10 @@ export const TestReport: React.FC<TestReportProps> = ({
 
   const copyLogs = () => {
     if (!selectedReport) return;
-    const text = filteredLogs
+    const text = selectedReport.logs
       .map(
         (l) =>
-          `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.status}] ${l.message}`,
+          `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.level || l.status}] ${l.message}`,
       )
       .join("\n");
     navigator.clipboard.writeText(text);
@@ -363,27 +356,6 @@ export const TestReport: React.FC<TestReportProps> = ({
                   </div>
 
                   <div className="flex items-center gap-4">
-                    {/* Log Filters */}
-                    <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
-                      {(["ALL", "PASS", "FAIL"] as const).map((filter) => (
-                        <button
-                          key={filter}
-                          onClick={() => setLogFilter(filter)}
-                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
-                            logFilter === filter
-                              ? filter === "PASS"
-                                ? "bg-emerald-500/20 text-emerald-400"
-                                : filter === "FAIL"
-                                  ? "bg-red-500/20 text-red-400"
-                                  : "bg-blue-500/20 text-blue-400"
-                              : "text-slate-500 hover:text-slate-300"
-                          }`}
-                        >
-                          {filter}
-                        </button>
-                      ))}
-                    </div>
-
                     <button
                       onClick={copyLogs}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
@@ -398,9 +370,9 @@ export const TestReport: React.FC<TestReportProps> = ({
                   </div>
                 </div>
 
-                <div className="p-5 font-mono text-[13px] space-y-1.5">
-                  <ExecutionLogs logs={filteredLogs} />
-                  {filteredLogs.length === 0 && (
+                <div className="p-5 font-mono text-[13px] space-y-1.5 h-[600px] flex flex-col">
+                  <ExecutionLogs logs={selectedReport.logs || []} />
+                  {selectedReport.logs?.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
                       <Terminal size={32} className="opacity-50" />
                       <p>No logs match the current filter.</p>
