@@ -225,6 +225,30 @@ export class UIExecutor {
       }
     };
 
+    // Setup Network Mocks
+    if (step.networkMocks && step.networkMocks.some(m => m.enabled)) {
+      for (const mock of step.networkMocks) {
+        if (!mock.enabled || !mock.urlPattern) continue;
+        
+        const pattern = new RegExp(mock.urlPattern);
+        await this.page.route(pattern, async (route, request) => {
+          if (mock.method && mock.method !== 'ANY' && request.method().toUpperCase() !== mock.method.toUpperCase()) {
+            return route.fallback();
+          }
+          
+          if (mock.delayMs) {
+            await new Promise(resolve => setTimeout(resolve, mock.delayMs));
+          }
+          
+          await route.fulfill({
+            status: mock.status || 200,
+            contentType: 'application/json',
+            body: mock.body || '{}',
+          });
+        });
+      }
+    }
+
     // Execute the action
     let waitPromise: Promise<import('playwright').Response> | undefined;
     if (step.waitForNetwork?.enabled && step.waitForNetwork.urlPattern) {

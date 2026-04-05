@@ -53,6 +53,16 @@ export interface NetworkWaitConfig {
   extractors?: VariableExtractor[];
 }
 
+export interface NetworkMockConfig {
+  id: string;
+  enabled: boolean;
+  urlPattern: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'ANY' | string;
+  status: number;
+  body: string;
+  delayMs?: number;
+}
+
 export interface TestStep {
   id: string;
   action: ActionType;
@@ -66,6 +76,7 @@ export interface TestStep {
   enabled?: boolean;
   extractors?: VariableExtractor[];
   waitForNetwork?: NetworkWaitConfig;
+  networkMocks?: NetworkMockConfig[];
 }
 
 export interface TestModule {

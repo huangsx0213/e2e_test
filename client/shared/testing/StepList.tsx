@@ -1960,6 +1960,144 @@ export const StepList: React.FC<StepListProps> = ({
                       </div>
                     )}
 
+                  {/* Network Mocks Section */}
+                  {!step.action.startsWith("API_") &&
+                    !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
+                      <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Network Mocks</span>
+                            <HelpTooltip content={
+                              <div className="w-64">
+                                <p className="mb-1 font-semibold">Network Interception</p>
+                                <p className="mb-1 text-gray-300">Mock API responses triggered by this UI action.</p>
+                                <p className="mb-1 text-gray-300">Useful for testing error states (e.g., 500) or bypassing third-party services.</p>
+                              </div>
+                            } />
+                          </div>
+                          <button
+                            onClick={() => {
+                              const mocks = step.networkMocks || [];
+                              onUpdateStep(step.id, {
+                                networkMocks: [...mocks, { id: crypto.randomUUID(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
+                              });
+                            }}
+                            className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                          >
+                            <Plus size={10} /> Add Mock
+                          </button>
+                        </div>
+
+                        {(step.networkMocks || []).length > 0 && (
+                          <div className="space-y-2">
+                            {(step.networkMocks || []).map((mock, idx) => (
+                              <div key={mock.id} className="bg-gray-50 p-2 rounded-md border border-gray-200">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={mock.enabled}
+                                      onChange={(e) => {
+                                        const newMocks = [...step.networkMocks!];
+                                        newMocks[idx].enabled = e.target.checked;
+                                        onUpdateStep(step.id, { networkMocks: newMocks });
+                                      }}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-[11px] font-medium text-gray-700">Mock Rule {idx + 1}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const newMocks = [...step.networkMocks!];
+                                      newMocks.splice(idx, 1);
+                                      onUpdateStep(step.id, { networkMocks: newMocks });
+                                    }}
+                                    className="text-gray-400 hover:text-red-500"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-6 gap-2 mb-2">
+                                  <div className="col-span-3">
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern (Regex)</label>
+                                    <input
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      placeholder=".*\/api\/payment.*"
+                                      value={mock.urlPattern}
+                                      onChange={(e) => {
+                                        const newMocks = [...step.networkMocks!];
+                                        newMocks[idx].urlPattern = e.target.value;
+                                        onUpdateStep(step.id, { networkMocks: newMocks });
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="col-span-1">
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
+                                    <select
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      value={mock.method || "ANY"}
+                                      onChange={(e) => {
+                                        const newMocks = [...step.networkMocks!];
+                                        newMocks[idx].method = e.target.value;
+                                        onUpdateStep(step.id, { networkMocks: newMocks });
+                                      }}
+                                    >
+                                      <option value="ANY">ANY</option>
+                                      <option value="GET">GET</option>
+                                      <option value="POST">POST</option>
+                                      <option value="PUT">PUT</option>
+                                      <option value="DELETE">DELETE</option>
+                                    </select>
+                                  </div>
+                                  <div className="col-span-1">
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
+                                    <input
+                                      type="number"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      placeholder="200"
+                                      value={mock.status}
+                                      onChange={(e) => {
+                                        const newMocks = [...step.networkMocks!];
+                                        newMocks[idx].status = parseInt(e.target.value) || 200;
+                                        onUpdateStep(step.id, { networkMocks: newMocks });
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="col-span-1">
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Delay (ms)</label>
+                                    <input
+                                      type="number"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      placeholder="0"
+                                      value={mock.delayMs || ""}
+                                      onChange={(e) => {
+                                        const newMocks = [...step.networkMocks!];
+                                        newMocks[idx].delayMs = parseInt(e.target.value) || undefined;
+                                        onUpdateStep(step.id, { networkMocks: newMocks });
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Response Body (JSON)</label>
+                                  <textarea
+                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
+                                    placeholder='{"success": true}'
+                                    value={mock.body}
+                                    onChange={(e) => {
+                                      const newMocks = [...step.networkMocks!];
+                                      newMocks[idx].body = e.target.value;
+                                      onUpdateStep(step.id, { networkMocks: newMocks });
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                   {/* Extractors Section */}
                   <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
