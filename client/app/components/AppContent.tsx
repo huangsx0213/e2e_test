@@ -10,6 +10,7 @@ import { TestReport } from "@/features/reports/TestReport";
 import { Settings } from "@/features/settings/Settings";
 import { TestBuilder } from "@/features/tests/TestBuilder";
 import { DynamicVariables } from "@/features/dynamic-variables/DynamicVariables";
+import { Documentation } from "@/features/documentation/Documentation";
 import { AppTab, ExecutionState } from "@/app/types";
 import { CrudActions, EnvironmentActions } from "@/shared/hooks/useCrud";
 import {
@@ -172,6 +173,8 @@ export function AppContent({
           settingsApi={settingsApi}
         />
       );
+    case "DOCUMENTATION":
+      return <Documentation />;
     case "DYNAMIC_VARIABLES":
       return <DynamicVariables currentProjectId={currentProjectId} />;
     default:

@@ -9,6 +9,7 @@ export type AppTab =
   | 'ENDPOINTS'
   | 'REPORTS'
   | 'SETTINGS'
+  | 'DOCUMENTATION'
   | 'DYNAMIC_VARIABLES';
 
 export interface ExecutionState {

@@ -705,6 +705,22 @@ export const StepList: React.FC<StepListProps> = ({
                     <div>
                       {step.action === "RUN_MODULE" ? (
                         <div className="bg-blue-50/50 rounded-md border border-blue-100 p-2 space-y-2">
+                          <div className="flex items-center gap-2 mb-2">
+                            <label className="text-[10px] font-mono font-medium text-blue-700 w-20 truncate text-right shrink-0" title="Namespace">
+                              Namespace
+                            </label>
+                            <input
+                              className="flex-1 bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              placeholder="Optional export alias (e.g., buyer)"
+                              value={step.namespace || ""}
+                              onChange={(e) =>
+                                onUpdateStep(step.id, {
+                                  namespace: e.target.value,
+                                })
+                              }
+                              disabled={step.enabled === false}
+                            />
+                          </div>
                           {(() => {
                             const module = activeProject.modules?.find(
                               (m) => m.id === step.target,
@@ -1981,6 +1997,20 @@ export const StepList: React.FC<StepListProps> = ({
                                           onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                         }}
                                       />
+                                      <select
+                                        className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                        value={ext.scope || 'CASE'}
+                                        onChange={(e) => {
+                                          const newExts = [...step.waitForNetwork!.extractors!];
+                                          newExts[idx].scope = e.target.value as any;
+                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                        }}
+                                      >
+                                        <option value="CASE">Case</option>
+                                        <option value="SUITE">Suite</option>
+                                        <option value="SCENARIO">Scenario</option>
+                                        <option value="ENVIRONMENT">Environment</option>
+                                      </select>
                                       <button
                                         onClick={() => {
                                           const newExts = [...step.waitForNetwork!.extractors!];
@@ -2268,7 +2298,7 @@ export const StepList: React.FC<StepListProps> = ({
                             )}
                             <select
                               className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                              value={ext.scope || 'SUITE'}
+                              value={ext.scope || 'CASE'}
                               onChange={(e) => {
                                 const newExts = [...step.extractors!];
                                 newExts[extIndex] = { ...ext, scope: e.target.value as any };
@@ -2277,6 +2307,7 @@ export const StepList: React.FC<StepListProps> = ({
                             >
                               <option value="CASE">Case</option>
                               <option value="SUITE">Suite</option>
+                              <option value="SCENARIO">Scenario</option>
                               <option value="ENVIRONMENT">Environment</option>
                             </select>
                             <button

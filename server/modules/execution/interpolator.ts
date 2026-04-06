@@ -215,7 +215,7 @@ export function interpolate(
         // Special case for 'set' transformer
         if (name === 'set' && onSetVar && currentValue !== undefined) {
           const varName = args[0];
-          const scope = args[1] || 'suite'; // Default scope is suite
+          const scope = args[1] || 'case'; // Default scope is case
           if (varName) {
             // Ensure the value is fully resolved before setting it
             const resolvedValue = hasUnresolvedVars(currentValue)

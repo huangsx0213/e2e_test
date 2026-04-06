@@ -9,6 +9,7 @@ import type {
   ApiEndpoint,
   ExecutionRequest,
   ExecutionRunStatus,
+  DynamicVariable,
 } from '../../shared/contracts/index.ts';
 import { projectRepository } from '../projects/repository.ts';
 import { suiteRepository } from '../suites/repository.ts';
@@ -19,6 +20,7 @@ import { reportRepository } from '../reports/repository.ts';
 import { environmentRepository } from '../environments/repository.ts';
 import { dynamicVariableRepository } from '../dynamic-variables/repository.ts';
 import { ExecutionContext } from './context.ts';
+import { interpolate } from './interpolator.ts';
 import { executeApiStep, type ApiAssets } from './api-executor.ts';
 import { ExecutionLogger } from './logger.ts';
 import { db } from '../../shared/db/client.ts';
@@ -125,7 +127,18 @@ async function executeRunAsync(
     const environmentVariables = environmentRepository.getVariables(request.environment);
 
     const dynamicVarsList = await dynamicVariableRepository.findByProjectId(request.projectId);
-    const dynamicVariables = dynamicVarsList.reduce((acc, v) => ({ ...acc, [v.name]: v.expression }), {} as Record<string, string>);
+    const dynamicVariables: Record<string, string> = {};
+    const dynamicVariableConfigs: Record<string, DynamicVariable> = {};
+    for (const v of dynamicVarsList) {
+      dynamicVariableConfigs[v.name] = v;
+      if (v.evaluationStrategy === 'ONCE_PER_RUN') {
+        // 惰性求值，按需固化 (Evaluate once and store the resolved value)
+        dynamicVariables[v.name] = interpolate(v.expression, dynamicVariables);
+      } else {
+        // 每次引用时求值 (Evaluate every time it's referenced)
+        dynamicVariables[v.name] = v.expression;
+      }
+    }
 
     logger.log({
       stepId: 'init',
@@ -138,23 +151,23 @@ async function executeRunAsync(
       const testCase = suite?.cases.find(c => c.id === request.caseId);
       displayName = testCase ? testCase.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting case execution for: ${displayName}`);
-      result = await executeSingleCase(request, project, assets, environmentVariables, dynamicVariables, logger, signal, uiExecutor);
+      result = await executeSingleCase(request, project, assets, environmentVariables, dynamicVariables, dynamicVariableConfigs, logger, signal, uiExecutor);
     } else if (request.type === 'suite') {
       const suite = suiteRepository.get(request.suiteId!);
       displayName = suite ? suite.name : `Execution: ${request.type}`;
       console.log(`[EXEC] Starting suite execution for: ${displayName}`);
-      result = await executeSuite(request, project, assets, environmentVariables, dynamicVariables, logger, signal, uiExecutor);
-    } else if (request.type === 'scenario') {
-      const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
-      displayName = scenario ? scenario.name : `Execution: ${request.type}`;
-      console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
-      result = await executeScenario(request, project, assets, environmentVariables, dynamicVariables, logger, signal, uiExecutor);
-    } else {
-      const plan = project.plans?.find(p => p.id === request.planId);
-      displayName = plan ? plan.name : `Execution: ${request.type}`;
-      console.log(`[EXEC] Starting plan execution for: ${displayName}`);
-      result = await executePlan(request, project, assets, environmentVariables, dynamicVariables, logger, signal, uiExecutor);
-    }
+      result = await executeSuite(request, project, assets, environmentVariables, dynamicVariables, dynamicVariableConfigs, logger, signal, uiExecutor);
+} else if (request.type === 'scenario') {
+  const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
+  displayName = scenario ? scenario.name : `Execution: ${request.type}`;
+  console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
+  result = await executeScenario(request, project, assets, environmentVariables, dynamicVariables, dynamicVariableConfigs, logger, signal, uiExecutor);
+} else {
+  const plan = project.plans?.find(p => p.id === request.planId);
+  displayName = plan ? plan.name : `Execution: ${request.type}`;
+  console.log(`[EXEC] Starting plan execution for: ${displayName}`);
+  result = await executePlan(request, project, assets, environmentVariables, dynamicVariables, dynamicVariableConfigs, logger, signal, uiExecutor);
+}
 
     result.reportId = reportId;
     result.durationMs = Date.now() - startTime;
@@ -242,6 +255,7 @@ async function executeSingleCase(
   assets: ApiAssets,
   environmentVariables: Record<string, string>,
   dynamicVariables: Record<string, string>,
+  dynamicVariableConfigs: Record<string, DynamicVariable>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -261,9 +275,11 @@ async function executeSingleCase(
   const context = ExecutionContext.create({
     environmentVariables,
     dynamicVariables,
+    dynamicVariableConfigs,
     suiteVariables: suiteDefaults,
     suiteDataRow: firstRowData,
   });
+  context.setCurrentContext(null, suite.name, testCase.name);
 
   // Log variable sets
   context.onVariableSet((key, value, scope) => {
@@ -340,6 +356,7 @@ async function executeSuite(
   assets: ApiAssets,
   environmentVariables: Record<string, string>,
   dynamicVariables: Record<string, string>,
+  dynamicVariableConfigs: Record<string, DynamicVariable>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -349,6 +366,7 @@ async function executeSuite(
 
   return await runSuiteWithContext(
     suite,
+    null, // scenarioName
     {}, // scenarioVariables
     {}, // scenarioDataRow
     {}, // scenarioOverrides
@@ -358,15 +376,18 @@ async function executeSuite(
     request.environment,
     environmentVariables,
     dynamicVariables,
+    dynamicVariableConfigs,
     logger,
     signal,
     uiExecutor,
-    {} // sharedRuntimeVars
+    {}, // sharedRuntimeVars
+    {} // sharedDynamicCaches
   );
 }
 
 async function runSuiteWithContext(
   suite: TestSuite,
+  scenarioName: string | null,
   scenarioVariables: Record<string, string>,
   scenarioDataRow: Record<string, string>,
   scenarioOverrides: Record<string, string>,
@@ -376,10 +397,12 @@ async function runSuiteWithContext(
   environment: string,
   environmentVariables: Record<string, string>,
   dynamicVariables: Record<string, string>,
+  dynamicVariableConfigs: Record<string, DynamicVariable>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
-  sharedRuntimeVars: Record<string, string>
+  sharedRuntimeVars: Record<string, string>,
+  sharedDynamicCaches: Record<string, string>
 ): Promise<RunResult> {
   logger.log({ stepId: `suite-${suite.id}`, status: 'INFO', message: `📦 Executing Suite: ${suite.name}` });
 
@@ -415,13 +438,14 @@ async function runSuiteWithContext(
     const context = ExecutionContext.create({
       environmentVariables,
       dynamicVariables,
+      dynamicVariableConfigs,
       suiteVariables: suiteDefaults,
       suiteDataRow: rowData,
       scenarioVariables,
       scenarioDataRow,
       scenarioOverrides,
     });
-    context.setCurrentContext(suite.name, null);
+    context.setCurrentContext(scenarioName, suite.name, null);
 
     // Log variable sets
     context.onVariableSet((key, value, scope) => {
@@ -435,6 +459,8 @@ async function runSuiteWithContext(
 
     // Inject shared runtime variables (e.g. EXTRACT_VAR results) to carry across suites in a scenario iteration
     context.setSharedRuntimeVars(sharedRuntimeVars);
+    // Inject shared dynamic caches (e.g. ONCE_PER_SCENARIO)
+    context.setDynamicVariableCaches(sharedDynamicCaches);
 
     // Suite setup
     if (suite.setupSteps && suite.setupSteps.length > 0) {
@@ -445,7 +471,7 @@ async function runSuiteWithContext(
     for (const testCase of suite.cases) {
       if (signal.aborted) throw new Error('Execution aborted');
 
-      context.setCurrentContext(suite.name, testCase.name);
+      context.setCurrentContext(scenarioName, suite.name, testCase.name);
 
       logger.log({
         stepId: `case-${testCase.id}`,
@@ -490,6 +516,12 @@ async function runSuiteWithContext(
       logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
       await executeSteps(suite.teardownSteps, context, project, assets, environment, logger, signal, uiExecutor, 0);
     }
+
+    // Capture updated caches (especially ONCE_PER_SCENARIO)
+    Object.assign(sharedDynamicCaches, context.getDynamicVariableCaches());
+
+    // Clear suite-scoped caches
+    context.clearSuiteVars();
   }
 
   const allPassed = failedCases === 0;
@@ -512,6 +544,7 @@ async function executePlan(
   assets: ApiAssets,
   environmentVariables: Record<string, string>,
   dynamicVariables: Record<string, string>,
+  dynamicVariableConfigs: Record<string, DynamicVariable>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -569,6 +602,7 @@ async function executePlan(
 
       // A fresh runtime context per scenario iteration to share variables between suites
       const sharedRuntimeVars: Record<string, string> = {};
+      const sharedDynamicCaches: Record<string, string> = {};
 
       for (const scenarioSuite of scenario.suites || []) {
         if (signal.aborted) throw new Error('Execution aborted');
@@ -585,6 +619,7 @@ async function executePlan(
 
         const suiteResult = await runSuiteWithContext(
           suite,
+          scenario.name,
           scenarioVariables,
           scenarioRow,
           scenarioSuite.variableOverrides || {},
@@ -594,10 +629,12 @@ async function executePlan(
           request.environment,
           environmentVariables,
           dynamicVariables,
+          dynamicVariableConfigs,
           logger,
           signal,
           uiExecutor,
-          sharedRuntimeVars
+          sharedRuntimeVars,
+          sharedDynamicCaches
         );
 
         totalCases += suiteResult.totalCases;
@@ -635,6 +672,7 @@ async function executeScenario(
   assets: ApiAssets,
   environmentVariables: Record<string, string>,
   dynamicVariables: Record<string, string>,
+  dynamicVariableConfigs: Record<string, DynamicVariable>,
   logger: ExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
@@ -673,6 +711,7 @@ async function executeScenario(
 
     // A fresh runtime context per scenario iteration to share variables between suites
     const sharedRuntimeVars: Record<string, string> = {};
+    const sharedDynamicCaches: Record<string, string> = {};
 
     for (const scenarioSuite of scenario.suites || []) {
       if (signal.aborted) throw new Error('Execution aborted');
@@ -689,6 +728,7 @@ async function executeScenario(
 
       const suiteResult = await runSuiteWithContext(
         suite,
+        scenario.name,
         scenarioVariables,
         scenarioRow,
         scenarioSuite.variableOverrides || {},
@@ -698,10 +738,12 @@ async function executeScenario(
         request.environment,
         environmentVariables,
         dynamicVariables,
+        dynamicVariableConfigs,
         logger,
         signal,
         uiExecutor,
-        sharedRuntimeVars
+        sharedRuntimeVars,
+        sharedDynamicCaches
       );
 
       totalCases += suiteResult.totalCases;
@@ -790,6 +832,9 @@ async function executeSteps(
 
       const childContext = context.createChildContext(moduleDefaults, overrides);
       await executeSteps(module.steps || [], childContext, project, assets, environment, logger, signal, uiExecutor, depth + 1);
+
+      // Merge extracted variables back into the parent context, applying the namespace if provided
+      context.mergeChildExtractedVars(childContext, step.namespace);
 
       logger.log({ stepId: step.id, status: 'PASS', message: `${indent}✅ Module Completed: ${module.name}` });
       continue;

@@ -10,6 +10,7 @@ import {
   PlaySquare,
   Settings,
   Workflow,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { AppTab } from '@/app/types';
@@ -47,6 +48,12 @@ export const navigationSections: NavigationSection[] = [
     ],
   },
 ];
+
+export const documentationNavigationItem: NavigationItem = {
+  tab: 'DOCUMENTATION',
+  label: 'Documentation',
+  icon: BookOpen,
+};
 
 export const settingsNavigationItem: NavigationItem = {
   tab: 'SETTINGS',

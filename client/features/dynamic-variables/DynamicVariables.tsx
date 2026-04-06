@@ -147,6 +147,7 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
   const [name, setName] = useState('');
   const [expression, setExpression] = useState('');
   const [description, setDescription] = useState('');
+  const [evaluationStrategy, setEvaluationStrategy] = useState<'ONCE_PER_RUN' | 'EVERY_TIME' | 'ONCE_PER_CASE' | 'ONCE_PER_SUITE' | 'ONCE_PER_SCENARIO'>('EVERY_TIME');
   const [previewSamples, setPreviewSamples] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -187,6 +188,7 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
     setName(v.name);
     setExpression(v.expression);
     setDescription(v.description || '');
+    setEvaluationStrategy(v.evaluationStrategy || 'EVERY_TIME');
     setPreviewSamples([]);
     setSaveStatus('idle');
   };
@@ -196,6 +198,7 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
     setName('');
     setExpression('');
     setDescription('');
+    setEvaluationStrategy('EVERY_TIME');
     setPreviewSamples([]);
     setSaveStatus('idle');
   };
@@ -205,9 +208,9 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
     setSaveStatus('saving');
     try {
       if (selectedVarId) {
-        await api.dynamicVariables.update(selectedVarId, { name, expression, description });
+        await api.dynamicVariables.update(selectedVarId, { name, expression, description, evaluationStrategy });
       } else {
-        const newVar = await api.dynamicVariables.create(currentProjectId, { name, expression, description });
+        const newVar = await api.dynamicVariables.create(currentProjectId, { name, expression, description, evaluationStrategy });
         setSelectedVarId(newVar.id);
       }
       await loadVariables(true);
@@ -459,6 +462,86 @@ export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
                       rows={5}
                       className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm resize-none"
                     />
+                  </div>
+                  <div className="flex items-center gap-4 mt-2">
+                    <label className="text-xs font-medium text-gray-700 flex items-center gap-2">
+                      Evaluation Strategy:
+                      <HelpTooltip content={
+                        <div className="w-72">
+                          <p className="mb-1 font-semibold">Every Time (Default)</p>
+                          <p className="mb-2 text-gray-300">Re-evaluated on every reference. E.g., {"{{$uuid()}}"} generates a new ID each time.</p>
+                          
+                          <p className="mb-1 font-semibold">Once Per Case</p>
+                          <p className="mb-2 text-gray-300">Cached for the duration of a single test case. Shared between steps like input and assertion.</p>
+                          
+                          <p className="mb-1 font-semibold">Once Per Suite</p>
+                          <p className="mb-2 text-gray-300">Cached for all cases within a suite. Useful for shared batch IDs.</p>
+                          
+                          <p className="mb-1 font-semibold">Once Per Scenario</p>
+                          <p className="mb-2 text-gray-300">Cached across multiple suites in a scenario. Ideal for cross-suite user IDs.</p>
+                          
+                          <p className="mb-1 font-semibold">Once Per Run</p>
+                          <p className="text-gray-300">Cached for the entire execution task. Global persistence.</p>
+                        </div>
+                      } />
+                    </label>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="evaluationStrategy"
+                          value="EVERY_TIME"
+                          checked={evaluationStrategy === 'EVERY_TIME'}
+                          onChange={() => setEvaluationStrategy('EVERY_TIME')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-700">Every Time</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="evaluationStrategy"
+                          value="ONCE_PER_CASE"
+                          checked={evaluationStrategy === 'ONCE_PER_CASE'}
+                          onChange={() => setEvaluationStrategy('ONCE_PER_CASE')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-700">Once Per Case</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="evaluationStrategy"
+                          value="ONCE_PER_SUITE"
+                          checked={evaluationStrategy === 'ONCE_PER_SUITE'}
+                          onChange={() => setEvaluationStrategy('ONCE_PER_SUITE')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-700">Once Per Suite</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="evaluationStrategy"
+                          value="ONCE_PER_SCENARIO"
+                          checked={evaluationStrategy === 'ONCE_PER_SCENARIO'}
+                          onChange={() => setEvaluationStrategy('ONCE_PER_SCENARIO')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-700">Once Per Scenario</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="evaluationStrategy"
+                          value="ONCE_PER_RUN"
+                          checked={evaluationStrategy === 'ONCE_PER_RUN'}
+                          onChange={() => setEvaluationStrategy('ONCE_PER_RUN')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-xs text-gray-700">Once Per Run</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 

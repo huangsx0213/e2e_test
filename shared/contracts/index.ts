@@ -40,7 +40,7 @@ export interface VariableExtractor {
   name: string;
   source: ExtractorSource;
   expression?: string;
-  scope: 'CASE' | 'SUITE' | 'ENVIRONMENT';
+  scope: 'CASE' | 'SUITE' | 'SCENARIO' | 'ENVIRONMENT';
 }
 
 export interface UIElement {
@@ -94,6 +94,7 @@ export interface TestStep {
   target?: string;
   data?: string;
   description?: string;
+  namespace?: string;
   headerProfileId?: string;
   bodyTemplateId?: string;
   endpointId?: string;
@@ -146,6 +147,7 @@ export interface DynamicVariable {
   name: string;
   expression: string;
   description?: string;
+  evaluationStrategy?: 'ONCE_PER_RUN' | 'EVERY_TIME' | 'ONCE_PER_CASE' | 'ONCE_PER_SUITE' | 'ONCE_PER_SCENARIO';
   createdAt?: string;
   updatedAt?: string;
 }

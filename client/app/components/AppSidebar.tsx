@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   appBrand,
   navigationSections,
+  documentationNavigationItem,
   settingsNavigationItem,
 } from "@/app/navigation";
 import { AppTab } from "@/app/types";
@@ -89,7 +90,15 @@ export function AppSidebar({
         ))}
       </div>
 
-      <div className="mt-auto border-t border-slate-800 p-3">
+      <div className="mt-auto border-t border-slate-800 p-3 space-y-0.5">
+        <SidebarNavItem
+          icon={documentationNavigationItem.icon}
+          label={documentationNavigationItem.label}
+          active={activeTab === documentationNavigationItem.tab}
+          collapsed={isCollapsed}
+          onClick={() => onTabChange(documentationNavigationItem.tab)}
+        />
+
         <SidebarNavItem
           icon={settingsNavigationItem.icon}
           label={settingsNavigationItem.label}
