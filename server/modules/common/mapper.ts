@@ -15,17 +15,25 @@ export function normalizeStep(input: Partial<TestStep>): TestStep {
     screenshot: typeof input.screenshot === 'boolean' ? input.screenshot : undefined,
     enabled: typeof input.enabled === 'boolean' ? input.enabled : true,
     extractors: Array.isArray(input.extractors) ? input.extractors : undefined,
+    assertions: Array.isArray(input.assertions) ? input.assertions : undefined,
+    waitForNetwork: input.waitForNetwork,
+    networkMocks: Array.isArray(input.networkMocks) ? input.networkMocks : undefined,
   };
 }
 
 export function deserializeStep(row: DbStepRow): TestStep {
   let extractors;
+  let assertions;
+  let waitForNetwork;
+  let networkMocks;
+  
   try {
-    if (row.extractors) {
-      extractors = JSON.parse(row.extractors);
-    }
+    if (row.extractors) extractors = JSON.parse(row.extractors);
+    if (row.assertions) assertions = JSON.parse(row.assertions);
+    if (row.wait_for_network) waitForNetwork = JSON.parse(row.wait_for_network);
+    if (row.network_mocks) networkMocks = JSON.parse(row.network_mocks);
   } catch (e) {
-    console.error('Failed to parse extractors', e);
+    console.error('Failed to parse step JSON fields', e);
   }
 
   return {
@@ -40,5 +48,8 @@ export function deserializeStep(row: DbStepRow): TestStep {
     screenshot: row.screenshot === 1,
     enabled: row.enabled !== 0,
     extractors,
+    assertions,
+    waitForNetwork,
+    networkMocks,
   };
 }

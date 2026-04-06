@@ -100,9 +100,12 @@ export function saveProject(projectInput: Partial<Project>): Project {
               screenshot,
               enabled,
               extractors,
+              assertions,
+              wait_for_network,
+              network_mocks,
               position
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           step.id,
@@ -117,6 +120,9 @@ export function saveProject(projectInput: Partial<Project>): Project {
           step.screenshot ? 1 : null,
           step.enabled === false ? 0 : 1,
           step.extractors ? JSON.stringify(step.extractors) : null,
+          step.assertions ? JSON.stringify(step.assertions) : null,
+          step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+          step.networkMocks ? JSON.stringify(step.networkMocks) : null,
           stepIndex,
         );
       }
@@ -287,7 +293,7 @@ export function getProject(projectId: string): Project | undefined {
 
     const steps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
         FROM module_steps
         WHERE module_id = ?
         ORDER BY position

@@ -1,5 +1,5 @@
 {
-  "name": "QuantumQA Automation Matrix",
+  "name": "QuantumQA Automation",
   "description": "A low-code automation testing platform for managing UI elements, designing test cases, and hybrid execution orchestration with AI capabilities.",
   "requestFramePermissions": []
 }

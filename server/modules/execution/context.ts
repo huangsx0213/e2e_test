@@ -17,21 +17,59 @@ import { interpolate } from './interpolator.ts';
  * and add module param defaults + overrides on top.
  */
 export class ExecutionContext {
-  private layers: Record<string, string>[];
-  private runtimeVars: Record<string, string>;
+  private layers: { name: string; data: Record<string, string> }[];
+  private runtimeVars: Record<string, { value: string; source: string }>;
   private caseVars: Record<string, string>;
+  private namespaces: Record<string, Record<string, string>>;
+  private currentSuiteName: string | null = null;
+  private currentCaseName: string | null = null;
+  private currentStepId: string | null = null;
+  private onVariableSetCallback?: (key: string, value: string, scope: string) => void;
 
-  constructor(layers: Record<string, string>[] = []) {
+  constructor(layers: { name: string; data: Record<string, string> }[] = []) {
     this.layers = layers;
     this.runtimeVars = {};
     this.caseVars = {};
+    this.namespaces = {};
+  }
+
+  /**
+   * Register a callback to be notified when a variable is set.
+   */
+  onVariableSet(callback: (key: string, value: string, scope: string) => void): void {
+    this.onVariableSetCallback = callback;
+  }
+
+  /**
+   * Set the current suite and case names for namespacing.
+   */
+  setCurrentContext(suiteName: string | null, caseName: string | null): void {
+    this.currentSuiteName = suiteName;
+    this.currentCaseName = caseName;
+  }
+
+  /**
+   * Set the current step ID for logging.
+   */
+  setCurrentStep(stepId: string | null): void {
+    this.currentStepId = stepId;
+  }
+
+  /**
+   * Get the current step ID.
+   */
+  getCurrentStep(): string | null {
+    return this.currentStepId;
   }
 
   /**
    * Inject a shared runtime variables object (useful for cross-suite sharing in scenarios)
    */
   setSharedRuntimeVars(sharedVars: Record<string, string>) {
-    this.runtimeVars = sharedVars;
+    // Convert flat record to structured record with RUNTIME source
+    this.runtimeVars = Object.fromEntries(
+      Object.entries(sharedVars).map(([k, v]) => [k, { value: v, source: 'RUNTIME' }])
+    );
   }
 
   /**
@@ -53,19 +91,19 @@ export class ExecutionContext {
     scenarioDataRow?: Record<string, string>;
     scenarioOverrides?: Record<string, string>;
   }): ExecutionContext {
-    const layers: Record<string, string>[] = [];
-    if (options.environmentVariables) layers.push(options.environmentVariables);
-    if (options.dynamicVariables) layers.push(options.dynamicVariables);
-    if (options.suiteVariables) layers.push(options.suiteVariables);
-    if (options.suiteDataRow) layers.push(options.suiteDataRow);
-    if (options.scenarioVariables) layers.push(options.scenarioVariables);
-    if (options.scenarioDataRow) layers.push(options.scenarioDataRow);
+    const layers: { name: string; data: Record<string, string> }[] = [];
+    if (options.environmentVariables) layers.push({ name: 'ENVIRONMENT', data: options.environmentVariables });
+    if (options.dynamicVariables) layers.push({ name: 'DYNAMIC', data: options.dynamicVariables });
+    if (options.suiteVariables) layers.push({ name: 'SUITE', data: options.suiteVariables });
+    if (options.suiteDataRow) layers.push({ name: 'SUITE_DATA', data: options.suiteDataRow });
+    if (options.scenarioVariables) layers.push({ name: 'SCENARIO', data: options.scenarioVariables });
+    if (options.scenarioDataRow) layers.push({ name: 'SCENARIO_DATA', data: options.scenarioDataRow });
     if (options.scenarioOverrides) {
       // Filter out empty strings so they fall back to previous layers
       const filteredOverrides = Object.fromEntries(
         Object.entries(options.scenarioOverrides).filter(([_, v]) => v !== '')
       );
-      layers.push(filteredOverrides);
+      layers.push({ name: 'OVERRIDE', data: filteredOverrides });
     }
     return new ExecutionContext(layers);
   }
@@ -77,11 +115,49 @@ export class ExecutionContext {
   resolveAll(): Record<string, string> {
     const merged: Record<string, string> = {};
     for (const layer of this.layers) {
-      Object.assign(merged, layer);
+      Object.assign(merged, layer.data);
     }
-    Object.assign(merged, this.runtimeVars);
+    for (const [k, v] of Object.entries(this.runtimeVars)) {
+      merged[k] = v.value;
+    }
     Object.assign(merged, this.caseVars);
+
+    // Add namespaced variables to the flat record
+    for (const [ns, vars] of Object.entries(this.namespaces)) {
+      for (const [k, v] of Object.entries(vars)) {
+        merged[`${ns}.${k}`] = v;
+      }
+    }
+
     return merged;
+  }
+
+  /**
+   * Returns a detailed map of variables with their source information.
+   * Values are interpolated to show their resolved state.
+   */
+  resolveDetailed(): Record<string, { value: string; source: string }> {
+    const detailed: Record<string, { value: string; source: string }> = {};
+    const allVars = this.resolveAll();
+
+    // Process layers in order (later layers overwrite earlier ones)
+    for (const layer of this.layers) {
+      for (const [k, v] of Object.entries(layer.data)) {
+        detailed[k] = { value: interpolate(v, allVars), source: layer.name };
+      }
+    }
+
+    // Runtime variables
+    for (const [k, v] of Object.entries(this.runtimeVars)) {
+      detailed[k] = { value: interpolate(v.value, allVars), source: v.source };
+    }
+
+    // Case variables
+    for (const [k, v] of Object.entries(this.caseVars)) {
+      detailed[k] = { value: interpolate(v, allVars), source: 'CASE' };
+    }
+
+    return detailed;
   }
 
   /**
@@ -91,10 +167,10 @@ export class ExecutionContext {
     // Check case vars first
     if (this.caseVars[key] !== undefined) return this.caseVars[key];
     // Check runtime first  (highest priority)
-    if (this.runtimeVars[key] !== undefined) return this.runtimeVars[key];
+    if (this.runtimeVars[key] !== undefined) return this.runtimeVars[key].value;
     // Walk layers in reverse (later layers have higher priority)
     for (let i = this.layers.length - 1; i >= 0; i--) {
-      if (this.layers[i][key] !== undefined) return this.layers[i][key];
+      if (this.layers[i].data[key] !== undefined) return this.layers[i].data[key];
     }
     return undefined;
   }
@@ -105,16 +181,40 @@ export class ExecutionContext {
   setRuntimeVar(key: string, value: string, scope: 'CASE' | 'SUITE' | 'ENVIRONMENT' = 'SUITE'): void {
     if (scope === 'CASE') {
       this.caseVars[key] = value;
+      if (this.currentCaseName) {
+        this.setNamespaceVar(this.currentCaseName, key, value);
+      }
     } else {
-      this.runtimeVars[key] = value;
+      this.runtimeVars[key] = { value, source: `RUNTIME_${scope}` };
+      if (scope === 'SUITE' && this.currentSuiteName) {
+        this.setNamespaceVar(this.currentSuiteName, key, value);
+      }
     }
+
+    // Trigger callback if registered
+    if (this.onVariableSetCallback) {
+      this.onVariableSetCallback(key, value, scope);
+    }
+  }
+
+  /**
+   * Set a variable within a specific namespace.
+   */
+  private setNamespaceVar(namespace: string, key: string, value: string): void {
+    const ns = namespace.replace(/\s+/g, '_').toLowerCase();
+    if (!this.namespaces[ns]) {
+      this.namespaces[ns] = {};
+    }
+    this.namespaces[ns][key] = value;
   }
 
   /**
    * Interpolate a template string using all resolved variables.
    */
   interpolate(template: string): string {
-    return interpolate(template, this.resolveAll());
+    return interpolate(template, this.resolveAll(), (key, value, scope) => {
+      this.setRuntimeVar(key, value, scope as any);
+    });
   }
 
   /**
@@ -127,21 +227,28 @@ export class ExecutionContext {
     callerOverrides: Record<string, string>,
   ): ExecutionContext {
     // Resolve caller overrides through parent context
-    // E.g. override { "USER": "{{GLOBAL_USER}}" } should resolve GLOBAL_USER from parent
     const parentVars = this.resolveAll();
     const resolvedOverrides: Record<string, string> = {};
     for (const [k, v] of Object.entries(callerOverrides)) {
       if (v !== '') {
-        resolvedOverrides[k] = interpolate(v, parentVars);
+        resolvedOverrides[k] = interpolate(v, parentVars, (key, value, scope) => {
+          this.setRuntimeVar(key, value, scope as any);
+        });
       }
     }
 
     const childLayers = [
-      parentVars,             // all parent variables (flattened)
-      moduleParamDefaults,    // module's own param defaults
-      resolvedOverrides,      // caller provided values (highest priority)
+      { name: 'PARENT', data: parentVars },             // all parent variables (flattened)
+      { name: 'MODULE_DEFAULT', data: moduleParamDefaults },    // module's own param defaults
+      { name: 'CALLER_OVERRIDE', data: resolvedOverrides },      // caller provided values (highest priority)
     ];
 
-    return new ExecutionContext(childLayers);
+    const childContext = new ExecutionContext(childLayers);
+    childContext.setCurrentContext(this.currentSuiteName, this.currentCaseName);
+    childContext.setCurrentStep(this.currentStepId);
+    if (this.onVariableSetCallback) {
+      childContext.onVariableSet(this.onVariableSetCallback);
+    }
+    return childContext;
   }
 }

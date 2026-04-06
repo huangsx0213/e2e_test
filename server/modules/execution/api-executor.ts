@@ -1,8 +1,9 @@
-import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint } from '../../shared/contracts/index.ts';
+import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint, LogLevel } from '../../shared/contracts/index.ts';
 import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
 import { JSONPath } from 'jsonpath-plus';
-import { processApiAssertions } from './assertion-utils.ts';
+import { evaluateAssertions } from './assertions.ts';
+import { ExecutionLogger } from './logger.ts';
 
 import { environmentRepository } from '../environments/repository.ts';
 
@@ -22,7 +23,8 @@ export interface ApiExecutionResult {
   resolvedMethod: string;
   resolvedHeaders: Record<string, string>;
   resolvedBody: string;
-  assertionResults?: any[];
+  assertionLogs: { status: string; level: LogLevel; message: string }[];
+  extractionLogs: { status: string; level: LogLevel; message: string }[];
 }
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -43,10 +45,12 @@ export async function executeApiStep(
   context: ExecutionContext,
   assets: ApiAssets,
   environment: string,
+  logger?: ExecutionLogger,
+  indent: string = '  ',
 ): Promise<ApiExecutionResult> {
   const allVars = context.resolveAll();
-  let resolvedTarget = interpolate(step.target || '', allVars);
-  let resolvedData = interpolate(step.data || '', allVars);
+  let resolvedTarget = context.interpolate(step.target || '');
+  let resolvedData = context.interpolate(step.data || '');
 
   // Parse variable overrides from step data when using profiles/templates
   let apiVars: Record<string, string> = {};
@@ -74,7 +78,7 @@ export async function executeApiStep(
         for (const p of endpoint.parameters) {
           if (!p.enabled) continue;
           let val = p.value;
-          val = resolveTemplateVars(val, apiVars, allVars);
+          val = resolveTemplateVars(val, apiVars, context);
           params.append(p.key, val);
         }
         const qs = params.toString();
@@ -86,7 +90,7 @@ export async function executeApiStep(
   }
 
   // Interpolate any remaining {{vars}} in the URL
-  resolvedTarget = resolveTemplateVars(resolvedTarget, apiVars, allVars);
+  resolvedTarget = resolveTemplateVars(resolvedTarget, apiVars, context);
 
   // ─── 2. Resolve Headers ───
   const requestHeaders: Record<string, string> = {};
@@ -96,7 +100,7 @@ export async function executeApiStep(
     if (profile?.headers) {
       for (const h of profile.headers) {
         if (h.enabled === false) continue;
-        requestHeaders[h.key] = resolveTemplateVars(h.value, apiVars, allVars);
+        requestHeaders[h.key] = resolveTemplateVars(h.value, apiVars, context);
       }
     }
   }
@@ -107,19 +111,10 @@ export async function executeApiStep(
   if (step.bodyTemplateId) {
     const template = assets.bodies.find(b => b.id === step.bodyTemplateId);
     if (template) {
-      let bodyContent = template.content || '';
-      // First try API vars, then template defaults, then context vars
-      const matches = bodyContent.match(/\{\{([^}]+)\}\}/g);
-      if (matches) {
-        for (const m of matches) {
-          const key = m.replace(/\{\{|\}\}/g, '').trim();
-          const val = apiVars[key] !== undefined
-            ? apiVars[key]
-            : interpolate(template.defaultValues?.[key] || '', allVars);
-          bodyContent = bodyContent.replaceAll(m, val);
-        }
-      }
-      requestBody = bodyContent;
+      const bodyContent = template.content || '';
+      // Priority: apiVars > template.defaultValues > allVars
+      const mergedForBody = { ...allVars, ...template.defaultValues, ...apiVars };
+      requestBody = interpolate(bodyContent, mergedForBody, (k, v, s) => context.setRuntimeVar(k, v, s as any));
     }
   } else if (isVariableMode) {
     // Data was consumed as variable overrides, no raw body
@@ -155,6 +150,47 @@ export async function executeApiStep(
     responseHeaders[key] = value;
   });
 
+  const assertionLogs: { status: string; level: LogLevel; message: string }[] = [];
+  const extractionLogs: { status: string; level: LogLevel; message: string }[] = [];
+
+  // ─── 4.5. Process Assertions ───
+  if (step.assertions && step.assertions.length > 0) {
+    const results = evaluateAssertions({
+      body: responseBody,
+      headers: responseHeaders,
+      status: response.status,
+    }, step.assertions);
+    
+    results.forEach(res => {
+      const { assertion, actualValue, passed, message } = res;
+      const source = assertion.source;
+      const expr = assertion.expression ? ` ${assertion.expression}` : '';
+      const op = assertion.operator;
+      
+      const expectedStr = assertion.expectedValue !== undefined ? `Expected: '${assertion.expectedValue}'` : '';
+      const actualStr = actualValue !== undefined ? `Actual: '${typeof actualValue === 'object' ? JSON.stringify(actualValue) : actualValue}'` : '';
+      const detailParts = [expectedStr, actualStr].filter(Boolean);
+      const logSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
+      if (passed) {
+        assertionLogs.push({
+          status: 'PASS',
+          level: 'success',
+          message: `${indent}  ✅ Assertion Passed: [${source}]${expr} ${op}${logSuffix}`
+        });
+      } else {
+        // If message is just a value mismatch, we don't need to append it as it's already in logSuffix
+        const isMismatch = message.includes('Expected') && message.includes('but got');
+        const errorDetail = isMismatch ? '' : ` — ${message}`;
+        assertionLogs.push({
+          status: 'FAIL',
+          level: 'error',
+          message: `${indent}  ❌ Assertion Failed: [${source}]${expr} ${op}${logSuffix}${errorDetail}`
+        });
+      }
+    });
+  }
+
   // ─── 5. Process Extractors ───
   if (step.extractors && step.extractors.length > 0) {
     let parsedJsonBody: any = null;
@@ -165,7 +201,7 @@ export async function executeApiStep(
       let extractedValue: string | undefined;
 
       try {
-        if (extractor.source === 'API_BODY_JSON' && extractor.expression) {
+        if ((extractor.source === 'API_BODY_JSON' || extractor.source === 'API_BODY_XML') && extractor.expression) {
           if (!jsonParsed) {
             try {
               parsedJsonBody = JSON.parse(responseBody);
@@ -212,21 +248,27 @@ export async function executeApiStep(
             currentVars[extractor.name] = extractedValue;
             environmentRepository.updateVariables(environment, currentVars);
           }
+          extractionLogs.push({
+            status: 'INFO',
+            level: 'info',
+            message: `${indent}  📥 Extracted Variable: ${extractor.name} = ${extractedValue.length > 50 ? extractedValue.substring(0, 50) + '...' : extractedValue}`
+          });
+        } else {
+          extractionLogs.push({
+            status: 'WARN',
+            level: 'warn',
+            message: `${indent}  ⚠️ Extractor failed to find value for: ${extractor.name}`
+          });
         }
       } catch (err) {
         console.error(`Extractor ${extractor.name} failed:`, err);
+        extractionLogs.push({
+          status: 'WARN',
+          level: 'warn',
+          message: `${indent}  ⚠️ Extractor error for ${extractor.name}: ${err instanceof Error ? err.message : String(err)}`
+        });
       }
     }
-  }
-
-  // ─── 6. Process Assertions ───
-  let assertionResults: any[] = [];
-  if (step.assertions && step.assertions.length > 0) {
-    assertionResults = processApiAssertions(step.assertions, {
-      status: response.status,
-      headers: responseHeaders,
-      body: responseBody,
-    });
   }
 
   return {
@@ -239,7 +281,8 @@ export async function executeApiStep(
     resolvedMethod: method,
     resolvedHeaders: requestHeaders,
     resolvedBody: requestBody,
-    assertionResults,
+    assertionLogs,
+    extractionLogs,
   };
 }
 
@@ -249,13 +292,10 @@ export async function executeApiStep(
 function resolveTemplateVars(
   value: string,
   apiVars: Record<string, string>,
-  contextVars: Record<string, string>,
+  context: ExecutionContext,
 ): string {
   if (!value) return '';
-  return value.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
-    const trimmed = key.trim();
-    if (apiVars[trimmed] !== undefined) return apiVars[trimmed];
-    if (contextVars[trimmed] !== undefined) return contextVars[trimmed];
-    return match;
-  });
+  // Priority: apiVars > contextVars
+  const merged = { ...context.resolveAll(), ...apiVars };
+  return interpolate(value, merged, (k, v, s) => context.setRuntimeVar(k, v, s as any));
 }

@@ -75,6 +75,9 @@ export type DbStepRow = {
   screenshot: number | null;
   enabled: number;
   extractors?: string | null;
+  assertions?: string | null;
+  wait_for_network?: string | null;
+  network_mocks?: string | null;
 };
 
 export type DbHeaderRow = {

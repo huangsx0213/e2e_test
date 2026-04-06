@@ -1,11 +1,11 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import { JSONPath } from 'jsonpath-plus';
-import type { TestStep, StepAssertion } from '../../shared/contracts/index.ts';
+import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import { environmentRepository } from '../environments/repository.ts';
 import type { ExecutionLogger } from './logger.ts';
-import { processApiAssertions } from './assertion-utils.ts';
+import { evaluateAssertions } from './assertions.ts';
 
 export interface UIExecutionResult {
   durationMs: number;
@@ -16,7 +16,7 @@ export interface UIExecutionResult {
     actual: string;
     target?: string;
   };
-  apiAssertionResults?: any[];
+  logs: { status: string; level: LogLevel; message: string }[];
 }
 
 // Constants for better maintainability
@@ -112,17 +112,7 @@ export class UIExecutor {
     const startTime = Date.now();
     let extractedValue: string | undefined;
     let assertionDetails: UIExecutionResult['assertionDetails'] = undefined;
-    let apiAssertionResults: any[] = [];
-
-    const apiAssertions = step.assertions?.filter(a => a.enabled && a.urlPattern);
-    let responsePromises: Promise<any>[] = [];
-
-    if (apiAssertions && apiAssertions.length > 0) {
-      const patterns = [...new Set(apiAssertions.map(a => a.urlPattern!))];
-      responsePromises = patterns.map(pattern => 
-        this.page!.waitForResponse(pattern, { timeout: DEFAULT_TIMEOUT }).catch(() => null)
-      );
-    }
+    const logs: { status: string; level: LogLevel; message: string }[] = [];
 
     // Resolve element locator if target exists
     let resolvedSelector: string | undefined;
@@ -159,7 +149,7 @@ export class UIExecutor {
 
       if (elementDef) {
         const st = elementDef.selectorType.toLowerCase();
-        const val = elementDef.value;
+        const val = executionContext.interpolate(elementDef.value);
 
         if (st === 'css' || st === 'CSS') {
           resolvedSelector = val;
@@ -298,7 +288,8 @@ export class UIExecutor {
       for (const mock of step.networkMocks) {
         if (!mock.enabled || !mock.urlPattern) continue;
         
-        const pattern = new RegExp(mock.urlPattern);
+        const resolvedUrlPattern = executionContext.interpolate(mock.urlPattern);
+        const pattern = new RegExp(resolvedUrlPattern);
         await this.page.route(pattern, async (route, request) => {
           if (mock.method && mock.method !== 'ANY' && request.method().toUpperCase() !== mock.method.toUpperCase()) {
             return route.fallback();
@@ -308,26 +299,16 @@ export class UIExecutor {
             await new Promise(resolve => setTimeout(resolve, mock.delayMs));
           }
           
-          this.logger?.log({
-            stepId: step.id,
+          logs.push({
             status: 'INFO',
             level: 'info',
             message: `[Mock Hit] ${request.method()} ${request.url()} -> ${mock.status || 200}`,
-            metadata: {
-              network: {
-                url: request.url(),
-                method: request.method(),
-                status: mock.status || 200,
-                isMocked: true,
-                responseBody: mock.body,
-              }
-            }
           });
 
           await route.fulfill({
             status: mock.status || 200,
             contentType: 'application/json',
-            body: mock.body || '{}',
+            body: executionContext.interpolate(mock.body || '{}'),
           });
         });
       }
@@ -337,9 +318,10 @@ export class UIExecutor {
     let waitPromise: Promise<import('playwright').Response> | undefined;
     if (step.waitForNetwork?.enabled && step.waitForNetwork.urlPattern) {
       const { urlPattern, method, expectedStatus, timeoutMs = 10000 } = step.waitForNetwork;
+      const resolvedUrlPattern = executionContext.interpolate(urlPattern);
       
       waitPromise = this.page.waitForResponse((response) => {
-        const urlMatch = response.url().includes(urlPattern) || new RegExp(urlPattern).test(response.url());
+        const urlMatch = response.url().includes(resolvedUrlPattern) || new RegExp(resolvedUrlPattern).test(response.url());
         const methodMatch = !method || method === 'ANY' || response.request().method().toUpperCase() === method.toUpperCase();
         const statusMatch = !expectedStatus || response.status() === expectedStatus;
         
@@ -510,11 +492,11 @@ export class UIExecutor {
 
       case 'ASSERT_VISIBLE': {
         const locator = await getSmartLocator();
-        assertionDetails = { expected: 'visible', actual: 'visible', target: resolvedSelector };
+        assertionDetails = { expected: 'VISIBLE', actual: 'VISIBLE', target: resolvedSelector };
         try {
           await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
         } catch (e: any) {
-          assertionDetails.actual = 'hidden/missing';
+          assertionDetails.actual = 'HIDDEN/MISSING';
           e.assertionDetails = assertionDetails;
           throw e;
         }
@@ -523,11 +505,11 @@ export class UIExecutor {
 
       case 'ASSERT_INVISIBLE': {
         const locator = await getSmartLocator();
-        assertionDetails = { expected: 'hidden', actual: 'hidden', target: resolvedSelector };
+        assertionDetails = { expected: 'HIDDEN', actual: 'HIDDEN', target: resolvedSelector };
         try {
           await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
         } catch (e: any) {
-          assertionDetails.actual = 'visible';
+          assertionDetails.actual = 'VISIBLE';
           e.assertionDetails = assertionDetails;
           throw e;
         }
@@ -537,9 +519,9 @@ export class UIExecutor {
       case 'ASSERT_DISABLED': {
         const locator = await getSmartLocator();
         const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
-        assertionDetails = { expected: 'disabled', actual: isDisabled ? 'disabled' : 'enabled', target: resolvedSelector };
+        assertionDetails = { expected: 'DISABLED', actual: isDisabled ? 'DISABLED' : 'ENABLED', target: resolvedSelector };
         if (!isDisabled) {
-          const err = new Error(`Assertion failed: Expected element to be disabled, but it is enabled`);
+          const err = new Error(`Assertion failed: Expected element to be DISABLED, but it is ENABLED`);
           (err as any).assertionDetails = assertionDetails;
           throw err;
         }
@@ -551,9 +533,9 @@ export class UIExecutor {
         {
           const locator = await getSmartLocator();
           const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || '';
-          assertionDetails = { expected: `includes "${data}"`, actual: text, target: resolvedSelector };
+          assertionDetails = { expected: `CONTAINS '${data}'`, actual: text, target: resolvedSelector };
           if (!text.includes(data)) {
-            const err = new Error(`Assertion failed: Expected text to include "${data}", but got "${text}"`);
+            const err = new Error(`Assertion failed: Expected text to CONTAINS '${data}', but got '${text}'`);
             (err as any).assertionDetails = assertionDetails;
             throw err;
           }
@@ -565,9 +547,9 @@ export class UIExecutor {
         {
           const locator = await getSmartLocator();
           const val = await locator.inputValue({ timeout: DEFAULT_TIMEOUT });
-          assertionDetails = { expected: data, actual: val, target: resolvedSelector };
+          assertionDetails = { expected: `EQUALS '${data}'`, actual: val, target: resolvedSelector };
           if (val !== data) {
-            const err = new Error(`Assertion failed: Expected value "${data}", but got "${val}"`);
+            const err = new Error(`Assertion failed: Expected value EQUALS '${data}', but got '${val}'`);
             (err as any).assertionDetails = assertionDetails;
             throw err;
           }
@@ -578,9 +560,9 @@ export class UIExecutor {
         if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
         {
           const currentUrl = this.page.url();
-          assertionDetails = { expected: `includes "${data}"`, actual: currentUrl };
+          assertionDetails = { expected: `CONTAINS '${data}'`, actual: currentUrl };
           if (!currentUrl.includes(data) && currentUrl !== data) {
-            const err = new Error(`Assertion failed: Expected URL to include "${data}", but got "${currentUrl}"`);
+            const err = new Error(`Assertion failed: Expected URL to CONTAINS '${data}', but got '${currentUrl}'`);
             (err as any).assertionDetails = assertionDetails;
             throw err;
           }
@@ -591,9 +573,9 @@ export class UIExecutor {
         if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
         {
           const title = await this.page.title();
-          assertionDetails = { expected: `includes "${data}"`, actual: title };
+          assertionDetails = { expected: `CONTAINS '${data}'`, actual: title };
           if (!title.includes(data)) {
-            const err = new Error(`Assertion failed: Expected title to include "${data}", but got "${title}"`);
+            const err = new Error(`Assertion failed: Expected title to CONTAINS '${data}', but got '${title}'`);
             (err as any).assertionDetails = assertionDetails;
             throw err;
           }
@@ -717,20 +699,79 @@ export class UIExecutor {
       try {
         const [apiResponse] = await Promise.all([waitPromise, actionPromise]);
         
+        let responseText: string | undefined;
+        try { responseText = await apiResponse.text(); } catch (e) { /* ignore */ }
+
+          // Process Assertions if any
+          if (step.waitForNetwork?.assertions && step.waitForNetwork.assertions.length > 0) {
+            const headers: Record<string, string> = {};
+            for (const [key, value] of Object.entries(apiResponse.headers())) {
+              headers[key] = value;
+            }
+            const results = evaluateAssertions({
+              body: responseText || '',
+              headers,
+              status: apiResponse.status(),
+            }, step.waitForNetwork.assertions);
+            
+            results.forEach(res => {
+              const { assertion, actualValue, passed, message } = res;
+              const source = assertion.source;
+              const expr = assertion.expression ? ` ${assertion.expression}` : '';
+              const op = assertion.operator;
+              
+              const expectedStr = assertion.expectedValue !== undefined ? `Expected: '${assertion.expectedValue}'` : '';
+              const actualStr = actualValue !== undefined ? `Actual: '${typeof actualValue === 'object' ? JSON.stringify(actualValue) : actualValue}'` : '';
+              const detailParts = [expectedStr, actualStr].filter(Boolean);
+              const logSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
+              if (passed) {
+                logs.push({
+                  status: 'PASS',
+                  level: 'success',
+                  message: `    ✅ Smart Wait Assertion Passed: [${source}]${expr} ${op}${logSuffix}`
+                });
+              } else {
+                const isMismatch = message.includes('Expected') && message.includes('but got');
+                const errorDetail = isMismatch ? '' : ` — ${message}`;
+                logs.push({
+                  status: 'FAIL',
+                  level: 'error',
+                  message: `    ❌ Smart Wait Assertion Failed: [${source}]${expr} ${op}${logSuffix}${errorDetail}`
+                });
+              }
+            });
+          }
+
         // Process API Extractors if any
         if (step.waitForNetwork?.extractors && step.waitForNetwork.extractors.length > 0) {
           let responseBody: any;
-          let responseText: string | undefined;
+          let jsonParsed = false;
           
-          try { responseBody = await apiResponse.json(); } catch (e) { /* ignore */ }
-          try { responseText = await apiResponse.text(); } catch (e) { /* ignore */ }
+          try { 
+            if (responseText) {
+              responseBody = JSON.parse(responseText); 
+              jsonParsed = true;
+            }
+          } catch (e) { 
+            if (responseText && responseText.trim().startsWith('<')) {
+              try {
+                const { XMLParser } = require('fast-xml-parser');
+                const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+                responseBody = parser.parse(responseText);
+                jsonParsed = true;
+              } catch (xmlErr) {
+                // ignore
+              }
+            }
+          }
 
           for (const ext of step.waitForNetwork.extractors) {
             if (!ext.name) continue;
             let extVal: string | undefined;
 
             try {
-              if (ext.source === 'API_BODY_JSON' && responseBody && ext.expression) {
+              if ((ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') && jsonParsed && responseBody && ext.expression) {
                 const result = JSONPath({ path: ext.expression, json: responseBody });
                 extVal = result && result.length > 0 ? String(result[0]) : undefined;
               } else if (ext.source === 'API_BODY_REGEX' && responseText && ext.expression) {
@@ -740,19 +781,39 @@ export class UIExecutor {
                 } else if (match && match[0]) {
                   extVal = match[0];
                 }
+              } else if (ext.source === 'API_HEADER' && ext.expression) {
+                const headers = apiResponse.headers();
+                extVal = headers[ext.expression.toLowerCase()];
               }
 
-              if (extVal !== undefined) {
-                executionContext.setRuntimeVar(ext.name, extVal, ext.scope);
-                if (ext.scope === 'ENVIRONMENT') {
-                  const currentVars = environmentRepository.getVariables(environment);
-                  currentVars[ext.name] = extVal;
-                  environmentRepository.updateVariables(environment, currentVars);
-                }
-                if (!extractedValue) extractedValue = extVal;
+            if (extVal !== undefined) {
+              executionContext.setRuntimeVar(ext.name, extVal, ext.scope);
+              if (ext.scope === 'ENVIRONMENT') {
+                const currentVars = environmentRepository.getVariables(environment);
+                currentVars[ext.name] = extVal;
+                environmentRepository.updateVariables(environment, currentVars);
               }
+              if (!extractedValue) extractedValue = extVal;
+              
+              logs.push({
+                status: 'INFO',
+                level: 'info',
+                message: `    📥 Smart Wait Extracted Variable: ${ext.name} = ${extVal.length > 50 ? extVal.substring(0, 50) + '...' : extVal}`
+              });
+            } else {
+              logs.push({
+                status: 'WARN',
+                level: 'warn',
+                message: `    ⚠️ Smart Wait Extractor failed to find value for: ${ext.name}`
+              });
+            }
             } catch (err) {
               console.error(`Network Extractor ${ext.name} failed:`, err);
+              logs.push({
+                status: 'WARN',
+                level: 'warn',
+                message: `    ⚠️ Smart Wait Extractor error for ${ext.name}: ${err instanceof Error ? err.message : String(err)}`
+              });
             }
           }
         }
@@ -803,54 +864,28 @@ export class UIExecutor {
             }
             // If it's the only extractor and we don't have extractedValue yet, set it for the result
             if (!extractedValue) extractedValue = extVal;
+            
+            logs.push({
+              status: 'INFO',
+              level: 'info',
+              message: `  📥 Extracted Variable: ${extractor.name} = ${extVal.length > 50 ? extVal.substring(0, 50) + '...' : extVal}`
+            });
+          } else {
+            logs.push({
+              status: 'WARN',
+              level: 'warn',
+              message: `  ⚠️ Extractor failed to find value for: ${extractor.name}`
+            });
           }
         } catch (err) {
           console.error(`UI Extractor ${extractor.name} failed:`, err);
-        }
-      }
-    }
-
-    if (responsePromises.length > 0) {
-      const responses = await Promise.all(responsePromises);
-      const patterns = [...new Set(apiAssertions!.map(a => a.urlPattern!))];
-      
-      for (let i = 0; i < patterns.length; i++) {
-        const pattern = patterns[i];
-        const resp = responses[i];
-        
-        if (resp) {
-          try {
-            const body = await resp.text();
-            const headers: Record<string, string> = {};
-            const headersArray = await resp.allHeaders();
-            Object.assign(headers, headersArray);
-            
-            const results = processApiAssertions(apiAssertions!.filter(a => a.urlPattern === pattern), {
-              status: resp.status(),
-              headers,
-              body
-            });
-            apiAssertionResults.push(...results);
-          } catch (err) {
-            console.error(`Failed to process API assertion for ${pattern}:`, err);
-          }
-        } else {
-          // Timeout or failed to intercept
-          apiAssertionResults.push({
-            success: false,
-            actualValue: 'timeout',
-            expectedValue: 'response',
-            message: `API Interception failed: No response received for pattern ${pattern}`
+          logs.push({
+            status: 'WARN',
+            level: 'warn',
+            message: `  ⚠️ Extractor error for ${extractor.name}: ${err instanceof Error ? err.message : String(err)}`
           });
         }
       }
-    }
-
-    const failedApiAssertion = apiAssertionResults.find(a => !a.success);
-    if (failedApiAssertion) {
-      const err = new Error(failedApiAssertion.message);
-      (err as any).apiAssertionResults = apiAssertionResults;
-      throw err;
     }
 
     const durationMs = Date.now() - startTime;
@@ -865,7 +900,7 @@ export class UIExecutor {
       screenshot: screenshotBase64,
       extractedValue,
       assertionDetails,
-      apiAssertionResults,
+      logs,
     };
   }
 

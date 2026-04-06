@@ -72,9 +72,12 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
             screenshot,
             enabled,
             extractors,
+            assertions,
+            wait_for_network,
+            network_mocks,
             position
           )
-          VALUES (?, ?, 'setup', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, 'setup', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       ).run(
         step.id,
@@ -89,6 +92,9 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
         step.screenshot ? 1 : null,
         step.enabled === false ? 0 : 1,
         step.extractors ? JSON.stringify(step.extractors) : null,
+        step.assertions ? JSON.stringify(step.assertions) : null,
+        step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+        step.networkMocks ? JSON.stringify(step.networkMocks) : null,
         stepIndex,
       );
     }
@@ -110,9 +116,12 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
             screenshot,
             enabled,
             extractors,
+            assertions,
+            wait_for_network,
+            network_mocks,
             position
           )
-          VALUES (?, ?, 'teardown', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, 'teardown', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       ).run(
         step.id,
@@ -127,6 +136,9 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
         step.screenshot ? 1 : null,
         step.enabled === false ? 0 : 1,
         step.extractors ? JSON.stringify(step.extractors) : null,
+        step.assertions ? JSON.stringify(step.assertions) : null,
+        step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+        step.networkMocks ? JSON.stringify(step.networkMocks) : null,
         stepIndex,
       );
     }
@@ -155,9 +167,12 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
             screenshot,
             enabled,
             extractors,
+            assertions,
+            wait_for_network,
+            network_mocks,
             position
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       );
 
@@ -176,6 +191,9 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
           step.screenshot ? 1 : null,
           step.enabled === false ? 0 : 1,
           step.extractors ? JSON.stringify(step.extractors) : null,
+          step.assertions ? JSON.stringify(step.assertions) : null,
+          step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+          step.networkMocks ? JSON.stringify(step.networkMocks) : null,
           stepIndex,
         );
       }
@@ -195,6 +213,9 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
           step.screenshot ? 1 : null,
           step.enabled === false ? 0 : 1,
           step.extractors ? JSON.stringify(step.extractors) : null,
+          step.assertions ? JSON.stringify(step.assertions) : null,
+          step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+          step.networkMocks ? JSON.stringify(step.networkMocks) : null,
           stepIndex,
         );
       }
@@ -214,6 +235,9 @@ export function saveSuite(suiteInput: Partial<TestSuite>): TestSuite {
           step.screenshot ? 1 : null,
           step.enabled === false ? 0 : 1,
           step.extractors ? JSON.stringify(step.extractors) : null,
+          step.assertions ? JSON.stringify(step.assertions) : null,
+          step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+          step.networkMocks ? JSON.stringify(step.networkMocks) : null,
           stepIndex,
         );
       }
@@ -266,7 +290,7 @@ export function getSuite(suiteId: string): TestSuite | undefined {
 
   const suiteSetupSteps = db.prepare(
     `
-      SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+      SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
       FROM suite_steps
       WHERE suite_id = ? AND step_group = 'setup'
       ORDER BY position
@@ -275,7 +299,7 @@ export function getSuite(suiteId: string): TestSuite | undefined {
 
   const suiteTeardownSteps = db.prepare(
     `
-      SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+      SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
       FROM suite_steps
       WHERE suite_id = ? AND step_group = 'teardown'
       ORDER BY position
@@ -294,7 +318,7 @@ export function getSuite(suiteId: string): TestSuite | undefined {
   const suiteCases: TestCase[] = cases.map((testCase) => {
     const mainSteps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
         FROM case_steps
         WHERE case_id = ? AND step_group = 'main'
         ORDER BY position
@@ -303,7 +327,7 @@ export function getSuite(suiteId: string): TestSuite | undefined {
 
     const setupSteps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
         FROM case_steps
         WHERE case_id = ? AND step_group = 'setup'
         ORDER BY position
@@ -312,7 +336,7 @@ export function getSuite(suiteId: string): TestSuite | undefined {
 
     const teardownSteps = db.prepare(
       `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors
+        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
         FROM case_steps
         WHERE case_id = ? AND step_group = 'teardown'
         ORDER BY position

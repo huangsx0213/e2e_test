@@ -81,7 +81,7 @@ const generators: Record<string, (...args: string[]) => string> = {
     const names = ['Alice', 'Bob', 'Charlie', 'David', 'Eve', 'Frank', 'Grace', 'Helen', 'Ivan', 'Judy'];
     return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 1000);
   },
-  $randomMac: () => Array.from({length: 6}, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':'),
+  $randomMac: () => Array.from({ length: 6 }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join(':'),
   $randomBool: () => Math.random() > 0.5 ? 'true' : 'false',
   $randomAddress: () => {
     const streets = ['Maple St', 'Oak Ave', 'Main St', 'Washington Blvd', 'Lakeview Dr', 'Parkway Ave'];
@@ -91,7 +91,7 @@ const generators: Record<string, (...args: string[]) => string> = {
   $randomWords: (countStr) => {
     const count = parseInt(countStr || '3', 10);
     const words = ['apple', 'banana', 'cherry', 'date', 'elderberry', 'fig', 'grape', 'honeydew', 'kiwi', 'lemon', 'mango', 'orange', 'papaya', 'quince', 'raspberry', 'strawberry', 'tangerine', 'ugli', 'vanilla', 'watermelon'];
-    return Array.from({length: count}, () => words[Math.floor(Math.random() * words.length)]).join(' ');
+    return Array.from({ length: count }, () => words[Math.floor(Math.random() * words.length)]).join(' ');
   },
   $date: (formatStr, offsetStr, unit, tzStr) => {
     let d = dayjs();
@@ -157,21 +157,25 @@ function parseCall(expr: string): { name: string, args: string[] } {
   if (!match) return { name: expr, args: [] };
   const name = match[1];
   const argsStr = match[2] || '';
-  
+
   // Simple argument splitting by comma, stripping quotes and spaces
   const args = argsStr ? argsStr.split(',').map(s => {
     let trimmed = s.trim();
     if ((trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-        (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
       trimmed = trimmed.slice(1, -1);
     }
     return trimmed;
   }) : [];
-  
+
   return { name, args };
 }
 
-export function interpolate(template: string, vars: Record<string, string>): string {
+export function interpolate(
+  template: string,
+  vars: Record<string, string>,
+  onSetVar?: (key: string, value: string, scope?: string) => void
+): string {
   if (!template) return '';
 
   let result = template;
@@ -182,9 +186,9 @@ export function interpolate(template: string, vars: Record<string, string>): str
     result = result.replace(VARIABLE_PATTERN, (_, expression) => {
       const parts = expression.split('|').map((p: string) => p.trim());
       const baseExpr = parts[0];
-      
+
       let currentValue: string | undefined;
-      
+
       // 1. Resolve Base Value
       if (baseExpr.startsWith('$')) {
         // It's a generator
@@ -203,15 +207,28 @@ export function interpolate(template: string, vars: Record<string, string>): str
           return `{{${expression}}}`;
         }
       }
-      
+
       // 2. Apply Transformers
       for (let i = 1; i < parts.length; i++) {
         const { name, args } = parseCall(parts[i]);
-        if (transformers[name] && currentValue !== undefined) {
+
+        // Special case for 'set' transformer
+        if (name === 'set' && onSetVar && currentValue !== undefined) {
+          const varName = args[0];
+          const scope = args[1] || 'suite'; // Default scope is suite
+          if (varName) {
+            // Ensure the value is fully resolved before setting it
+            const resolvedValue = hasUnresolvedVars(currentValue)
+              ? interpolate(currentValue, vars)
+              : currentValue;
+            onSetVar(varName, resolvedValue, scope.toUpperCase());
+          }
+          // currentValue remains unchanged by 'set'
+        } else if (transformers[name] && currentValue !== undefined) {
           currentValue = transformers[name](currentValue, ...args);
         }
       }
-      
+
       return currentValue !== undefined ? currentValue : `{{${expression}}}`;
     });
 

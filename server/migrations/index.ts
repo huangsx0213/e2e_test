@@ -4,6 +4,7 @@ import { migration002EnvironmentVariables } from './002_environment_variables.ts
 import { migration003StepExtractors } from './003_step_extractors.ts';
 import { migration004DynamicVariables } from './004_dynamic_variables.ts';
 import { migration005StructuredLogs } from './005_structured_logs.ts';
+import { migration006StepAssertions } from './006_step_assertions.ts';
 import type { Migration } from './types.ts';
 
 import { runSeed } from './seed.ts';
@@ -14,6 +15,7 @@ export const migrations: Migration[] = [
   migration003StepExtractors,
   migration004DynamicVariables,
   migration005StructuredLogs,
+  migration006StepAssertions,
 ];
 
 function appliedMigrationIds(): Set<string> {

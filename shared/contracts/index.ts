@@ -3,6 +3,7 @@ export type SelectorType = 'CSS' | 'XPATH' | 'TEXT' | 'ID' | 'TEST_ID' | string;
 
 export type ExtractorSource = 
   | 'API_BODY_JSON'
+  | 'API_BODY_XML'
   | 'API_BODY_REGEX'
   | 'API_HEADER'
   | 'UI_TEXT'
@@ -11,16 +12,27 @@ export type ExtractorSource =
   | 'UI_PAGE_URL'
   | 'UI_PAGE_TITLE';
 
-export type AssertionOperator = 'EQUALS' | 'CONTAINS' | 'MATCHES' | 'GT' | 'LT' | 'NOT_EQUALS' | 'NOT_CONTAINS';
+export type AssertionSource = 
+  | 'API_BODY_JSON'
+  | 'API_BODY_XML'
+  | 'API_STATUS'
+  | 'API_HEADER';
+
+export type AssertionOperator = 
+  | 'EQUALS'
+  | 'CONTAINS'
+  | 'NOT_EQUALS'
+  | 'NOT_CONTAINS'
+  | 'EXISTS'
+  | 'NOT_EXISTS'
+  | 'MATCHES_REGEX';
 
 export interface StepAssertion {
   id: string;
-  enabled: boolean;
-  source: 'API_BODY' | 'API_HEADER' | 'API_STATUS' | 'UI_TEXT' | 'UI_VALUE';
+  source: AssertionSource;
   expression?: string;
-  expectedValue: string;
   operator: AssertionOperator;
-  urlPattern?: string;
+  expectedValue?: string;
 }
 
 export interface VariableExtractor {
@@ -63,6 +75,7 @@ export interface NetworkWaitConfig {
   expectedStatus?: number;
   timeoutMs?: number;
   extractors?: VariableExtractor[];
+  assertions?: StepAssertion[];
 }
 
 export interface NetworkMockConfig {
@@ -87,9 +100,9 @@ export interface TestStep {
   screenshot?: boolean;
   enabled?: boolean;
   extractors?: VariableExtractor[];
-  assertions?: StepAssertion[];
   waitForNetwork?: NetworkWaitConfig;
   networkMocks?: NetworkMockConfig[];
+  assertions?: StepAssertion[];
 }
 
 export interface TestModule {

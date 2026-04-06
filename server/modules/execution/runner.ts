@@ -123,7 +123,7 @@ async function executeRunAsync(
     };
 
     const environmentVariables = environmentRepository.getVariables(request.environment);
-    
+
     const dynamicVarsList = await dynamicVariableRepository.findByProjectId(request.projectId);
     const dynamicVariables = dynamicVarsList.reduce((acc, v) => ({ ...acc, [v.name]: v.expression }), {} as Record<string, string>);
 
@@ -265,6 +265,16 @@ async function executeSingleCase(
     suiteDataRow: firstRowData,
   });
 
+  // Log variable sets
+  context.onVariableSet((key, value, scope) => {
+    logger.log({
+      stepId: context.getCurrentStep() || 'var-set',
+      status: 'INFO',
+      level: 'info',
+      message: `✨ Variable Set: ${key} = ${value} (${scope})`,
+    });
+  });
+
   logger.log({ stepId: 'env', status: 'INFO', message: `🔧 Environment: ${request.environment}` });
   logger.log({ stepId: `case-${testCase.id}`, status: 'INFO', message: `🧪 Running Case: ${testCase.name}` });
 
@@ -338,18 +348,18 @@ async function executeSuite(
   if (!suite) throw new Error(`Suite ${request.suiteId} not found`);
 
   return await runSuiteWithContext(
-    suite, 
+    suite,
     {}, // scenarioVariables
     {}, // scenarioDataRow
     {}, // scenarioOverrides
-    'SUITE_DRIVEN', 
-    project, 
-    assets, 
-    request.environment, 
+    'SUITE_DRIVEN',
+    project,
+    assets,
+    request.environment,
     environmentVariables,
     dynamicVariables,
-    logger, 
-    signal, 
+    logger,
+    signal,
     uiExecutor,
     {} // sharedRuntimeVars
   );
@@ -379,7 +389,7 @@ async function runSuiteWithContext(
   );
 
   let dataRows = suite.dataRows && suite.dataRows.length > 0 ? suite.dataRows : [{}];
-  
+
   // If scenario-driven, we ignore the suite's internal data rows to prevent unwanted multiplication
   if (iterationStrategy === 'SCENARIO_DRIVEN') {
     dataRows = [{}];
@@ -411,7 +421,18 @@ async function runSuiteWithContext(
       scenarioDataRow,
       scenarioOverrides,
     });
-    
+    context.setCurrentContext(suite.name, null);
+
+    // Log variable sets
+    context.onVariableSet((key, value, scope) => {
+      logger.log({
+        stepId: context.getCurrentStep() || 'var-set',
+        status: 'INFO',
+        level: 'info',
+        message: `✨ Variable Set: ${key} = ${value} (${scope})`,
+      });
+    });
+
     // Inject shared runtime variables (e.g. EXTRACT_VAR results) to carry across suites in a scenario iteration
     context.setSharedRuntimeVars(sharedRuntimeVars);
 
@@ -423,6 +444,8 @@ async function runSuiteWithContext(
 
     for (const testCase of suite.cases) {
       if (signal.aborted) throw new Error('Execution aborted');
+
+      context.setCurrentContext(suite.name, testCase.name);
 
       logger.log({
         stepId: `case-${testCase.id}`,
@@ -726,12 +749,13 @@ async function executeSteps(
     const step = steps[i];
     const indent = '  '.repeat(depth);
 
-    // ─── Skip disabled steps ───
+    // Track current step ID in context for variable capture logging
+    context.setCurrentStep(step.id);
     if (step.enabled === false) {
-      logger.log({ 
-        stepId: step.id, 
-        status: 'SKIP', 
-        message: `${indent}⏭️ Step Skipped (disabled): ${step.action}` 
+      logger.log({
+        stepId: step.id,
+        status: 'SKIP',
+        message: `${indent}⏭️ Step Skipped (disabled): ${step.action}`
       });
       continue;
     }
@@ -790,13 +814,11 @@ async function executeSteps(
         message: `${indent}🌐 [${step.action}] ${resolvedTarget}`,
       });
 
+      let result: any = undefined;
       try {
-        const result = await executeApiStep(step, context, assets, environment);
+        result = await executeApiStep(step, context, assets, environment, logger, indent);
 
-        const isNetworkSuccess = result.status >= 200 && result.status < 400;
-        const failedAssertion = result.assertionResults?.find(a => !a.success);
-        const isSuccess = isNetworkSuccess && !failedAssertion;
-
+        const isSuccess = result.status >= 200 && result.status < 400;
         const bodyPreview = result.body.length > 200 ? result.body.slice(0, 200) + '…' : result.body;
 
         logger.log({
@@ -815,29 +837,39 @@ async function executeSteps(
               responseBody: result.body,
               durationMs: result.durationMs,
             },
-            variables: context.resolveAll(),
-            assertionResults: result.assertionResults
+            variables: context.resolveDetailed()
           },
         });
 
-        if (!isNetworkSuccess) {
+        // Log assertions and extractions after the main API log
+        if (logger) {
+          result.assertionLogs.forEach(log => logger.log({ ...log, stepId: step.id }));
+          result.extractionLogs.forEach(log => logger.log({ ...log, stepId: step.id }));
+        }
+
+        const anyAssertionFailed = result.assertionLogs.some(log => log.status === 'FAIL');
+
+        if (!isSuccess) {
           throw new Error(`API request failed: ${result.status} ${result.statusText}`);
         }
 
-        if (failedAssertion) {
-          throw new Error(failedAssertion.message);
+        if (anyAssertionFailed) {
+          // Find the first failure message and throw it
+          const failureLog = result.assertionLogs.find(log => log.status === 'FAIL');
+          const err = new Error(failureLog?.message.trim().replace(/^❌\s*/, '') || 'Assertion Failed');
+          (err as any).isAssertionFailure = true;
+          throw err;
         }
-
-        // Store response body as runtime variable if step has EXTRACT_VAR-like intent
-        // Users can reference the last API response via {{__RESPONSE_BODY__}}
-        context.setRuntimeVar('__RESPONSE_BODY__', result.body);
-        context.setRuntimeVar('__RESPONSE_STATUS__', String(result.status));
 
       } catch (error) {
-        if (error instanceof Error && error.message.startsWith('API request failed:')) {
+        const msg = error instanceof Error ? error.message : String(error);
+
+        // If it's an API request failure or Assertion failure, we've already logged the details
+        // We just need to throw to stop execution
+        if (error instanceof Error && (msg.startsWith('API request failed:') || (error as any).isAssertionFailure)) {
           throw error;
         }
-        const msg = error instanceof Error ? error.message : String(error);
+
         logger.log({
           stepId: step.id,
           status: 'FAIL',
@@ -854,13 +886,14 @@ async function executeSteps(
     }
 
     // ─── UI Steps ───
+    let uiResult: any = undefined;
     try {
       // Lazy init Playwright
       const allSettings = settingsRepository.list();
       const settings = allSettings.find(s => s.currentProjectId === project.id) || allSettings[0];
       const isHeadless = settings ? settings.headlessMode !== false : true;
 
-      await uiExecutor.initialize({ 
+      await uiExecutor.initialize({
         headless: isHeadless,
         viewportWidth: settings?.viewportWidth,
         viewportHeight: settings?.viewportHeight,
@@ -875,38 +908,69 @@ async function executeSteps(
         message: `${indent}💻 [${step.action}] ${resolvedTarget ? resolvedTarget + ' ' : ''}${step.data ? '(' + context.interpolate(step.data) + ')' : ''}`,
       });
 
-      const uiResult = await uiExecutor.executeStep(step, context, project.pages || [], environment);
+      uiResult = await uiExecutor.executeStep(step, context, project.pages || [], environment);
+
+      let logMessage = `${indent}✅ [${step.action}] Completed (${uiResult.durationMs}ms)`;
+      if (step.action.startsWith('ASSERT_') && uiResult.assertionDetails) {
+        const { expected, actual, target } = uiResult.assertionDetails;
+        const targetStr = target ? ` ${target}` : '';
+        logMessage = `${indent}✅ Assertion Passed: [${step.action}]${targetStr} (Expected: '${expected}', Actual: '${actual}')`;
+      }
 
       logger.log({
         stepId: step.id,
         status: 'PASS',
         level: 'success',
-        message: `${indent}✅ [${step.action}] Completed (${uiResult.durationMs}ms)`,
+        message: logMessage,
         screenshot: uiResult.screenshot,
         metadata: {
-          variables: context.resolveAll(),
+          variables: context.resolveDetailed(),
           extractedValue: uiResult.extractedValue,
-          assertionDetails: uiResult.assertionDetails,
-          apiAssertionResults: uiResult.apiAssertionResults
+          assertionDetails: uiResult.assertionDetails
         }
       });
+
+      // Log UI logs (Smart Wait assertions, etc.) after the main UI log
+      if (logger && uiResult.logs) {
+        uiResult.logs.forEach(log => logger.log({ ...log, stepId: step.id }));
+      }
+
+      const anySmartWaitFailed = uiResult.logs?.some((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
+      if (anySmartWaitFailed) {
+        const failure = uiResult.logs.find((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
+        const err = new Error(failure?.message.trim().replace(/^❌\s*/, '') || 'Smart Wait Assertion Failed');
+        (err as any).isAssertionFailure = true;
+        throw err;
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      
+
+      // If it's an assertion failure, we've already logged the details (Smart Wait etc.)
+      // We just need to throw to stop execution
+      if (error instanceof Error && (error as any).isAssertionFailure) {
+        throw error;
+      }
+
       // Try to capture error state screenshot
       const failScreenshot = await uiExecutor.captureStateScreenshot();
+
+      let logMessage = `${indent}❌ UI Action Failed: ${msg}`;
+      if (step.action.startsWith('ASSERT_') && (error as any).assertionDetails) {
+        const { expected, actual, target } = (error as any).assertionDetails;
+        const targetStr = target ? ` ${target}` : '';
+        logMessage = `${indent}❌ Assertion Failed: [${step.action}]${targetStr} (Expected: '${expected}', Actual: '${actual}')`;
+      }
 
       logger.log({
         stepId: step.id,
         status: 'FAIL',
         level: 'error',
-        message: `${indent}❌ UI Action Failed: ${msg}`,
+        message: logMessage,
         screenshot: failScreenshot || undefined,
         metadata: {
           errorStack: error instanceof Error ? error.stack : undefined,
-          variables: context.resolveAll(),
-          assertionDetails: (error as any).assertionDetails,
-          apiAssertionResults: (error as any).apiAssertionResults
+          variables: context.resolveDetailed(),
+          assertionDetails: (error as any).assertionDetails
         }
       });
       throw error;

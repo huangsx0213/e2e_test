@@ -36,13 +36,14 @@ import {
   BodyTemplate,
   ApiEndpoint,
 } from "@/shared/types";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { CrudActions, useCrud } from "@/shared/hooks/useCrud";
 import { ScenarioExecutionRunner } from "@/features/execution/ScenarioExecutionRunner";
 import { TestPlanBuilder } from "@/features/execution/TestPlanBuilder";
 import { TestPlanExecutionRunner } from "@/features/execution/TestPlanExecutionRunner";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { api } from "@/shared/services/api";
+import { ExecutionReport } from "@/shared/types";
 
 interface TestRunnerProps {
   projects: Project[];
@@ -97,6 +98,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     {},
   );
   const [isDataVariablesExpanded, setIsDataVariablesExpanded] = useState(false);
+
+  const [reports, reportsApi, loadingReports] = useCrud<ExecutionReport>(api.reports);
 
   const handleAddDataRow = () => {
     if (!activeScenario) return;
@@ -1179,7 +1182,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             endpoints={endpoints}
             environments={environments}
             initialEnvironment={initialEnvironment}
-            reportsApi={api.reports}
+            reportsApi={reportsApi}
             onClose={() => setActiveTab("PLANS")}
           />
         ) : scenarioToRun ? (
@@ -1192,7 +1195,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             endpoints={endpoints}
             environments={environments}
             initialEnvironment={initialEnvironment}
-            reportsApi={api.reports}
+            reportsApi={reportsApi}
             onClose={() => setActiveTab("SCENARIOS")}
           />
         ) : (

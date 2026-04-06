@@ -7,6 +7,7 @@ export const extractorSchema = z.object({
   name: z.string().min(1),
   source: z.enum([
     'API_BODY_JSON',
+    'API_BODY_XML',
     'API_BODY_REGEX',
     'API_HEADER',
     'UI_TEXT',
@@ -17,6 +18,42 @@ export const extractorSchema = z.object({
   ]),
   expression: z.string().optional(),
   scope: z.enum(['CASE', 'SUITE', 'ENVIRONMENT']),
+});
+
+export const assertionSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(['API_BODY_JSON', 'API_BODY_XML', 'API_STATUS', 'API_HEADER']),
+  expression: z.string().optional(),
+  operator: z.enum([
+    'EQUALS',
+    'CONTAINS',
+    'NOT_EQUALS',
+    'NOT_CONTAINS',
+    'EXISTS',
+    'NOT_EXISTS',
+    'MATCHES_REGEX'
+  ]),
+  expectedValue: z.string().optional(),
+});
+
+export const networkWaitSchema = z.object({
+  enabled: z.boolean(),
+  urlPattern: z.string(),
+  method: z.string().optional(),
+  expectedStatus: z.number().optional(),
+  timeoutMs: z.number().optional(),
+  extractors: z.array(extractorSchema).optional(),
+  assertions: z.array(assertionSchema).optional(),
+});
+
+export const networkMockSchema = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean(),
+  urlPattern: z.string(),
+  method: z.string().optional(),
+  status: z.number(),
+  body: z.string(),
+  delayMs: z.number().optional(),
 });
 
 export const stepSchema = z.object({
@@ -31,6 +68,9 @@ export const stepSchema = z.object({
   screenshot: z.boolean().optional(),
   enabled: z.boolean().optional(),
   extractors: z.array(extractorSchema).optional(),
+  waitForNetwork: networkWaitSchema.optional(),
+  networkMocks: z.array(networkMockSchema).optional(),
+  assertions: z.array(assertionSchema).optional(),
 });
 
 export const dynamicVariableSchema = z.object({

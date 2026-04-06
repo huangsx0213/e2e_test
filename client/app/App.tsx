@@ -15,6 +15,7 @@ import {
   BodyTemplate,
   ApiEndpoint,
   Settings as SettingsType,
+  ExecutionReport,
 } from "@/shared/types";
 import { useCrud, useEnvCrud } from "@/shared/hooks/useCrud";
 import { api } from "@/shared/services/api";
@@ -38,6 +39,9 @@ function App() {
   );
   const [settings, settingsApi, loadingSettings] = useCrud<SettingsType>(
     api.settings,
+  );
+  const [reports, reportsApi, loadingReports] = useCrud<ExecutionReport>(
+    api.reports,
   );
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
@@ -157,7 +161,7 @@ function App() {
               endpoints={endpoints}
               environments={environments}
               initialEnvironment={currentEnvironment}
-              reportsApi={api.reports}
+              reportsApi={reportsApi}
               onClose={() => setExecutionState(null)}
             />
           </div>
@@ -173,7 +177,7 @@ function App() {
             endpoints={endpoints}
             environments={environments}
             initialEnvironment={currentEnvironment}
-            reportsApi={api.reports}
+            reportsApi={reportsApi}
             onClose={() => setExecutionState(null)}
           />
         </div>

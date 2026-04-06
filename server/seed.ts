@@ -290,7 +290,42 @@ function seedSuites(): void {
         name: 'Health POST',
         description: 'Check connectivity via POST.',
         steps: [
-          { id: 's-sauce-api-post', action: 'API_POST', target: '/post', data: '', endpointId: 'endpoint-sauce-httpbin-post', headerProfileId: 'header-sauce-json', bodyTemplateId: 'body-sauce-echo' },
+          { 
+            id: 's-sauce-api-post', 
+            action: 'API_POST', 
+            target: '/post', 
+            data: '', 
+            endpointId: 'endpoint-sauce-httpbin-post', 
+            headerProfileId: 'header-sauce-json', 
+            bodyTemplateId: 'body-sauce-echo',
+            assertions: [
+              { id: 'a-post-status', source: 'API_STATUS', operator: 'EQUALS', expectedValue: '200' },
+              { id: 'a-post-body', source: 'API_BODY_JSON', expression: '$.json.test', operator: 'EQUALS', expectedValue: 'sauce-demo' }
+            ],
+            extractors: [
+              { id: 'e-post-origin', name: 'ORIGIN_IP', source: 'API_BODY_JSON', expression: '$.origin', scope: 'CASE' }
+            ]
+          },
+        ],
+      },
+      {
+        id: 'case-sauce-api-post-fail',
+        name: 'Health POST (Failing Assertion)',
+        description: 'Check connectivity via POST with a failing assertion.',
+        steps: [
+          { 
+            id: 's-sauce-api-post-fail', 
+            action: 'API_POST', 
+            target: '/post', 
+            data: '', 
+            endpointId: 'endpoint-sauce-httpbin-post', 
+            headerProfileId: 'header-sauce-json', 
+            bodyTemplateId: 'body-sauce-echo',
+            assertions: [
+              { id: 'a-post-status-fail', source: 'API_STATUS', operator: 'EQUALS', expectedValue: '200' },
+              { id: 'a-post-body-fail', source: 'API_BODY_JSON', expression: '$.json.test', operator: 'EQUALS', expectedValue: 'wrong-value' }
+            ]
+          },
         ],
       },
     ],

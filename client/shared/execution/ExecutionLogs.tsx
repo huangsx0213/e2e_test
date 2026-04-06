@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { ExecutionLog } from "@/shared/types";
-import { X, ChevronRight, ChevronDown, Info, AlertTriangle, XCircle, CheckCircle } from "lucide-react";
+import { X, ChevronRight, ChevronDown, Info, AlertTriangle, XCircle, CheckCircle, Copy, Check } from "lucide-react";
+// @ts-ignore
 import { FixedSizeList as List } from "react-window";
 
 interface ExecutionLogsProps {
@@ -32,6 +33,7 @@ const LogLevelColor = (level?: string, status?: string) => {
 
 const JsonViewer = ({ data }: { data: any }) => {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   
   const formattedData = useMemo(() => {
     const tryParseJson = (value: any) => {
@@ -64,17 +66,35 @@ const JsonViewer = ({ data }: { data: any }) => {
     return formatObj(data);
   }, [data]);
 
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = JSON.stringify(formattedData, null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   if (!data) return null;
 
   return (
     <div className="mt-1 text-xs font-mono bg-slate-900/50 rounded border border-slate-800 overflow-hidden">
-      <button 
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 px-2 py-1 w-full hover:bg-slate-800/50 text-slate-400 transition-colors"
-      >
-        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <span>Metadata {expanded ? '' : '{...}'}</span>
-      </button>
+      <div className="flex items-center justify-between hover:bg-slate-800/50 transition-colors pr-2">
+        <button 
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1 px-2 py-1 flex-1 text-left text-slate-400"
+        >
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          <span>Metadata {expanded ? '' : '{...}'}</span>
+        </button>
+        <button
+          onClick={handleCopy}
+          className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-slate-300 transition-all"
+          title="Copy metadata to clipboard"
+        >
+          {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
       {expanded && (
         <div className="p-2 overflow-x-auto">
           <pre className="text-slate-300 m-0 whitespace-pre-wrap break-all">

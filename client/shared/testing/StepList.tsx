@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
+import { AssertionEditor } from "./AssertionEditor";
 
 interface StepListProps {
   title?: string;
@@ -1838,11 +1839,11 @@ export const StepList: React.FC<StepListProps> = ({
                   </div>
 
                   {expandedAdvancedOptions.has(step.id) && (
-                    <div className="bg-gray-50/30 rounded-b-md pb-2 mt-2 border-t border-gray-100">
+                    <div className="bg-gray-50/30 rounded-b-md pb-2 mt-2 border-t border-gray-100 flex flex-col divide-y divide-gray-100">
                       {/* Advanced Options (Wait For Network) */}
                       {!step.action.startsWith("API_") &&
                         !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
-                          <div className="pl-8 pt-2">
+                          <div className="pl-8 py-2">
                             <div className="flex items-center gap-2 mb-2">
                           <input
                             type="checkbox"
@@ -1878,7 +1879,7 @@ export const StepList: React.FC<StepListProps> = ({
                               <div className="col-span-2">
                                 <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern / Keyword</label>
                                 <input
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                   placeholder="/api/v1/orders"
                                   value={step.waitForNetwork.urlPattern || ""}
                                   onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: e.target.value } })}
@@ -1887,7 +1888,7 @@ export const StepList: React.FC<StepListProps> = ({
                               <div>
                                 <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
                                 <select
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                   value={step.waitForNetwork.method || "ANY"}
                                   onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, method: e.target.value } })}
                                 >
@@ -1902,7 +1903,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Expected Status</label>
                                 <input
                                   type="number"
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                   placeholder="200"
                                   value={step.waitForNetwork.expectedStatus || ""}
                                   onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(e.target.value) || undefined } })}
@@ -1912,7 +1913,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Timeout (ms)</label>
                                 <input
                                   type="number"
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                   placeholder="10000"
                                   value={step.waitForNetwork.timeoutMs || ""}
                                   onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(e.target.value) || undefined } })}
@@ -1921,9 +1922,11 @@ export const StepList: React.FC<StepListProps> = ({
                             </div>
                             
                             {/* API Extractors inside Smart Wait */}
-                            <div className="pt-2 border-t border-gray-200">
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] font-medium text-gray-500">API Extractors (Hybrid Extraction)</span>
+                            <div className="pt-2 border-t border-gray-200 mt-2">
+                              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                <div className="flex items-center gap-1">
+                                  <span>API Extractors (Hybrid Extraction)</span>
+                                </div>
                                 <button
                                   onClick={() => {
                                     const exts = step.waitForNetwork!.extractors || [];
@@ -1934,58 +1937,80 @@ export const StepList: React.FC<StepListProps> = ({
                                       }
                                     });
                                   }}
-                                  className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
                                 >
                                   <Plus size={10} /> Add Extractor
                                 </button>
                               </div>
                               
-                              {(step.waitForNetwork.extractors || []).map((ext, idx) => (
-                                <div key={ext.id} className="flex items-center gap-2 mt-1">
-                                  <input
-                                    className="w-1/4 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
-                                    placeholder="Variable Name"
-                                    value={ext.name}
-                                    onChange={(e) => {
-                                      const newExts = [...step.waitForNetwork!.extractors!];
-                                      newExts[idx].name = e.target.value;
-                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                    }}
-                                  />
-                                  <select
-                                    className="w-1/4 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
-                                    value={ext.source}
-                                    onChange={(e) => {
-                                      const newExts = [...step.waitForNetwork!.extractors!];
-                                      newExts[idx].source = e.target.value as any;
-                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                    }}
-                                  >
-                                    <option value="API_BODY_JSON">JSONPath</option>
-                                    <option value="API_BODY_REGEX">Regex</option>
-                                  </select>
-                                  <input
-                                    className="flex-1 bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
-                                    placeholder={ext.source === 'API_BODY_JSON' ? "$.data.id" : "id=([0-9]+)"}
-                                    value={ext.expression || ""}
-                                    onChange={(e) => {
-                                      const newExts = [...step.waitForNetwork!.extractors!];
-                                      newExts[idx].expression = e.target.value;
-                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                    }}
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      const newExts = [...step.waitForNetwork!.extractors!];
-                                      newExts.splice(idx, 1);
-                                      onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                    }}
-                                    className="text-gray-400 hover:text-red-500"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
+                              {(step.waitForNetwork.extractors || []).length > 0 && (
+                                <div className="space-y-2">
+                                  {(step.waitForNetwork.extractors || []).map((ext, idx) => (
+                                    <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
+                                      <input
+                                        className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                        placeholder="Variable Name"
+                                        value={ext.name}
+                                        onChange={(e) => {
+                                          const newExts = [...step.waitForNetwork!.extractors!];
+                                          newExts[idx].name = e.target.value;
+                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                        }}
+                                      />
+                                      <select
+                                        className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                        value={ext.source}
+                                        onChange={(e) => {
+                                          const newExts = [...step.waitForNetwork!.extractors!];
+                                          newExts[idx].source = e.target.value as any;
+                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                        }}
+                                      >
+                                        <option value="API_BODY_JSON">JSON Body</option>
+                                        <option value="API_BODY_XML">XML Body</option>
+                                        <option value="API_BODY_REGEX">Regex</option>
+                                        <option value="API_HEADER">Header</option>
+                                      </select>
+                                      <input
+                                        className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                        placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? "Authorization" : "Expression"}
+                                        value={ext.expression || ""}
+                                        onChange={(e) => {
+                                          const newExts = [...step.waitForNetwork!.extractors!];
+                                          newExts[idx].expression = e.target.value;
+                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const newExts = [...step.waitForNetwork!.extractors!];
+                                          newExts.splice(idx, 1);
+                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 p-1"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
+                            </div>
+
+                            {/* API Assertions inside Smart Wait */}
+                            <div className="pt-2 border-t border-gray-200 mt-2">
+                              <AssertionEditor
+                                isApiStep={false}
+                                assertions={step.waitForNetwork.assertions || []}
+                                onChange={(assertions) => {
+                                  onUpdateStep(step.id, {
+                                    waitForNetwork: {
+                                      ...step.waitForNetwork!,
+                                      assertions,
+                                    }
+                                  });
+                                }}
+                              />
                             </div>
                           </div>
                         )}
@@ -1995,10 +2020,10 @@ export const StepList: React.FC<StepListProps> = ({
                   {/* Network Mocks Section */}
                   {!step.action.startsWith("API_") &&
                     !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
-                      <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
-                        <div className="flex items-center justify-between mb-2">
+                      <div className="pl-8 py-2">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
                           <div className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Network Mocks</span>
+                            <span>Network Mocks</span>
                             <HelpTooltip content={
                               <div className="w-64">
                                 <p className="mb-1 font-semibold">Network Interception</p>
@@ -2014,7 +2039,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 networkMocks: [...mocks, { id: crypto.randomUUID(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
                               });
                             }}
-                            className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
                           >
                             <Plus size={10} /> Add Mock
                           </button>
@@ -2036,7 +2061,7 @@ export const StepList: React.FC<StepListProps> = ({
                                       }}
                                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                     />
-                                    <span className="text-[11px] font-medium text-gray-700">Mock Rule {idx + 1}</span>
+                                    <span className="text-xs font-medium text-gray-700">Mock Rule {idx + 1}</span>
                                   </div>
                                   <button
                                     onClick={() => {
@@ -2053,7 +2078,7 @@ export const StepList: React.FC<StepListProps> = ({
                                   <div className="col-span-3">
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern (Regex)</label>
                                     <input
-                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder=".*\/api\/payment.*"
                                       value={mock.urlPattern}
                                       onChange={(e) => {
@@ -2066,7 +2091,7 @@ export const StepList: React.FC<StepListProps> = ({
                                   <div className="col-span-1">
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
                                     <select
-                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       value={mock.method || "ANY"}
                                       onChange={(e) => {
                                         const newMocks = [...step.networkMocks!];
@@ -2085,7 +2110,7 @@ export const StepList: React.FC<StepListProps> = ({
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
                                     <input
                                       type="number"
-                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="200"
                                       value={mock.status}
                                       onChange={(e) => {
@@ -2099,7 +2124,7 @@ export const StepList: React.FC<StepListProps> = ({
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Delay (ms)</label>
                                     <input
                                       type="number"
-                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="0"
                                       value={mock.delayMs || ""}
                                       onChange={(e) => {
@@ -2113,7 +2138,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 <div>
                                   <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Response Body (JSON)</label>
                                   <textarea
-                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
+                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
                                     placeholder='{"success": true}'
                                     value={mock.body}
                                     onChange={(e) => {
@@ -2130,8 +2155,21 @@ export const StepList: React.FC<StepListProps> = ({
                       </div>
                     )}
 
+                  {/* API Assertions Section */}
+                  {step.action.startsWith("API_") && (
+                    <div className="pl-8 py-2">
+                      <AssertionEditor
+                        isApiStep={true}
+                        assertions={step.assertions || []}
+                        onChange={(assertions) => {
+                          onUpdateStep(step.id, { assertions });
+                        }}
+                      />
+                    </div>
+                  )}
+
                   {/* Extractors Section */}
-                  <div className="mt-2 pl-8 border-t border-gray-100 pt-2">
+                  <div className="pl-8 py-2">
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
                       <div className="flex items-center gap-1">
                         <span>Variable Extractors</span>
@@ -2168,7 +2206,7 @@ export const StepList: React.FC<StepListProps> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT', scope: 'SUITE' }];
+                          const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: (step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT') as any, scope: 'SUITE' as any }];
                           onUpdateStep(step.id, { extractors: newExtractors });
                         }}
                         className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -2201,8 +2239,9 @@ export const StepList: React.FC<StepListProps> = ({
                             >
                               {step.action.startsWith('API_') ? (
                                 <>
-                                  <option value="API_BODY_JSON">API Body (JSON/XML)</option>
-                                  <option value="API_BODY_REGEX">Body (Regex)</option>
+                                  <option value="API_BODY_JSON">JSON Body</option>
+                                  <option value="API_BODY_XML">XML Body</option>
+                                  <option value="API_BODY_REGEX">Regex</option>
                                   <option value="API_HEADER">Header</option>
                                 </>
                               ) : (
@@ -2218,7 +2257,7 @@ export const StepList: React.FC<StepListProps> = ({
                             {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
                               <input
                                 className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                                placeholder={ext.source === 'API_BODY_JSON' ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
+                                placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
                                 value={ext.expression || ''}
                                 onChange={(e) => {
                                   const newExts = [...step.extractors!];
