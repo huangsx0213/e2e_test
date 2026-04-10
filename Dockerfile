@@ -24,6 +24,8 @@ RUN npm install --omit=dev
 
 # Copy build artifacts
 COPY --from=builder /app/dist ./dist
+# Copy seed data for runtime seeding
+COPY --from=builder /app/server/migrations/seed_data.json ./server/migrations/seed_data.json
 
 # Hugging Face Spaces runs as user 1000, ensure permissions
 # Create a writable directory for videos and the SQLite database

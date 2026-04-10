@@ -50,9 +50,9 @@ export function runMigrations(): void {
     transaction();
   }
 
-  // Auto-seed if database is empty
+  // Auto-seed if database is empty OR if FORCE_SEED is enabled
   const projectCount = (db.prepare('SELECT COUNT(*) as count FROM projects').get() as any).count;
-  if (projectCount === 0) {
+  if (projectCount === 0 || process.env.FORCE_SEED === 'true') {
     runSeed();
   }
 }
