@@ -9,7 +9,7 @@ RUN npm run build
 
 # Stage 2: Runtime
 # Use Playwright's official image which includes all browser dependencies
-FROM mcr.microsoft.com/playwright:v1.45.0-noble
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 WORKDIR /app
 
 # Set environment variables
