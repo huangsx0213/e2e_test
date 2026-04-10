@@ -5,7 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import { createApp } from './createApp.ts';
 import { initializeWebSocket } from '../shared/services/websocketService.ts';
 
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 export async function startServer() {
   const app = createApp();
