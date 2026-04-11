@@ -115,10 +115,7 @@ export class UIExecutor {
     const logs: { status: string; level: LogLevel; message: string }[] = [];
 
     // Resolve element locator if target exists
-    let resolvedSelector: string | undefined;
-    let usePlaywrightLocator = false;   // true when we need getBy* methods
-    let locatorMethod: string | undefined;
-    let locatorArg: string | undefined;
+    let candidateLocators: { selectorType: string; value: string }[] = [];
 
     if (step.target) {
       const interpolated = executionContext.interpolate(step.target);
@@ -148,28 +145,18 @@ export class UIExecutor {
       }
 
       if (elementDef) {
-        const st = elementDef.selectorType.toLowerCase();
-        const val = executionContext.interpolate(elementDef.value);
-
-        if (st === 'css' || st === 'CSS') {
-          resolvedSelector = val;
-        } else if (st === 'xpath') {
-          resolvedSelector = `xpath=${val}`;
-        } else if (st === 'text') {
-          resolvedSelector = `text=${val}`;
-        } else if (st === 'testid' || st === 'getbytestid') {
-          resolvedSelector = `[data-testid="${val}"]`;
-        } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext'].includes(st)) {
-          usePlaywrightLocator = true;
-          locatorMethod = st;
-          locatorArg = val;
-        } else {
-          // Default: treat value as a CSS selector
-          resolvedSelector = val;
+        // Collect all available locators, prioritizing the primary one
+        candidateLocators = [{ selectorType: elementDef.selectorType, value: elementDef.value }];
+        if (elementDef.locators && elementDef.locators.length > 0) {
+          for (const loc of elementDef.locators) {
+             if (loc.value !== elementDef.value) {
+                candidateLocators.push(loc);
+             }
+          }
         }
       } else {
         // Not a repo element — treat interpolated value as-is (raw selector or URL)
-        resolvedSelector = interpolated;
+        candidateLocators = [{ selectorType: 'css', value: interpolated }];
       }
     }
 
@@ -179,28 +166,40 @@ export class UIExecutor {
       data = executionContext.interpolate(data);
     }
 
-    // Helper: get a Playwright Locator from our resolved info
-    const getLocator = (): Locator => {
-      if (usePlaywrightLocator && locatorMethod && locatorArg) {
-        switch (locatorMethod) {
+    // Helper: get a Playwright Locator from a formal locator definition
+    const createLocator = (loc: { selectorType: string; value: string }): { locator: Locator; methodInfo: string } => {
+      const st = loc.selectorType.toLowerCase();
+      const val = executionContext.interpolate(loc.value);
+
+      if (st === 'css' || st === 'CSS') {
+        return { locator: this.page!.locator(val), methodInfo: `css(${val})` };
+      } else if (st === 'xpath') {
+        return { locator: this.page!.locator(`xpath=${val}`), methodInfo: `xpath(${val})` };
+      } else if (st === 'text') {
+        return { locator: this.page!.locator(`text=${val}`), methodInfo: `text(${val})` };
+      } else if (st === 'testid' || st === 'getbytestid' || st === 'data-test') {
+        return { locator: this.page!.getByTestId(val), methodInfo: `getByTestId(${val})` };
+      } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext'].includes(st)) {
+        switch (st) {
           case 'getbylabel':
-            return this.page!.getByLabel(locatorArg);
+            return { locator: this.page!.getByLabel(val), methodInfo: `getByLabel(${val})` };
           case 'getbytext':
-            return this.page!.getByText(locatorArg);
+            return { locator: this.page!.getByText(val), methodInfo: `getByText(${val})` };
           case 'getbyplaceholder':
-            return this.page!.getByPlaceholder(locatorArg);
+            return { locator: this.page!.getByPlaceholder(val), methodInfo: `getByPlaceholder(${val})` };
           case 'getbyalttext':
-            return this.page!.getByAltText(locatorArg);
+            return { locator: this.page!.getByAltText(val), methodInfo: `getByAltText(${val})` };
           case 'getbyrole': {
-            let role = locatorArg;
+            let role = val;
             let options: any = {};
 
-            // Support format: "button, {name: 'Login', exact: true}"
-            if (locatorArg.includes('{')) {
-              const parts = locatorArg.split(/,(?=\s*\{)/);
+            // Robust Support format: "button, {name: 'Login', exact: true}"
+            if (val.includes('{')) {
+              const parts = val.split(/,(?=\s*\{)/);
               role = parts[0].trim();
               const optionsStr = parts[1]?.trim();
               if (optionsStr) {
+                // Improved regex for parsing options
                 const nameMatch = optionsStr.match(/(?:['"]?name['"]?)\s*:\s*(['"])(.*?)\1/);
                 if (nameMatch) options.name = nameMatch[2];
                 const exactMatch = optionsStr.match(/(?:['"]?exact['"]?)\s*:\s*(true|false)/);
@@ -208,61 +207,63 @@ export class UIExecutor {
               }
             } 
             // Support format: "button[name='Login']"
-            else if (locatorArg.includes('[name=')) {
-              const bracketMatch = locatorArg.match(/^(\w+)\[name=['"](.+)['"]\]$/);
+            else if (val.includes('[name=')) {
+              const bracketMatch = val.match(/^(\w+)\[name=['"](.+)['"]\]$/);
               if (bracketMatch) {
                 role = bracketMatch[1];
                 options.name = bracketMatch[2];
               }
             }
 
-            return this.page!.getByRole(role as any, options);
+            return { locator: this.page!.getByRole(role as any, options), methodInfo: `getByRole(${role}, ${JSON.stringify(options)})` };
           }
-          default:
-            throw new Error(`Unknown locator method: ${locatorMethod}`);
         }
       }
-      if (!resolvedSelector) {
-        throw new Error(`Could not resolve target: ${step.target || 'no target specified'}`);
-      }
-      return this.page!.locator(resolvedSelector);
+      
+      // Default fallback
+      return { locator: this.page!.locator(val), methodInfo: `locator(${val})` };
     };
 
     // Helper: Safely get the best single locator with smart waiting and actionability checks
     const getSmartLocator = async (options?: { skipActionabilityCheck?: boolean }): Promise<Locator> => {
-      let base = getLocator();
-      const locatorInfo = usePlaywrightLocator ? `${locatorMethod}(${locatorArg})` : (resolvedSelector || 'unknown');
-
-      // Wait for element to be attached to DOM first
-      try {
-        await base.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
-      } catch (e) {
-        throw new Error(`Element not found or not attached to DOM: ${locatorInfo}`);
-      }
-
-      const count = await base.count();
-      if (count > 1) {
-        // Prefer visible elements when multiple matches exist
-        const visibleFilter = base.filter({ visible: true });
-        const visibleCount = await visibleFilter.count();
-        if (visibleCount > 0) {
-          base = visibleFilter;
-        }
-      }
-
-      const locator = base.first();
-
-      // For interactive actions, ensure element is actionable (visible, stable, enabled)
-      if (!options?.skipActionabilityCheck) {
+      let lastError: any = null;
+      
+      // Try each candidate locator in sequence
+      for (const locInfo of candidateLocators) {
+        const { locator: base, methodInfo } = createLocator(locInfo);
+        
         try {
-          await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
+          // Quick wait to see if this locator works
+          await base.first().waitFor({ state: 'attached', timeout: lastError ? 2000 : 5000 });
+          
+          let finalLocator = base;
+          const count = await base.count();
+          if (count > 1) {
+            // Prefer visible elements when multiple matches exist
+            const visibleFilter = base.filter({ visible: true });
+            const visibleCount = await visibleFilter.count();
+            if (visibleCount > 0) {
+              finalLocator = visibleFilter;
+            }
+          }
+
+          const target = finalLocator.first();
+          if (!options?.skipActionabilityCheck) {
+            await target.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {
+              console.warn(`Element found via ${methodInfo} but not visible.`);
+            });
+          }
+
+          console.log(`[EXEC] Successfully resolved element via: ${methodInfo}`);
+          return target;
         } catch (e) {
-          // Element exists but not visible - this might be intentional for some actions
-          console.warn(`Element is attached but not visible: ${resolvedSelector || 'unknown selector'}`);
+          lastError = e;
+          console.warn(`[EXEC] Locator failed: ${methodInfo}. Trying next...`);
+          continue;
         }
       }
 
-      return locator;
+      throw new Error(`Element not found after trying ${candidateLocators.length} locators for: ${step.target}. Last error: ${lastError?.message}`);
     };
 
     // Helper: Perform action with fallback to JS evaluation

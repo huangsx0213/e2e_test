@@ -52,6 +52,8 @@ export interface UIElement {
   originalHtml?: string;
   pageUrl?: string;
   locators?: { selectorType: SelectorType; value: string }[];
+  isVerified?: boolean;
+  metadata?: any;
 }
 
 export interface Page {
@@ -104,6 +106,8 @@ export interface TestStep {
   waitForNetwork?: NetworkWaitConfig;
   networkMocks?: NetworkMockConfig[];
   assertions?: StepAssertion[];
+  isVerified?: boolean;
+  metadata?: any;
 }
 
 export interface TestModule {

@@ -103,6 +103,18 @@ function App() {
 
   const currentProjectName = currentProject?.name || "No Project Selected";
 
+  const handleTabChange = React.useCallback(
+    (tab: AppTab) => {
+      setActiveTab(tab);
+      // Refresh key data when navigating to ensure the UI is in sync with background recording
+      projectsApi.refresh();
+      suitesApi.refresh();
+      endpointsApi.refresh();
+      reportsApi.refresh();
+    },
+    [projectsApi, suitesApi, endpointsApi, reportsApi],
+  );
+
   if (isLoading) {
     return <AppLoadingScreen />;
   }
@@ -113,7 +125,7 @@ function App() {
         activeTab={activeTab}
         isCollapsed={isSidebarCollapsed}
         onCollapseChange={setIsSidebarCollapsed}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
       />
 
       <main className="flex-1 overflow-hidden relative flex flex-col bg-white">
