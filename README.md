@@ -4,24 +4,88 @@ emoji: 🧪
 colorFrom: purple
 colorTo: indigo
 sdk: docker
-pinned: false
 app_port: 7860
 ---
 
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# QuantumQA
 
-# Run and deploy your E2E Studio app
+QuantumQA is a unified, low-code **E2E Testing Matrix** designed for high-fidelity UI automation and sophisticated API testing. It bridges the gap between browser interactions and background service validation in a single, deterministic execution engine.
 
-This contains everything you need to run your app locally.
+---
 
-## Run Locally
+## 🌟 Key Features
 
-**Prerequisites:**  Node.js
+- **Unified Logic**: Seamlessly mix Playwright-driven UI steps and fetch-driven API steps in a single test case.
+- **Deterministic Engine**: Built on a robust Node.js backend to ensure zero "hallucinations" and maximum execution stability.
+- **Intelligent Recording**: 
+    - **UI Recorder**: Captured interactions generate resilient selectors (TEST_ID > ARIA > CSS).
+    - **API Recorder**: Traffic sniffer automatically maps network requests to environment-aware endpoints.
+- **Layered Variable System**: Advanced scoping (Case, Suite, Scenario, Environment) with dynamic generators and transformation pipes.
+- **Resilient POM**: A centralized Element Repository that decouples test steps from brittle UI selectors.
+- **Real-time Feedback**: Execution logs are streamed directly to the console via Server-Sent Events (SSE).
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
+## 🛠 Technology Stack
+
+- **Frontend**: React 19, Vite, Lucide, TailwindCSS.
+- **Backend**: Express 5, Better-SQLite3, tsx.
+- **Automation**: Playwright (with support for Chromium).
+- **Persistence**: Local SQLite database for rapid, lightweight asset management.
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js (v18 or higher)
+- npm or yarn
+
+### Installation
+1. Clone the repository.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Install Playwright browser binaries:
+   ```bash
+   npx playwright install chromium
+   ```
+
+### Running Locally
+Start the unified development server (Vite + Express):
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 📑 Documentation Index
+
+For detailed guides, please refer to our documentation suite:
+
+1.  **[User Guide](docs/01-UserGuide.md)**: A complete manual on how to write tests, use variables, and manage assets.
+2.  **[Architecture](docs/02-Architecture.md)**: Technical overview of the system design, communication protocols, and execution lifecycle.
+3.  **[Deployment Guide](docs/03-Deployment.md)**: Instructions for production builds, Dockerization, and cloud hosting (Hugging Face Spaces).
+4.  **[Technical Implementation](docs/04-TechnicalImplementation.md)**: Implementation details for the recording engine, variable scoping, and execution runners.
+
+---
+
+## 🔨 Standard Commands
+
+- `npm run dev`: Full-stack development environment.
+- `npm run seed`: Reset and seed the database to the default state.
+- `npx tsx server/seed.ts`: Manually trigger the seeding process (Full command).
+- `npm run build`: Production build (bundles frontend with Vite and backend with esbuild).
+- `npm run start`: Start the production server.
+- `FORCE_SEED=true npm run dev`: Start dev mode and clean-reset the database simultaneously.
+
+---
+
+## 🐳 Deployment Summary
+
+QuantumQA is fully Docker-compatible. For cloud deployments:
+- Mount a persistent volume for `database.sqlite` to ensure data persistence.
+- Set `PORT` environment variable (defaults to 3000, 7860 for HF Spaces).
+- Refer to the [Deployment Guide](docs/03-Deployment.md) for multi-stage Dockerfile configurations.
