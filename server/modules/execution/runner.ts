@@ -937,11 +937,13 @@ async function executeSteps(
       const allSettings = settingsRepository.list();
       const settings = allSettings.find(s => s.currentProjectId === project.id) || allSettings[0];
       const isHeadless = settings ? settings.headlessMode !== false : true;
+      const recordVideo = settings ? settings.recordVideo !== false : true;
 
       await uiExecutor.initialize({
         headless: isHeadless,
         viewportWidth: settings?.viewportWidth,
         viewportHeight: settings?.viewportHeight,
+        recordVideo,
         logger
       });
 

@@ -9,6 +9,7 @@ export function normalizeSettings(input: Partial<Settings>): Settings {
     headlessMode: input.headlessMode !== undefined ? input.headlessMode : true,
     viewportWidth: input.viewportWidth !== undefined ? Number(input.viewportWidth) : 1920,
     viewportHeight: input.viewportHeight !== undefined ? Number(input.viewportHeight) : 1080,
+    recordVideo: input.recordVideo !== undefined ? input.recordVideo : true,
   };
 }
 
@@ -20,5 +21,6 @@ export function deserializeSettings(input: any): Settings {
     headlessMode: input.headlessMode,
     viewportWidth: input.viewportWidth,
     viewportHeight: input.viewportHeight,
+    recordVideo: input.recordVideo,
   });
 }

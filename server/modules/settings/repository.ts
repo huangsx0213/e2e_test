@@ -8,14 +8,15 @@ export function saveSettings(settingsInput: Partial<Settings>): Settings {
 
   db.prepare(
     `
-      INSERT INTO settings (id, current_project_id, current_environment, headless_mode, viewport_width, viewport_height)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO settings (id, current_project_id, current_environment, headless_mode, viewport_width, viewport_height, record_video)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         current_project_id = excluded.current_project_id,
         current_environment = excluded.current_environment,
         headless_mode = excluded.headless_mode,
         viewport_width = excluded.viewport_width,
-        viewport_height = excluded.viewport_height
+        viewport_height = excluded.viewport_height,
+        record_video = excluded.record_video
     `,
   ).run(
     settings.id,
@@ -24,6 +25,7 @@ export function saveSettings(settingsInput: Partial<Settings>): Settings {
     settings.headlessMode ? 1 : 0,
     settings.viewportWidth,
     settings.viewportHeight,
+    settings.recordVideo !== false ? 1 : 0,
   );
 
   return getSettings(settings.id) || settings;
@@ -32,9 +34,9 @@ export function saveSettings(settingsInput: Partial<Settings>): Settings {
 export function getSettings(settingsId: string): Settings | undefined {
   const row = db
     .prepare(
-      'SELECT id, current_project_id, current_environment, headless_mode, viewport_width, viewport_height FROM settings WHERE id = ?',
+      'SELECT id, current_project_id, current_environment, headless_mode, viewport_width, viewport_height, record_video FROM settings WHERE id = ?',
     )
-    .get(settingsId) as DbSettingsRow | undefined;
+    .get(settingsId) as any;
 
   if (!row) {
     return undefined;
@@ -47,6 +49,7 @@ export function getSettings(settingsId: string): Settings | undefined {
     headlessMode: row.headless_mode === 1,
     viewportWidth: row.viewport_width,
     viewportHeight: row.viewport_height,
+    recordVideo: row.record_video !== 0,
   };
 }
 

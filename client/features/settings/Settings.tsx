@@ -469,6 +469,81 @@ export const Settings: React.FC<SettingsProps> = ({
                 </p>
               </div>
 
+              <div className="border-t border-slate-100 pt-6">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Record Execution Video
+                </label>
+                <div className="flex items-center gap-3">
+                  <button
+                    role="switch"
+                    aria-checked={(() => {
+                      const currentSettings =
+                        settings.find(
+                          (s) => s.currentProjectId === currentProjectId,
+                        ) || settings[0];
+                      return currentSettings
+                        ? currentSettings.recordVideo !== false
+                        : true;
+                    })()}
+                    onClick={() => {
+                      const currentSettings =
+                        settings.find(
+                          (s) => s.currentProjectId === currentProjectId,
+                        ) || settings[0];
+                      if (currentSettings) {
+                        const isRecording =
+                          currentSettings.recordVideo !== false;
+                        settingsApi.update(currentSettings.id, {
+                          ...currentSettings,
+                          recordVideo: !isRecording,
+                        });
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${(() => {
+                      const currentSettings =
+                        settings.find(
+                          (s) => s.currentProjectId === currentProjectId,
+                        ) || settings[0];
+                      const isRecording = currentSettings
+                        ? currentSettings.recordVideo !== false
+                        : true;
+                      return isRecording ? "bg-blue-600" : "bg-slate-200";
+                    })()}`}
+                  >
+                    <span className="sr-only">Toggle Video Recording</span>
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${(() => {
+                        const currentSettings =
+                          settings.find(
+                            (s) => s.currentProjectId === currentProjectId,
+                          ) || settings[0];
+                        const isRecording = currentSettings
+                          ? currentSettings.recordVideo !== false
+                          : true;
+                        return isRecording ? "translate-x-6" : "translate-x-1";
+                      })()}`}
+                    />
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    {(() => {
+                      const currentSettings =
+                        settings.find(
+                          (s) => s.currentProjectId === currentProjectId,
+                        ) || settings[0];
+                      const isRecording = currentSettings
+                        ? currentSettings.recordVideo !== false
+                        : true;
+                      return isRecording
+                        ? "Video recording enabled"
+                        : "Video recording disabled";
+                    })()}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  Automatically records UI actions during execution. Turn off to save disk space and improve run speed slightly.
+                </p>
+              </div>
+
             </div>
           </div>
         )}

@@ -37,6 +37,7 @@ export class UIExecutor {
     viewportWidth?: number;
     viewportHeight?: number;
     logger?: ExecutionLogger;
+    recordVideo?: boolean;
   }): Promise<void> {
     this.logger = options.logger;
     if (!this.browser) {
@@ -48,7 +49,7 @@ export class UIExecutor {
         viewport: options.viewportWidth && options.viewportHeight
           ? { width: options.viewportWidth, height: options.viewportHeight }
           : null,
-        recordVideo: { dir: 'videos/' },
+        recordVideo: options.recordVideo !== false ? { dir: 'videos/' } : undefined,
       });
       this.page = await this.context.newPage();
 

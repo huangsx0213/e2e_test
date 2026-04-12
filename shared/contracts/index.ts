@@ -259,6 +259,7 @@ export interface Settings {
   headlessMode?: boolean;
   viewportWidth?: number;
   viewportHeight?: number;
+  recordVideo?: boolean;
 }
 
 export interface ExecutionRequest {
