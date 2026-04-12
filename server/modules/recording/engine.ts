@@ -160,8 +160,8 @@ export async function startRecording(
   }
 
   activeBrowser = await chromium.launch({ 
-    headless: false,
-    args: ['--start-maximized', '--no-sandbox'] 
+    headless: process.env.HEADLESS !== 'false',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
   });
   const context = await activeBrowser.newContext({ viewport: null });
   activePage = await context.newPage();

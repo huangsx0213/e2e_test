@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Shield, Zap, Workflow, Database, Layers, Info, CheckCircle2 } from 'lucide-react';
+import { BookOpen, Shield, Zap, Workflow, Database, Layers, Info, CheckCircle2, Radio, Globe, Target } from 'lucide-react';
 
 export const Documentation: React.FC = () => {
   return (
@@ -66,6 +66,88 @@ export const Documentation: React.FC = () => {
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        {/* Recording Engine Section */}
+        <section id="recording-engine" className="space-y-6">
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+            <Radio className="text-blue-600" size={20} />
+            <h2 className="text-xl font-bold text-slate-800">Unified Recording Engine</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Globe size={18} className="text-indigo-500" />
+                API Recording
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Automatically capture network traffic and convert it into portable test assets.
+              </p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Environment-Aware:</strong> Maps origins to environment-keyed Base URLs.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Intelligent Merging:</strong> Updates existing endpoints instead of duplicates.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Auto-Sanitization:</strong> Strips browser noise (UA,指纹) from headers.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Layers size={18} className="text-emerald-500" />
+                UI Recording
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Record user interactions with smart locator generation and real-time validation.
+              </p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Smart Locators:</strong> Uses Role &gt; TestID &gt; Text content hierarchy.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Visual Pulse:</strong> Real-time browser feedback for validated elements.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Live Sync:</strong> Steps appear in TestBuilder via WebSocket broadcast.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Target size={18} className="text-amber-500" />
+                Element Repository
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Centralized management for UI locators, enabling high reusability and self-healing.
+              </p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Multi-Point Locators:</strong> Stores multiple candidates for every element.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Self-Healing:</strong> Runtime fallback if primary locator fails.</span>
+                </li>
+                <li className="flex items-start gap-2 text-[11px] text-slate-500">
+                  <CheckCircle2 size={12} className="text-emerald-500 mt-0.5" />
+                  <span><strong>Project Scope:</strong> Shared repository across all suites in a project.</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </section>
 

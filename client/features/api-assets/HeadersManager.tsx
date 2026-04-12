@@ -11,11 +11,11 @@ interface HeadersManagerProps {
   currentProjectId: string;
 }
 
-export function HeadersManager({
+export const HeadersManager: React.FC<HeadersManagerProps> = ({
   headers,
   headersApi,
   currentProjectId,
-}: HeadersManagerProps) {
+}) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<{

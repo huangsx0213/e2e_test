@@ -128,7 +128,7 @@ const SYSTEM_TRANSFORMATIONS = [
 // Outside the component
 let variablesCache: { projectId: string, data: DynamicVariable[] } | null = null;
 
-export function DynamicVariables({ currentProjectId }: DynamicVariablesProps) {
+export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProjectId }) => {
   const [variables, setVariables] = useState<DynamicVariable[]>([]);
   const [selectedVarId, setSelectedVarId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!variablesCache || variablesCache.projectId !== currentProjectId);

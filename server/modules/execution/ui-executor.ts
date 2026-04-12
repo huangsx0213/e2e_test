@@ -330,6 +330,8 @@ export class UIExecutor {
       }, { timeout: timeoutMs });
     }
 
+    const resolvedSelector = step.target ? executionContext.interpolate(step.target) : '';
+
     const actionPromise = (async () => {
       switch (step.action) {
       case 'OPEN':

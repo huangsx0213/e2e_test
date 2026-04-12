@@ -20,11 +20,11 @@ interface BodyManagerProps {
   currentProjectId: string;
 }
 
-export function BodyManager({
+export const BodyManager: React.FC<BodyManagerProps> = ({
   bodies,
   bodiesApi,
   currentProjectId,
-}: BodyManagerProps) {
+}) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);

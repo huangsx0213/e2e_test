@@ -127,8 +127,11 @@ export function AppContent({
           suitesApi={suitesApi}
           projects={projects}
           headers={headers}
+          headersApi={headersApi}
           bodies={bodies}
+          bodiesApi={bodiesApi}
           endpoints={endpoints}
+          endpointsApi={endpointsApi}
           onRunCase={(suiteId, caseId, runSuite) =>
             setExecutionState({ suiteId, caseId, runSuite })
           }

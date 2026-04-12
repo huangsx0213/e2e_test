@@ -12,12 +12,12 @@ interface EndpointManagerProps {
   currentProjectId: string;
 }
 
-export function EndpointManager({
+export const EndpointManager: React.FC<EndpointManagerProps> = ({
   endpoints,
   endpointsApi,
   environments,
   currentProjectId,
-}: EndpointManagerProps) {
+}) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
