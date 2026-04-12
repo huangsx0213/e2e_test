@@ -106,13 +106,26 @@ function App() {
   const handleTabChange = React.useCallback(
     (tab: AppTab) => {
       setActiveTab(tab);
-      // Refresh key data when navigating to ensure the UI is in sync with background recording
+      // Refresh all metadata to ensure UI is in sync with background recording/updates
       projectsApi.refresh();
       suitesApi.refresh();
       endpointsApi.refresh();
+      headersApi.refresh();
+      bodiesApi.refresh();
       reportsApi.refresh();
+      environmentsApi.refresh();
+      settingsApi.refresh();
     },
-    [projectsApi, suitesApi, endpointsApi, reportsApi],
+    [
+      projectsApi,
+      suitesApi,
+      endpointsApi,
+      headersApi,
+      bodiesApi,
+      reportsApi,
+      environmentsApi,
+      settingsApi,
+    ],
   );
 
   if (isLoading) {

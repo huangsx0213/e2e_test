@@ -19,6 +19,7 @@ import {
   HeaderProfile,
   Project,
   TestSuite,
+  Settings as SettingsData,
 } from "@/shared/types";
 
 interface AppContentProps {
@@ -42,8 +43,8 @@ interface AppContentProps {
   setCurrentProjectId: Dispatch<SetStateAction<string>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
   setExecutionState: Dispatch<SetStateAction<ExecutionState | null>>;
-  settings: import("@/shared/types").Settings[];
-  settingsApi: CrudActions<import("@/shared/types").Settings>;
+  settings: SettingsData[];
+  settingsApi: CrudActions<SettingsData>;
 }
 
 export function AppContent({
@@ -74,6 +75,7 @@ export function AppContent({
     case "DASHBOARD":
       return (
         <Dashboard
+          key={activeTab}
           projects={projects}
           suites={suites}
           environments={environments}
@@ -84,6 +86,7 @@ export function AppContent({
     case "RUN":
       return (
         <TestRunner
+          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           suites={suites}
@@ -98,6 +101,7 @@ export function AppContent({
     case "ELEMENTS":
       return (
         <ElementRepo
+          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           currentProjectId={currentProjectId}
@@ -106,6 +110,7 @@ export function AppContent({
     case "MODULES":
       return (
         <ModuleBuilder
+          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           headers={headers}
@@ -117,6 +122,7 @@ export function AppContent({
     case "TESTS":
       return (
         <TestBuilder
+          key={activeTab}
           suites={suites}
           suitesApi={suitesApi}
           projects={projects}
@@ -127,11 +133,13 @@ export function AppContent({
             setExecutionState({ suiteId, caseId, runSuite })
           }
           currentProjectId={currentProjectId}
+          currentEnvironment={currentEnvironment}
         />
       );
     case "ENDPOINTS":
       return (
         <EndpointManager
+          key={activeTab}
           endpoints={endpoints}
           endpointsApi={endpointsApi}
           environments={environments}
@@ -141,6 +149,7 @@ export function AppContent({
     case "HEADERS":
       return (
         <HeadersManager
+          key={activeTab}
           headers={headers}
           headersApi={headersApi}
           currentProjectId={currentProjectId}
@@ -149,6 +158,7 @@ export function AppContent({
     case "BODIES":
       return (
         <BodyManager
+          key={activeTab}
           bodies={bodies}
           bodiesApi={bodiesApi}
           currentProjectId={currentProjectId}
@@ -156,11 +166,16 @@ export function AppContent({
       );
     case "REPORTS":
       return (
-        <TestReport currentProjectId={currentProjectId} suites={allSuites} />
+        <TestReport 
+          key={activeTab}
+          currentProjectId={currentProjectId} 
+          suites={allSuites} 
+        />
       );
     case "SETTINGS":
       return (
         <Settings
+          key={activeTab}
           environments={environments}
           environmentsApi={environmentsApi}
           currentEnvironment={currentEnvironment}
@@ -174,9 +189,9 @@ export function AppContent({
         />
       );
     case "DOCUMENTATION":
-      return <Documentation />;
+      return <Documentation key={activeTab} />;
     case "DYNAMIC_VARIABLES":
-      return <DynamicVariables currentProjectId={currentProjectId} />;
+      return <DynamicVariables key={activeTab} currentProjectId={currentProjectId} />;
     default:
       return null;
   }

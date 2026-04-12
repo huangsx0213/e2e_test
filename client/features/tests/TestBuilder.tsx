@@ -52,6 +52,7 @@ interface TestBuilderProps {
   endpoints: ApiEndpoint[];
   onRunCase: (suiteId: string, caseId?: string, runSuite?: boolean) => void;
   currentProjectId: string;
+  currentEnvironment: string;
 }
 
 const ACTION_TYPES: ActionType[] = [
@@ -104,6 +105,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   endpoints,
   onRunCase,
   currentProjectId,
+  currentEnvironment,
 }) => {
   const [activeSuiteId, setActiveSuiteId] = useState<string>("");
   // Default to empty to show Suite Overview first
@@ -418,6 +420,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
         body: JSON.stringify({
           targetUrl: recordingUrl,
           projectId: currentProjectId,
+          environment: currentEnvironment,
           apiFilter: apiFilter
         }),
       });

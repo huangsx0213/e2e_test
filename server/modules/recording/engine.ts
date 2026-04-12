@@ -266,28 +266,70 @@ export async function startRecording(
   });
 
   if (onApiRecorded && activePage) {
-    activePage.on('request', async (req) => {
-      if (recorderState.isPaused || recorderState.mode !== 'api') return;
-      if (req.resourceType() !== 'xhr' && req.resourceType() !== 'fetch') return;
-      if (req.method() === 'OPTIONS') return;
-      
-      const url = req.url();
-      if (apiFilter) {
-        // Safely convert glob to regex
-        const regexStr = apiFilter.split('*').join('.*');
-        const regex = new RegExp(regexStr, 'i');
-        if (!regex.test(url)) return;
+    activePage.on('requestfinished', async (req) => {
+      try {
+        if (recorderState.isPaused || recorderState.mode !== 'api') return;
+        
+        console.log(`[Recorder] Intercepted: ${req.method()} ${req.url()}`);
+        
+        if (req.resourceType() !== 'xhr' && req.resourceType() !== 'fetch') {
+           console.log(`[Recorder] Ignored (Not XHR/Fetch): ${req.resourceType()}`);
+           return;
+        }
+        
+        if (req.method() === 'OPTIONS') {
+           console.log(`[Recorder] Ignored (OPTIONS)`);
+           return;
+        }
+        
+        let targetOrigin = '';
+        let pageOrigin = '';
+        try {
+           targetOrigin = new URL(req.url()).origin;
+           pageOrigin = new URL(activePage!.url()).origin;
+        } catch(e) {}
+        
+        // Same-origin constraint (unless apiFilter is specifically overriding it)
+        if (targetOrigin && pageOrigin && targetOrigin !== pageOrigin && !apiFilter) {
+           console.log(`[Recorder] Ignored (Cross-Origin): Target=${targetOrigin}, Page=${pageOrigin}`);
+           return;
+        }
+
+        const url = req.url();
+        if (apiFilter) {
+          // Escape regex characters except *, then convert * to .*
+          const regexStr = apiFilter.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+          const regex = new RegExp(regexStr, 'i');
+          if (!regex.test(url)) {
+             console.log(`[Recorder] Ignored (Did not match filter): ${apiFilter}`);
+             return;
+          }
+        }
+        
+        const response = await req.response();
+        const status = response ? response.status() : 0;
+        
+        // Only record completed responses, ignoring pre-flight failures or aborts
+        if (status === 0) {
+           console.log(`[Recorder] Ignored (Status 0 / Failed)`);
+           return;
+        }
+
+        const headers = await req.allHeaders();
+        let postData = req.postData();
+        
+        console.log(`[Recorder] ✨ API Captured: ${status} ${req.method()} ${url}`);
+        
+        onApiRecorded({
+           url,
+           method: req.method(),
+           headers,
+           postData,
+           status
+        });
+      } catch (err) {
+         console.warn('[Recorder] Warning processing API response:', err);
       }
-      
-      const headers = await req.allHeaders();
-      let postData = req.postData();
-      
-      onApiRecorded({
-         url,
-         method: req.method(),
-         headers,
-         postData
-      });
     });
   }
 

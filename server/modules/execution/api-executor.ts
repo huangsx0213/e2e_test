@@ -68,7 +68,7 @@ export async function executeApiStep(
   if (step.endpointId) {
     const endpoint = assets.endpoints.find(e => e.id === step.endpointId);
     if (endpoint) {
-      const baseUrl = (endpoint.baseUrls?.[environment] || '').replace(/\/$/, '');
+      const baseUrl = (endpoint.baseUrls?.[environment] || endpoint.baseUrls?.['default'] || '').replace(/\/$/, '');
       const cleanPath = resolvedTarget.replace(/^\//, '');
       resolvedTarget = `${baseUrl}/${cleanPath}`;
 

@@ -295,7 +295,7 @@ export function EndpointManager({
                     ).
                   </p>
                   <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-4">
-                    {environments.map((env) => (
+                    {Array.from(new Set([...environments, ...Object.keys(editUrls)])).sort().map((env) => (
                       <div
                         key={env}
                         className="grid grid-cols-12 gap-4 items-center"
@@ -309,7 +309,9 @@ export function EndpointManager({
                                   ? "bg-teal-50 text-teal-700 border-teal-200"
                                   : env === "SIT"
                                     ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : "bg-green-50 text-green-700 border-green-200"
+                                    : env === "DEV"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : "bg-gray-100 text-gray-700 border-gray-200"
                             }`}
                           >
                             {env}
@@ -325,7 +327,7 @@ export function EndpointManager({
                                 [env]: e.target.value,
                               })
                             }
-                            placeholder={`https://${env.toLowerCase()}-api.example.com`}
+                            placeholder={env === 'default' ? "Recorded Base URL" : `https://${env.toLowerCase()}-api.example.com`}
                           />
                         </div>
                       </div>

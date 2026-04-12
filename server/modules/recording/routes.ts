@@ -32,7 +32,7 @@ function getOrCreatePage(project: Project, url: string): Page {
 }
 
 router.post('/start', async (req, res) => {
-  const { targetUrl, projectId, apiFilter } = req.body;
+  const { targetUrl, projectId, apiFilter, environment } = req.body;
   
   if (!targetUrl || !projectId) {
     return res.status(400).json({ error: 'targetUrl and projectId are required' });
@@ -99,40 +99,74 @@ router.post('/start', async (req, res) => {
 
     }, async (apiInfo: any) => {
       // 3. Network API Recorder
-      const { url, method, headers, postData } = apiInfo;
+      const { url, method, headers, postData, status } = apiInfo;
       
       let urlObj;
       try { urlObj = new URL(url); } catch(e) { return; }
       const basePath = urlObj.pathname;
       const endpointName = `[${method}] ${basePath}`;
       
-      // Auto-create Endpoint
+      // Auto-create or Update Endpoint
       const allEndpoints = listApiEndpoints();
+      const currentOrigin = urlObj.origin;
+      const envKey = environment || "default";
+      const currentParams = Array.from(urlObj.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true }));
+
       let endpoint = allEndpoints.find(e => e.projectId === projectId && e.name === endpointName);
+      
       if (!endpoint) {
         endpoint = saveApiEndpoint({
           id: `ep-${Date.now()}`,
           projectId,
           name: endpointName,
           method: method as any,
-          baseUrls: { "default": urlObj.origin },
-          parameters: []
+          baseUrls: { [envKey]: currentOrigin },
+          parameters: currentParams
         });
+      } else {
+        // Check for updates (new environment URL or new parameters)
+        let needsUpdate = false;
+        
+        // 1. Update Base URL for current environment if missing or different
+        if (!endpoint.baseUrls) endpoint.baseUrls = {};
+        if (endpoint.baseUrls[envKey] !== currentOrigin) {
+          endpoint.baseUrls[envKey] = currentOrigin;
+          needsUpdate = true;
+        }
+
+        // 2. Merge Parameters
+        if (!endpoint.parameters) endpoint.parameters = [];
+        for (const p of currentParams) {
+          if (!endpoint.parameters.find(ep => ep.key === p.key)) {
+            endpoint.parameters.push(p);
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          endpoint = saveApiEndpoint(endpoint);
+        }
       }
       
       // Auto-create Headers
       const allHeaders = listHeaderProfiles();
       let headerProfileId = undefined;
       if (headers && Object.keys(headers).length > 0) {
-         const profileName = `Recorded Headers - ${urlObj.hostname}`;
-         let profile = allHeaders.find(h => h.projectId === projectId && h.name === profileName);
-         if (!profile) {
-            const cleanHeaders = Object.entries(headers).filter(([k]) => {
-              const klow = k.toLowerCase();
-              return !['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'accept-encoding', 'origin', 'referer', 'user-agent', 'cookie', 'host', 'connection'].includes(klow);
-            }).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
-            
-            if (cleanHeaders.length > 0) {
+         const cleanHeaders = Object.entries(headers).filter(([k]) => {
+           const klow = k.toLowerCase();
+           return !['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'accept-encoding', 'accept', 'accept-language', 'dnt', 'origin', 'referer', 'user-agent', 'cookie', 'host', 'connection', 'content-length'].includes(klow);
+         }).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
+
+         if (cleanHeaders.length > 0) {
+            const cleanHeadersStr = JSON.stringify(cleanHeaders.sort((a,b) => a.key.localeCompare(b.key)));
+            let profile = allHeaders.find(h => {
+               if (h.projectId !== projectId) return false;
+               const hStr = JSON.stringify(h.headers.sort((a,b) => a.key.localeCompare(b.key)));
+               return hStr === cleanHeadersStr;
+            });
+
+            if (!profile) {
+               const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
                profile = saveHeaderProfile({
                  id: `hp-${Date.now()}`,
                  projectId,
@@ -140,25 +174,31 @@ router.post('/start', async (req, res) => {
                  headers: cleanHeaders
                });
             }
+            headerProfileId = profile.id;
          }
-         if (profile) headerProfileId = profile.id;
       }
       
       // Auto-create Body
       const allBodies = listBodyTemplates();
       let bodyTemplateId = undefined;
       if (postData) {
-         const bodyName = `Recorded Body - ${basePath.substring(basePath.lastIndexOf('/') + 1) || 'Root'}`;
-         let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.name === bodyName && b.content === postData);
+         let finalContent = postData;
+         let contentType = 'text/plain';
+         try { 
+            const parsed = JSON.parse(postData); 
+            contentType = 'application/json';
+            finalContent = JSON.stringify(parsed, null, 2);
+         } catch(e) {}
+         
+         let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
          if (!bodyTemplate) {
-            let contentType = 'text/plain';
-            try { JSON.parse(postData); contentType = 'application/json'; } catch(e) {}
+            const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
             bodyTemplate = saveBodyTemplate({
                id: `bt-${Date.now()}`,
                projectId,
                name: bodyName,
                contentType,
-               content: postData
+               content: finalContent
             });
          }
          bodyTemplateId = bodyTemplate.id;
@@ -168,15 +208,26 @@ router.post('/start', async (req, res) => {
       const methodUpper = method.toUpperCase();
       const actionMethod = validMethods.includes(methodUpper) ? methodUpper : 'GET';
 
-      const step = {
+      const stepAssertions = [];
+      if (status && status !== 0) {
+         stepAssertions.push({
+            id: `ast-${Date.now()}`,
+            source: 'API_STATUS',
+            operator: 'EQUALS',
+            expectedValue: String(status)
+         });
+      }
+
+      const step: TestStep = {
         id: `step-${Date.now()}`,
         action: `API_${actionMethod}`,
-        target: '',
+        target: basePath, // Critical: executor needs the path, not the display name
         data: '',
         description: `Recorded API: ${method} ${basePath}`,
         endpointId: endpoint.id,
         headerProfileId: headerProfileId,
-        bodyTemplateId: bodyTemplateId
+        bodyTemplateId: bodyTemplateId,
+        assertions: stepAssertions
       };
       
       broadcast('step-recorded', { projectId, step, type: 'API' });
