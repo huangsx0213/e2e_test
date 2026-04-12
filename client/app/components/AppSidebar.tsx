@@ -25,7 +25,7 @@ export function AppSidebar({
 
   return (
     <nav
-      className={`${isCollapsed ? "w-16" : "w-64"} z-20 flex shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-all duration-300`}
+      className={`${isCollapsed ? "w-16" : "w-64"} z-20 flex shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-300 transition-all duration-300 print:hidden`}
     >
       <div
         className={`flex h-14 items-center border-b border-slate-800/50 ${isCollapsed ? "justify-center px-0" : "justify-between px-4"}`}

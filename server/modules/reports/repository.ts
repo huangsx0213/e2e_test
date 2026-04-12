@@ -80,12 +80,13 @@ export function getExecutionReport(reportId: string): ExecutionReport | undefine
   const base = db
     .prepare(
       `
-        SELECT id, suite_id, suite_name, environment, start_time, end_time, status, pass_rate, total_cases, passed_cases, failed_cases
-        FROM reports
-        WHERE id = ?
+        SELECT r.id, r.suite_id, r.suite_name, r.environment, r.start_time, r.end_time, r.status, r.pass_rate, r.total_cases, r.passed_cases, r.failed_cases, e.type as execution_type, e.plan_id
+        FROM reports r
+        LEFT JOIN execution_runs e ON r.id = e.report_id
+        WHERE r.id = ?
       `,
     )
-    .get(reportId) as DbReportRow | undefined;
+    .get(reportId) as DbReportRow & { execution_type: string | null; plan_id: string | null } | undefined;
 
   if (!base) {
     return undefined;
@@ -100,6 +101,15 @@ export function getExecutionReport(reportId: string): ExecutionReport | undefine
     `,
   ).all(reportId) as DbReportLogRow[];
 
+  // Resolve plan name from plan_id
+  let planName: string | undefined;
+  if (base.plan_id) {
+    const planRow = db
+      .prepare('SELECT name FROM test_plans WHERE id = ?')
+      .get(base.plan_id) as { name: string } | undefined;
+    planName = planRow?.name;
+  }
+
   return {
     id: base.id,
     suiteId: base.suite_id,
@@ -112,6 +122,9 @@ export function getExecutionReport(reportId: string): ExecutionReport | undefine
     totalCases: base.total_cases ?? undefined,
     passedCases: base.passed_cases ?? undefined,
     failedCases: base.failed_cases ?? undefined,
+    executionType: base.execution_type ?? undefined,
+    planId: base.plan_id ?? undefined,
+    planName: planName,
     logs: logs.map((log) => ({
       stepId: log.step_id,
       timestamp: log.timestamp,

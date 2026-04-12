@@ -6,7 +6,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ currentProjectName }: AppHeaderProps) {
   return (
-    <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6 shrink-0 z-10">
+    <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-6 shrink-0 z-10 print:hidden">
       <div className="flex items-center gap-4 text-sm">
         <span className="font-medium text-gray-500">Workspace</span>
         <span className="text-gray-300">/</span>

@@ -732,7 +732,7 @@ async function executeScenario(
         scenarioVariables,
         scenarioRow,
         scenarioSuite.variableOverrides || {},
-        scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN',
+        scenarioSuite.dataSource || 'SCENARIO',
         project,
         assets,
         request.environment,

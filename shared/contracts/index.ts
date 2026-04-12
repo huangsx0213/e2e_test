@@ -249,6 +249,9 @@ export interface ExecutionReport {
   totalCases: number;
   passedCases: number;
   failedCases: number;
+  executionType?: string; // suite | case | scenario | plan
+  planId?: string;
+  planName?: string;
   logs: ExecutionLog[];
 }
 

@@ -80,7 +80,6 @@ export function AppContent({
           suites={suites}
           environments={environments}
           currentProjectId={currentProjectId}
-          onNavigate={setActiveTab}
         />
       );
     case "RUN":

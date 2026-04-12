@@ -48,8 +48,11 @@ interface TestBuilderProps {
   suitesApi: CrudActions<TestSuite>;
   projects: Project[];
   headers: HeaderProfile[];
+  headersApi: CrudActions<HeaderProfile>;
   bodies: BodyTemplate[];
+  bodiesApi: CrudActions<BodyTemplate>;
   endpoints: ApiEndpoint[];
+  endpointsApi: CrudActions<ApiEndpoint>;
   onRunCase: (suiteId: string, caseId?: string, runSuite?: boolean) => void;
   currentProjectId: string;
   currentEnvironment: string;
