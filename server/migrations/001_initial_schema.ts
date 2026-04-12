@@ -140,7 +140,7 @@ export const migration001InitialSchema: Migration = {
         id TEXT PRIMARY KEY,
         scenario_id TEXT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
         suite_id TEXT NOT NULL,
-        iteration_strategy TEXT DEFAULT 'SCENARIO_DRIVEN',
+        iteration_strategy TEXT DEFAULT 'SCENARIO',
         position INTEGER NOT NULL
       );
 

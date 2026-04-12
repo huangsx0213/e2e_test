@@ -128,7 +128,7 @@ export interface ScenarioSuite {
   id: string;
   suiteId: string;
   variableOverrides?: Record<string, string>;
-  iterationStrategy?: 'SCENARIO_DRIVEN' | 'CROSS_MATRIX' | 'SUITE_DRIVEN';
+  dataSource?: 'SCENARIO' | 'SUITE';
 }
 
 export interface TestScenario {

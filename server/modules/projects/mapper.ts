@@ -56,7 +56,7 @@ function normalizeScenarioSuite(input: Partial<ScenarioSuite>): ScenarioSuite {
     id: asId(input.id, 'ss'),
     suiteId: asText(input.suiteId),
     variableOverrides: normalizeStringRecord(input.variableOverrides),
-    iterationStrategy: (input.iterationStrategy === 'CROSS_MATRIX' || input.iterationStrategy === 'SUITE_DRIVEN') ? input.iterationStrategy : 'SCENARIO_DRIVEN',
+    dataSource: input.dataSource === 'SUITE' ? 'SUITE' : 'SCENARIO',
   };
 }
 

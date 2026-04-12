@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recording Logic - QuantumQA</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.5/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #fafbfc; color: #24292e; padding: 24px; line-height: 1.7; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1 { font-size: 1.75rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 8px; margin-bottom: 8px; }
+        .subtitle { color: #586069; margin-bottom: 24px; font-size: 0.95rem; }
+        .intro { background: linear-gradient(135deg, #ddf4ff 0%, #dafbe1 100%); border: 1px solid #b6e3ff; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+        
+        .section { background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 20px; margin-bottom: 16px; }
+        .section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; color: #0366d6; }
+        
+        .mermaid { margin: 16px 0; background: #f6f8fa; padding: 12px; border-radius: 6px; text-align: center; }
+        
+        p { margin: 8px 0; font-size: 0.9rem; }
+        ul, ol { margin: 8px 0; padding-left: 20px; font-size: 0.9rem; }
+        li { margin: 4px 0; }
+        
+        table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.85rem; }
+        th, td { padding: 10px 12px; border: 1px solid #e1e4e8; text-align: left; }
+        th { background: #f6f8fa; font-weight: 600; }
+        
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-right: 4px; }
+        .tag-blue { background: #ddf4ff; color: #0969da; }
+        .tag-yellow { background: #fff8c5; color: #9a6700; }
+        .tag-green { background: #dafbe1; color: #1a7f37; }
+        
+        .note { font-size: 0.8rem; color: #6a737d; border-left: 3px solid #0366d6; padding-left: 12px; margin-top: 16px; }
+        .important { background: #fff8c5; border: 1px solid #9a6700; border-radius: 6px; padding: 12px; margin: 12px 0; }
+        
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .box { border: 1px solid #e1e4e8; border-radius: 6px; padding: 12px; }
+        .box-title { font-weight: 600; margin-bottom: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Recording Logic</h1>
+        <p class="subtitle">QuantumQA Unified Recording Engine - Technical Guide</p>
+
+        <!-- Introduction -->
+        <div class="intro">
+            <h2 style="margin-top:0;font-size:1.1rem;">About This Document</h2>
+            <p>This document describes the recording logic of QuantumQA's unified recording engine. The engine captures both UI interactions and API requests while users browse the application.</p>
+            <p><strong>Key Concepts:</strong></p>
+            <ul style="margin-bottom:0;">
+                <li><strong>Three Recording Modes</strong>: UI Steps, API Requests, Elements Only</li>
+                <li><strong>Smart Selector Generation</strong>: Automatic best selector choice with live DOM validation</li>
+                <li><strong>Environment-Aware Mapping</strong>: API URLs split into baseUrl + path for cross-environment reuse</li>
+                <li><strong>Browser-Side Injection</strong>: JavaScript tracker injected via Playwright's addInitScript</li>
+            </ul>
+        </div>
+
+        <!-- 1. Recording Entry -->
+        <div class="section">
+            <div class="section-title">1. Recording Entry Point</div>
+            <p>When a user starts recording from the UI, the system initiates a Playwright browser instance and injects the tracking script.</p>
+            
+            <p><strong>Entry Process (engine.ts startRecording):</strong></p>
+            <ol>
+                <li><strong>Cleanup Previous Session</strong>: If any recording is already active, stop it first to prevent conflicts.</li>
+                <li><strong>Launch Browser</strong>: Start a Chromium browser instance in headless or headed mode based on configuration.</li>
+                <li><strong>Create Page Context</strong>: Create a new browser page context and navigate to the target URL.</li>
+                <li><strong>Expose Bridge Functions</strong>: Expose several functions from Node.js to the browser for communication:
+                    <ul>
+                        <li><code>onElementClicked</code> - Called when right-click to record an element</li>
+                        <li><code>onStepRecordedAction</code> - Called when left-click to record a UI step</li>
+                        <li><code>onRecorderStateChanged</code> - Called when user toggles recording state</li>
+                    </ul>
+                </li>
+                <li><strong>Inject Tracker Script</strong>: Add the JavaScript tracker via addInitScript that runs on every page navigation.</li>
+                <li><strong>Navigate to Target</strong>: Finally, navigate to the user-provided target URL.</li>
+            </ol>
+
+            <p><strong>Three Recording Modes:</strong></p>
+            <div class="two-col">
+                <div class="box">
+                    <div class="box-title"><span class="tag tag-blue">💻 UI Steps</span></div>
+                    <p>Records click, type, hover actions. Left-click on interactive elements automatically captures the action.</p>
+                </div>
+                <div class="box">
+                    <div class="box-title"><span class="tag tag-green">🌐 API Requests</span></div>
+                    <p>Records XHR and Fetch requests. Filters by URL pattern if apiFilter is specified.</p>
+                </div>
+            </div>
+            <div class="box" style="margin-top:12px;">
+                <div class="box-title"><span class="tag tag-yellow">📦 Elements Only</span></div>
+                <p>Records just the element locators without generating test steps. Right-click on elements to capture.</p>
+            </div>
+        </div>
+
+        <!-- 2. Browser Tracker -->
+        <div class="section">
+            <div class="section-title">2. Browser-Side Tracker (Injected Script)</div>
+            <p>The tracker is injected via Playwright's addInitScript and runs on every page load, including SPA navigation.</p>
+            
+            <p><strong>Tracker Components:</strong></p>
+            <ol>
+                <li><strong>State Management</strong>: Maintains __recorderState with isPaused (boolean) and mode (ui/api/element).</li>
+                <li><strong>Floating Toolbar</strong>: A UI panel in the top-right corner allowing users to switch modes and pause/resume recording.</li>
+                <li><strong>Badge Indicator</strong>: A bottom-center badge showing "Right-Click an element to Record" - shown only in element mode.</li>
+                <li><strong>Event Listeners</strong>: Three types of browser events are monitored:
+                    <ul>
+                        <li>contextmenu (Right-click): Captures element for Elements mode</li>
+                        <li>click (Left-click): Captures UI actions in UI mode</li>
+                        <li>focusout: Captures TYPE and SELECT_OPTION actions when users finish inputting</li>
+                    </ul>
+                </li>
+                <li><strong>State Synchronization</strong>: When user changes mode or pauses, the browser notifies the server via onRecorderStateChanged.</li>
+            </ol>
+
+            <div class="important">
+                The tracker uses setInterval to continuously ensure the toolbar and badge remain visible, handling Single Page Application (SPA) navigations where the page doesn't fully reload.
+            </div>
+        </div>
+
+        <!-- 3. Smart Selector Generation -->
+        <div class="section">
+            <div class="section-title">3. Smart Selector Generation</div>
+            <p>When an element is captured, the system generates the best possible selector through a priority-based validation system.</p>
+            
+            <p><strong>Selector Priority (Highest to Lowest):</strong></p>
+            <ol>
+                <li><strong>Role Locator (getByRole)</strong>: Highest priority. Uses ARIA role and accessible name. Two variants - exact match first, then fuzzy match.</li>
+                <li><strong>Test ID (getByTestId)</strong>: Second priority. Uses data-test, data-testid, or data-qa attributes.</li>
+                <li><strong>ID Locator (CSS #id)</strong>: Third priority. Uses HTML id attribute, excluding auto-generated numeric IDs.</li>
+                <li><strong>Text Locator (getByText)</strong>: Fallback. Uses visible text content, limited to 2-50 characters.</li>
+            </ol>
+
+            <p><strong>Validation Process:</strong></p>
+            <p>For each candidate selector, the system validates against the live DOM:</p>
+            <ul>
+                <li>Counts matching elements (should be exactly 1)</li>
+                <li>Checks visibility (should be visible)</li>
+                <li>Visual feedback: Pulsing blue outline on matched element</li>
+            </ul>
+
+            <p><strong>Validation Retry Logic:</strong></p>
+            <p>If no selectors validate on first attempt, the system waits 60ms and retries once. This handles transient states during page transitions.</p>
+
+            <p><strong>Fallback Strategy:</strong></p>
+            <p>If all validations fail (e.g., due to page navigation mid-validation), the system trusts the highest-priority candidate anyway. This ensures recording doesn't break even in edge cases. The element is marked as isVerified: false in this case.</p>
+
+            <p><strong>ARIA Information Extraction:</strong></p>
+            <p>The tracker calculates ARIA role and accessible name using official browser semantics. Role defaults are inferred from tag name (button, input, select, etc.) if not explicitly set. Accessible name is pulled from innerText, aria-label, placeholder, label, title, alt, or value.</p>
+        </div>
+
+        <!-- 4. Element Recording -->
+        <div class="section">
+            <div class="section-title">4. Element Recording (Right-Click)</div>
+            <p>In "Elements Only" mode, right-clicking an element captures its locator for the Element Repository.</p>
+            
+            <p><strong>Capture Flow:</strong></p>
+            <ol>
+                <li><strong>Event Trigger</strong>: User right-clicks on a target element.</li>
+                <li><strong>Context Menu Prevention</strong>: The tracker's contextmenu handler calls preventDefault() to stop the browser menu.</li>
+                <li><strong>HTML Extraction</strong>: Creates a clean clone of the target element (style stripped, text truncated to 50 chars).</li>
+                <li><strong>ARIA Extraction</strong>: Calls getAriaInfo() to get role and accessible name.</li>
+                <li><strong>Selector Generation</strong>: Calls generateSmartSelector() to produce validated locators.</li>
+                <li><strong>Visual Feedback</strong>: Highlights the element with green outline and background for 1 second.</li>
+                <li><strong>Callback to Server</strong>: Calls window.onElementClicked() with the captured element data.</li>
+            </ol>
+
+            <p><strong>Element Data Structure:</strong></p>
+            <ul>
+                <li>id: Unique timestamp-based ID</li>
+                <li>name: Descriptive name from selector</li>
+                <li>selectorType: getByRole, getByTestId, CSS, getByText</li>
+                <li>value: The actual selector value</li>
+                <li>locators: Array of all valid locators (for fallback)</li>
+                <li>description: Human-readable description</li>
+                <li>originalHtml: Raw HTML of the element</li>
+                <li>pageUrl: URL where element was captured</li>
+            </ul>
+        </div>
+
+        <!-- 5. UI Step Recording -->
+        <div class="section">
+            <div class="section-title">5. UI Step Recording (Left-Click)</div>
+            <p>In "UI Steps" mode, left-clicking interactive elements automatically records test steps.</p>
+            
+            <p><strong>Step Types Captured:</strong></p>
+            <ul>
+                <li><strong>CLICK</strong>: Triggered by left-click on buttons, links, or interactive elements</li>
+                <li><strong>TYPE</strong>: Triggered when focus leaves (focusout) an input/textarea with changed value</li>
+                <li><strong>SELECT_OPTION</strong>: Triggered when focus leaves a select dropdown with changed value</li>
+            </ul>
+
+            <p><strong>Action Capture Flow:</strong></p>
+            <ol>
+                <li><strong>Event Detection</strong>: The tracker's click and focusout listeners fire.</li>
+                <li><strong>Interactive Check</strong>: Checks if target is interactive (button, a, input, select, textarea, role=button, tabindex).</li>
+                <li><strong>Value Tracking</strong>: For input/textarea, stores original value on focusin. On focusout, compares to detect changes.</li>
+                <li><strong>Filtering</strong>: Skips checkbox/radio click (let change handler manage), skips input focus without value change.</li>
+                <li><strong>Selector Generation</strong>: Generates smart selector for the target element.</li>
+                <li><strong>Callback to Server</strong>: Calls window.onStepRecordedAction() with action type, element data, and data value.</li>
+            </ol>
+
+            <div class="important">
+                Input elements track their original value on focusin to detect actual changes. This prevents recording empty TYPE steps when users only click into fields without typing.
+            </div>
+        </div>
+
+        <!-- 6. API Recording -->
+        <div class="section">
+            <div class="section-title">6. API Request Recording</div>
+            <p>In "API Requests" mode, the system intercepts XHR and Fetch requests matching the filter criteria.</p>
+            
+            <p><strong>Interception Flow:</strong></p>
+            <ol>
+                <li><strong>Request Listener</strong>: Playwright's page.on('requestfinished') handler processes completed requests.</li>
+                <li><strong>State Check</strong>: Only processes if not paused and in API mode.</li>
+                <li><strong>Resource Type Filter</strong>: Only records XHR and Fetch requests, ignores other types (document, stylesheet, image, etc.).</li>
+                <li><strong>Method Filter</strong>: Ignores OPTIONS preflight requests.</li>
+                <li><strong>Origin Check</strong>: By default, only records same-origin requests. Cross-origin requires apiFilter override.</li>
+                <li><strong>URL Filter</strong>: If apiFilter is provided, matches request URL against the regex pattern.</li>
+                <li><strong>Status Check</strong>: Ignores failed responses (status 0 indicates failure/abort).</li>
+                <li><strong>Data Extraction</strong>: Captures URL, method, headers, postData, and response status.</li>
+            </ol>
+
+            <p><strong>Environment-Aware Mapping:</strong></p>
+            <p>When an API is recorded, the system splits the URL into baseUrl and path for cross-environment reuse:</p>
+            <ul>
+                <li>baseUrl: The origin (e.g., https://api.staging.com) - stored per environment</li>
+                <li>path: The remaining path (e.g., /api/v1/users) - stored as the endpoint path</li>
+            </ul>
+            <p>During execution, the system dynamically reconstructs the full URL based on the selected environment's baseUrl configuration.</p>
+
+            <div class="important">
+                If the same API is recorded from different environments (DEV vs STAGING), the system merges the baseUrls into a map: { DEV: "...", STAGING: "..." }. This is the "Intelligent Upsert" mechanism.
+            </div>
+        </div>
+
+        <!-- 7. Recording UI -->
+        <div class="section">
+            <div class="section-title">7. Recording Toolbar UI</div>
+            <p>The injected toolbar provides user controls for managing the recording session.</p>
+            
+            <p><strong>UI Components:</strong></p>
+            <ul>
+                <li><strong>Status Indicator</strong>: Red dot when recording, gray when paused.</li>
+                <li><strong>Mode Dropdown</strong>: Switch between UI Steps, API Requests, Elements Only. Disabled while recording.</li>
+                <li><strong>Start/Pause Button</strong>: Toggle recording state. Shows "▶ Start" when paused, "⏸ Pause" when recording.</li>
+                <li><strong>Badge</strong>: Bottom-center hint "Right-Click an element to Record" - only visible in Elements mode.</li>
+            </ul>
+
+            <p><strong>State Synchronization:</strong></p>
+            <p>When user interacts with the toolbar, the browser updates __recorderState and calls onRecorderStateChanged() to notify the server. The server uses this state to filter what gets recorded.</p>
+        </div>
+
+        <!-- 8. Stop Recording -->
+        <div class="section">
+            <div class="section-title">8. Stop Recording</div>
+            <p>When recording stops, the system cleans up browser resources.</p>
+            
+            <p><strong>Cleanup Process (engine.ts stopRecording):</strong></p>
+            <ol>
+                <li>Close the active browser instance</li>
+                <li>Set activeBrowser to null</li>
+                <li>Set activePage to null</li>
+            </ol>
+
+            <p>Note: The recorded elements and steps remain in the project's repository - only the browser is closed.</p>
+        </div>
+
+        <!-- 9. Data Flow Summary -->
+        <div class="section">
+            <div class="section-title">9. Complete Data Flow</div>
+            <div class="mermaid">
+                flowchart TB
+                    A[User starts recording] --> B[Launch Playwright]
+                    B --> C[Inject tracker script]
+                    C --> D[Navigate to target URL]
+                    
+                    D --> E{User interaction}
+                    E -->|Right-Click| F[Element mode: onElementClicked]
+                    E -->|Left-Click| G[UI mode: onStepRecordedAction]
+                    E -->|API Request| H[API mode: requestfinished event]
+                    
+                    F --> I[Generate smart selector]
+                    G --> I
+                    I --> J[Validate in DOM]
+                    J --> K[Return to server]
+                    
+                    H --> L[Parse URL]
+                    L --> M[Extract baseUrl + path]
+                    M --> K
+                    
+                    K --> N[Save to repository]
+                    
+                    style A fill:#ddf4ff
+                    style N fill:#dafbe1
+            </div>
+        </div>
+
+        <p class="note">Reference: server/modules/recording/engine.ts</p>
+    </div>
+    <script>mermaid.initialize({startOnLoad:true,theme:'default'});</script>
+</body>
+</html>

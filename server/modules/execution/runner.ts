@@ -370,7 +370,7 @@ async function executeSuite(
     {}, // scenarioVariables
     {}, // scenarioDataRow
     {}, // scenarioOverrides
-    'SUITE_DRIVEN',
+    'SUITE',
     project,
     assets,
     request.environment,
@@ -391,7 +391,7 @@ async function runSuiteWithContext(
   scenarioVariables: Record<string, string>,
   scenarioDataRow: Record<string, string>,
   scenarioOverrides: Record<string, string>,
-  iterationStrategy: 'SCENARIO_DRIVEN' | 'CROSS_MATRIX' | 'SUITE_DRIVEN',
+  dataSource: 'SCENARIO' | 'SUITE',
   project: Project,
   assets: ApiAssets,
   environment: string,
@@ -414,7 +414,7 @@ async function runSuiteWithContext(
   let dataRows = suite.dataRows && suite.dataRows.length > 0 ? suite.dataRows : [{}];
 
   // If scenario-driven, we ignore the suite's internal data rows to prevent unwanted multiplication
-  if (iterationStrategy === 'SCENARIO_DRIVEN') {
+  if (dataSource === 'SCENARIO') {
     dataRows = [{}];
   }
 
@@ -623,7 +623,7 @@ async function executePlan(
           scenarioVariables,
           scenarioRow,
           scenarioSuite.variableOverrides || {},
-          scenarioSuite.iterationStrategy || 'SCENARIO_DRIVEN',
+          scenarioSuite.dataSource || 'SCENARIO',
           project,
           assets,
           request.environment,
