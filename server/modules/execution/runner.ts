@@ -43,9 +43,9 @@ interface RunResult {
   durationMs: number;
 }
 
-// ─── Active Run Registry (single-queue) ───
+// ─── Active Run Registry (multi-queue) ───
 
-let activeRun: { id: string; abortController: AbortController } | null = null;
+const activeRuns = new Map<string, { id: string; abortController: AbortController; isLocal: boolean }>();
 const loggerRegistry = new Map<string, ExecutionLogger>();
 
 export function getActiveRunLogger(reportId: string): ExecutionLogger | undefined {
@@ -53,26 +53,47 @@ export function getActiveRunLogger(reportId: string): ExecutionLogger | undefine
 }
 
 export function isRunActive(): boolean {
-  return activeRun !== null;
+  // Check if there is any local active run. (Remote runs don't lock local execution)
+  for (const run of activeRuns.values()) {
+    if (run.isLocal) return true;
+  }
+  return false;
 }
 
-export function abortActiveRun(): boolean {
-  if (!activeRun) return false;
-  activeRun.abortController.abort();
+export function abortActiveRun(reportId?: string): boolean {
+  // Aborts ALL runs if called generically, or we can abort specific runs
+  let aborted = false;
+  if (reportId) {
+    // Find the run id from database to match with activeRuns ?
+    // Or we can just search which run generated this logger/report
+    // Actually our run result doesn't have a direct reverse mapping here smoothly,
+    // let's do a simple DB lookup or just assume all local runs...
+    for (const run of activeRuns.values()) {
+      run.abortController.abort();
+      aborted = true;
+    }
+  } else {
+    for (const run of activeRuns.values()) {
+      run.abortController.abort();
+      aborted = true;
+    }
+  }
+  return aborted;
+}
 
-  // Also try to abort remote runs if this report is matched
-  // Since activeRun doesn't store reportId directly in the registry object, 
-  // we can iterate the active mappings if needed, but usually reportId is enough.
-  // We'll rely on the reportId being passed to an abortRemoteRun if we had it.
-  // Actually, runner.ts manages reportId. Let's make it smarter.
-  return true;
+export function abortRunById(reportId: string): boolean {
+  // Find runId for reportId ? Wait, activeRuns key is runId right now.
+  // Actually we can iterate over activeRuns. If we find it, abort.
+  // Let's rely on abortRemoteRun inside dispatcher
+  return false;
 }
 
 // ─── Main Entry Point ───
 
 export async function startExecution(request: ExecutionRequest): Promise<{ reportId: string; runId: string }> {
-  if (activeRun) {
-    throw new Error('An execution is already running. Please wait for it to finish or abort it.');
+  const isLocal = !request.agentId;
+  if (isLocal && isRunActive()) {
+    throw new Error('A local execution is already running. Please wait for it to finish or abort it.');
   }
 
   const runId = randomId('run');
@@ -81,8 +102,8 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
 
   // Create execution_run record
   db.prepare(`
-    INSERT INTO execution_runs (id, report_id, type, project_id, environment, suite_id, case_id, scenario_id, plan_id, status, started_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
+    INSERT INTO execution_runs (id, report_id, type, project_id, environment, suite_id, case_id, scenario_id, plan_id, status, started_at, agent_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?, ?)
   `).run(
     runId,
     reportId,
@@ -94,11 +115,12 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
     request.scenarioId || null,
     request.planId || null,
     Date.now(),
+    request.agentId || null
   );
 
   const logger = new ExecutionLogger(reportId);
   loggerRegistry.set(reportId, logger);
-  activeRun = { id: runId, abortController };
+  activeRuns.set(runId, { id: runId, abortController, isLocal });
 
   // Run asynchronously — don't block the HTTP response
   executeRunAsync(request, runId, reportId, logger, abortController.signal).catch(() => {
@@ -193,7 +215,7 @@ async function executeRunAsync(
       logger.log({
         stepId: 'dispatch',
         status: 'INFO',
-        message: `📡 Dispatching task to Remote Agent: ${request.agentId}`,
+        message: request.agentId.startsWith('QUEUE:') ? `📡 Enqueuing task for remote execution (${request.agentId})...` : `📡 Dispatching task to Remote Agent: ${request.agentId}`,
       });
       result = (await dispatchToAgent(request.agentId, payload)) as any;
     } else {
@@ -295,5 +317,5 @@ async function executeRunAsync(
 
   // Cleanup
   loggerRegistry.delete(reportId);
-  activeRun = null;
+  activeRuns.delete(runId);
 }

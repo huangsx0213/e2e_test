@@ -10,7 +10,8 @@ export type AppTab =
   | 'REPORTS'
   | 'SETTINGS'
   | 'DOCUMENTATION'
-  | 'DYNAMIC_VARIABLES';
+  | 'DYNAMIC_VARIABLES'
+  | 'AGENTS';
 
 export interface ExecutionState {
   suiteId: string;

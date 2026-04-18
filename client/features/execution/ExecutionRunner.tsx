@@ -16,6 +16,7 @@ import {
   Loader2,
   PlayCircle,
   Terminal,
+  Layers,
   Monitor,
   X,
   Globe,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
+import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface ExecutionRunnerProps {
   suite: TestSuite;
@@ -51,10 +53,12 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
 }) => {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [status, setStatus] = useState<
-    "IDLE" | "RUNNING" | "COMPLETED" | "FAILED"
+    "IDLE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED"
   >("IDLE");
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [selectedEnv, setSelectedEnv] = useState<string>(initialEnvironment);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -105,18 +109,24 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
 
       es.addEventListener("log", (event) => {
         const data = JSON.parse(event.data);
-        setLogs((prev) => [
-          ...prev,
-          {
-            stepId: data.stepId,
-            timestamp: data.timestamp,
-            status: data.status,
-            level: data.level,
-            message: data.message,
-            screenshot: data.screenshot,
-            metadata: data.metadata,
-          },
-        ]);
+        if (data.status === "QUEUED") {
+            setStatus("QUEUED");
+            setQueuePosition(data.metadata?.position);
+        } else {
+            if (status !== "RUNNING" && data.status === "INFO") setStatus("RUNNING");
+            setLogs((prev) => [
+              ...prev,
+              {
+                stepId: data.stepId,
+                timestamp: data.timestamp,
+                status: data.status,
+                level: data.level,
+                message: data.message,
+                screenshot: data.screenshot,
+                metadata: data.metadata,
+              },
+            ]);
+        }
       });
 
       es.addEventListener("progress", (event) => {
@@ -134,18 +144,18 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
       });
 
       es.onerror = () => {
-        // Connection dropped — mark as failed
         setStatus("FAILED");
         stopTimer();
         es.close();
         eventSourceRef.current = null;
       };
     },
-    [stopTimer],
+    [stopTimer, status],
   );
 
   const startExecution = async () => {
-    setStatus("RUNNING");
+    setStatus(selectedAgentId ? "QUEUED" : "RUNNING");
+    setQueuePosition(null);
     setLogs([]);
     setProgress(0);
     startTimer();
@@ -157,6 +167,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
         environment: selectedEnv,
         suiteId: suite.id,
         caseId: testCase.id,
+        agentId: selectedAgentId || undefined,
       });
 
       setReportId(response.reportId);
@@ -191,10 +202,13 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
       <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-white shrink-0">
         <div className="flex items-center gap-4">
           <div
-            className={`p-2 rounded-full ${status === "RUNNING" ? "bg-blue-500/20 text-blue-400" : status === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : status === "IDLE" ? "bg-gray-500/20 text-gray-400" : "bg-red-500/20 text-red-400"}`}
+            className={`p-2 rounded-full ${status === "RUNNING" ? "bg-blue-500/20 text-blue-400" : status === "QUEUED" ? "bg-purple-500/20 text-purple-400" : status === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : status === "IDLE" ? "bg-gray-500/20 text-gray-400" : "bg-red-500/20 text-red-400"}`}
           >
             {status === "RUNNING" && (
               <Loader2 className="animate-spin" size={20} />
+            )}
+            {status === "QUEUED" && (
+              <Layers className="animate-pulse" size={20} />
             )}
             {status === "COMPLETED" && <CheckCircle2 size={20} />}
             {status === "FAILED" && <XCircle size={20} />}
@@ -204,11 +218,13 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
             <h3 className="font-semibold text-lg tracking-tight">
               {testCase.name}
             </h3>
-            <p className="text-xs text-slate-400 font-medium">{suite.name}</p>
+            <p className="text-xs text-slate-400 font-medium">
+              {status === "QUEUED" ? `Waiting in queue${queuePosition ? ` (Position: ${queuePosition})` : ''}…` : suite.name}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-6">
-          {status !== "RUNNING" && (
+          {(status === "IDLE" || status === "COMPLETED" || status === "FAILED") && (
             <div className="flex items-center gap-2 mr-4">
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
                 Target Env:
@@ -230,6 +246,12 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
                   ))}
                 </select>
               </div>
+              
+              <ExecutionTargetSelector 
+                selectedAgentId={selectedAgentId}
+                onSelect={setSelectedAgentId}
+              />
+
               <button
                 onClick={startExecution}
                 className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
@@ -240,7 +262,7 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
             </div>
           )}
 
-          {status === "RUNNING" && (
+          {(status === "RUNNING" || status === "QUEUED") && (
             <button
               onClick={handleAbort}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs font-bold rounded border border-red-600/30 transition-all"

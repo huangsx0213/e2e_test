@@ -5,7 +5,7 @@ let wss: WebSocketServer | null = null;
 const clients = new Set<WebSocket>();
 
 import { agentRegistry } from '../../modules/agent/registry.ts';
-import { agentDispatcherEvents } from '../../modules/agent/dispatcher.ts';
+import { agentDispatcherEvents, checkQueue } from '../../modules/agent/dispatcher.ts';
 import { getActiveRunLogger } from '../../modules/execution/runner.ts';
 
 export function initializeWebSocket(server: Server) {
@@ -22,12 +22,18 @@ export function initializeWebSocket(server: Server) {
         if (parsed.event === 'AGENT_REGISTER') {
           const { agentId, platform } = parsed.data;
           agentRegistry.registerOrUpdate(agentId, platform, 'idle', ws);
+          checkQueue();
         } else if (parsed.event === 'AGENT_HEARTBEAT') {
           const { agentId, status } = parsed.data;
           const existing = agentRegistry.get(agentId);
           if (existing) {
-            existing.status = status;
-            existing.lastSeen = Date.now();
+            if (existing.status !== status && status === 'idle') {
+                agentRegistry.markIdle(agentId);
+                checkQueue();
+            } else if (status === 'busy') {
+                // Keep it busy without overriding report ID if it exists
+                agentRegistry.markBusy(agentId, existing.currentReportId || '');
+            }
           }
         } else if (parsed.event === 'LOG_STREAM') {
           const { reportId, log } = parsed.data;

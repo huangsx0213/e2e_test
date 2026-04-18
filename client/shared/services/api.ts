@@ -107,6 +107,12 @@ export const api = {
   },
   agents: {
     list: () => apiFetch<any[]>('agents'),
+    updateStatus: (id: string, status: string) => apiFetch<any>(`agents/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    updateLabels: (id: string, labels: string[]) => apiFetch<any>(`agents/${id}/labels`, { method: 'PUT', body: JSON.stringify({ labels }) }),
+    delete: (id: string) => apiFetch<void>(`agents/${id}`, { method: 'DELETE' }),
+  },
+  queue: {
+    list: () => apiFetch<any[]>('runners/queue'),
   },
 };
 

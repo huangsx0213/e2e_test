@@ -5,13 +5,20 @@ import { executeSingleCase, executeSuite, executeScenario, executePlan } from '.
 import { UIExecutor } from '../server/modules/execution/ui-executor.ts';
 import type { TaskPayload } from '../shared/contracts/index.ts';
 
-const SERVER_URL = process.env.SERVER_URL || 'ws://localhost:3000';
-const AGENT_ID = process.env.AGENT_ID || `agent-${Math.random().toString(36).substring(7)}`;
+const args = process.argv.slice(2);
+function getArg(name: string) {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : undefined;
+}
+
+const SERVER_URL = getArg('--url') || process.env.SERVER_URL || 'ws://localhost:3000';
+const AGENT_ID = getArg('--name') || process.env.AGENT_ID || `agent-${Math.random().toString(36).substring(7)}`;
 
 let ws: WebSocket;
 let isReconnect = false;
 let pingInterval: NodeJS.Timeout;
 let currentAbortController: AbortController | null = null;
+let agentStatus: 'idle' | 'busy' = 'idle';
 
 function connect() {
   console.log(`[AGENT] Connecting to ${SERVER_URL} as ${AGENT_ID}...`);
@@ -26,7 +33,7 @@ function connect() {
 
     // Keep alive
     pingInterval = setInterval(() => {
-      sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+      sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: agentStatus });
     }, 15000);
   });
 
@@ -36,14 +43,16 @@ function connect() {
       if (parsed.event === 'TASK_DISPATCH') {
         const payload: TaskPayload = parsed.data.payload;
         console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId})`);
-        
+
         // Let server know we are busy
-        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
+        agentStatus = 'busy';
+        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: agentStatus });
 
         await handleExecution(payload);
 
         // Let server know we are idle again
-        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+        agentStatus = 'idle';
+        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: agentStatus });
       } else if (parsed.event === 'TASK_ABORT') {
         const { reportId } = parsed.data;
         console.log(`[AGENT] Received Remote Abort Request for report: ${reportId}`);

@@ -11,6 +11,7 @@ import { Settings } from "@/features/settings/Settings";
 import { TestBuilder } from "@/features/tests/TestBuilder";
 import { DynamicVariables } from "@/features/dynamic-variables/DynamicVariables";
 import { Documentation } from "@/features/documentation/Documentation";
+import { AgentManagement } from "@/features/agents/AgentManagement";
 import { AppTab, ExecutionState } from "@/app/types";
 import { CrudActions, EnvironmentActions } from "@/shared/hooks/useCrud";
 import {
@@ -194,6 +195,8 @@ export function AppContent({
       return <Documentation key={activeTab} />;
     case "DYNAMIC_VARIABLES":
       return <DynamicVariables key={activeTab} currentProjectId={currentProjectId} />;
+    case "AGENTS":
+      return <AgentManagement key={activeTab} />;
     default:
       return null;
   }

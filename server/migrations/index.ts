@@ -10,6 +10,8 @@ import type { Migration } from './types.ts';
 
 import { runSeed } from './seed.ts';
 
+import { migration008AgentsQueues } from './008_agents_queues.ts';
+
 export const migrations: Migration[] = [
   migration001InitialSchema,
   migration002EnvironmentVariables,
@@ -18,6 +20,7 @@ export const migrations: Migration[] = [
   migration005StructuredLogs,
   migration006StepAssertions,
   migration007SettingsRecordVideo,
+  migration008AgentsQueues,
 ];
 
 function appliedMigrationIds(): Set<string> {

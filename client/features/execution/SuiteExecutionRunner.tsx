@@ -19,6 +19,7 @@ import {
   X,
   Globe,
   StopCircle,
+  Layers,
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
@@ -49,36 +50,19 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
 }) => {
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [status, setStatus] = useState<
-    "IDLE" | "RUNNING" | "COMPLETED" | "FAILED"
+    "IDLE" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED"
   >("IDLE");
-  const [progress, setProgress] = useState(0);
-  const [selectedEnv, setSelectedEnv] = useState<string>(initialEnvironment);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [selectedEnv, setSelectedEnv] = useState(initialEnvironment);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [progress, setProgress] = useState(0);
+
   const startTimeRef = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
-
-  // Cleanup SSE and timer on unmount
-  useEffect(() => {
-    return () => {
-      eventSourceRef.current?.close();
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  const startTimer = useCallback(() => {
-    startTimeRef.current = Date.now();
-    timerRef.current = setInterval(() => {
-      setElapsedMs(Date.now() - startTimeRef.current);
-    }, 100);
-  }, []);
+  const timerRef = useRef<any>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -88,14 +72,20 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
   }, []);
 
   const formatElapsed = (ms: number) => {
-    const totalSec = Math.floor(ms / 1000);
-    const min = Math.floor(totalSec / 60)
-      .toString()
-      .padStart(2, "0");
-    const sec = (totalSec % 60).toString().padStart(2, "0");
-    const tenths = Math.floor((ms % 1000) / 100);
-    return `${min}:${sec}.${tenths}`;
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${m}:${secs.toString().padStart(2, "0")}`;
   };
+
+  const startTimer = useCallback(() => {
+    // Only used for elapsed time; we can start it when the run actually shifts to RUNNING, or immediately.
+    // For now we'll start it immediately or from backend timestamps.
+    startTimeRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 100);
+  }, []);
 
   const connectSSE = useCallback(
     (rId: string) => {
@@ -104,18 +94,24 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
 
       es.addEventListener("log", (event) => {
         const data = JSON.parse(event.data);
-        setLogs((prev) => [
-          ...prev,
-          {
-            stepId: data.stepId,
-            timestamp: data.timestamp,
-            status: data.status,
-            level: data.level,
-            message: data.message,
-            screenshot: data.screenshot,
-            metadata: data.metadata,
-          },
-        ]);
+        if (data.status === "QUEUED") {
+          setStatus("QUEUED");
+          setQueuePosition(data.metadata?.position);
+        } else {
+          if (status !== "RUNNING" && data.status === "INFO") setStatus("RUNNING");
+          setLogs((prev) => [
+            ...prev,
+            {
+              stepId: data.stepId,
+              timestamp: data.timestamp,
+              status: data.status,
+              level: data.level,
+              message: data.message,
+              screenshot: data.screenshot,
+              metadata: data.metadata,
+            },
+          ]);
+        }
       });
 
       es.addEventListener("progress", (event) => {
@@ -133,18 +129,18 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
       });
 
       es.onerror = () => {
-        // Connection dropped — mark as failed
         setStatus("FAILED");
         stopTimer();
         es.close();
         eventSourceRef.current = null;
       };
     },
-    [stopTimer],
+    [stopTimer, status],
   );
 
   const startExecution = async () => {
-    setStatus("RUNNING");
+    setStatus(selectedAgentId ? "QUEUED" : "RUNNING"); // Assume queued if remote
+    setQueuePosition(null);
     setLogs([]);
     setProgress(0);
     startTimer();
@@ -190,10 +186,13 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
       <div className="h-16 px-6 bg-slate-900 border-b border-slate-800 flex justify-between items-center text-white shrink-0">
         <div className="flex items-center gap-4">
           <div
-            className={`p-2 rounded-full ${status === "RUNNING" ? "bg-blue-500/20 text-blue-400" : status === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : status === "IDLE" ? "bg-gray-500/20 text-gray-400" : "bg-red-500/20 text-red-400"}`}
+            className={`p-2 rounded-full ${status === "RUNNING" ? "bg-blue-500/20 text-blue-400" : status === "QUEUED" ? "bg-purple-500/20 text-purple-400" : status === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : status === "IDLE" ? "bg-gray-500/20 text-gray-400" : "bg-red-500/20 text-red-400"}`}
           >
             {status === "RUNNING" && (
               <Loader2 className="animate-spin" size={20} />
+            )}
+            {status === "QUEUED" && (
+              <Layers className="animate-pulse" size={20} />
             )}
             {status === "COMPLETED" && <CheckCircle2 size={20} />}
             {status === "FAILED" && <XCircle size={20} />}
@@ -204,7 +203,7 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
               Run Suite: {suite.name}
             </h3>
             <p className="text-xs text-slate-400 font-medium">
-              {suite.cases.length} Cases
+              {status === "QUEUED" ? `Waiting in queue${queuePosition ? ` (Position: ${queuePosition})` : ''}…` : `${suite.cases.length} Cases`}
             </p>
           </div>
         </div>
@@ -232,7 +231,7 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
                 </select>
               </div>
 
-              <ExecutionTargetSelector 
+              <ExecutionTargetSelector
                 selectedAgentId={selectedAgentId}
                 onSelect={setSelectedAgentId}
               />
@@ -247,7 +246,7 @@ export const SuiteExecutionRunner: React.FC<SuiteExecutionRunnerProps> = ({
             </div>
           )}
 
-          {status === "RUNNING" && (
+          {(status === "RUNNING" || status === "QUEUED") && (
             <button
               onClick={handleAbort}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 text-xs font-bold rounded border border-red-600/30 transition-all"

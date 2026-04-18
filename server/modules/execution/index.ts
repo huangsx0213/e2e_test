@@ -4,8 +4,46 @@ import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { ValidationError, NotFoundError } from '../../shared/http/errors.ts';
 import { startExecution, getActiveRunLogger, isRunActive, abortActiveRun } from './runner.ts';
 import { db } from '../../shared/db/client.ts';
+import { taskQueue } from './queue.ts';
+import { abortRemoteRun } from '../agent/dispatcher.ts';
 
 const router = Router();
+
+// GET /api/runners/queue
+router.get('/queue', (req, res) => {
+  res.json(taskQueue.list().map(t => {
+    let runName = 'Unknown Task';
+    const req = t.payload.request;
+
+    if (req.type === 'suite') {
+      runName = t.payload.suite?.name || 'Suite';
+    } else if (req.type === 'case') {
+      const caseData = t.payload.suite?.cases?.find(c => c.id === req.caseId);
+      const caseName = caseData ? caseData.name : 'Case';
+      if (t.payload.suite) {
+        runName = `${t.payload.suite.name} > ${caseName}`;
+      } else {
+        runName = caseName;
+      }
+    } else if (req.type === 'scenario') {
+      const scenarioData = t.payload.project.scenarios?.find(s => s.id === req.scenarioId);
+      runName = scenarioData ? scenarioData.name : 'Scenario';
+    } else if (req.type === 'plan') {
+      const planData = t.payload.project.plans?.find(p => p.id === req.planId);
+      runName = planData ? planData.name : 'Plan';
+    }
+
+    return {
+      id: t.id,
+      agentId: t.agentId,
+      status: t.status,
+      createdAt: t.createdAt,
+      type: req.type,
+      runId: t.payload.runId,
+      name: runName
+    };
+  }));
+});
 
 // POST /api/runners/execute — Start a new execution
 router.post('/execute', withErrorHandling(async (req, res) => {
@@ -31,8 +69,8 @@ router.post('/execute', withErrorHandling(async (req, res) => {
     throw new ValidationError('Plan execution requires planId');
   }
 
-  if (isRunActive()) {
-    res.status(409).json({ error: 'An execution is already running. Abort it first or wait for it to finish.' });
+  if (!body.agentId && isRunActive()) {
+    res.status(409).json({ error: 'A local execution is already running. Abort it first or wait for it to finish.' });
     return;
   }
 
@@ -114,13 +152,9 @@ router.get('/status/:reportId', withErrorHandling((req, res) => {
 
 // POST /api/runners/abort/:reportId — Abort a running execution
 router.post('/abort/:reportId', withErrorHandling((req, res) => {
-  if (!isRunActive()) {
-    res.status(404).json({ error: 'No active execution to abort' });
-    return;
-  }
-
-  const success = abortActiveRun();
-  res.json({ success, message: success ? 'Abort signal sent' : 'No active run' });
+  const reportId = req.params.reportId as string;
+  const success = abortActiveRun(reportId) || abortRemoteRun(reportId);
+  res.json({ success, message: success ? 'Abort signal sent' : 'No active run to abort' });
 }));
 
 export const executionModule = {

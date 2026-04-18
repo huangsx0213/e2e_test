@@ -11,6 +11,7 @@ import {
   Settings,
   Workflow,
   BookOpen,
+  Server,
   type LucideIcon,
 } from 'lucide-react';
 import { AppTab } from '@/app/types';
@@ -37,6 +38,12 @@ export const navigationSections: NavigationSection[] = [
       { tab: 'ELEMENTS', label: 'Object Repository', icon: Database },
       { tab: 'MODULES', label: 'Shared Modules', icon: Workflow },
       { tab: 'DYNAMIC_VARIABLES', label: 'Dynamic Variables', icon: Database },
+    ],
+  },
+  {
+    title: 'Infrastructure',
+    items: [
+      { tab: 'AGENTS', label: 'Remote Agents', icon: Server },
     ],
   },
   {
