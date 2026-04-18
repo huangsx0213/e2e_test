@@ -9,7 +9,7 @@ RUN npm run build
 
 # Stage 2: Runtime
 # Use Noble (Ubuntu 24.04) based Playwright image
-FROM mcr.microsoft.com/playwright:v1.50.0-noble
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 WORKDIR /app
 
 # Set environment variables for production

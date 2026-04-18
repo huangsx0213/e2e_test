@@ -1,3 +1,12 @@
+---
+title: QuantumQA
+emoji: 🧪
+colorFrom: purple
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # QuantumQA
 
 QuantumQA is a unified, low-code **E2E Testing Matrix** designed for high-fidelity UI automation and sophisticated API testing. It bridges the gap between browser interactions and background service validation in a single, deterministic execution engine.
