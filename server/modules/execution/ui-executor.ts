@@ -4,7 +4,7 @@ import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import { environmentRepository } from '../environments/repository.ts';
-import type { ExecutionLogger } from './logger.ts';
+import type { IExecutionLogger } from '../../shared/contracts/index.ts';
 import { evaluateAssertions } from './assertions.ts';
 
 export interface UIExecutionResult {
@@ -30,13 +30,13 @@ export class UIExecutor {
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private dialogHandler: ((dialog: any) => Promise<void>) | null = null;
-  private logger?: ExecutionLogger;
+  private logger?: IExecutionLogger;
 
   async initialize(options: {
     headless: boolean;
     viewportWidth?: number;
     viewportHeight?: number;
-    logger?: ExecutionLogger;
+    logger?: IExecutionLogger;
     recordVideo?: boolean;
   }): Promise<void> {
     this.logger = options.logger;

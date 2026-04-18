@@ -105,6 +105,9 @@ export const api = {
       body: JSON.stringify({ expression }),
     }),
   },
+  agents: {
+    list: () => apiFetch<any[]>('agents'),
+  },
 };
 
 // --- Execution API ---

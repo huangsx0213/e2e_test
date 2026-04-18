@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
+import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface TestPlanExecutionRunnerProps {
   plan: TestPlan;
@@ -56,6 +57,7 @@ export const TestPlanExecutionRunner: React.FC<
   >("IDLE");
   const [progress, setProgress] = useState(0);
   const [selectedEnv, setSelectedEnv] = useState<string>(initialEnvironment);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -159,6 +161,7 @@ export const TestPlanExecutionRunner: React.FC<
         projectId: project.id,
         planId: plan.id,
         environment: selectedEnv,
+        agentId: selectedAgentId || undefined,
       });
 
       setReportId(response.reportId);
@@ -228,6 +231,11 @@ export const TestPlanExecutionRunner: React.FC<
               ))}
             </select>
           </div>
+          <div className="h-4 w-px bg-slate-800" />
+          <ExecutionTargetSelector 
+            selectedAgentId={selectedAgentId}
+            onSelect={setSelectedAgentId}
+          />
         </div>
 
         <div className="flex items-center gap-4">

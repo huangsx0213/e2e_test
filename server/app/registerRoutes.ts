@@ -12,6 +12,8 @@ import { executionModule } from '../modules/execution/index.ts';
 import { recordingModule } from '../modules/recording/index.ts';
 import { dynamicVariablesModule } from '../modules/dynamic-variables/index.ts';
 
+import { agentsModule } from '../modules/agent/index.ts';
+
 export function registerRoutes(app: Express) {
   const modules = [
     projectsModule,
@@ -25,6 +27,7 @@ export function registerRoutes(app: Express) {
     executionModule,
     recordingModule,
     dynamicVariablesModule,
+    agentsModule,
   ];
 
   for (const module of modules) {

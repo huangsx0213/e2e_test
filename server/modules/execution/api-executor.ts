@@ -3,9 +3,10 @@ import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
 import { JSONPath } from 'jsonpath-plus';
 import { evaluateAssertions } from './assertions.ts';
-import { ExecutionLogger } from './logger.ts';
-
+import type { IExecutionLogger } from '../../shared/contracts/index.ts';
 import { environmentRepository } from '../environments/repository.ts';
+import { XMLParser } from 'fast-xml-parser';
+
 
 export interface ApiAssets {
   headers: HeaderProfile[];
@@ -45,7 +46,7 @@ export async function executeApiStep(
   context: ExecutionContext,
   assets: ApiAssets,
   environment: string,
-  logger?: ExecutionLogger,
+  logger?: IExecutionLogger,
   indent: string = '  ',
 ): Promise<ApiExecutionResult> {
   const allVars = context.resolveAll();
@@ -209,7 +210,6 @@ export async function executeApiStep(
               // If JSON parsing fails, try XML parsing
               if (responseBody.trim().startsWith('<')) {
                 try {
-                  const { XMLParser } = require('fast-xml-parser');
                   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
                   parsedJsonBody = parser.parse(responseBody);
                 } catch (xmlErr) {

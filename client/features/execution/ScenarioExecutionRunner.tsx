@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
+import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface ScenarioExecutionRunnerProps {
   scenario: TestScenario;
@@ -56,6 +57,7 @@ export const ScenarioExecutionRunner: React.FC<
   >("IDLE");
   const [progress, setProgress] = useState(0);
   const [selectedEnv, setSelectedEnv] = useState<string>(initialEnvironment);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -156,6 +158,7 @@ export const ScenarioExecutionRunner: React.FC<
         projectId: project?.id || "",
         environment: selectedEnv,
         scenarioId: scenario.id,
+        agentId: selectedAgentId || undefined,
       });
 
       setReportId(response.reportId);
@@ -231,6 +234,12 @@ export const ScenarioExecutionRunner: React.FC<
                   ))}
                 </select>
               </div>
+
+              <ExecutionTargetSelector 
+                selectedAgentId={selectedAgentId}
+                onSelect={setSelectedAgentId}
+              />
+
               <button
                 onClick={startExecution}
                 className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"

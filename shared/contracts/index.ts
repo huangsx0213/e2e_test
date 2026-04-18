@@ -273,6 +273,7 @@ export interface ExecutionRequest {
   caseId?: string;
   scenarioId?: string;
   planId?: string;
+  agentId?: string; // Target agent for execution. Null/undefined means default Server runner.
 }
 
 export type ExecutionRunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'ABORTED';
@@ -287,8 +288,32 @@ export interface ExecutionLogEvent {
   metadata?: any;
 }
 
+export interface IExecutionLogger {
+  log(event: Omit<ExecutionLogEvent, 'timestamp'>): void;
+  progress(event: ExecutionProgressEvent): void;
+  complete(summary: { reportId: string; status: string; passRate: number }): void;
+}
+
 export interface ExecutionProgressEvent {
   completed: number;
   total: number;
   percent: number;
+}
+
+export interface TaskPayload {
+  runId: string;
+  reportId: string;
+  request: ExecutionRequest;
+  project: Project;
+  suite?: TestSuite;       // Packaged if it's a suite/case run
+  suites?: TestSuite[];    // Packaged if it's a scenario/plan run
+  assets: {
+    headers: HeaderProfile[];
+    bodies: BodyTemplate[];
+    endpoints: ApiEndpoint[];
+  };
+  environmentVariables: Record<string, string>;
+  dynamicVariables: Record<string, string>;
+  dynamicVariableConfigs: Record<string, DynamicVariable>;
+  settings: Settings;
 }

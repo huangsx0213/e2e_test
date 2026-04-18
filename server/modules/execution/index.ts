@@ -44,6 +44,7 @@ router.post('/execute', withErrorHandling(async (req, res) => {
     caseId: body.caseId,
     scenarioId: body.scenarioId,
     planId: body.planId,
+    agentId: body.agentId,
   };
 
   const { reportId, runId } = await startExecution(request);
