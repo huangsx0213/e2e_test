@@ -182,7 +182,21 @@ async function executeRunAsync(
       suites = suiteRepository.list().filter(s => requiredSuiteIds.has(s.id));
     }
 
-    const targetSuite = request.suiteId ? suiteRepository.get(request.suiteId) : undefined;
+    // ─── Resolve Name & Prepare Payload ───
+    if (request.type === 'case') {
+      const suite = suiteRepository.get(request.suiteId!);
+      const testCase = suite?.cases.find(c => c.id === request.caseId);
+      displayName = testCase ? testCase.name : `Case: ${request.caseId}`;
+    } else if (request.type === 'suite') {
+      const suite = suiteRepository.get(request.suiteId!);
+      displayName = suite ? suite.name : `Suite: ${request.suiteId}`;
+    } else if (request.type === 'scenario') {
+      const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
+      displayName = scenario ? scenario.name : `Scenario: ${request.scenarioId}`;
+    } else if (request.type === 'plan') {
+      const plan = project.plans?.find(p => p.id === request.planId);
+      displayName = plan ? plan.name : `Plan: ${request.planId}`;
+    }
 
     const payload: TaskPayload = {
       runId,
@@ -204,14 +218,14 @@ async function executeRunAsync(
       message: `🚀 Starting execution: ${displayName} in environment: ${request.environment}`,
     });
 
+    // ─── Execute (Remote or Local) ───
     if (request.agentId) {
       logger.log({
         stepId: 'dispatch',
         status: 'INFO',
         message: request.agentId.startsWith('QUEUE:') ? `📡 Enqueuing task for remote execution (${request.agentId})...` : `📡 Dispatching task to Remote Agent: ${request.agentId}`,
       });
-      const result = await dispatchToAgent(request.agentId, payload);
-      return result;
+      result = await dispatchToAgent(request.agentId, payload) as any;
     } else {
       const onEnvVarExtracted = (name: string, value: string) => {
         const currentVars = environmentRepository.getVariables(request.environment);
@@ -220,24 +234,15 @@ async function executeRunAsync(
       };
 
       if (request.type === 'case') {
-        const suite = suiteRepository.get(request.suiteId!);
-        const testCase = suite?.cases.find(c => c.id === request.caseId);
-        displayName = testCase ? testCase.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting case execution for: ${displayName}`);
         result = await executeSingleCase(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else if (request.type === 'suite') {
-        const suite = suiteRepository.get(request.suiteId!);
-        displayName = suite ? suite.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting suite execution for: ${displayName}`);
         result = await executeSuite(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else if (request.type === 'scenario') {
-        const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
-        displayName = scenario ? scenario.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
         result = await executeScenario(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else {
-        const plan = project.plans?.find(p => p.id === request.planId);
-        displayName = plan ? plan.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting plan execution for: ${displayName}`);
         result = await executePlan(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       }
