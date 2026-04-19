@@ -259,19 +259,19 @@ export function AgentManagement() {
       <div className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 z-10 shadow-sm">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight flex items-center gap-2">
               <Server className="text-blue-600" /> Remote Agents
+              <HelpTooltip content="Remote agents are execution nodes that run tests in parallel. Download a pre-configured zip to get started." />
             </h1>
             <p className="text-slate-500 text-sm mt-1">Manage remote execution nodes for distributed testing.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleDownloadAgent}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-600 border border-transparent rounded shadow-sm text-white hover:bg-indigo-700 transition-colors font-medium"
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded shadow-sm hover:bg-blue-100 transition-colors font-medium"
             >
               <Download size={14} /> Download Agent
             </button>
-            <HelpTooltip content="Download a pre-configured agent zip. Just unzip and run start-agent or node agent.js." />
             
             <button
               onClick={() => fetchData(true)}
@@ -293,7 +293,7 @@ export function AgentManagement() {
                 <div className="flex justify-center mb-10">
                   <button
                     onClick={handleDownloadAgent}
-                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
                   >
                     <Download size={20} /> Download Pre-configured Agent
                   </button>

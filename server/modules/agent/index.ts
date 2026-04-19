@@ -82,13 +82,18 @@ router.get('/:id/logs/stream', (req, res) => {
 // GET /api/agents/download - Generate and download pre-configured agent package
 router.get('/download', async (req, res) => {
   try {
-    // Determine the server URL (using internal IP for better remote connectivity)
+    // Determine the server URL
+    // Rule: If the user is accessing via a domain name (not localhost/IP), use that domain.
+    // Otherwise, use the internal IP for better local network connectivity.
     const protocol = req.protocol === 'https' ? 'wss' : 'ws';
     const host = req.get('host') || '';
-    const port = host.includes(':') ? host.split(':')[1] : '';
+    const hostName = host.split(':')[0];
+    const port = host.includes(':') ? ':' + host.split(':')[1] : '';
     
-    const internalIp = getInternalIp();
-    const serverUrl = `${protocol}://${internalIp}${port ? ':' + port : ''}`;
+    const isLocalOrIp = hostName === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostName) || hostName === '127.0.0.1';
+    
+    const bestHost = !isLocalOrIp ? hostName : getInternalIp();
+    const serverUrl = `${protocol}://${bestHost}${port}`;
 
     console.log(`[AGENT_DOWNLOAD] Generating package for server: ${serverUrl}`);
     const zipBuffer = await createAgentPackage(serverUrl);
