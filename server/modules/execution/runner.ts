@@ -198,6 +198,8 @@ async function executeRunAsync(
       displayName = plan ? plan.name : `Plan: ${request.planId}`;
     }
 
+    const targetSuite = request.suiteId ? suiteRepository.get(request.suiteId) : undefined;
+
     const payload: TaskPayload = {
       runId,
       reportId,
