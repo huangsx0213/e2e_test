@@ -2,10 +2,8 @@ import * as esbuild from 'esbuild';
 import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT_DIR = path.resolve(__dirname, '../../../');
+const ROOT_DIR = process.cwd();
 
 export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
     const tempDir = path.join(ROOT_DIR, 'temp', `agent-pkg-${Date.now()}`);
