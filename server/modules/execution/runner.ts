@@ -222,11 +222,7 @@ async function executeRunAsync(
 
     // ─── Execute (Remote or Local) ───
     if (request.agentId) {
-      logger.log({
-        stepId: 'dispatch',
-        status: 'INFO',
-        message: request.agentId.startsWith('QUEUE:') ? `📡 Enqueuing task for remote execution (${request.agentId})...` : `📡 Dispatching task to Remote Agent: ${request.agentId}`,
-      });
+      console.log(`[EXEC] Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
       result = await dispatchToAgent(request.agentId, payload) as any;
     } else {
       const onEnvVarExtracted = (name: string, value: string) => {
@@ -280,7 +276,6 @@ async function executeRunAsync(
   await uiExecutor.cleanup();
 
   // Persist report
-  console.log(`[EXEC] Saving report: ${displayName} (${reportId})`);
   reportRepository.save({
     id: reportId,
     suiteId: request.suiteId || request.scenarioId || request.planId || request.projectId,
@@ -303,6 +298,7 @@ async function executeRunAsync(
       metadata: l.metadata,
     })),
   });
+  console.log(`[EXEC] Report saved successfully: ${reportId}`);
 
   // Update execution_run record
   db.prepare(`
@@ -317,6 +313,8 @@ async function executeRunAsync(
 
   // Push final SSE event
   logger.complete(result);
+
+  console.log(`[EXEC] Task Finished: ${displayName} (${runId}) - Status: ${result.status} | Pass Rate: ${result.passRate}% | Cases: ${result.passedCases}/${result.totalCases}`);
 
   // Cleanup
   loggerRegistry.delete(reportId);

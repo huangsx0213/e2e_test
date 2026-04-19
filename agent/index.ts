@@ -28,6 +28,8 @@ try {
 const SERVER_URL = getArg('--url') || process.env.SERVER_URL || config.serverUrl || 'ws://localhost:3000';
 const AGENT_ID = getArg('--name') || process.env.AGENT_ID || config.agentName || `agent-${Math.random().toString(36).substring(7)}`;
 
+const AGENT_SECRET = process.env.AGENT_SECRET || config.agentSecret || '';
+
 let ws: WebSocket;
 let isReconnect = false;
 let pingInterval: NodeJS.Timeout;
@@ -95,7 +97,11 @@ async function processQueue() {
 
 function connect() {
   console.log(`[AGENT] Connecting to ${SERVER_URL} as ${AGENT_ID}...`);
-  ws = new WebSocket(SERVER_URL);
+  ws = new WebSocket(SERVER_URL, {
+    headers: {
+      'x-agent-secret': AGENT_SECRET
+    }
+  });
 
   ws.on('open', () => {
     console.log('[AGENT] Connected to Server.');

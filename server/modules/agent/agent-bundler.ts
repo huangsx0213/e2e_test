@@ -27,7 +27,18 @@ export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
         };
         fs.writeFileSync(path.join(tempDir, 'agent-config.json'), JSON.stringify(config, null, 2));
 
-        // 3. Create package.json
+        // 3. Create .env template
+        const envContent = `# QuantumQA Agent Configuration
+# Set the server WebSocket URL
+SERVER_URL=${serverUrl}
+
+# Connection Secret (Must match the server's AGENT_SECRET)
+# PLEASE CHANGE THIS TO YOUR ACTUAL SERVER SECRET
+AGENT_SECRET=REPLACE_WITH_YOUR_SERVER_SECRET
+`;
+        fs.writeFileSync(path.join(tempDir, '.env'), envContent);
+
+        // 4. Create package.json
         const pkgJson = {
             name: "quantum-qa-agent",
             version: "1.0.0",
@@ -39,7 +50,7 @@ export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
         };
         fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify(pkgJson, null, 2));
 
-        // 4. Create Start Scripts
+        // 5. Create Start Scripts
         const startBat = `@echo off
 setlocal
 echo ========================================
@@ -49,7 +60,7 @@ echo ========================================
 where node >nul 2>nul
 if %errorlevel% neq 0 goto :no_node
 
-if exist node_modules goto :start_agent
+if exist node_modules goto :check_env
 
 echo [INFO] Installing dependencies
 call npm install
@@ -102,10 +113,11 @@ node agent.js
         fs.writeFileSync(path.join(tempDir, 'start-agent.sh'), startSh);
         fs.chmodSync(path.join(tempDir, 'start-agent.sh'), '755');
 
-        // 5. Zip it up
+        // 6. Zip it up
         const zip = new AdmZip();
         zip.addLocalFile(bundleDest);
         zip.addLocalFile(path.join(tempDir, 'agent-config.json'));
+        zip.addLocalFile(path.join(tempDir, '.env'));
         zip.addLocalFile(path.join(tempDir, 'package.json'));
         zip.addLocalFile(path.join(tempDir, 'start-agent.bat'));
         zip.addLocalFile(path.join(tempDir, 'start-agent.sh'));

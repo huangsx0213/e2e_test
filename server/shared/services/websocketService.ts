@@ -11,8 +11,16 @@ import { agentLogBuffer } from '../../modules/agent/log-buffer.ts';
 
 export function initializeWebSocket(server: Server) {
   wss = new WebSocketServer({ server });
+  const AGENT_SECRET = process.env.AGENT_SECRET || '';
+  console.log(`[WS_SERVER] Initialized. Agent Security: ${AGENT_SECRET ? 'ENABLED' : 'DISABLED'}`);
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Basic Security: Check AGENT_SECRET if configured
+    if (AGENT_SECRET && req.headers['x-agent-secret'] !== AGENT_SECRET) {
+        ws.terminate();
+        return;
+    }
+
     clients.add(ws);
     // console.log('WS Client connected');
 
