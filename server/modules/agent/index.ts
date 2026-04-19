@@ -83,17 +83,24 @@ router.get('/:id/logs/stream', (req, res) => {
 router.get('/download', async (req, res) => {
   try {
     // Determine the server URL
-    // Rule: If the user is accessing via a domain name (not localhost/IP), use that domain.
-    // Otherwise, use the internal IP for better local network connectivity.
+    // Rule: Use the protocol and host from the request (trusting proxy if configured)
     const protocol = req.protocol === 'https' ? 'wss' : 'ws';
     const host = req.get('host') || '';
-    const hostName = host.split(':')[0];
-    const port = host.includes(':') ? ':' + host.split(':')[1] : '';
     
+    // Check if we are running in a local/internal environment
+    const hostName = host.split(':')[0];
     const isLocalOrIp = hostName === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostName) || hostName === '127.0.0.1';
     
-    const bestHost = !isLocalOrIp ? hostName : getInternalIp();
-    const serverUrl = `${protocol}://${bestHost}${port}`;
+    let serverUrl: string;
+    if (isLocalOrIp) {
+      // For local development, use the internal IP to allow connection from other machines in the same network
+      const internalIp = getInternalIp();
+      const port = host.includes(':') ? ':' + host.split(':')[1] : ':3000';
+      serverUrl = `ws://${internalIp}${port}`;
+    } else {
+      // In production/cloud (like Hugging Face), use the request host directly
+      serverUrl = `${protocol}://${host}`;
+    }
 
     console.log(`[AGENT_DOWNLOAD] Generating package for server: ${serverUrl}`);
     const zipBuffer = await createAgentPackage(serverUrl);
