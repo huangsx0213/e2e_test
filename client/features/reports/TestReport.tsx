@@ -43,7 +43,13 @@ const formatDuration = (start: number, end?: number) => {
   return `${s}s`;
 };
 
-const formatDate = (ts: number) => new Date(ts).toLocaleString();
+const formatDateTime = (ts: number) => {
+  const d = new Date(ts);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())} ${pad(d.getMinutes())} ${pad(d.getSeconds())}`;
+};
+
+const formatDate = (ts: number) => formatDateTime(ts);
 
 const getDateGroup = (ts: number): string => {
   const now = new Date();
@@ -53,7 +59,7 @@ const getDateGroup = (ts: number): string => {
   yestD.setDate(yestD.getDate() - 1);
   if (d.toDateString() === todayStr) return "Today";
   if (d.toDateString() === yestD.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 
 const EXEC_TYPE_META: Record<string, { label: string; color: string }> = {
@@ -413,7 +419,7 @@ const ErrorSummary: React.FC<ErrorSummaryProps> = ({ logs }) => {
                   )}
                 </div>
                 <span className="text-[10px] text-red-400 shrink-0 mt-0.5">
-                  {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  {formatDateTime(log.timestamp)}
                 </span>
               </div>
             ))}
@@ -517,9 +523,9 @@ const SidebarCard: React.FC<SidebarCardProps> = ({ report, isSelected, onSelect,
 
         {/* Date + delete */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 overflow-hidden">
+          <div className="flex items-center gap-1 text-[10px] text-slate-400 overflow-hidden" title={new Date(report.startTime).toLocaleString()}>
             <Calendar size={10} className="shrink-0" />
-            <span className="truncate">{new Date(report.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <span className="truncate">{formatDateTime(report.startTime)}</span>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
