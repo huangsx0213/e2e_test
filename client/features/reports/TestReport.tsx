@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Zap,
   Table2,
-  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
@@ -46,7 +46,7 @@ const formatDuration = (start: number, end?: number) => {
 const formatDateTime = (ts: number) => {
   const d = new Date(ts);
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())} ${pad(d.getMinutes())} ${pad(d.getSeconds())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
 const formatDate = (ts: number) => formatDateTime(ts);
@@ -88,109 +88,66 @@ function parseCaseResults(logs: ExecutionLog[]): CaseResult[] {
   let currentPlan = "";
   let currentScenario = "";
   let currentSuite = "";
+  let pendingCase: CaseResult | null = null;
+
+  const resolvePending = (endTime: number, forceStatus?: "FAILED", errorMsg?: string) => {
+    if (pendingCase) {
+      if (forceStatus) pendingCase.status = forceStatus;
+      else if (pendingCase.status === "RUNNING") pendingCase.status = "PASSED";
+      
+      pendingCase.endTime = endTime;
+      const durMs = pendingCase.endTime - pendingCase.startTime;
+      const durS = Math.floor(durMs / 1000);
+      const durM = Math.floor(durS / 60);
+      pendingCase.duration = durM > 0 ? `${durM}m ${durS % 60}s` : `${durS}s`;
+      if (errorMsg) pendingCase.errorMessage = errorMsg;
+      
+      results.push(pendingCase);
+      pendingCase = null;
+    }
+  };
 
   for (let i = 0; i < logs.length; i++) {
     const log = logs[i];
     const msg = log.message;
 
-    // Detect plan start
-    const planMatch = msg.match(/📋\s*Executing Plan:\s*(.+)/);
-    if (planMatch) {
-      currentPlan = planMatch[1].trim();
-      currentScenario = ""; // reset downstream
-      currentSuite = "";
-      continue;
+    const isPlan = msg.match(/📋\s*Executing Plan:\s*(.+)/);
+    const isScenario = msg.match(/🎬\s*Executing Scenario:\s*(.+)/);
+    const isSuite = msg.match(/📦\s*Executing Suite:\s*(.+)/);
+    const isCase = msg.match(/🧪\s*Running Case:\s*(.+)/);
+    const isFail = msg.match(/❌\s*Case Failed:\s*(.+)/);
+    const isFinish = msg.includes("🏁");
+
+    if (isPlan || isScenario || isSuite || isCase || isFinish) {
+      resolvePending(log.timestamp);
     }
 
-    // Detect scenario start
-    const scenarioMatch = msg.match(/🎬\s*Executing Scenario:\s*(.+)/);
-    if (scenarioMatch) {
-      currentScenario = scenarioMatch[1].trim();
-      currentSuite = ""; // reset downstreams
-      continue;
-    }
-
-    // Detect suite start
-    const suiteMatch = msg.match(/📦\s*Executing Suite:\s*(.+)/);
-    if (suiteMatch) {
-      currentSuite = suiteMatch[1].trim();
-      continue;
-    }
-
-    // Detect case start
-    const caseMatch = msg.match(/🧪\s*Running Case:\s*(.+)/);
-    if (caseMatch) {
-      const caseName = caseMatch[1].trim();
-      const caseStartTime = log.timestamp;
-
-      // Look ahead to find case outcome
-      let caseStatus: "PASSED" | "FAILED" | "RUNNING" = "RUNNING";
-      let caseEndTime = caseStartTime;
-      let errorMsg: string | undefined;
-
-      for (let j = i + 1; j < logs.length; j++) {
-        const futureLog = logs[j];
-        const futureMsg = futureLog.message;
-
-        // Hit next case, suite, scenario, plan → this case passed (no explicit fail found)
-        if (
-          futureMsg.match(/🧪\s*Running Case:/) || 
-          futureMsg.match(/📦\s*Executing Suite:/) ||
-          futureMsg.match(/🎬\s*Executing Scenario:/) ||
-          futureMsg.match(/📋\s*Executing Plan:/)
-        ) {
-          if (caseStatus === "RUNNING") {
-            caseStatus = "PASSED";
-            caseEndTime = futureLog.timestamp;
-          }
-          break;
-        }
-
-        // Explicit case failure
-        if (futureMsg.match(/❌\s*Case Failed:/) && futureLog.stepId?.startsWith("case-")) {
-          caseStatus = "FAILED";
-          caseEndTime = futureLog.timestamp;
-          errorMsg = futureMsg.replace(/^\s*❌\s*Case Failed:\s*/, "").trim();
-          break;
-        }
-
-        // Hit finish marker
-        if (futureMsg.includes("🏁")) {
-          if (caseStatus === "RUNNING") {
-            caseStatus = "PASSED";
-            caseEndTime = futureLog.timestamp;
-          }
-          break;
-        }
-      }
-
-      // If we never found an end marker, it's still running or the last case that passed
-      if (caseStatus === "RUNNING" && i < logs.length - 1) {
-        // Check if there's any FAIL log referencing this case
-        const hasFail = logs.slice(i + 1).some(l => l.status === "FAIL" && l.stepId?.includes(log.stepId?.replace("case-", "") || "") );
-        if (!hasFail) caseStatus = "PASSED";
-        caseEndTime = logs[logs.length - 1].timestamp;
-      }
-
-      const durationMs = caseEndTime - caseStartTime;
-      const durationS = Math.floor(durationMs / 1000);
-      const durationM = Math.floor(durationS / 60);
-      const durationStr = durationM > 0 ? `${durationM}m ${durationS % 60}s` : `${durationS}s`;
-
-      results.push({
-        id: log.stepId || `case-${i}`,
-        name: caseName,
+    if (isPlan) {
+      currentPlan = isPlan[1].trim(); currentScenario = ""; currentSuite = "";
+    } else if (isScenario) {
+      currentScenario = isScenario[1].trim(); currentSuite = "";
+    } else if (isSuite) {
+      currentSuite = isSuite[1].trim();
+    } else if (isCase) {
+      pendingCase = {
+        id: `${log.stepId || 'case'}-${i}`,
+        name: isCase[1].trim(),
         plan: currentPlan || undefined,
         scenario: currentScenario || undefined,
         suite: currentSuite || "—",
-        status: caseStatus,
-        startTime: caseStartTime,
-        endTime: caseEndTime,
-        duration: durationStr,
-        errorMessage: errorMsg,
-      });
+        status: "RUNNING",
+        startTime: log.timestamp,
+        endTime: log.timestamp,
+        duration: "0s",
+      };
+    } else if (isFail && pendingCase) {
+      resolvePending(log.timestamp, "FAILED", isFail[1].trim());
+    } else if (log.status === "FAIL" && pendingCase) {
+      pendingCase.status = "FAILED";
     }
   }
+
+  if (pendingCase) resolvePending(logs[logs.length - 1].timestamp);
 
   return results;
 }
@@ -200,12 +157,23 @@ interface CaseResultsTableProps { logs: ExecutionLog[] }
 const CaseResultsTable: React.FC<CaseResultsTableProps> = ({ logs }) => {
   const cases = useMemo(() => parseCaseResults(logs), [logs]);
   const [filter, setFilter] = useState<"all" | "passed" | "failed">("all");
+  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [collapsedSuites, setCollapsedSuites] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
     if (filter === "all") return cases;
     return cases.filter(c => filter === "passed" ? c.status === "PASSED" : c.status === "FAILED");
   }, [cases, filter]);
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, CaseResult[]> = {};
+    for (const c of filtered) {
+      if (!groups[c.suite]) groups[c.suite] = [];
+      groups[c.suite].push(c);
+    }
+    return groups;
+  }, [filtered]);
 
   if (cases.length === 0) {
     return (
@@ -219,30 +187,123 @@ const CaseResultsTable: React.FC<CaseResultsTableProps> = ({ logs }) => {
 
   const passed = cases.filter(c => c.status === "PASSED").length;
   const failed = cases.filter(c => c.status === "FAILED").length;
+  const isGrouped = viewMode === "grouped";
+
+  const renderRow = (c: CaseResult, idx: number) => (
+    <React.Fragment key={c.id}>
+      <tr
+        className={`hover:bg-slate-50/80 transition-colors ${
+          c.status === "FAILED" ? "bg-red-50/20" : ""
+        } ${c.errorMessage ? "cursor-pointer" : ""}`}
+        onClick={() => c.errorMessage && setExpandedId(expandedId === c.id ? null : c.id)}
+      >
+        <td className="px-5 py-3.5 text-slate-400 font-mono text-xs text-center">{idx + 1}</td>
+        <td className={`px-5 py-3.5 ${isGrouped ? "pl-8" : ""}`}>
+          <div className="flex items-center gap-2">
+            {c.status === "PASSED" ? (
+              <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
+            ) : c.status === "FAILED" ? (
+              <XCircle size={15} className="text-red-500 shrink-0" />
+            ) : (
+              <Loader2 size={15} className="text-blue-500 animate-spin shrink-0" />
+            )}
+            <span className="font-semibold text-slate-800 truncate">{c.name}</span>
+            {c.errorMessage && (
+              <ChevronRight size={13} className={`text-slate-300 transition-transform ${expandedId === c.id ? "rotate-90" : ""}`} />
+            )}
+          </div>
+        </td>
+        {!isGrouped && (
+          <td className="px-5 py-3.5 text-xs text-slate-500">
+             <div className="flex items-center gap-1.5 flex-wrap">
+                {c.plan && (
+                   <>
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100/50 text-indigo-700 max-w-[120px] truncate" title={c.plan}>{c.plan}</span>
+                      <ChevronRight size={10} className="text-slate-300" />
+                   </>
+                )}
+                {c.scenario && (
+                   <>
+                      <span className="px-1.5 py-0.5 rounded bg-purple-50 border border-purple-100/50 text-purple-700 max-w-[120px] truncate" title={c.scenario}>{c.scenario}</span>
+                      <ChevronRight size={10} className="text-slate-300" />
+                   </>
+                )}
+                <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100/50 text-blue-700 font-medium max-w-[180px] truncate" title={c.suite}>{c.suite}</span>
+             </div>
+          </td>
+        )}
+        <td className="px-5 py-3.5 text-center">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider ${
+            c.status === "PASSED"
+              ? "bg-emerald-100 text-emerald-700"
+              : c.status === "FAILED"
+              ? "bg-red-100 text-red-700"
+              : "bg-blue-100 text-blue-700"
+          }`}>
+            {c.status}
+          </span>
+        </td>
+        <td className="px-5 py-3.5 text-right text-slate-500 font-mono text-xs">{c.duration}</td>
+      </tr>
+      {/* Expanded error row */}
+      {expandedId === c.id && c.errorMessage && (
+        <tr>
+          <td colSpan={isGrouped ? 4 : 5} className="px-5 py-3 bg-red-50/50">
+            <div className="flex items-start gap-2 text-xs font-mono text-red-700">
+              <AlertCircle size={13} className="shrink-0 mt-0.5 text-red-500" />
+              <span className="break-words max-w-[800px]">{c.errorMessage}</span>
+            </div>
+          </td>
+        </tr>
+      )}
+    </React.Fragment>
+  );
 
   return (
     <div className="flex flex-col h-full">
-      {/* Filter bar */}
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-200 bg-white shrink-0">
-        <span className="text-xs font-medium text-slate-400 mr-1">Filter:</span>
-        {[
-          { key: "all" as const, label: "All", count: cases.length, color: "" },
-          { key: "passed" as const, label: "Passed", count: passed, color: "text-emerald-600" },
-          { key: "failed" as const, label: "Failed", count: failed, color: "text-red-600" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
-              filter === f.key
-                ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
-                : "text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            {f.label}
-            <span className={`ml-1 ${f.color || "text-slate-400"}`}>{f.count}</span>
-          </button>
-        ))}
+      {/* Top Header & Filter bar */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-400 mr-1">Filter:</span>
+          {[
+            { key: "all" as const, label: "All", count: cases.length, color: "" },
+            { key: "passed" as const, label: "Passed", count: passed, color: "text-emerald-600" },
+            { key: "failed" as const, label: "Failed", count: failed, color: "text-red-600" },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+                filter === f.key
+                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+                  : "text-slate-500 hover:bg-slate-100"
+              }`}
+            >
+              {f.label}
+              <span className={`ml-1 ${f.color || "text-slate-400"}`}>{f.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* View Mode Switch */}
+        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+           <button
+             onClick={() => setViewMode("flat")}
+             className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+               !isGrouped ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+             }`}
+           >
+             List
+           </button>
+           <button
+             onClick={() => setViewMode("grouped")}
+             className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+               isGrouped ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+             }`}
+           >
+             Group by Suite
+           </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -252,79 +313,45 @@ const CaseResultsTable: React.FC<CaseResultsTableProps> = ({ logs }) => {
             <tr>
               <th className="px-5 py-3 w-10 text-center">#</th>
               <th className="px-5 py-3">Test Case</th>
-              <th className="px-5 py-3">Execution Path (Plan / Scenario / Suite)</th>
+              {!isGrouped && <th className="px-5 py-3">Execution Path (Plan / Scenario / Suite)</th>}
               <th className="px-5 py-3 text-center w-28">Status</th>
               <th className="px-5 py-3 text-right w-24">Duration</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtered.map((c, idx) => (
-              <React.Fragment key={c.id}>
-                <tr
-                  className={`hover:bg-slate-50/80 transition-colors ${
-                    c.status === "FAILED" ? "bg-red-50/20" : ""
-                  } ${c.errorMessage ? "cursor-pointer" : ""}`}
-                  onClick={() => c.errorMessage && setExpandedId(expandedId === c.id ? null : c.id)}
-                >
-                  <td className="px-5 py-3.5 text-slate-400 font-mono text-xs text-center">{idx + 1}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2">
-                      {c.status === "PASSED" ? (
-                        <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
-                      ) : c.status === "FAILED" ? (
-                        <XCircle size={15} className="text-red-500 shrink-0" />
-                      ) : (
-                        <Loader2 size={15} className="text-blue-500 animate-spin shrink-0" />
-                      )}
-                      <span className="font-semibold text-slate-800 truncate">{c.name}</span>
-                      {c.errorMessage && (
-                        <ChevronRight size={13} className={`text-slate-300 transition-transform ${expandedId === c.id ? "rotate-90" : ""}`} />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500">
-                     <div className="flex items-center gap-1.5 flex-wrap">
-                        {c.plan && (
-                           <>
-                              <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100/50 text-indigo-700 max-w-[120px] truncate" title={c.plan}>{c.plan}</span>
-                              <ChevronRight size={10} className="text-slate-300" />
-                           </>
-                        )}
-                        {c.scenario && (
-                           <>
-                              <span className="px-1.5 py-0.5 rounded bg-purple-50 border border-purple-100/50 text-purple-700 max-w-[120px] truncate" title={c.scenario}>{c.scenario}</span>
-                              <ChevronRight size={10} className="text-slate-300" />
-                           </>
-                        )}
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100/50 text-blue-700 font-medium max-w-[180px] truncate" title={c.suite}>{c.suite}</span>
-                     </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider ${
-                      c.status === "PASSED"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : c.status === "FAILED"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-blue-100 text-blue-700"
-                    }`}>
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right text-slate-500 font-mono text-xs">{c.duration}</td>
-                </tr>
-                {/* Expanded error row */}
-                {expandedId === c.id && c.errorMessage && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-3 bg-red-50/50">
-                      <div className="flex items-start gap-2 text-xs font-mono text-red-700">
-                        <AlertCircle size={13} className="shrink-0 mt-0.5 text-red-500" />
-                        <span className="break-words">{c.errorMessage}</span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
+            {!isGrouped ? (
+               filtered.map((c, idx) => renderRow(c, idx))
+            ) : Object.entries(grouped).map(([suite, suiteCases], gIdx) => {
+               const isCollapsed = collapsedSuites[suite];
+               const suitePassed = suiteCases.filter(c => c.status === "PASSED").length;
+               const suiteFailed = suiteCases.filter(c => c.status === "FAILED").length;
+               return (
+                 <React.Fragment key={`suite-${suite}`}>
+                   {/* Suite Group Header */}
+                   <tr
+                     className="bg-slate-50/50 hover:bg-slate-100/50 cursor-pointer transition-colors border-t-2 border-t-slate-200 group"
+                     onClick={() => setCollapsedSuites(p => ({ ...p, [suite]: !p[suite] }))}
+                   >
+                     <td colSpan={5} className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                           <ChevronDown size={16} className={`text-slate-400 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                           <div className="flex items-center gap-2">
+                             <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold tracking-widest uppercase">Suite</span>
+                             <span className="font-bold text-slate-800 text-sm">{suite}</span>
+                           </div>
+                           <div className="flex items-center gap-2 ml-auto text-xs font-semibold">
+                             <span className="text-slate-400">{suiteCases.length} cases</span>
+                             {suiteFailed > 0 && <span className="text-red-500 bg-red-50 px-1.5 py-0.5 rounded">{suiteFailed} failed</span>}
+                             {suitePassed > 0 && <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{suitePassed} passed</span>}
+                           </div>
+                        </div>
+                     </td>
+                   </tr>
+                   {/* Suite Cases */}
+                   {!isCollapsed && suiteCases.map((c, idx) => renderRow(c, idx))}
+                 </React.Fragment>
+               );
+            })}
           </tbody>
         </table>
       </div>
@@ -615,12 +642,21 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
   const copyLogs = () => {
     if (!selectedReport) return;
     const text = selectedReport.logs
-      .map((l) => `[${new Date(l.timestamp).toLocaleTimeString()}] [${l.level || l.status}] ${l.message}`)
+      .map((l) => `[${formatDateTime(l.timestamp)}] [${l.level || l.status}] ${l.message}`)
       .join("\n");
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Auto-refresh when selected report is RUNNING
+  React.useEffect(() => {
+    if (!selectedReport || selectedReport.status !== "RUNNING") return;
+    const timer = setInterval(() => {
+      reportsApi.refresh?.();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [selectedReport?.id, selectedReport?.status]);
 
   const onConfirmDelete = async () => {
     if (!reportToDelete) return;
@@ -681,8 +717,16 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
                 placeholder="Search reports…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full pl-9 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-0.5 rounded-full hover:bg-slate-200"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -844,7 +888,7 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
                           {/* Historical Comparison */}
                           {previousReport && (
                             <div className="mt-5 flex items-center gap-4 text-xs font-medium border-t border-slate-200 pt-4">
-                               <span className="text-slate-500 flex items-center gap-1.5"><Clock size={12}/> vs Previous ({new Date(previousReport.startTime).toLocaleDateString()}):</span>
+                               <span className="text-slate-500 flex items-center gap-1.5"><Clock size={12}/> vs Previous ({formatDateTime(previousReport.startTime)}):</span>
                                
                                <div className="flex items-center gap-1.5">
                                  <span className="text-slate-400">Pass Rate:</span>
