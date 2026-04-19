@@ -19,6 +19,33 @@ let isReconnect = false;
 let pingInterval: NodeJS.Timeout;
 let currentAbortController: AbortController | null = null;
 let agentStatus: 'idle' | 'busy' = 'idle';
+let taskQueue: TaskPayload[] = [];
+let isProcessing = false;
+
+async function processQueue() {
+  if (isProcessing) return;
+  isProcessing = true;
+
+  while (taskQueue.length > 0) {
+    const payload = taskQueue.shift();
+    if (!payload) continue;
+
+    agentStatus = 'busy';
+    sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
+
+    console.log(`[AGENT] Starting execution of task: ${payload.runId}`);
+    try {
+      await handleExecution(payload);
+    } catch (err) {
+      console.error(`[AGENT] Fatal error executing task ${payload.runId}:`, err);
+    }
+  }
+
+  isProcessing = false;
+  agentStatus = 'idle';
+  sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+  console.log('[AGENT] Queue drained. Agent is now idle.');
+}
 
 function connect() {
   console.log(`[AGENT] Connecting to ${SERVER_URL} as ${AGENT_ID}...`);
@@ -42,17 +69,11 @@ function connect() {
       const parsed = JSON.parse(data.toString());
       if (parsed.event === 'TASK_DISPATCH') {
         const payload: TaskPayload = parsed.data.payload;
-        console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId})`);
-
-        // Let server know we are busy
-        agentStatus = 'busy';
-        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: agentStatus });
-
-        await handleExecution(payload);
-
-        // Let server know we are idle again
-        agentStatus = 'idle';
-        sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: agentStatus });
+        console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
+        
+        taskQueue.push(payload);
+        processQueue(); // Start processing if not already
+        
       } else if (parsed.event === 'TASK_ABORT') {
         const { reportId } = parsed.data;
         console.log(`[AGENT] Received Remote Abort Request for report: ${reportId}`);
@@ -110,7 +131,15 @@ async function handleExecution(payload: TaskPayload) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown agent error';
     logger.log({ stepId: 'agent-error', status: 'FAIL', message: `❌ Agent Exception: ${msg}` });
-    logger.complete({ reportId: payload.reportId, status: 'FAILED', passRate: 0 });
+    logger.complete({ 
+      reportId: payload.reportId, 
+      status: 'FAILED', 
+      passRate: 0,
+       totalCases: 0,
+       passedCases: 0,
+       failedCases: 1,
+       durationMs: 0
+    });
   } finally {
     await uiExecutor.cleanup();
     currentAbortController = null;

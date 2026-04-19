@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import type { ExecutionLogEvent, ExecutionProgressEvent } from '../../shared/contracts/index.ts';
+import type { ExecutionLogEvent, ExecutionProgressEvent, RunResult } from '../../shared/contracts/index.ts';
 import { db } from '../../shared/db/client.ts';
 
 /**
@@ -76,7 +76,7 @@ export class ExecutionLogger {
   /**
    * Signal execution completion to all SSE clients and close connections.
    */
-  complete(data: { reportId: string; status: string; passRate: number }): void {
+  complete(data: RunResult): void {
     for (const client of this.sseClients) {
       try {
         client.write(`event: done\ndata: ${JSON.stringify(data)}\n\n`);

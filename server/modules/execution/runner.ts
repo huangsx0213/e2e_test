@@ -11,6 +11,7 @@ import type {
   ExecutionRequest,
   ExecutionRunStatus,
   DynamicVariable,
+  RunResult,
 } from '../../shared/contracts/index.ts';
 import { projectRepository } from '../projects/repository.ts';
 import { suiteRepository } from '../suites/repository.ts';
@@ -33,15 +34,7 @@ import { settingsRepository } from '../settings/repository.ts';
 
 const MAX_MODULE_DEPTH = 20;
 
-interface RunResult {
-  reportId: string;
-  status: 'COMPLETED' | 'FAILED' | 'ABORTED';
-  passRate: number;
-  totalCases: number;
-  passedCases: number;
-  failedCases: number;
-  durationMs: number;
-}
+
 
 // ─── Active Run Registry (multi-queue) ───
 
@@ -217,7 +210,8 @@ async function executeRunAsync(
         status: 'INFO',
         message: request.agentId.startsWith('QUEUE:') ? `📡 Enqueuing task for remote execution (${request.agentId})...` : `📡 Dispatching task to Remote Agent: ${request.agentId}`,
       });
-      result = (await dispatchToAgent(request.agentId, payload)) as any;
+      const remoteResult = await dispatchToAgent(request.agentId, payload);
+      result = remoteResult as any;
     } else {
       if (request.type === 'case') {
         const suite = suiteRepository.get(request.suiteId!);
@@ -309,11 +303,7 @@ async function executeRunAsync(
   );
 
   // Push final SSE event
-  logger.complete({
-    reportId,
-    status: result.status,
-    passRate: result.passRate,
-  });
+  logger.complete(result);
 
   // Cleanup
   loggerRegistry.delete(reportId);

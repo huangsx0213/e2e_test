@@ -51,12 +51,6 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-2 mb-1.5 ml-1">
-         <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1">
-           <Zap size={10} className="text-amber-500" /> Run Target
-         </span>
-      </div>
-      
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

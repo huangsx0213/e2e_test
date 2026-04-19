@@ -11,7 +11,7 @@ export function checkQueue() {
   if (!activeConn) return;
 
   for (const agent of activeConn.values()) {
-    if (agent.status === 'idle' && agent.ws) {
+    if (agent.status === 'idle' && agent.ws && agent.ws.readyState === 1) {
       const task = taskQueue.dequeueNext(agent.id, agent.labels || []);
       if (task) {
         assignTaskToAgent(agent, task);
@@ -32,16 +32,30 @@ function assignTaskToAgent(agent: any, task: any) {
 
   const onComplete = (res: any) => {
     clearTimeout(timeout);
-    agentRegistry.markIdle(agent.id);
+    // Note: We no longer mark agent as idle here. 
+    // We wait for the Agent to send a heartbeat confirming it is ready for more work.
     agentDispatcherEvents.removeListener(`COMPLETE_${task.payload.reportId}`, onComplete);
     task.resolve(res);
-    checkQueue(); // see if agent can take another
+  };
+
+  const onRejected = () => {
+    clearTimeout(timeout);
+    agentRegistry.markIdle(agent.id);
+    agentDispatcherEvents.removeListener(`COMPLETE_${task.payload.reportId}`, onComplete);
+    agentDispatcherEvents.removeListener(`REJECTED_${task.payload.reportId}`, onRejected);
+    
+    console.log(`[DISPATCHER] Task ${task.payload.reportId} rejected by agent ${agent.id}. Re-queueing...`);
+    task.status = 'pending';
+    taskQueue.enqueue(task);
+    // checkQueue is called inside enqueue
   };
 
   agentDispatcherEvents.addListener(`COMPLETE_${task.payload.reportId}`, onComplete);
+  agentDispatcherEvents.addListener(`REJECTED_${task.payload.reportId}`, onRejected);
 
   const timeout = setTimeout(() => {
     agentDispatcherEvents.removeListener(`COMPLETE_${task.payload.reportId}`, onComplete);
+    agentDispatcherEvents.removeListener(`REJECTED_${task.payload.reportId}`, onRejected);
     agentRegistry.markIdle(agent.id);
     task.reject(new Error(`Agent ${agent.id} timed out executing task ${task.payload.runId}`));
     checkQueue();

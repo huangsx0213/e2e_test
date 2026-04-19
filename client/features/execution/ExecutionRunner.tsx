@@ -21,6 +21,8 @@ import {
   X,
   Globe,
   StopCircle,
+  Zap,
+  ChevronDown,
 } from "lucide-react";
 import { executionApi } from "@/shared/services/api";
 import { ExecutionLogs } from "@/shared/execution/ExecutionLogs";
@@ -225,36 +227,43 @@ export const ExecutionRunner: React.FC<ExecutionRunnerProps> = ({
         </div>
         <div className="flex items-center gap-6">
           {(status === "IDLE" || status === "COMPLETED" || status === "FAILED") && (
-            <div className="flex items-center gap-2 mr-4">
-              <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                Target Env:
-              </span>
-              <div className="relative">
-                <Globe
-                  size={14}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <select
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded pl-7 pr-2 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
-                  value={selectedEnv}
-                  onChange={(e) => setSelectedEnv(e.target.value)}
-                >
-                  {environments.map((env) => (
-                    <option key={env} value={env}>
-                      {env}
-                    </option>
-                  ))}
-                </select>
+            <div className="flex items-end gap-5 mr-4">
+              {/* Target Env */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                  <Globe size={12} className="text-blue-400" /> Target Env
+                </span>
+                <div className="relative">
+                  <select
+                    className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded px-3 py-1.5 focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer w-32 appearance-none"
+                    value={selectedEnv}
+                    onChange={(e) => setSelectedEnv(e.target.value)}
+                  >
+                    {environments.map((env) => (
+                      <option key={env} value={env}>
+                        {env}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                </div>
               </div>
               
-              <ExecutionTargetSelector 
-                selectedAgentId={selectedAgentId}
-                onSelect={setSelectedAgentId}
-              />
+              {/* Run Target */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1.5 ml-1">
+                  <Zap size={12} className="text-amber-500" /> Run Target
+                </span>
+                <ExecutionTargetSelector 
+                  selectedAgentId={selectedAgentId}
+                  onSelect={setSelectedAgentId}
+                />
+              </div>
 
+              {/* Start Button */}
               <button
                 onClick={startExecution}
-                className="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                className="h-[34px] px-6 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 whitespace-nowrap mb-[1px]"
               >
                 <PlayCircle size={14} />
                 {status === "IDLE" ? "Start Run" : "Re-run"}

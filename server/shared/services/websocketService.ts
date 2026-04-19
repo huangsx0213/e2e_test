@@ -48,6 +48,9 @@ export function initializeWebSocket(server: Server) {
         } else if (parsed.event === 'EXECUTION_COMPLETE') {
           // Fire dispatcher event
           agentDispatcherEvents.emit(`COMPLETE_${parsed.data.runId || parsed.data.reportId}`, parsed.data);
+        } else if (parsed.event === 'TASK_REJECTED') {
+          // Forward rejection to dispatcher
+          agentDispatcherEvents.emit(`REJECTED_${parsed.data.reportId}`, parsed.data);
         }
       } catch (e) {
         console.error('Error handling WS message:', e);

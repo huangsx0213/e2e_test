@@ -288,10 +288,20 @@ export interface ExecutionLogEvent {
   metadata?: any;
 }
 
+export interface RunResult {
+  reportId: string;
+  status: 'COMPLETED' | 'FAILED' | 'ABORTED' | string;
+  passRate: number;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  durationMs: number;
+}
+
 export interface IExecutionLogger {
   log(event: Omit<ExecutionLogEvent, 'timestamp'>): void;
   progress(event: ExecutionProgressEvent): void;
-  complete(summary: { reportId: string; status: string; passRate: number }): void;
+  complete(summary: RunResult): void;
 }
 
 export interface ExecutionProgressEvent {

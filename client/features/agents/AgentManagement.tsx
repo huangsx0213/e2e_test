@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Server, Settings, Trash2, PowerOff, Power, RefreshCw, Layers, Clock } from 'lucide-react';
+import { Server, Settings, Trash2, PowerOff, Power, RefreshCw, Layers, Clock, X } from 'lucide-react';
 import { api } from '@/shared/services/api';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
@@ -29,6 +29,8 @@ export function AgentManagement() {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [editLabels, setEditLabels] = useState<string>('');
 
   const fetchData = async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
@@ -215,29 +217,69 @@ export function AgentManagement() {
 
                     <div className="mb-4">
                       <div className="flex flex-wrap gap-2 items-center min-h-[28px]">
-                        {agent.labels.length > 0 ? (
-                          agent.labels.map(label => (
-                            <span key={label} className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs border border-indigo-100 font-medium">
-                              {label}
-                            </span>
-                          ))
+                        {editingAgentId === agent.id ? (
+                          <div className="flex items-center gap-2 w-full max-w-[400px]">
+                            <input
+                              type="text"
+                              autoFocus
+                              className="text-xs px-2 py-1 border border-blue-400 rounded outline-none focus:ring-2 focus:ring-blue-100 flex-1 shadow-sm transition-all"
+                              value={editLabels}
+                              onChange={(e) => setEditLabels(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const newLabels = editLabels.split(',').map(s => s.trim()).filter(Boolean);
+                                  api.agents.updateLabels(agent.id, newLabels).then(fetchData);
+                                  setEditingAgentId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingAgentId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                // Save on blur as well for convenience
+                                const newLabels = editLabels.split(',').map(s => s.trim()).filter(Boolean);
+                                if (newLabels.join(',') !== agent.labels.join(',')) {
+                                  api.agents.updateLabels(agent.id, newLabels).then(fetchData);
+                                }
+                                setEditingAgentId(null);
+                              }}
+                              placeholder="Enter comma separated labels..."
+                            />
+                            <span className="text-[10px] text-slate-400 hidden sm:inline-block">Enter to save</span>
+                          </div>
                         ) : (
-                          <span className="text-xs text-slate-400 italic">No labels</span>
+                          <>
+                            {agent.labels.length > 0 ? (
+                              agent.labels.map(label => (
+                                <span key={label} className="group flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs border border-indigo-100 font-medium">
+                                  {label}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newLabels = agent.labels.filter(l => l !== label);
+                                      api.agents.updateLabels(agent.id, newLabels).then(fetchData);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 transition-opacity"
+                                    title="Remove label"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">No labels</span>
+                            )}
+                            <button
+                              onClick={() => {
+                                setEditingAgentId(agent.id);
+                                setEditLabels(agent.labels.join(', '));
+                              }}
+                              title="Edit Labels"
+                              className="px-2 py-0.5 bg-white text-slate-500 rounded text-xs border border-slate-200 hover:bg-slate-50 hover:text-slate-700 cursor-pointer shadow-sm transition-colors ml-1"
+                            >
+                              + Label
+                            </button>
+                          </>
                         )}
-                        <button
-                          onClick={() => {
-                            const current = agent.labels.join(', ');
-                            const input = prompt('Enter labels (comma separated):', current);
-                            if (input !== null) {
-                              const newLabels = input.split(',').map(s => s.trim()).filter(Boolean);
-                              api.agents.updateLabels(agent.id, newLabels).then(fetchData);
-                            }
-                          }}
-                          title="Edit Labels"
-                          className="px-2 py-0.5 bg-white text-slate-500 rounded text-xs border border-slate-200 hover:bg-slate-50 hover:text-slate-700 cursor-pointer shadow-sm transition-colors ml-1"
-                        >
-                          + Label
-                        </button>
                       </div>
                     </div>
 

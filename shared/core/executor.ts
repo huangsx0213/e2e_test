@@ -1,20 +1,12 @@
 import type { Project, TestSuite, TestStep, DynamicVariable, ExecutionRequest } from '../contracts/index.ts';
-import type { IExecutionLogger, TaskPayload } from '../contracts/index.ts';
+import type { IExecutionLogger, TaskPayload, RunResult } from '../contracts/index.ts';
 import { ExecutionContext } from '../../server/modules/execution/context.ts';
 import { executeApiStep, type ApiAssets } from '../../server/modules/execution/api-executor.ts';
 import { UIExecutor } from '../../server/modules/execution/ui-executor.ts';
 
 const MAX_MODULE_DEPTH = 20;
 
-export interface RunResult {
-  reportId: string;
-  status: 'COMPLETED' | 'FAILED' | 'ABORTED';
-  passRate: number;
-  totalCases: number;
-  passedCases: number;
-  failedCases: number;
-  durationMs: number;
-}
+// RunResult is imported from contracts
 
 // ─── Case Execution ───
 
@@ -272,7 +264,7 @@ async function runSuiteWithContext(
   return {
     reportId: '',
     status: allPassed ? 'COMPLETED' : 'FAILED',
-    passRate: totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 100,
+    passRate: totalCases > 0 ? Math.min(100, Math.round((passedCases / totalCases) * 100)) : 100,
     totalCases,
     passedCases,
     failedCases,
@@ -383,7 +375,7 @@ export async function executePlan(
   return {
     reportId: '',
     status: allPassed ? 'COMPLETED' : 'FAILED',
-    passRate: totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 100,
+    passRate: totalCases > 0 ? Math.min(100, Math.round((passedCases / totalCases) * 100)) : 100,
     totalCases,
     passedCases,
     failedCases,
@@ -474,7 +466,7 @@ export async function executeScenario(
   return {
     reportId: '',
     status: allPassed ? 'COMPLETED' : 'FAILED',
-    passRate: totalCases > 0 ? Math.round((passedCases / totalCases) * 100) : 100,
+    passRate: totalCases > 0 ? Math.min(100, Math.round((passedCases / totalCases) * 100)) : 100,
     totalCases,
     passedCases,
     failedCases,
@@ -732,4 +724,3 @@ async function executeSteps(
     }
   }
 }
-
