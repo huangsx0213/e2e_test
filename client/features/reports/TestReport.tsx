@@ -187,7 +187,7 @@ export const TestReport: React.FC<TestReportProps> = ({
                     <div className="flex items-center gap-1.5 overflow-hidden flex-1">
                       <Calendar size={12} className="text-slate-400 shrink-0" />
                       <span className="truncate">
-                        {new Date(report.startTime).toLocaleDateString()}
+                        {new Date(report.startTime).toLocaleString()}
                       </span>
                     </div>
                     <button
