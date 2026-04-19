@@ -72,7 +72,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const scenarios = currentProject?.scenarios || [];
 
   const [activeTab, setActiveTab] = useState<"PLANS" | "SCENARIOS" | "CONSOLE">(
-    "SCENARIOS",
+    "PLANS",
   );
   const [scenarioToRunId, setScenarioToRunId] = useState<string | null>(null);
   const [planToRunId, setPlanToRunId] = useState<string | null>(null);

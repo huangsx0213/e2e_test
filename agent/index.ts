@@ -5,29 +5,75 @@ import { executeSingleCase, executeSuite, executeScenario, executePlan } from '.
 import { UIExecutor } from '../server/modules/execution/ui-executor.ts';
 import type { TaskPayload } from '../shared/contracts/index.ts';
 
+import fs from 'fs';
+import path from 'path';
+
 const args = process.argv.slice(2);
 function getArg(name: string) {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 }
 
-const SERVER_URL = getArg('--url') || process.env.SERVER_URL || 'ws://localhost:3000';
-const AGENT_ID = getArg('--name') || process.env.AGENT_ID || `agent-${Math.random().toString(36).substring(7)}`;
+// Support for pre-packaged config (for one-click run downloaded agents)
+let config: any = {};
+try {
+  const configPath = path.join(process.cwd(), 'agent-config.json');
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+} catch (e) {
+  // Ignore config load errors
+}
+
+const SERVER_URL = getArg('--url') || process.env.SERVER_URL || config.serverUrl || 'ws://localhost:3000';
+const AGENT_ID = getArg('--name') || process.env.AGENT_ID || config.agentName || `agent-${Math.random().toString(36).substring(7)}`;
 
 let ws: WebSocket;
 let isReconnect = false;
 let pingInterval: NodeJS.Timeout;
 let currentAbortController: AbortController | null = null;
 let agentStatus: 'idle' | 'busy' = 'idle';
-let taskQueue: TaskPayload[] = [];
+let localTaskQueue: TaskPayload[] = [];
 let isProcessing = false;
+
+// ─── Console Interception: Forward agent output to server ───
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+function formatArgs(args: any[]): string {
+  return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+}
+
+function emitAgentLog(level: 'info' | 'warn' | 'error', args: any[]) {
+  const line = formatArgs(args);
+  sendMsg('AGENT_LOG', {
+    agentId: AGENT_ID,
+    timestamp: Date.now(),
+    level,
+    message: line,
+  });
+}
+
+console.log = (...args: any[]) => {
+  originalConsoleLog.apply(console, args);
+  emitAgentLog('info', args);
+};
+console.warn = (...args: any[]) => {
+  originalConsoleWarn.apply(console, args);
+  emitAgentLog('warn', args);
+};
+console.error = (...args: any[]) => {
+  originalConsoleError.apply(console, args);
+  emitAgentLog('error', args);
+};
 
 async function processQueue() {
   if (isProcessing) return;
   isProcessing = true;
 
-  while (taskQueue.length > 0) {
-    const payload = taskQueue.shift();
+  while (localTaskQueue.length > 0) {
+    const payload = localTaskQueue.shift();
     if (!payload) continue;
 
     agentStatus = 'busy';
@@ -71,7 +117,7 @@ function connect() {
         const payload: TaskPayload = parsed.data.payload;
         console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
         
-        taskQueue.push(payload);
+        localTaskQueue.push(payload);
         processQueue(); // Start processing if not already
         
       } else if (parsed.event === 'TASK_ABORT') {
@@ -111,16 +157,20 @@ async function handleExecution(payload: TaskPayload) {
 
   logger.log({ stepId: 'agent-init', status: 'INFO', message: `🚀 Task picked up by Remote Agent: ${AGENT_ID}` });
 
+  const onEnvVarExtracted = (name: string, value: string) => {
+    console.log(`[AGENT] Extracted environment variable: ${name} = ${value}`);
+  };
+
   try {
     let result;
     if (payload.request.type === 'case') {
-      result = await executeSingleCase(payload, logger, currentAbortController.signal, uiExecutor);
+      result = await executeSingleCase(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
     } else if (payload.request.type === 'suite') {
-      result = await executeSuite(payload, logger, currentAbortController.signal, uiExecutor);
+      result = await executeSuite(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
     } else if (payload.request.type === 'scenario') {
-      result = await executeScenario(payload, logger, currentAbortController.signal, uiExecutor);
+      result = await executeScenario(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
     } else if (payload.request.type === 'plan') {
-      result = await executePlan(payload, logger, currentAbortController.signal, uiExecutor);
+      result = await executePlan(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
     }
 
     if (result) {

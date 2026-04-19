@@ -15,6 +15,7 @@ export async function executeSingleCase(
   logger: IExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<RunResult> {
   const suite = payload.suite || payload.suites?.find(s => s.id === payload.request.suiteId);
   if (!suite) throw new Error(`Suite ${payload.request.suiteId} not found`);
@@ -55,17 +56,17 @@ export async function executeSingleCase(
     // Suite setup
     if (suite.setupSteps && suite.setupSteps.length > 0) {
       logger.log({ stepId: 'suite-setup', status: 'INFO', message: '⚙️ Running Suite Setup Steps' });
-      await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0);
+      await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
     }
 
     // Case setup
     if (testCase.setupSteps && testCase.setupSteps.length > 0) {
       logger.log({ stepId: 'case-setup', status: 'INFO', message: '⚙️ Running Case Setup Steps' });
-      await executeSteps(testCase.setupSteps, context, payload, logger, signal, uiExecutor, 0);
+      await executeSteps(testCase.setupSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
     }
 
     // Main steps
-    await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 0);
+    await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
 
     // Case teardown
     if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
@@ -76,7 +77,7 @@ export async function executeSingleCase(
     // Suite teardown
     if (suite.teardownSteps && suite.teardownSteps.length > 0) {
       logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
-      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0);
+      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
     }
 
   } catch (error) {
@@ -111,6 +112,7 @@ export async function executeSuite(
   logger: IExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<RunResult> {
   const suite = payload.suite || payload.suites?.find(s => s.id === payload.request.suiteId);
   if (!suite) throw new Error(`Suite ${payload.request.suiteId} not found`);
@@ -122,7 +124,8 @@ export async function executeSuite(
     {}, // scenarioDataRow
     {}, // scenarioOverrides
     'SUITE', payload, logger, signal, uiExecutor, {}, // sharedRuntimeVars
-    {} // sharedDynamicCaches
+    {}, // sharedDynamicCaches
+    onEnvVarExtracted
   );
 }
 
@@ -138,7 +141,8 @@ async function runSuiteWithContext(
   signal: AbortSignal,
   uiExecutor: UIExecutor,
   sharedRuntimeVars: Record<string, string>,
-  sharedDynamicCaches: Record<string, string>
+  sharedDynamicCaches: Record<string, string>,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<RunResult> {
   logger.log({ stepId: `suite-${suite.id}`, status: 'INFO', message: `📦 Executing Suite: ${suite.name}` });
 
@@ -201,7 +205,7 @@ async function runSuiteWithContext(
     // Suite setup
     if (suite.setupSteps && suite.setupSteps.length > 0) {
       logger.log({ stepId: 'suite-setup', status: 'INFO', message: '⚙️ Running Suite Setup Steps' });
-      await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0);
+      await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
     }
 
     for (const testCase of suite.cases) {
@@ -222,7 +226,7 @@ async function runSuiteWithContext(
         }
         await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 1);
         if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
-          await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 1);
+          await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 1, onEnvVarExtracted);
         }
       } catch (error) {
         casePassed = false;
@@ -250,7 +254,7 @@ async function runSuiteWithContext(
     // Suite teardown
     if (suite.teardownSteps && suite.teardownSteps.length > 0) {
       logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
-      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0);
+      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
     }
 
     // Capture updated caches (especially ONCE_PER_SCENARIO)
@@ -279,6 +283,7 @@ export async function executePlan(
   logger: IExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<RunResult> {
   const plan = payload.project.plans?.find(p => p.id === payload.request.planId);
   if (!plan) throw new Error(`Plan ${payload.request.planId} not found`);
@@ -353,7 +358,8 @@ export async function executePlan(
           scenario.name,
           scenarioVariables,
           scenarioRow,
-          scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, sharedRuntimeVars, sharedDynamicCaches
+          scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, sharedRuntimeVars, sharedDynamicCaches,
+          onEnvVarExtracted
         );
 
         totalCases += suiteResult.totalCases;
@@ -390,6 +396,7 @@ export async function executeScenario(
   logger: IExecutionLogger,
   signal: AbortSignal,
   uiExecutor: UIExecutor,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<RunResult> {
   const scenario = payload.project.scenarios?.find(s => s.id === payload.request.scenarioId);
   if (!scenario) throw new Error(`Scenario ${payload.request.scenarioId} not found`);
@@ -445,7 +452,8 @@ export async function executeScenario(
         scenario.name,
         scenarioVariables,
         scenarioRow,
-        scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, sharedRuntimeVars, sharedDynamicCaches
+        scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, sharedRuntimeVars, sharedDynamicCaches,
+        onEnvVarExtracted
       );
 
       totalCases += suiteResult.totalCases;
@@ -484,6 +492,7 @@ async function executeSteps(
   signal: AbortSignal,
   uiExecutor: UIExecutor,
   depth: number,
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<void> {
   for (let i = 0; i < steps.length; i++) {
     if (signal.aborted) throw new Error('Execution aborted');
@@ -531,7 +540,7 @@ async function executeSteps(
       }
 
       const childContext = context.createChildContext(moduleDefaults, overrides);
-      await executeSteps(module.steps || [], childContext, payload, logger, signal, uiExecutor, depth + 1);
+      await executeSteps(module.steps || [], childContext, payload, logger, signal, uiExecutor, depth + 1, onEnvVarExtracted);
 
       // Merge extracted variables back into the parent context, applying the namespace if provided
       context.mergeChildExtractedVars(childContext, step.namespace);
@@ -561,7 +570,7 @@ async function executeSteps(
 
       let result: any = undefined;
       try {
-        result = await executeApiStep(step, context, payload.assets, payload.request.environment, logger, indent);
+        result = await executeApiStep(step, context, payload.assets, payload.request.environment, logger, indent, onEnvVarExtracted);
 
         const isSuccess = result.status >= 200 && result.status < 400;
         const bodyPreview = result.body.length > 200 ? result.body.slice(0, 200) + '…' : result.body;
@@ -655,7 +664,7 @@ async function executeSteps(
         message: `${indent}💻 [${step.action}] ${resolvedTarget ? resolvedTarget + ' ' : ''}${step.data ? '(' + context.interpolate(step.data) + ')' : ''}`,
       });
 
-      uiResult = await uiExecutor.executeStep(step, context, payload.project.pages || [], payload.request.environment);
+      uiResult = await uiExecutor.executeStep(step, context, payload.project.pages || [], payload.request.environment, onEnvVarExtracted);
 
       let logMessage = `${indent}✅ [${step.action}] Completed (${uiResult.durationMs}ms)`;
       if (step.action.startsWith('ASSERT_') && uiResult.assertionDetails) {

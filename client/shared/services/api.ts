@@ -110,6 +110,8 @@ export const api = {
     updateStatus: (id: string, status: string) => apiFetch<any>(`agents/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
     updateLabels: (id: string, labels: string[]) => apiFetch<any>(`agents/${id}/labels`, { method: 'PUT', body: JSON.stringify({ labels }) }),
     delete: (id: string) => apiFetch<void>(`agents/${id}`, { method: 'DELETE' }),
+    logs: (id: string) => apiFetch<any[]>(`agents/${id}/logs`),
+    logsStream: (id: string): EventSource => new EventSource(`/api/agents/${id}/logs/stream`),
   },
   queue: {
     list: () => apiFetch<any[]>('runners/queue'),

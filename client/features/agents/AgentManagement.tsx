@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Server, Settings, Trash2, PowerOff, Power, RefreshCw, Layers, Clock, X } from 'lucide-react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Server, Trash2, PowerOff, Power, RefreshCw, Layers, Clock, X, Terminal, Download } from 'lucide-react';
 import { api } from '@/shared/services/api';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
@@ -23,6 +23,122 @@ interface QueuedTask {
   name?: string;
 }
 
+interface AgentLogLine {
+  timestamp: number;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+}
+
+// ─── Agent Log Panel (expandable per-agent) ───
+function AgentLogPanel({ agentId, isOpen, onClose }: { agentId: string; isOpen: boolean; onClose: () => void }) {
+  const [logs, setLogs] = useState<AgentLogLine[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logsEndRef.current && containerRef.current) {
+      const container = containerRef.current;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      if (isNearBottom) {
+        logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [logs]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      setLogs([]);
+      setIsConnected(false);
+      return;
+    }
+
+    const es = api.agents.logsStream(agentId);
+    eventSourceRef.current = es;
+    setIsConnected(true);
+
+    es.onmessage = (event) => {
+      try {
+        const line: AgentLogLine = JSON.parse(event.data);
+        setLogs(prev => {
+          const next = [...prev, line];
+          if (next.length > 1000) return next.slice(next.length - 1000);
+          return next;
+        });
+      } catch { /* ignore */ }
+    };
+
+    es.onerror = () => setIsConnected(false);
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [isOpen, agentId]);
+
+  if (!isOpen) return null;
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const levelColor = (level: string) => {
+    if (level === 'error') return 'text-red-400';
+    if (level === 'warn') return 'text-amber-400';
+    return 'text-slate-400';
+  };
+
+  const messageColor = (line: AgentLogLine) => {
+    if (line.level === 'error') return 'text-red-300';
+    if (line.level === 'warn') return 'text-amber-300';
+    if (line.message.includes('✅')) return 'text-green-400';
+    if (line.message.includes('❌')) return 'text-red-400';
+    if (line.message.includes('🚀')) return 'text-blue-400';
+    if (line.message.includes('[AGENT]')) return 'text-cyan-300';
+    if (line.message.includes('[EXEC]')) return 'text-slate-500';
+    return 'text-slate-300';
+  };
+
+  return (
+    <div className="border-t border-slate-700 bg-slate-950 rounded-b-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <Terminal size={12} className="text-green-400" />
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Live Console</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-slate-600 font-mono">{logs.length} lines</span>
+          <button onClick={() => setLogs([])} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+          <button onClick={() => onClose()} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={12} /></button>
+        </div>
+      </div>
+      <div ref={containerRef} className="overflow-y-auto font-mono text-xs p-2 space-y-0" style={{ height: '400px' }}>
+        {logs.length === 0 && (
+          <div className="text-slate-600 text-center py-6 flex flex-col items-center gap-2">
+            <Terminal size={20} className="text-slate-700" />
+            <span>Waiting for agent output…</span>
+          </div>
+        )}
+        {logs.map((line, i) => (
+          <div key={i} className="flex gap-2 py-[1px] hover:bg-slate-900/50 leading-relaxed">
+            <span className="text-slate-600 shrink-0 select-none">{formatTime(line.timestamp)}</span>
+            <span className={`shrink-0 w-10 text-right select-none ${levelColor(line.level)}`}>{line.level.toUpperCase()}</span>
+            <span className={`break-all ${messageColor(line)}`}>{line.message}</span>
+          </div>
+        ))}
+        <div ref={logsEndRef} />
+      </div>
+    </div>
+  );
+}
+
 export function AgentManagement() {
   const [agents, setAgents] = useState<RemoteAgent[]>([]);
   const [queue, setQueue] = useState<QueuedTask[]>([]);
@@ -31,8 +147,9 @@ export function AgentManagement() {
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editLabels, setEditLabels] = useState<string>('');
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
 
-  const fetchData = async (isManualRefresh = false) => {
+  const fetchData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setIsRefreshing(true);
     try {
       const [agentData, queueData] = await Promise.all([
@@ -49,16 +166,16 @@ export function AgentManagement() {
         setTimeout(() => setIsRefreshing(false), 500);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const toggleAgentStatus = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'disabled' ? 'offline' : 'disabled'; // Going back online will reconnect normally or just set to offline
+    const newStatus = currentStatus === 'disabled' ? 'offline' : 'disabled';
     await api.agents.updateStatus(id, newStatus);
     fetchData();
   };
@@ -77,6 +194,14 @@ export function AgentManagement() {
     return `${Math.floor(passed / 60000)} mins ago`;
   };
 
+  const toggleLogPanel = (agentId: string) => {
+    setExpandedAgentId(prev => prev === agentId ? null : agentId);
+  };
+
+  const handleDownloadAgent = () => {
+    window.open('/api/agents/download', '_blank');
+  };
+
   if (loading && !agents.length) {
     return <div className="p-8 text-slate-500">Loading runner nodes...</div>;
   }
@@ -86,20 +211,18 @@ export function AgentManagement() {
       <ConfirmModal
         isOpen={!!agentToDelete}
         title="Delete Agent"
-        message="Are you sure you want to delete this remote agent? It will be disconnected until re-registered."
+        message="Are you sure you want to delete this remote agent?"
         confirmLabel="Delete Agent"
         type="danger"
         onConfirm={confirmDeleteAgent}
         onClose={() => setAgentToDelete(null)}
       />
 
-      {/* Sidebar: Execution Queue */}
       <div className="w-80 border-r border-slate-200 flex flex-col bg-slate-50 shrink-0 z-10">
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-white shadow-sm z-10">
           <h2 className="font-semibold text-slate-800 text-lg flex items-center gap-2">
             <Layers size={20} className="text-blue-600" />
             Task Queue
-            <HelpTooltip content="Tasks waiting for an available idle execution node." />
           </h2>
           <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">
             {queue.length}
@@ -120,21 +243,11 @@ export function AgentManagement() {
                     <span className="bg-slate-100 text-slate-500 font-mono text-[10px] px-1.5 py-0.5 rounded border border-slate-200">#{idx + 1}</span>
                     <span className="font-semibold text-sm text-slate-800">{task.type.toUpperCase()}</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono bg-slate-50 px-1 rounded truncate ml-2">
-                    {formatLastSeen(task.createdAt)}
-                  </span>
                 </div>
-                {task.name && (
-                  <p className="text-sm text-slate-700 font-medium truncate mb-2 mt-0.5" title={task.name}>{task.name}</p>
-                )}
-                {task.agentId ? (
+                {task.name && <p className="text-sm text-slate-700 font-medium truncate mb-2 mt-0.5">{task.name}</p>}
+                {task.agentId && (
                   <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 border-t border-slate-100 pt-2">
                     Target: <span className="font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">{task.agentId}</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-slate-500 mt-0.5 border-t border-slate-100 pt-2 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 bg-slate-300 rounded-full"></span>
-                    Target: <span className="text-slate-500">Any available</span>
                   </p>
                 )}
               </div>
@@ -143,22 +256,30 @@ export function AgentManagement() {
         </div>
       </div>
 
-      {/* Main Content: Agent List */}
       <div className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 z-10 shadow-sm">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight flex items-center gap-3">
               <Server className="text-blue-600" /> Remote Agents
-              <HelpTooltip content="Connect remote machines to run tests securely across different environments." />
             </h1>
-            <p className="text-slate-500 text-sm mt-1">Manage remote execution nodes for distributed UI and API testing.</p>
+            <p className="text-slate-500 text-sm mt-1">Manage remote execution nodes for distributed testing.</p>
           </div>
-          <button
-            onClick={() => fetchData(true)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded shadow-sm text-slate-700 hover:bg-slate-50 transition-colors"
-          >
-            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} /> Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDownloadAgent}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-indigo-600 border border-transparent rounded shadow-sm text-white hover:bg-indigo-700 transition-colors font-medium"
+            >
+              <Download size={14} /> Download Agent
+            </button>
+            <HelpTooltip content="Download a pre-configured agent zip. Just unzip and run start-agent or node agent.js." />
+            
+            <button
+              onClick={() => fetchData(true)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded shadow-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} /> Refresh
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30">
@@ -167,135 +288,82 @@ export function AgentManagement() {
               <div className="bg-white rounded-lg border border-slate-200 border-dashed p-10 text-center shadow-sm">
                 <Server className="mx-auto text-slate-300 mb-4" size={40} />
                 <h3 className="text-slate-800 font-medium text-lg">No nodes connected</h3>
-                <p className="text-slate-500 text-sm mt-1 mb-6">You don't have any registered execution nodes. Start an agent to begin parallel testing.</p>
-                <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto select-all space-y-2 border border-slate-800 mx-auto max-w-2xl">
-                  <p className="text-slate-500"># 1. Download or clone this project to your test machine.</p>
-                  <p className="text-slate-500 mt-3"># 2. Install dependencies (requires Node.js):</p>
+                <p className="text-slate-500 text-sm mt-1 mb-6">Start an agent to begin parallel testing.</p>
+                
+                <div className="flex justify-center mb-10">
+                  <button
+                    onClick={handleDownloadAgent}
+                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+                  >
+                    <Download size={20} /> Download Pre-configured Agent
+                  </button>
+                </div>
+
+                <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto select-all border border-slate-800 mx-auto max-w-2xl">
+                  <p className="text-slate-500">{"# Or manual setup (requires Node.js):"}</p>
                   <p className="text-blue-400">npm install</p>
-                  <p className="text-slate-500 mt-3"># 3. Start the agent pointing to this workspace:</p>
-                  <p className="text-green-400">npm run start-agent -- --url {window.location.origin.replace('http', 'ws')}</p>
+                  <p className="text-slate-500 mt-3">{"# Start the agent pointing to this workspace:"}</p>
+                  <p className="text-green-400">
+                    {`npm run start-agent -- --url ${window.location.origin.replace('http', 'ws')}`}
+                  </p>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200">
+                  <div className="w-8"></div>
+                  <div className="flex-1 min-w-[140px]">Agent</div>
+                  <div className="w-16 text-center">Status</div>
+                  <div className="w-16 text-center">OS</div>
+                  <div className="flex-1 min-w-[120px]">Labels</div>
+                  <div className="w-24">Last Seen</div>
+                  <div className="w-20 text-center">Activity</div>
+                  <div className="w-28 text-right">Actions</div>
+                </div>
                 {agents.map(agent => (
-                  <div key={agent.id} className={`bg-white rounded-lg border ${agent.status === 'offline' ? 'border-slate-200 opacity-70' : 'border-slate-200 shadow-sm'} p-5 relative transition-all hover:shadow-md`}>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`flex items-center justify-center w-12 h-12 rounded-full ${agent.status === 'idle' ? 'bg-green-100 text-green-600' : agent.status === 'busy' ? 'bg-amber-100 text-amber-600' : agent.status === 'disabled' ? 'bg-slate-100 text-slate-400' : 'bg-slate-100 text-slate-400'}`}>
-                          <Server size={24} />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-slate-900 text-lg flex items-center gap-2">
-                            {agent.id}
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${agent.status === 'idle' ? 'bg-green-100 text-green-700' : agent.status === 'busy' ? 'bg-amber-100 text-amber-700' : agent.status === 'disabled' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
-                              {agent.status}
-                            </span>
-                          </h3>
-                          <div className="flex items-center gap-2 text-xs font-mono mt-0.5">
-                            <span className="text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{agent.os}</span>
-                          </div>
-                        </div>
+                  <div key={agent.id} className="flex flex-col">
+                    <div className={`flex items-center gap-4 px-4 py-2.5 bg-white rounded-lg border border-slate-200 transition-all hover:shadow-sm ${agent.status === 'offline' ? 'opacity-60' : ''} ${expandedAgentId === agent.id ? 'rounded-b-none border-b-0' : ''}`}>
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-full shrink-0 ${agent.status === 'idle' ? 'bg-green-100 text-green-600' : agent.status === 'busy' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
+                        <Server size={16} />
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => toggleAgentStatus(agent.id, agent.status)}
-                          title={agent.status === 'disabled' ? 'Enable Agent' : 'Disable Agent'}
-                          className={`p-2 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ${agent.status === 'disabled' && 'bg-red-50 text-red-500 hover:text-red-700 hover:bg-red-100'}`}
-                        >
-                          {agent.status === 'disabled' ? <Power size={18} /> : <PowerOff size={18} />}
-                        </button>
-                        <button
-                          onClick={() => setAgentToDelete(agent.id)}
-                          title="Delete Agent"
-                          className="p-2 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                      <div className="flex-1 min-w-[140px]">
+                        <span className="font-semibold text-slate-900 text-sm">{agent.id}</span>
                       </div>
-                    </div>
-
-                    <div className="mb-4">
-                      <div className="flex flex-wrap gap-2 items-center min-h-[28px]">
+                      <div className="w-16 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${agent.status === 'idle' ? 'bg-green-100 text-green-700' : agent.status === 'busy' ? 'bg-amber-100 text-amber-700' : agent.status === 'disabled' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
+                          {agent.status}
+                        </span>
+                      </div>
+                      <div className="w-16 text-center text-xs font-mono text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">{agent.os}</div>
+                      <div className="flex-1 min-w-[120px] flex items-center gap-1.5 flex-wrap">
                         {editingAgentId === agent.id ? (
-                          <div className="flex items-center gap-2 w-full max-w-[400px]">
-                            <input
-                              type="text"
-                              autoFocus
-                              className="text-xs px-2 py-1 border border-blue-400 rounded outline-none focus:ring-2 focus:ring-blue-100 flex-1 shadow-sm transition-all"
-                              value={editLabels}
-                              onChange={(e) => setEditLabels(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  const newLabels = editLabels.split(',').map(s => s.trim()).filter(Boolean);
-                                  api.agents.updateLabels(agent.id, newLabels).then(fetchData);
-                                  setEditingAgentId(null);
-                                } else if (e.key === 'Escape') {
-                                  setEditingAgentId(null);
-                                }
-                              }}
-                              onBlur={() => {
-                                // Save on blur as well for convenience
-                                const newLabels = editLabels.split(',').map(s => s.trim()).filter(Boolean);
-                                if (newLabels.join(',') !== agent.labels.join(',')) {
-                                  api.agents.updateLabels(agent.id, newLabels).then(fetchData);
-                                }
-                                setEditingAgentId(null);
-                              }}
-                              placeholder="Enter comma separated labels..."
-                            />
-                            <span className="text-[10px] text-slate-400 hidden sm:inline-block">Enter to save</span>
-                          </div>
+                          <input type="text" autoFocus className="text-xs px-2 py-0.5 border border-blue-400 rounded outline-none w-48 shadow-sm" value={editLabels} onChange={(e) => setEditLabels(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); } else if (e.key === 'Escape') setEditingAgentId(null); }} onBlur={() => { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); }} />
                         ) : (
                           <>
-                            {agent.labels.length > 0 ? (
-                              agent.labels.map(label => (
-                                <span key={label} className="group flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs border border-indigo-100 font-medium">
-                                  {label}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const newLabels = agent.labels.filter(l => l !== label);
-                                      api.agents.updateLabels(agent.id, newLabels).then(fetchData);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 transition-opacity"
-                                    title="Remove label"
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-slate-400 italic">No labels</span>
-                            )}
-                            <button
-                              onClick={() => {
-                                setEditingAgentId(agent.id);
-                                setEditLabels(agent.labels.join(', '));
-                              }}
-                              title="Edit Labels"
-                              className="px-2 py-0.5 bg-white text-slate-500 rounded text-xs border border-slate-200 hover:bg-slate-50 hover:text-slate-700 cursor-pointer shadow-sm transition-colors ml-1"
-                            >
-                              + Label
-                            </button>
+                            {agent.labels.length > 0 ? agent.labels.map(label => (
+                              <span key={label} className="group inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[11px] border border-indigo-100 font-medium">
+                                {label}
+                                <button onClick={(e) => { e.stopPropagation(); api.agents.updateLabels(agent.id, agent.labels.filter(l => l !== label)).then(fetchData); }} className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 ml-0.5"><X size={10} /></button>
+                              </span>
+                            )) : <span className="text-[11px] text-slate-400 italic">—</span>}
+                            <button onClick={() => { setEditingAgentId(agent.id); setEditLabels(agent.labels.join(', ')); }} className="px-1.5 py-0.5 text-slate-400 rounded text-[11px] border border-slate-200 hover:bg-slate-50 hover:text-slate-600 transition-colors">+</button>
                           </>
                         )}
                       </div>
+                      <div className="w-24 text-xs text-slate-500 flex items-center gap-1">
+                        <Clock size={11} className="text-slate-400" />
+                        <span>{formatLastSeen(agent.lastSeen)}</span>
+                      </div>
+                      <div className="w-20 text-center">
+                        {agent.status === 'busy' ? <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-medium"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>Running</span> : <span className="text-[10px] text-slate-400">—</span>}
+                      </div>
+                      <div className="w-28 flex items-center justify-end gap-1">
+                        <button onClick={() => toggleLogPanel(agent.id)} className={`p-1.5 rounded transition-colors ${expandedAgentId === agent.id ? 'bg-green-50 text-green-600' : 'text-slate-400 hover:bg-slate-100'}`}><Terminal size={15} /></button>
+                        <button onClick={() => toggleAgentStatus(agent.id, agent.status)} className="p-1.5 rounded text-slate-400 hover:bg-slate-100">{agent.status === 'disabled' ? <Power size={15} /> : <PowerOff size={15} />}</button>
+                        <button onClick={() => setAgentToDelete(agent.id)} className="p-1.5 rounded text-red-400 hover:bg-red-50"><Trash2 size={15} /></button>
+                      </div>
                     </div>
-
-                    <div className="flex justify-between items-center text-xs text-slate-500 border-t border-slate-100 pt-3">
-                      <span className="flex items-center gap-1.5" title="The last time this agent successfully communicated with the central server (via Heartbeat). If an agent shows an old time, it may be dead, abruptly disconnected, or experiencing network issues.">
-                        <Clock size={12} className="text-slate-400" />
-                        Last seen: {formatLastSeen(agent.lastSeen)}
-                        <HelpTooltip content="The last time this agent successfully communicated with the central server (Heartbeat). If this shows a time greater than a few minutes, the agent might be disconnected or dead." />
-                      </span>
-                      {agent.status === 'busy' && agent.currentReportId && (
-                        <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded inline-flex items-center gap-1.5 font-medium border border-amber-200/50">
-                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></div>
-                          Executing task
-                        </span>
-                      )}
-                    </div>
+                    <AgentLogPanel agentId={agent.id} isOpen={expandedAgentId === agent.id} onClose={() => setExpandedAgentId(null)} />
                   </div>
                 ))}
               </div>

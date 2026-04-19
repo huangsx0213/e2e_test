@@ -7,6 +7,7 @@ const clients = new Set<WebSocket>();
 import { agentRegistry } from '../../modules/agent/registry.ts';
 import { agentDispatcherEvents, checkQueue } from '../../modules/agent/dispatcher.ts';
 import { getActiveRunLogger } from '../../modules/execution/runner.ts';
+import { agentLogBuffer } from '../../modules/agent/log-buffer.ts';
 
 export function initializeWebSocket(server: Server) {
   wss = new WebSocketServer({ server });
@@ -51,6 +52,12 @@ export function initializeWebSocket(server: Server) {
         } else if (parsed.event === 'TASK_REJECTED') {
           // Forward rejection to dispatcher
           agentDispatcherEvents.emit(`REJECTED_${parsed.data.reportId}`, parsed.data);
+        } else if (parsed.event === 'AGENT_LOG') {
+          // Push agent console output into the ring buffer
+          const { agentId, timestamp, level, message } = parsed.data;
+          if (agentId && message) {
+            agentLogBuffer.push(agentId, { timestamp, level, message });
+          }
         }
       } catch (e) {
         console.error('Error handling WS message:', e);

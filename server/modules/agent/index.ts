@@ -1,8 +1,23 @@
 import { Router } from 'express';
 import { agentRegistry } from './registry.ts';
 import { getAgent, deleteAgent, saveAgent } from './repository.ts';
+import { agentLogBuffer } from './log-buffer.ts';
+import { createAgentPackage } from './agent-bundler.ts';
+import os from 'os';
 
 const router = Router();
+
+function getInternalIp(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 
 // GET /api/agents - List all registered agents
 router.get('/', (req, res) => {
@@ -53,9 +68,44 @@ router.put('/:id/labels', (req, res) => {
   res.json(updated);
 });
 
+// GET /api/agents/:id/logs - Get buffered logs (snapshot)
+router.get('/:id/logs', (req, res) => {
+  const logs = agentLogBuffer.getBuffer(req.params.id);
+  res.json(logs);
+});
+
+// GET /api/agents/:id/logs/stream - Live SSE stream of agent logs
+router.get('/:id/logs/stream', (req, res) => {
+  agentLogBuffer.addSSEClient(req.params.id, res);
+});
+
+// GET /api/agents/download - Generate and download pre-configured agent package
+router.get('/download', async (req, res) => {
+  try {
+    // Determine the server URL (using internal IP for better remote connectivity)
+    const protocol = req.protocol === 'https' ? 'wss' : 'ws';
+    const host = req.get('host') || '';
+    const port = host.includes(':') ? host.split(':')[1] : '';
+    
+    const internalIp = getInternalIp();
+    const serverUrl = `${protocol}://${internalIp}${port ? ':' + port : ''}`;
+
+    console.log(`[AGENT_DOWNLOAD] Generating package for server: ${serverUrl}`);
+    const zipBuffer = await createAgentPackage(serverUrl);
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename=quantum-qa-agent.zip');
+    res.send(zipBuffer);
+  } catch (err) {
+    console.error('[AGENT_DOWNLOAD] Failed to generate package:', err);
+    res.status(500).json({ error: 'Failed to generate agent package' });
+  }
+});
+
 // DELETE /api/agents/:id - Remove agent from DB entirely
 router.delete('/:id', (req, res) => {
   deleteAgent(req.params.id);
+  agentLogBuffer.clear(req.params.id);
   
   // also terminate WS if present
   const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;

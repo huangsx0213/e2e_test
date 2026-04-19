@@ -3,7 +3,6 @@ import { JSONPath } from 'jsonpath-plus';
 import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
-import { environmentRepository } from '../environments/repository.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
 import { evaluateAssertions } from './assertions.ts';
 
@@ -41,14 +40,19 @@ export class UIExecutor {
   }): Promise<void> {
     this.logger = options.logger;
     if (!this.browser) {
+      // Only use resolution in headless mode. 
+      // In non-headless mode, we maximize the browser and disable resolution parameters.
+      const useResolution = options.headless && !!options.viewportWidth && !!options.viewportHeight;
+
       this.browser = await chromium.launch({
         headless: options.headless,
-        args: options.viewportWidth && options.viewportHeight ? [] : ['--start-maximized'],
+        args: options.headless ? [] : ['--start-maximized'],
       });
+
       this.context = await this.browser.newContext({
-        viewport: options.viewportWidth && options.viewportHeight
-          ? { width: options.viewportWidth, height: options.viewportHeight }
-          : null,
+        viewport: useResolution
+          ? { width: options.viewportWidth!, height: options.viewportHeight! }
+          : null, // null viewport allows the page to scale to the maximized window
         recordVideo: options.recordVideo !== false ? { dir: 'videos/' } : undefined,
       });
       this.page = await this.context.newPage();
@@ -105,6 +109,7 @@ export class UIExecutor {
     executionContext: ExecutionContext,
     pages: import('../../shared/contracts/index.ts').Page[],
     environment: string,
+    onEnvVarExtracted?: (name: string, value: string) => void,
   ): Promise<UIExecutionResult> {
     if (!this.page) {
       throw new Error('UIExecutor not initialized. Call initialize() first.');
@@ -792,10 +797,8 @@ export class UIExecutor {
 
               if (extVal !== undefined) {
                 executionContext.setRuntimeVar(ext.name, extVal, ext.scope);
-                if (ext.scope === 'ENVIRONMENT') {
-                  const currentVars = environmentRepository.getVariables(environment);
-                  currentVars[ext.name] = extVal;
-                  environmentRepository.updateVariables(environment, currentVars);
+                if (ext.scope === 'ENVIRONMENT' && onEnvVarExtracted) {
+                  onEnvVarExtracted(ext.name, extVal);
                 }
                 if (!extractedValue) extractedValue = extVal;
 
@@ -861,10 +864,8 @@ export class UIExecutor {
 
           if (extVal !== undefined) {
             executionContext.setRuntimeVar(extractor.name, extVal, extractor.scope);
-            if (extractor.scope === 'ENVIRONMENT') {
-              const currentVars = environmentRepository.getVariables(environment);
-              currentVars[extractor.name] = extVal;
-              environmentRepository.updateVariables(environment, currentVars);
+            if (extractor.scope === 'ENVIRONMENT' && onEnvVarExtracted) {
+              onEnvVarExtracted(extractor.name, extVal);
             }
             // If it's the only extractor and we don't have extractedValue yet, set it for the result
             if (!extractedValue) extractedValue = extVal;

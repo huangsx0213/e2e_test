@@ -210,30 +210,36 @@ async function executeRunAsync(
         status: 'INFO',
         message: request.agentId.startsWith('QUEUE:') ? `📡 Enqueuing task for remote execution (${request.agentId})...` : `📡 Dispatching task to Remote Agent: ${request.agentId}`,
       });
-      const remoteResult = await dispatchToAgent(request.agentId, payload);
-      result = remoteResult as any;
+      const result = await dispatchToAgent(request.agentId, payload);
+      return result;
     } else {
+      const onEnvVarExtracted = (name: string, value: string) => {
+        const currentVars = environmentRepository.getVariables(request.environment);
+        currentVars[name] = value;
+        environmentRepository.updateVariables(request.environment, currentVars);
+      };
+
       if (request.type === 'case') {
         const suite = suiteRepository.get(request.suiteId!);
         const testCase = suite?.cases.find(c => c.id === request.caseId);
         displayName = testCase ? testCase.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting case execution for: ${displayName}`);
-        result = await executeSingleCase(payload, logger, signal, uiExecutor);
+        result = await executeSingleCase(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else if (request.type === 'suite') {
         const suite = suiteRepository.get(request.suiteId!);
         displayName = suite ? suite.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting suite execution for: ${displayName}`);
-        result = await executeSuite(payload, logger, signal, uiExecutor);
+        result = await executeSuite(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else if (request.type === 'scenario') {
         const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
         displayName = scenario ? scenario.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
-        result = await executeScenario(payload, logger, signal, uiExecutor);
+        result = await executeScenario(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       } else {
         const plan = project.plans?.find(p => p.id === request.planId);
         displayName = plan ? plan.name : `Execution: ${request.type}`;
         console.log(`[EXEC] Starting plan execution for: ${displayName}`);
-        result = await executePlan(payload, logger, signal, uiExecutor);
+        result = await executePlan(payload, logger, signal, uiExecutor, onEnvVarExtracted);
       }
     }
 

@@ -4,7 +4,6 @@ import { interpolate } from './interpolator.ts';
 import { JSONPath } from 'jsonpath-plus';
 import { evaluateAssertions } from './assertions.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
-import { environmentRepository } from '../environments/repository.ts';
 import { XMLParser } from 'fast-xml-parser';
 
 
@@ -48,6 +47,7 @@ export async function executeApiStep(
   environment: string,
   logger?: IExecutionLogger,
   indent: string = '  ',
+  onEnvVarExtracted?: (name: string, value: string) => void,
 ): Promise<ApiExecutionResult> {
   const allVars = context.resolveAll();
   let resolvedTarget = context.interpolate(step.target || '');
@@ -243,10 +243,8 @@ export async function executeApiStep(
 
         if (extractedValue !== undefined) {
           context.setRuntimeVar(extractor.name, extractedValue, extractor.scope);
-          if (extractor.scope === 'ENVIRONMENT') {
-            const currentVars = environmentRepository.getVariables(environment);
-            currentVars[extractor.name] = extractedValue;
-            environmentRepository.updateVariables(environment, currentVars);
+          if (extractor.scope === 'ENVIRONMENT' && onEnvVarExtracted) {
+            onEnvVarExtracted(extractor.name, extractedValue);
           }
           extractionLogs.push({
             status: 'INFO',
