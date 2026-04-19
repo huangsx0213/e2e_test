@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "start": "node dist/server.cjs",
-    "build": "vite build && esbuild server/index.ts --bundle --platform=node --target=node20 --outfile=dist/server.cjs --external:better-sqlite3 --external:express --external:cors --external:vite --external:playwright --external:playwright-core",
+    "build:agent": "esbuild agent/index.ts --bundle --platform=node --target=node20 --outfile=dist/agent.bundle.js --format=esm --banner:js=\"import { createRequire } from 'module'; import { fileURLToPath } from 'url'; import { dirname } from 'path'; const require = createRequire(import.meta.url); const __filename = fileURLToPath(import.meta.url); const __dirname = dirname(__filename);\"",
+    "build": "vite build && npm run build:agent && esbuild server/index.ts --bundle --platform=node --target=node20 --outfile=dist/server.cjs --external:better-sqlite3 --external:express --external:cors --external:vite --external:playwright --external:playwright-core",
     "start-agent": "tsx agent/index.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"

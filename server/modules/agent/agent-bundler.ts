@@ -1,42 +1,24 @@
-import * as esbuild from 'esbuild';
 import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 const ROOT_DIR = process.cwd();
 
 export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
-    const tempDir = path.join(ROOT_DIR, 'temp', `agent-pkg-${Date.now()}`);
-    if (!fs.existsSync(path.join(ROOT_DIR, 'temp'))) {
-        fs.mkdirSync(path.join(ROOT_DIR, 'temp'));
-    }
-    fs.mkdirSync(tempDir);
+    const tempDir = path.join(os.tmpdir(), `agent-pkg-${Date.now()}`);
+    fs.mkdirSync(tempDir, { recursive: true });
 
     try {
-        // 1. Bundle Agent Code
-        const bundlePath = path.join(tempDir, 'agent.js');
-        await esbuild.build({
-            entryPoints: [path.join(ROOT_DIR, 'agent/index.ts')],
-            bundle: true,
-            platform: 'node',
-            target: 'node20',
-            outfile: bundlePath,
-            minify: false,
-            sourcemap: false,
-            // Only externalize native/heavy modules
-            external: ['playwright', 'playwright-core'],
-            format: 'esm',
-            banner: {
-                js: `
-import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-const require = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-`.trim(),
-            },
-        });
+        // 1. Use the pre-bundled Agent Code (built at build-time)
+        const bundleSrc = path.join(ROOT_DIR, 'dist', 'agent.bundle.js');
+        const bundleDest = path.join(tempDir, 'agent.js');
+        
+        if (!fs.existsSync(bundleSrc)) {
+            throw new Error(`Agent bundle not found at ${bundleSrc}. Please ensure build step was successful.`);
+        }
+        
+        fs.copyFileSync(bundleSrc, bundleDest);
 
         // 2. Create Config
         const config = {
@@ -122,7 +104,7 @@ node agent.js
 
         // 5. Zip it up
         const zip = new AdmZip();
-        zip.addLocalFile(bundlePath);
+        zip.addLocalFile(bundleDest);
         zip.addLocalFile(path.join(tempDir, 'agent-config.json'));
         zip.addLocalFile(path.join(tempDir, 'package.json'));
         zip.addLocalFile(path.join(tempDir, 'start-agent.bat'));
