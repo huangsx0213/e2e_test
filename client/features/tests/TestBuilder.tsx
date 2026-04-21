@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { CrudActions } from "@/shared/hooks/useCrud";
 import {
   TestSuite,
@@ -104,8 +104,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   suitesApi,
   projects,
   headers,
+  headersApi,
   bodies,
+  bodiesApi,
   endpoints,
+  endpointsApi,
   onRunCase,
   currentProjectId,
   currentEnvironment,
@@ -452,6 +455,16 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     activeCaseRef.current = activeCase;
   }, [activeCase]);
 
+  const flushPendingSteps = useCallback(() => {
+    if (pendingStepsRef.current.length > 0) {
+      console.log('Flushing buffered steps:', pendingStepsRef.current.length);
+      updateCaseSpecific(activeSuiteId, activeCaseId, {
+        steps: [...(activeCaseRef.current?.steps || []), ...pendingStepsRef.current]
+      });
+      pendingStepsRef.current = [];
+    }
+  }, [activeSuiteId, activeCaseId]);
+
   // Real-time updates via WebSocket during recording
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -471,20 +484,28 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
              console.log('Buffering recorded step:', step.action);
              pendingStepsRef.current.push(step);
              
+             if (message.data.type === 'API') {
+                endpointsApi.refresh();
+                headersApi.refresh();
+                bodiesApi.refresh();
+             }
+
              if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current);
-             flushTimeoutRef.current = setTimeout(() => {
-               if (pendingStepsRef.current.length > 0) {
-                 console.log('Flushing buffered steps:', pendingStepsRef.current.length);
-                 updateCaseSpecific(activeSuiteId, activeCaseId, {
-                   steps: [...(activeCaseRef.current?.steps || []), ...pendingStepsRef.current]
-                 });
-                 pendingStepsRef.current = [];
-               }
-             }, 300);
+             flushTimeoutRef.current = setTimeout(flushPendingSteps, 300);
+          }
+        } else if (message.event === 'recorder-state-changed') {
+          const { state } = message.data;
+          if (state.isPaused) {
+             console.log('Recording paused/stopped from toolbar, flushing...');
+             flushPendingSteps();
+             setIsRecording(false);
+             suitesApi.refresh();
+          } else {
+             setIsRecording(true);
           }
         }
-      } catch (e) {
-        console.error('Failed to parse WS message:', e);
+      } catch (error) {
+        console.error('Failed to parse WS message:', error);
       }
     };
 
@@ -494,7 +515,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     return () => {
       ws.close();
     };
-  }, [activeCaseId, activeSuiteId, activeCase, currentProjectId]);
+  }, [activeCaseId, activeSuiteId, currentProjectId, flushPendingSteps, endpointsApi, headersApi, bodiesApi, suitesApi]);
 
 
   return (

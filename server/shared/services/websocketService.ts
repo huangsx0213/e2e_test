@@ -15,8 +15,8 @@ export function initializeWebSocket(server: Server) {
   console.log(`[WS_SERVER] Initialized. Agent Security: ${AGENT_SECRET ? 'ENABLED' : 'DISABLED'}`);
 
   wss.on('connection', (ws, req) => {
-    // Basic Security: Check AGENT_SECRET if configured
-    if (AGENT_SECRET && req.headers['x-agent-secret'] !== AGENT_SECRET) {
+    const incomingSecret = req.headers['x-agent-secret'];
+    if (AGENT_SECRET && incomingSecret && incomingSecret !== AGENT_SECRET) {
         ws.terminate();
         return;
     }

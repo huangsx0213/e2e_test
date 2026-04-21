@@ -1,4 +1,5 @@
 import { chromium, Browser, Page, selectors } from 'playwright';
+import { broadcast } from '../../shared/services/websocketService.ts';
 
 // Configure common test-id attributes globally
 try {
@@ -159,9 +160,15 @@ export async function startRecording(
     await stopRecording();
   }
 
+  const isHeadless = process.env.HEADLESS === 'true';
   activeBrowser = await chromium.launch({ 
-    headless: process.env.HEADLESS !== 'false',
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+    headless: isHeadless,
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox', 
+      '--disable-dev-shm-usage',
+      ...(isHeadless ? [] : ['--start-maximized'])
+    ] 
   });
   const context = await activeBrowser.newContext({ viewport: null });
   activePage = await context.newPage();
@@ -263,7 +270,9 @@ export async function startRecording(
   await activePage.exposeFunction('onRecorderStateChanged', (state: { isPaused: boolean, mode: string }) => {
     recorderState = state;
     console.log(`[Recorder] State updated: ${JSON.stringify(state)}`);
+    broadcast('recorder-state-changed', { state });
   });
+  await activePage.exposeFunction('getInitialRecorderState', () => recorderState);
 
   if (onApiRecorded && activePage) {
     activePage.on('requestfinished', async (req) => {
@@ -297,11 +306,12 @@ export async function startRecording(
 
         const url = req.url();
         if (apiFilter) {
+          const trimmedFilter = apiFilter.trim();
           // Escape regex characters except *, then convert * to .*
-          const regexStr = apiFilter.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+          const regexStr = trimmedFilter.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
           const regex = new RegExp(regexStr, 'i');
           if (!regex.test(url)) {
-             console.log(`[Recorder] Ignored (Did not match filter): ${apiFilter}`);
+             console.log(`[Recorder] Ignored (No match for "${trimmedFilter}"): ${url}`);
              return;
           }
         }
@@ -335,9 +345,17 @@ export async function startRecording(
 
   // Inject the Local Inspector script with Right-Click Recording and UI Tracker
   await activePage.addInitScript(`
-    (function() {
+    (async function() {
       console.log('[Recorder] Unified Tracker injected');
+      
+      // Initialize with backend state if available, otherwise default
       window.__recorderState = { isPaused: true, mode: 'ui' };
+      if (window.getInitialRecorderState) {
+         try {
+            const saved = await window.getInitialRecorderState();
+            if (saved) window.__recorderState = saved;
+         } catch(e) {}
+      }
       
       let badge = null;
       let toolbar = null;

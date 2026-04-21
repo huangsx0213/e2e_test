@@ -60,7 +60,7 @@ echo ========================================
 where node >nul 2>nul
 if %errorlevel% neq 0 goto :no_node
 
-if exist node_modules goto :check_env
+if exist node_modules goto :start_agent
 
 echo [INFO] Installing dependencies
 call npm install

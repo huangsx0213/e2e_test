@@ -32,7 +32,8 @@ function getOrCreatePage(project: Project, url: string): Page {
 }
 
 router.post('/start', async (req, res) => {
-  const { targetUrl, projectId, apiFilter, environment } = req.body;
+  let { targetUrl, projectId, apiFilter, environment } = req.body;
+  if (apiFilter) apiFilter = apiFilter.trim();
   
   if (!targetUrl || !projectId) {
     return res.status(400).json({ error: 'targetUrl and projectId are required' });
