@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface ElementRepoProps {
   projects: Project[];
@@ -44,6 +45,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
+  const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
   // Edit States
@@ -236,15 +238,20 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
     setIsRecordingModalOpen(false);
 
     try {
-      await fetch('/api/recording/start', {
+      const response = await fetch('/api/recording/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUrl: recordingUrl,
           projectId: currentProjectId,
           pageId: activePageId,
+          agentId: recordingTargetId || undefined,
         }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || response.statusText);
+      }
     } catch (error) {
       console.error('Failed to start recording:', error);
       setIsRecording(false);
@@ -253,7 +260,15 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
 
   const stopRecording = async () => {
     try {
-      await fetch('/api/recording/stop', { method: 'POST' });
+      const response = await fetch('/api/recording/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: recordingTargetId || undefined }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || response.statusText);
+      }
     } catch (error) {
       console.error('Failed to stop recording:', error);
     } finally {
@@ -884,6 +899,17 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                 onChange={(e) => setRecordingUrl(e.target.value)}
                 autoFocus
               />
+
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Recording Target
+                </label>
+                <ExecutionTargetSelector
+                  selectedAgentId={recordingTargetId}
+                  onSelect={setRecordingTargetId}
+                  mode="recording"
+                />
+              </div>
 
               <div className="flex justify-end gap-3 mt-6">
                 <button

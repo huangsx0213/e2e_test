@@ -42,6 +42,7 @@ import {
 import { StepList } from "@/shared/testing/StepList";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface TestBuilderProps {
   suites: TestSuite[];
@@ -122,6 +123,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [apiFilter, setApiFilter] = useState("*api*");
+  const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
 
@@ -420,16 +422,21 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     setIsRecordingModalOpen(false);
 
     try {
-      await fetch('/api/recording/start', {
+      const response = await fetch('/api/recording/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetUrl: recordingUrl,
           projectId: currentProjectId,
           environment: currentEnvironment,
-          apiFilter: apiFilter
+          apiFilter: apiFilter,
+          agentId: recordingTargetId || undefined,
         }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || response.statusText);
+      }
     } catch (error) {
       console.error('Failed to start recording:', error);
       setIsRecording(false);
@@ -438,7 +445,15 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
 
   const stopRecording = async () => {
     try {
-      await fetch('/api/recording/stop', { method: 'POST' });
+      const response = await fetch('/api/recording/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: recordingTargetId || undefined }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || response.statusText);
+      }
     } catch (error) {
       console.error('Failed to stop recording:', error);
     } finally {
@@ -495,12 +510,15 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
           }
         } else if (message.event === 'recorder-state-changed') {
           const { state } = message.data;
-          if (state.isPaused) {
-             console.log('Recording paused/stopped from toolbar, flushing...');
+          if (state.action === 'STOP') {
+             console.log('Recording stopped from toolbar, flushing...');
              flushPendingSteps();
              setIsRecording(false);
              suitesApi.refresh();
-          } else {
+          } else if (state.action === 'PAUSE') {
+             console.log('Recording paused from toolbar');
+             setIsRecording(true);
+          } else if (state.action === 'START') {
              setIsRecording(true);
           }
         }
@@ -556,6 +574,15 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                     autoFocus
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Recording Target</label>
+                <ExecutionTargetSelector
+                  selectedAgentId={recordingTargetId}
+                  onSelect={setRecordingTargetId}
+                  mode="recording"
+                />
               </div>
 
               <div>

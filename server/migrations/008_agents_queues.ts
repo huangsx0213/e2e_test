@@ -8,6 +8,7 @@ export const migration008AgentsQueues: Migration = {
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
         os TEXT NOT NULL DEFAULT 'unknown',
+        version TEXT NOT NULL DEFAULT 'unknown',
         status TEXT NOT NULL DEFAULT 'offline',
         labels TEXT NOT NULL DEFAULT '[]',
         last_seen INTEGER NOT NULL DEFAULT 0

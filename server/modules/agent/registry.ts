@@ -9,9 +9,10 @@ export interface RemoteAgent extends AgentRecord {
 class AgentRegistry {
   private activeConnections = new Map<string, RemoteAgent>();
 
-  registerOrUpdate(id: string, os: string, status: 'idle' | 'busy', ws: WebSocket) {
+  registerOrUpdate(id: string, os: string, version: string, status: 'idle' | 'busy', ws: WebSocket) {
     const existing = getAgent(id);
     const labels = existing?.labels || [];
+    const finalVersion = version || existing?.version || 'unknown';
     
     // Check if the agent was previously disabled in DB
     const finalStatus = existing?.status === 'disabled' ? 'disabled' : status;
@@ -19,6 +20,7 @@ class AgentRegistry {
     saveAgent({
       id,
       os,
+      version: finalVersion,
       status: finalStatus,
       labels,
       lastSeen: Date.now()
@@ -27,6 +29,7 @@ class AgentRegistry {
     this.activeConnections.set(id, {
       id,
       os,
+      version: finalVersion,
       status: finalStatus,
       labels,
       lastSeen: Date.now(),
@@ -78,6 +81,7 @@ class AgentRegistry {
         return {
           id: a.id,
           os: a.os,
+          version: a.version,
           status,
           labels: a.labels,
           lastSeen: active ? active.lastSeen : a.lastSeen,

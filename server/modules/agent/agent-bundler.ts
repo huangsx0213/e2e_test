@@ -2,6 +2,7 @@ import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { CURRENT_AGENT_VERSION } from '../../../shared/constants/agent.ts';
 
 const ROOT_DIR = process.cwd();
 
@@ -24,6 +25,7 @@ export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
         const config = {
             serverUrl: serverUrl,
             agentName: `remote-agent-${Math.random().toString(36).substring(7)}`,
+            agentVersion: CURRENT_AGENT_VERSION,
         };
         fs.writeFileSync(path.join(tempDir, 'agent-config.json'), JSON.stringify(config, null, 2));
 
@@ -41,7 +43,7 @@ AGENT_SECRET=REPLACE_WITH_YOUR_SERVER_SECRET
         // 4. Create package.json
         const pkgJson = {
             name: "quantum-qa-agent",
-            version: "1.0.0",
+            version: CURRENT_AGENT_VERSION,
             private: true,
             type: "module",
             dependencies: {
@@ -55,6 +57,8 @@ AGENT_SECRET=REPLACE_WITH_YOUR_SERVER_SECRET
 setlocal
 echo ========================================
 echo   Quantum QA Remote Agent Startup
+echo ========================================
+echo   Agent Version: ${CURRENT_AGENT_VERSION}
 echo ========================================
 
 where node >nul 2>nul
@@ -90,6 +94,8 @@ exit /b 1
         const startSh = `#!/bin/bash
 echo "========================================"
 echo "  Quantum QA Remote Agent Startup"
+echo "========================================"
+echo "  Agent Version: ${CURRENT_AGENT_VERSION}"
 echo "========================================"
 echo
 

@@ -3,10 +3,12 @@ import { Server, Trash2, PowerOff, Power, RefreshCw, Layers, Clock, X, Terminal,
 import { api } from '@/shared/services/api';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
+import { CURRENT_AGENT_VERSION } from '../../../shared/constants/agent';
 
 interface RemoteAgent {
   id: string;
   os: string;
+  version: string;
   status: 'idle' | 'busy' | 'offline' | 'disabled';
   labels: string[];
   lastSeen: number;
@@ -264,13 +266,14 @@ export function AgentManagement() {
               <HelpTooltip content="Remote agents are execution nodes that run tests in parallel. Download a pre-configured zip to get started." />
             </h1>
             <p className="text-slate-500 text-sm mt-1">Manage remote execution nodes for distributed testing.</p>
+            <p className="text-xs text-slate-400 mt-1">Current agent version: <span className="font-mono font-semibold text-slate-600">v{CURRENT_AGENT_VERSION}</span></p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleDownloadAgent}
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded shadow-sm hover:bg-blue-100 transition-colors font-medium"
             >
-              <Download size={14} /> Download Agent
+              <Download size={14} /> Download Agent v{CURRENT_AGENT_VERSION}
             </button>
             
             <button
@@ -315,6 +318,7 @@ export function AgentManagement() {
                   <div className="flex-1 min-w-[140px]">Agent</div>
                   <div className="w-16 text-center">Status</div>
                   <div className="w-16 text-center">OS</div>
+                  <div className="w-24 text-center">Version</div>
                   <div className="flex-1 min-w-[120px]">Labels</div>
                   <div className="w-24">Last Seen</div>
                   <div className="w-20 text-center">Activity</div>
@@ -335,6 +339,7 @@ export function AgentManagement() {
                         </span>
                       </div>
                       <div className="w-16 text-center text-xs font-mono text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">{agent.os}</div>
+                      <div className="w-24 text-center text-xs font-mono text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">v{agent.version || CURRENT_AGENT_VERSION}</div>
                       <div className="flex-1 min-w-[120px] flex items-center gap-1.5 flex-wrap">
                         {editingAgentId === agent.id ? (
                           <input type="text" autoFocus className="text-xs px-2 py-0.5 border border-blue-400 rounded outline-none w-48 shadow-sm" value={editLabels} onChange={(e) => setEditLabels(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); } else if (e.key === 'Escape') setEditingAgentId(null); }} onBlur={() => { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); }} />

@@ -3,7 +3,9 @@ import WebSocket from 'ws';
 import { AgentLogger } from './AgentLogger.ts';
 import { executeSingleCase, executeSuite, executeScenario, executePlan } from '../shared/core/executor.ts';
 import { UIExecutor } from '../server/modules/execution/ui-executor.ts';
+import { startRecording as startRecordingSession, stopRecording as stopRecordingSession } from './recording.ts';
 import type { TaskPayload } from '../shared/contracts/index.ts';
+import { CURRENT_AGENT_VERSION } from '../shared/constants/agent.ts';
 
 import fs from 'fs';
 import path from 'path';
@@ -29,6 +31,7 @@ const SERVER_URL = getArg('--url') || process.env.SERVER_URL || config.serverUrl
 const AGENT_ID = getArg('--name') || process.env.AGENT_ID || config.agentName || `agent-${Math.random().toString(36).substring(7)}`;
 
 const AGENT_SECRET = process.env.AGENT_SECRET || config.agentSecret || '';
+const AGENT_VERSION = config.agentVersion || CURRENT_AGENT_VERSION;
 
 let ws: WebSocket;
 let isReconnect = false;
@@ -37,6 +40,10 @@ let currentAbortController: AbortController | null = null;
 let agentStatus: 'idle' | 'busy' = 'idle';
 let localTaskQueue: TaskPayload[] = [];
 let isProcessing = false;
+let isRecordingActive = false;
+let recordingStarted = false;
+
+console.log(`[AGENT] Version: ${AGENT_VERSION}`);
 
 // ─── Console Interception: Forward agent output to server ───
 const originalConsoleLog = console.log;
@@ -71,7 +78,7 @@ console.error = (...args: any[]) => {
 };
 
 async function processQueue() {
-  if (isProcessing) return;
+  if (isProcessing || isRecordingActive) return;
   isProcessing = true;
 
   while (localTaskQueue.length > 0) {
@@ -108,7 +115,7 @@ function connect() {
     isReconnect = true;
 
     // Register Agent identity
-    sendMsg('AGENT_REGISTER', { agentId: AGENT_ID, platform: process.platform });
+    sendMsg('AGENT_REGISTER', { agentId: AGENT_ID, platform: process.platform, version: AGENT_VERSION });
 
     // Keep alive
     pingInterval = setInterval(() => {
@@ -119,6 +126,7 @@ function connect() {
   ws.on('message', async (data) => {
     try {
       const parsed = JSON.parse(data.toString());
+      console.log(`[AGENT] WS event received: ${parsed.event}`);
       if (parsed.event === 'TASK_DISPATCH') {
         const payload: TaskPayload = parsed.data.payload;
         console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
@@ -131,6 +139,65 @@ function connect() {
         console.log(`[AGENT] Received Remote Abort Request for report: ${reportId}`);
         if (currentAbortController) {
           currentAbortController.abort();
+        }
+      } else if (parsed.event === 'RECORDING_START') {
+        const { targetUrl, projectId, apiFilter, environment, pageId } = parsed.data || {};
+        console.log(`[AGENT] Received Recording Start: ${projectId}`);
+        try {
+          isRecordingActive = true;
+          recordingStarted = false;
+          agentStatus = 'busy';
+          sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
+          emitRecordingEvent('recording-status', { status: 'RECEIVED' });
+          await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, emitRecordingEvent);
+        } catch (error) {
+          console.error('[AGENT] Failed to start recording:', error);
+          isRecordingActive = false;
+          recordingStarted = false;
+          agentStatus = 'idle';
+          sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+          emitRecordingEvent('recording-status', { status: 'FAILED', message: error instanceof Error ? error.message : String(error) });
+        }
+      } else if (parsed.event === 'recorder-state-changed') {
+        const { state } = parsed.data || {};
+        if (!state || !isRecordingActive) return;
+
+        if (state.action === 'STOP') {
+          console.log('[AGENT] Recorder stop requested');
+          try {
+            await stopRecordingSession();
+          } finally {
+            isRecordingActive = false;
+            recordingStarted = false;
+            agentStatus = 'idle';
+            sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+            emitRecordingEvent('recording-status', { status: 'STOPPED' });
+            processQueue();
+          }
+          return;
+        }
+
+        if (!state.isPaused) {
+          recordingStarted = true;
+          emitRecordingEvent('recording-status', { status: 'STARTED' });
+          return;
+        }
+
+        if (recordingStarted) {
+          console.log('[AGENT] Recorder paused');
+          emitRecordingEvent('recording-status', { status: 'PAUSED' });
+        }
+      } else if (parsed.event === 'RECORDING_STOP') {
+        console.log('[AGENT] Received Recording Stop');
+        try {
+          await stopRecordingSession();
+        } finally {
+          isRecordingActive = false;
+          recordingStarted = false;
+          agentStatus = 'idle';
+          sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
+          emitRecordingEvent('recording-status', { status: 'STOPPED' });
+          processQueue();
         }
       }
     } catch (e) {
@@ -154,6 +221,13 @@ function sendMsg(event: string, data: any) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ event, data }));
   }
+}
+
+function emitRecordingEvent(event: string, data: any) {
+  sendMsg('RECORDING_EVENT', {
+    event,
+    data: { ...data, agentId: AGENT_ID },
+  });
 }
 
 async function handleExecution(payload: TaskPayload) {

@@ -4,6 +4,7 @@ import { getProject, saveProject } from '../projects/repository.ts';
 import { saveApiEndpoint, listApiEndpoints } from '../endpoints/repository.ts';
 import { saveHeaderProfile, listHeaderProfiles } from '../headers/repository.ts';
 import { saveBodyTemplate, listBodyTemplates } from '../bodies/repository.ts';
+import { agentRegistry } from '../agent/registry.ts';
 import { broadcast } from '../../shared/services/websocketService.ts';
 import type { UIElement, Page, Project, TestStep } from '../../shared/contracts/index.ts';
 
@@ -32,7 +33,7 @@ function getOrCreatePage(project: Project, url: string): Page {
 }
 
 router.post('/start', async (req, res) => {
-  let { targetUrl, projectId, apiFilter, environment } = req.body;
+  let { targetUrl, projectId, apiFilter, environment, agentId, pageId } = req.body;
   if (apiFilter) apiFilter = apiFilter.trim();
   
   if (!targetUrl || !projectId) {
@@ -40,6 +41,36 @@ router.post('/start', async (req, res) => {
   }
 
   try {
+    if (agentId) {
+      const agent = agentRegistry.get(agentId);
+      if (!agent?.ws || agent.ws.readyState !== 1) {
+        return res.status(404).json({ error: `Agent '${agentId}' is not connected` });
+      }
+      if (agent.status !== 'idle') {
+        return res.status(409).json({ error: `Agent '${agentId}' is currently busy` });
+      }
+
+      console.log(`[Recorder] Dispatching remote recording to agent ${agentId}`);
+      agent.ws.send(JSON.stringify({
+        event: 'RECORDING_START',
+        data: {
+          targetUrl,
+          projectId,
+          apiFilter,
+          environment,
+          pageId,
+        },
+      }), (err) => {
+        if (err) {
+          console.error(`[Recorder] Failed to send recording start to agent ${agentId}:`, err);
+        } else {
+          console.log(`[Recorder] Recording start message sent to agent ${agentId}`);
+        }
+      });
+
+      return res.json({ success: true, message: 'Recording started on agent' });
+    }
+
     await startRecording(targetUrl, projectId, apiFilter, async (elementRecord: any) => {
       // 1. Right Click Element Recorder
       const project = getProject(projectId);
@@ -232,8 +263,10 @@ router.post('/start', async (req, res) => {
       };
       
       broadcast('step-recorded', { projectId, step, type: 'API' });
+    }, (state) => {
+      broadcast('recorder-state-changed', { state });
     });
-    
+
     res.json({ success: true, message: 'Recording started' });
   } catch (error: any) {
     console.error('Failed to start recording:', error);
@@ -242,7 +275,29 @@ router.post('/start', async (req, res) => {
 });
 
 router.post('/stop', async (req, res) => {
+  const { agentId } = req.body || {};
   try {
+    if (agentId) {
+      const agent = agentRegistry.get(agentId);
+      if (!agent?.ws || agent.ws.readyState !== 1) {
+        return res.status(404).json({ error: `Agent '${agentId}' is not connected` });
+      }
+
+      console.log(`[Recorder] Dispatching recording stop to agent ${agentId}`);
+      agent.ws.send(JSON.stringify({
+        event: 'RECORDING_STOP',
+        data: { agentId },
+      }), (err) => {
+        if (err) {
+          console.error(`[Recorder] Failed to send recording stop to agent ${agentId}:`, err);
+        } else {
+          console.log(`[Recorder] Recording stop message sent to agent ${agentId}`);
+        }
+      });
+
+      return res.json({ success: true, message: 'Recording stop sent to agent' });
+    }
+
     await stopRecording();
     res.json({ success: true, message: 'Recording stopped' });
   } catch (error: any) {

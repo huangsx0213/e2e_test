@@ -1,5 +1,4 @@
 import { chromium, Browser, Page, selectors } from 'playwright';
-import { broadcast } from '../../shared/services/websocketService.ts';
 
 // Configure common test-id attributes globally
 try {
@@ -154,7 +153,8 @@ export async function startRecording(
   apiFilter: string | undefined,
   onElementRecorded: (element: any) => void,
   onStepRecorded?: (stepInfo: any) => void,
-  onApiRecorded?: (apiInfo: any) => void
+  onApiRecorded?: (apiInfo: any) => void,
+  onRecorderStateChanged?: (state: { isPaused: boolean, mode: string }) => void
 ) {
   if (activeBrowser) {
     await stopRecording();
@@ -266,13 +266,24 @@ export async function startRecording(
     }
   });
 
-  let recorderState = { isPaused: true, mode: 'ui' };
-  await activePage.exposeFunction('onRecorderStateChanged', (state: { isPaused: boolean, mode: string }) => {
-    recorderState = state;
+  let recorderState = { isPaused: true, mode: 'ui', started: false, action: 'INIT' } as any;
+  await activePage.exposeFunction('onRecorderStateChanged', (state: { isPaused: boolean, mode: string, started?: boolean, action?: string }) => {
+    recorderState = { ...recorderState, ...state };
     console.log(`[Recorder] State updated: ${JSON.stringify(state)}`);
-    broadcast('recorder-state-changed', { state });
+    if (onRecorderStateChanged) {
+      onRecorderStateChanged(recorderState);
+    }
   });
   await activePage.exposeFunction('getInitialRecorderState', () => recorderState);
+  await activePage.exposeFunction('onRecorderControl', async (action: 'STOP') => {
+    if (action !== 'STOP') return;
+    recorderState = { ...recorderState, isPaused: true, action: 'STOP' };
+    console.log('[Recorder] Stop requested from toolbar');
+    if (onRecorderStateChanged) {
+      onRecorderStateChanged(recorderState);
+    }
+    await stopRecording();
+  });
 
   if (onApiRecorded && activePage) {
     activePage.on('requestfinished', async (req) => {
@@ -349,11 +360,11 @@ export async function startRecording(
       console.log('[Recorder] Unified Tracker injected');
       
       // Initialize with backend state if available, otherwise default
-      window.__recorderState = { isPaused: true, mode: 'ui' };
+      window.__recorderState = { isPaused: true, mode: 'ui', started: false };
       if (window.getInitialRecorderState) {
          try {
             const saved = await window.getInitialRecorderState();
-            if (saved) window.__recorderState = saved;
+            if (saved) window.__recorderState = { isPaused: true, mode: 'ui', started: false, ...saved };
          } catch(e) {}
       }
       
@@ -369,8 +380,9 @@ export async function startRecording(
       const renderToolbar = () => {
          if (!toolbar) return;
          
-         const isPaused = window.__recorderState.isPaused;
-         const mode = window.__recorderState.mode;
+          const isPaused = window.__recorderState.isPaused;
+          const started = !!window.__recorderState.started;
+          const mode = window.__recorderState.mode;
 
          toolbar.innerHTML = \`
             <div style="font-weight:bold; color:white; font-size:14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -388,12 +400,12 @@ export async function startRecording(
                   </select>
                </div>
                
-               <div style="display:flex; gap:8px; margin-top:4px;">
-                  \${isPaused 
-                     ? \`<button id="btn-record-start" style="flex:1; padding:6px; background:#10b981; color:white; border:none; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">▶ Start</button>\`
-                     : \`<button id="btn-record-pause" style="flex:1; padding:6px; background:#f59e0b; color:white; border:none; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">⏸ Pause</button>\`
-                  }
-               </div>
+                <div style="display:flex; gap:8px; margin-top:4px;">
+                   <button id="btn-record-primary" style="flex:1; padding:6px; background:\${isPaused ? '#10b981' : '#f59e0b'}; color:white; border:none; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">
+                      \${isPaused ? (started ? '▶ Resume' : '▶ Start') : '⏸ Pause'}
+                   </button>
+                   <button id="btn-record-stop" style="flex:1; padding:6px; background:#ef4444; color:white; border:none; border-radius:4px; font-size:12px; font-weight:bold; cursor:pointer;">⏹ Stop</button>
+                </div>
             </div>
          \`;
 
@@ -405,25 +417,32 @@ export async function startRecording(
             });
          }
 
-         const btnStart = toolbar.querySelector('#btn-record-start');
-         if (btnStart) {
-            btnStart.addEventListener('click', () => {
-               window.__recorderState.isPaused = false;
-               notifyState();
-               renderToolbar();
-               if (badge) badge.style.display = window.__recorderState.mode === 'element' ? 'block' : 'none';
-            });
-         }
+          const btnPrimary = toolbar.querySelector('#btn-record-primary');
+          if (btnPrimary) {
+             btnPrimary.addEventListener('click', () => {
+                if (window.__recorderState.isPaused) {
+                   window.__recorderState.isPaused = false;
+                   window.__recorderState.started = true;
+                   window.__recorderState.action = 'START';
+                } else {
+                   window.__recorderState.isPaused = true;
+                   window.__recorderState.started = true;
+                   window.__recorderState.action = 'PAUSE';
+                }
+                notifyState();
+                renderToolbar();
+                if (badge) badge.style.display = window.__recorderState.isPaused ? 'none' : (window.__recorderState.mode === 'element' ? 'block' : 'none');
+             });
+          }
 
-         const btnPause = toolbar.querySelector('#btn-record-pause');
-         if (btnPause) {
-            btnPause.addEventListener('click', () => {
-               window.__recorderState.isPaused = true;
-               notifyState();
-               renderToolbar();
-               if (badge) badge.style.display = 'none';
-            });
-         }
+          const btnStop = toolbar.querySelector('#btn-record-stop');
+          if (btnStop) {
+             btnStop.addEventListener('click', () => {
+                if (window.onRecorderControl) {
+                   window.onRecorderControl('STOP');
+                }
+             });
+          }
       };
 
       const ensureUI = () => {

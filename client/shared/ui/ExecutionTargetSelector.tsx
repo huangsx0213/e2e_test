@@ -13,11 +13,13 @@ interface RemoteAgent {
 interface ExecutionTargetSelectorProps {
   selectedAgentId: string | null;
   onSelect: (agentId: string | null) => void;
+  mode?: 'execution' | 'recording';
 }
 
 export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = ({
   selectedAgentId,
   onSelect,
+  mode = 'execution',
 }) => {
   const [agents, setAgents] = useState<RemoteAgent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +50,67 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
   const isLabelQueue = selectedAgentId?.startsWith('QUEUE:LABEL:');
   const labelMatch = selectedAgentId?.replace('QUEUE:LABEL:', '');
   const isLocal = !selectedAgentId;
+
+  if (mode === 'recording') {
+    return (
+      <div className="w-full rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-3 py-2 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Recording Targets</span>
+          <button
+            type="button"
+            onClick={fetchAgents}
+            className={`text-slate-500 hover:text-slate-700 transition-colors ${loading ? 'animate-spin' : ''}`}
+            aria-label="Refresh targets"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
+
+        <div className="p-2 space-y-1 max-h-56 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors ${isLocal ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'hover:bg-slate-50 text-slate-700 border border-transparent'}`}
+          >
+            <div className="flex items-center gap-2">
+              <Server size={14} className="text-emerald-500" />
+              <div className="flex flex-col">
+                <span className="text-xs font-medium">Local Server</span>
+                <span className="text-[10px] text-slate-500">Run recording in this server process</span>
+              </div>
+            </div>
+            {isLocal && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
+          </button>
+
+          <div className="pt-1 pb-0.5 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Remote Agents</div>
+
+          {agents.length === 0 ? (
+            <div className="px-3 py-3 text-center text-[11px] text-slate-500 italic border border-dashed border-slate-200 rounded-md bg-slate-50">
+              No remote agents connected.
+            </div>
+          ) : (
+            agents.map(agent => (
+              <button
+                key={agent.id}
+                type="button"
+                onClick={() => onSelect(agent.id)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors ${selectedAgentId === agent.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'hover:bg-slate-50 text-slate-700 border border-transparent'}`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Monitor size={14} className={agent.status === 'disabled' ? 'text-slate-400' : 'text-slate-500'} />
+                  <div className="flex flex-col min-w-0">
+                    <span className={`text-xs font-medium truncate ${agent.status === 'disabled' ? 'line-through opacity-60' : ''}`}>{agent.id}</span>
+                    <span className="text-[10px] uppercase text-slate-500 truncate">{agent.os} • {agent.status}</span>
+                  </div>
+                </div>
+                {selectedAgentId === agent.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">
@@ -118,44 +181,48 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
 
               <div className="h-px bg-slate-700/50 my-1" />
               
-              {/* Option: Queue (Any) */}
-              <button
-                type="button"
-                onClick={() => { onSelect('QUEUE:ANY'); setIsOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors ${isAnyQueue ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300'}`}
-              >
-                <div className="flex items-center gap-2">
-                  <Layers size={14} />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium">Queue: Any Node</span>
-                    <span className="text-[10px] opacity-70">Dispatches to first available</span>
-                  </div>
-                </div>
-                {isAnyQueue && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-              </button>
-              
-              {/* Option: Tags */}
-              {allLabels.length > 0 && (
+              {mode === 'execution' && (
                 <>
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/30">Target By Tag</div>
-                  {allLabels.map(label => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => { onSelect(`QUEUE:LABEL:${label}`); setIsOpen(false); }}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors ${selectedAgentId === `QUEUE:LABEL:${label}` ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300'}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Tag size={12} className="text-slate-500" />
-                        <span className="text-xs font-medium">{label}</span>
+                  {/* Option: Queue (Any) */}
+                  <button
+                    type="button"
+                    onClick={() => { onSelect('QUEUE:ANY'); setIsOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors ${isAnyQueue ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layers size={14} />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-medium">Queue: Any Node</span>
+                        <span className="text-[10px] opacity-70">Dispatches to first available</span>
                       </div>
-                      {selectedAgentId === `QUEUE:LABEL:${label}` && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-                    </button>
-                  ))}
+                    </div>
+                    {isAnyQueue && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
+                  </button>
+                  
+                  {/* Option: Tags */}
+                  {allLabels.length > 0 && (
+                    <>
+                      <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/30">Target By Tag</div>
+                      {allLabels.map(label => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => { onSelect(`QUEUE:LABEL:${label}`); setIsOpen(false); }}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-700 transition-colors ${selectedAgentId === `QUEUE:LABEL:${label}` ? 'bg-blue-600/20 text-blue-400' : 'text-slate-300'}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Tag size={12} className="text-slate-500" />
+                            <span className="text-xs font-medium">{label}</span>
+                          </div>
+                          {selectedAgentId === `QUEUE:LABEL:${label}` && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/30 mt-1">Specific Nodes</div>
                 </>
               )}
-
-              <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-900/30 mt-1">Specific Nodes</div>
 
               {/* Dynamic Agents */}
               {agents.length === 0 ? (
