@@ -19,6 +19,7 @@ export type DbPageRow = {
 
 export type DbElementRow = {
   id: string;
+  page_id: string;
   name: string;
   selector_type: string;
   value: string;
@@ -35,6 +36,7 @@ export type DbModuleRow = {
 
 export type DbModuleParamRow = {
   id: string;
+  module_id: string;
   name: string;
   default_value: string;
   description: string;
@@ -48,13 +50,35 @@ export type DbScenarioRow = {
 
 export type DbScenarioSuiteRow = {
   id: string;
+  scenario_id: string;
   suite_id: string;
 };
 
 export type DbSuiteVariableRow = {
   id: string;
+  scenario_id: string;
   variable_key: string;
   variable_value: string;
+};
+
+export type DbScenarioDataRowRow = {
+  id: number;
+  scenario_id: string;
+  row_index: number;
+  item_key: string;
+  item_value: string;
+};
+
+export type DbSuiteOverrideRow = {
+  scenario_suite_id: string;
+  item_key: string;
+  item_value: string;
+};
+
+export type DbPlanScenarioRow = {
+  id: string;
+  plan_id: string;
+  scenario_id: string;
 };
 
 export type DbCaseRow = {
@@ -65,6 +89,7 @@ export type DbCaseRow = {
 
 export type DbStepRow = {
   id: string;
+  module_id: string;
   action: string;
   target: string;
   data: string;

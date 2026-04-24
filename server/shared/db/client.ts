@@ -53,4 +53,14 @@ function createDatabase(): Database.Database {
   }
 }
 
-export const db = createDatabase();
+let _dbInstance: Database.Database | null = null;
+
+export const db = new Proxy({} as Database.Database, {
+  get(target, prop) {
+    if (!_dbInstance) {
+      _dbInstance = createDatabase();
+    }
+    const value = Reflect.get(_dbInstance, prop);
+    return typeof value === 'function' ? value.bind(_dbInstance) : value;
+  }
+});

@@ -49,13 +49,23 @@ export function useCrud<T extends { id: string }>(apiResource: CrudService<T>) {
 
   const update = useCallback(async (id: string, item: Partial<T>) => {
     setData(prev => prev.map(i => i.id === id ? { ...i, ...item } as T : i)); // Optimistic update
-    await apiResource.update(id, item);
-  }, [apiResource]);
+    try {
+      await apiResource.update(id, item);
+    } catch (e) {
+      refresh();
+      throw e;
+    }
+  }, [apiResource, refresh]);
 
   const remove = useCallback(async (id: string) => {
     setData(prev => prev.filter(i => i.id !== id)); // Optimistic update
-    await apiResource.delete(id);
-  }, [apiResource]);
+    try {
+      await apiResource.delete(id);
+    } catch (e) {
+      refresh();
+      throw e;
+    }
+  }, [apiResource, refresh]);
 
   const actions: CrudActions<T> = { create, update, remove, refresh };
 
@@ -94,8 +104,13 @@ export function useEnvCrud(apiResource: EnvironmentService) {
 
   const remove = useCallback(async (item: string) => {
     setData(prev => prev.filter(i => i !== item));
-    await apiResource.delete(item);
-  }, [apiResource]);
+    try {
+      await apiResource.delete(item);
+    } catch (e) {
+      refresh();
+      throw e;
+    }
+  }, [apiResource, refresh]);
 
   const actions: EnvironmentActions = { create, remove, refresh };
 

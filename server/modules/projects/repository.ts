@@ -6,9 +6,12 @@ import type {
   DbModuleParamRow,
   DbModuleRow,
   DbPageRow,
+  DbPlanScenarioRow,
+  DbScenarioDataRowRow,
   DbScenarioRow,
   DbScenarioSuiteRow,
   DbStepRow,
+  DbSuiteOverrideRow,
 } from '../../shared/db/types.ts';
 import { nullableText } from '../../shared/utils/index.ts';
 import { deserializeStep } from '../common/mapper.ts';
@@ -237,126 +240,194 @@ export function getProject(projectId: string): Project | undefined {
     return undefined;
   }
 
+  // ── Batched queries (13 total) ──────────────────────────────────────
+
+  // 1. Pages
   const pages = db.prepare(
-    `
-      SELECT id, name, description
-      FROM project_pages
-      WHERE project_id = ?
-      ORDER BY position
-    `,
+    `SELECT id, name, description FROM project_pages WHERE project_id = ? ORDER BY position`,
   ).all(projectId) as DbPageRow[];
 
-  const projectPages: Page[] = pages.map((page) => {
-    const elements = db.prepare(
-      `
-        SELECT id, name, selector_type, value, description, original_html, page_url
-        FROM project_elements
-        WHERE page_id = ?
-        ORDER BY position
-      `,
-    ).all(page.id) as DbElementRow[];
+  // 2. All elements for every page in the project
+  const allElements = db.prepare(
+    `SELECT id, page_id, name, selector_type, value, description, original_html, page_url
+     FROM project_elements
+     WHERE page_id IN (SELECT id FROM project_pages WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as DbElementRow[];
 
-    return {
-      id: page.id,
-      name: page.name,
-      description: page.description,
-      elements: elements.map((element) => ({
-        id: element.id,
-        name: element.name,
-        selectorType: element.selector_type as UIElement['selectorType'],
-        value: element.value,
-        description: element.description,
-        originalHtml: element.original_html || undefined,
-        pageUrl: element.page_url || undefined,
-      })),
-    };
-  });
-
+  // 3. Modules
   const modules = db.prepare(
-    `
-      SELECT id, name, description
-      FROM project_modules
-      WHERE project_id = ?
-      ORDER BY position
-    `,
+    `SELECT id, name, description FROM project_modules WHERE project_id = ? ORDER BY position`,
   ).all(projectId) as DbModuleRow[];
 
-  const projectModules: TestModule[] = modules.map((module) => {
-    const params = db.prepare(
-      `
-        SELECT id, name, default_value, description
-        FROM module_params
-        WHERE module_id = ?
-        ORDER BY position
-      `,
-    ).all(module.id) as DbModuleParamRow[];
+  // 4. All module params
+  const allParams = db.prepare(
+    `SELECT id, module_id, name, default_value, description
+     FROM module_params
+     WHERE module_id IN (SELECT id FROM project_modules WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as DbModuleParamRow[];
 
-    const steps = db.prepare(
-      `
-        SELECT id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-        FROM module_steps
-        WHERE module_id = ?
-        ORDER BY position
-      `,
-    ).all(module.id) as DbStepRow[];
+  // 5. All module steps
+  const allSteps = db.prepare(
+    `SELECT id, module_id, action, target, data, description, header_profile_id, body_template_id, endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
+     FROM module_steps
+     WHERE module_id IN (SELECT id FROM project_modules WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as DbStepRow[];
 
-    return {
-      id: module.id,
-      name: module.name,
-      description: module.description,
-      params: params.map((param) => ({
-        id: param.id,
-        name: param.name,
-        defaultValue: param.default_value,
-        description: param.description,
-      })),
-      steps: steps.map((step) => deserializeStep(step)),
-    };
-  });
-
+  // 6. Scenarios
   const scenarios = db.prepare(
-    `
-      SELECT id, name, description
-      FROM scenarios
-      WHERE project_id = ?
-      ORDER BY position
-    `,
+    `SELECT id, name, description FROM scenarios WHERE project_id = ? ORDER BY position`,
   ).all(projectId) as DbScenarioRow[];
 
+  // 7. All scenario suites
+  const allSuites = db.prepare(
+    `SELECT id, scenario_id, suite_id
+     FROM scenario_suites
+     WHERE scenario_id IN (SELECT id FROM scenarios WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as DbScenarioSuiteRow[];
+
+  // 8. All suite variable overrides
+  const allOverrides = db.prepare(
+    `SELECT scenario_suite_id, item_key, item_value
+     FROM scenario_suite_variable_overrides
+     WHERE scenario_suite_id IN (
+       SELECT ss.id FROM scenario_suites ss
+       INNER JOIN scenarios s ON s.id = ss.scenario_id
+       WHERE s.project_id = ?
+     )
+     ORDER BY position`,
+  ).all(projectId) as DbSuiteOverrideRow[];
+
+  // 9. All scenario variables
+  const allVariables = db.prepare(
+    `SELECT id, scenario_id, variable_key, variable_value
+     FROM scenario_variables
+     WHERE scenario_id IN (SELECT id FROM scenarios WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as Array<{ id: string; scenario_id: string; variable_key: string; variable_value: string }>;
+
+  // 10. All scenario data rows (joined with values)
+  const allDataRows = db.prepare(
+    `SELECT dr.id, dr.scenario_id, dr.row_index, drv.item_key, drv.item_value
+     FROM scenario_data_rows dr
+     LEFT JOIN scenario_data_row_values drv ON dr.id = drv.row_id
+     WHERE dr.scenario_id IN (SELECT id FROM scenarios WHERE project_id = ?)
+     ORDER BY dr.row_index, drv.position`,
+  ).all(projectId) as DbScenarioDataRowRow[];
+
+  // 11. Test plans
+  const plans = db.prepare(
+    `SELECT id, name, description FROM test_plans WHERE project_id = ? ORDER BY position`,
+  ).all(projectId) as Array<{ id: string; name: string; description: string }>;
+
+  // 12. All plan scenarios
+  const allPlanScenarios = db.prepare(
+    `SELECT id, plan_id, scenario_id
+     FROM test_plan_scenarios
+     WHERE plan_id IN (SELECT id FROM test_plans WHERE project_id = ?)
+     ORDER BY position`,
+  ).all(projectId) as DbPlanScenarioRow[];
+
+  // ── In-memory grouping ──────────────────────────────────────────────
+
+  const elementsByPageId = new Map<string, DbElementRow[]>();
+  for (const el of allElements) {
+    let arr = elementsByPageId.get(el.page_id);
+    if (!arr) { arr = []; elementsByPageId.set(el.page_id, arr); }
+    arr.push(el);
+  }
+
+  const paramsByModuleId = new Map<string, DbModuleParamRow[]>();
+  for (const p of allParams) {
+    let arr = paramsByModuleId.get(p.module_id);
+    if (!arr) { arr = []; paramsByModuleId.set(p.module_id, arr); }
+    arr.push(p);
+  }
+
+  const stepsByModuleId = new Map<string, DbStepRow[]>();
+  for (const s of allSteps) {
+    let arr = stepsByModuleId.get(s.module_id);
+    if (!arr) { arr = []; stepsByModuleId.set(s.module_id, arr); }
+    arr.push(s);
+  }
+
+  const suitesByScenarioId = new Map<string, DbScenarioSuiteRow[]>();
+  for (const su of allSuites) {
+    let arr = suitesByScenarioId.get(su.scenario_id);
+    if (!arr) { arr = []; suitesByScenarioId.set(su.scenario_id, arr); }
+    arr.push(su);
+  }
+
+  const overridesBySuiteId = new Map<string, DbSuiteOverrideRow[]>();
+  for (const o of allOverrides) {
+    let arr = overridesBySuiteId.get(o.scenario_suite_id);
+    if (!arr) { arr = []; overridesBySuiteId.set(o.scenario_suite_id, arr); }
+    arr.push(o);
+  }
+
+  const variablesByScenarioId = new Map<string, Array<{ id: string; variable_key: string; variable_value: string }>>();
+  for (const v of allVariables) {
+    let arr = variablesByScenarioId.get(v.scenario_id);
+    if (!arr) { arr = []; variablesByScenarioId.set(v.scenario_id, arr); }
+    arr.push(v);
+  }
+
+  const dataRowsByScenarioId = new Map<string, DbScenarioDataRowRow[]>();
+  for (const dr of allDataRows) {
+    let arr = dataRowsByScenarioId.get(dr.scenario_id);
+    if (!arr) { arr = []; dataRowsByScenarioId.set(dr.scenario_id, arr); }
+    arr.push(dr);
+  }
+
+  const planScenariosByPlanId = new Map<string, DbPlanScenarioRow[]>();
+  for (const ps of allPlanScenarios) {
+    let arr = planScenariosByPlanId.get(ps.plan_id);
+    if (!arr) { arr = []; planScenariosByPlanId.set(ps.plan_id, arr); }
+    arr.push(ps);
+  }
+
+  // ── Assemble object graph ───────────────────────────────────────────
+
+  const projectPages: Page[] = pages.map((page) => ({
+    id: page.id,
+    name: page.name,
+    description: page.description,
+    elements: (elementsByPageId.get(page.id) || []).map((element) => ({
+      id: element.id,
+      name: element.name,
+      selectorType: element.selector_type as UIElement['selectorType'],
+      value: element.value,
+      description: element.description,
+      originalHtml: element.original_html || undefined,
+      pageUrl: element.page_url || undefined,
+    })),
+  }));
+
+  const projectModules: TestModule[] = modules.map((mod) => ({
+    id: mod.id,
+    name: mod.name,
+    description: mod.description,
+    params: (paramsByModuleId.get(mod.id) || []).map((param) => ({
+      id: param.id,
+      name: param.name,
+      defaultValue: param.default_value,
+      description: param.description,
+    })),
+    steps: (stepsByModuleId.get(mod.id) || []).map((step) => deserializeStep(step)),
+  }));
+
   const projectScenarios: TestScenario[] = scenarios.map((scenario) => {
-    const suites = db.prepare(
-      `
-        SELECT id, suite_id
-        FROM scenario_suites
-        WHERE scenario_id = ?
-        ORDER BY position
-      `,
-    ).all(scenario.id) as DbScenarioSuiteRow[];
-
-    const variables = db.prepare(
-      `
-        SELECT id, variable_key, variable_value
-        FROM scenario_variables
-        WHERE scenario_id = ?
-        ORDER BY position
-      `,
-    ).all(scenario.id) as Array<{ id: string; variable_key: string; variable_value: string }>;
-
-    const dataRowsRecords = db.prepare(
-      `
-        SELECT dr.id, dr.row_index, drv.item_key, drv.item_value
-        FROM scenario_data_rows dr
-        LEFT JOIN scenario_data_row_values drv ON dr.id = drv.row_id
-        WHERE dr.scenario_id = ?
-        ORDER BY dr.row_index, drv.position
-      `,
-    ).all(scenario.id) as Array<{ id: number; row_index: number; item_key: string; item_value: string }>;
+    const suiteRows = suitesByScenarioId.get(scenario.id) || [];
+    const variableRows = variablesByScenarioId.get(scenario.id) || [];
+    const dataRowRecords = dataRowsByScenarioId.get(scenario.id) || [];
 
     const dataRows: Record<string, string>[] = [];
     let currentRowIndex = -1;
     let currentRow: Record<string, string> | null = null;
-
-    for (const record of dataRowsRecords) {
+    for (const record of dataRowRecords) {
       if (record.row_index !== currentRowIndex) {
         if (currentRow) dataRows.push(currentRow);
         currentRow = {};
@@ -372,63 +443,35 @@ export function getProject(projectId: string): Project | undefined {
       id: scenario.id,
       name: scenario.name,
       description: scenario.description,
-      variables: variables.map((v) => ({
+      variables: variableRows.map((v) => ({
         id: v.id,
         key: v.variable_key,
         value: v.variable_value,
       })),
       dataRows,
-      suites: suites.map((scenarioSuite) => {
-        const overrides = db.prepare(
-          `
-            SELECT item_key, item_value
-            FROM scenario_suite_variable_overrides
-            WHERE scenario_suite_id = ?
-            ORDER BY position
-          `,
-        ).all(scenarioSuite.id) as Array<{ item_key: string; item_value: string }>;
-
+      suites: suiteRows.map((scenarioSuite) => {
+        const overrides = overridesBySuiteId.get(scenarioSuite.id) || [];
         return {
           id: scenarioSuite.id,
           suiteId: scenarioSuite.suite_id,
           variableOverrides: Object.fromEntries(
-            overrides.map((override) => [override.item_key, override.item_value]),
+            overrides.map((o) => [o.item_key, o.item_value]),
           ),
         };
       }),
     };
   });
 
-  const plans = db.prepare(
-    `
-      SELECT id, name, description
-      FROM test_plans
-      WHERE project_id = ?
-      ORDER BY position
-    `,
-  ).all(projectId) as Array<{ id: string; name: string; description: string }>;
-
-  const projectPlans = plans.map((plan) => {
-    const planScenarios = db.prepare(
-      `
-        SELECT id, scenario_id
-        FROM test_plan_scenarios
-        WHERE plan_id = ?
-        ORDER BY position
-      `,
-    ).all(plan.id) as Array<{ id: string; scenario_id: string }>;
-
-    return {
-      id: plan.id,
-      projectId,
-      name: plan.name,
-      description: plan.description,
-      scenarios: planScenarios.map((ps) => ({
-        id: ps.id,
-        scenarioId: ps.scenario_id,
-      })),
-    };
-  });
+  const projectPlans = plans.map((plan) => ({
+    id: plan.id,
+    projectId,
+    name: plan.name,
+    description: plan.description,
+    scenarios: (planScenariosByPlanId.get(plan.id) || []).map((ps) => ({
+      id: ps.id,
+      scenarioId: ps.scenario_id,
+    })),
+  }));
 
   return {
     id: base.id,

@@ -2,6 +2,9 @@ import express from 'express';
 import path from 'path';
 import { createApp } from './createApp.ts';
 import { initializeWebSocket } from '../shared/services/websocketService.ts';
+import { registerAgentWsHandlers } from '../modules/agent/ws-handlers.ts';
+import { registerExecutionWsHandlers } from '../modules/execution/ws-handlers.ts';
+import { registerRecordingWsHandlers } from '../modules/recording/ws-handlers.ts';
 import { runMigrations } from '../migrations/index.ts';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -32,4 +35,8 @@ export async function startServer() {
   });
 
   initializeWebSocket(server);
+
+  registerAgentWsHandlers();
+  registerExecutionWsHandlers();
+  registerRecordingWsHandlers();
 }

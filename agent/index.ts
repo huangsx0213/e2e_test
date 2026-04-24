@@ -43,13 +43,7 @@ let isProcessing = false;
 let isRecordingActive = false;
 let recordingStarted = false;
 
-console.log(`[AGENT] Version: ${AGENT_VERSION}`);
-
-// ─── Console Interception: Forward agent output to server ───
-const originalConsoleLog = console.log;
-const originalConsoleWarn = console.warn;
-const originalConsoleError = console.error;
-
+// ─── System Logger: Explicitly forward agent output to server ───
 function formatArgs(args: any[]): string {
   return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
 }
@@ -64,18 +58,22 @@ function emitAgentLog(level: 'info' | 'warn' | 'error', args: any[]) {
   });
 }
 
-console.log = (...args: any[]) => {
-  originalConsoleLog.apply(console, args);
-  emitAgentLog('info', args);
+const sysLogger = {
+  info: (...args: any[]) => {
+    console.log(...args);
+    emitAgentLog('info', args);
+  },
+  warn: (...args: any[]) => {
+    console.warn(...args);
+    emitAgentLog('warn', args);
+  },
+  error: (...args: any[]) => {
+    console.error(...args);
+    emitAgentLog('error', args);
+  }
 };
-console.warn = (...args: any[]) => {
-  originalConsoleWarn.apply(console, args);
-  emitAgentLog('warn', args);
-};
-console.error = (...args: any[]) => {
-  originalConsoleError.apply(console, args);
-  emitAgentLog('error', args);
-};
+
+sysLogger.info(`[AGENT] Version: ${AGENT_VERSION}`);
 
 async function processQueue() {
   if (isProcessing || isRecordingActive) return;
@@ -88,22 +86,22 @@ async function processQueue() {
     agentStatus = 'busy';
     sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
 
-    console.log(`[AGENT] Starting execution of task: ${payload.runId}`);
+    sysLogger.info(`[AGENT] Starting execution of task: ${payload.runId}`);
     try {
       await handleExecution(payload);
     } catch (err) {
-      console.error(`[AGENT] Fatal error executing task ${payload.runId}:`, err);
+      sysLogger.error(`[AGENT] Fatal error executing task ${payload.runId}:`, err);
     }
   }
 
   isProcessing = false;
   agentStatus = 'idle';
   sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
-  console.log('[AGENT] Queue drained. Agent is now idle.');
+  sysLogger.info('[AGENT] Queue drained. Agent is now idle.');
 }
 
 function connect() {
-  console.log(`[AGENT] Connecting to ${SERVER_URL} as ${AGENT_ID}...`);
+  sysLogger.info(`[AGENT] Connecting to ${SERVER_URL} as ${AGENT_ID}...`);
   ws = new WebSocket(SERVER_URL, {
     headers: {
       'x-agent-secret': AGENT_SECRET
@@ -111,7 +109,7 @@ function connect() {
   });
 
   ws.on('open', () => {
-    console.log('[AGENT] Connected to Server.');
+    sysLogger.info('[AGENT] Connected to Server.');
     isReconnect = true;
 
     // Register Agent identity
@@ -126,23 +124,23 @@ function connect() {
   ws.on('message', async (data) => {
     try {
       const parsed = JSON.parse(data.toString());
-      console.log(`[AGENT] WS event received: ${parsed.event}`);
+      sysLogger.info(`[AGENT] WS event received: ${parsed.event}`);
       if (parsed.event === 'TASK_DISPATCH') {
         const payload: TaskPayload = parsed.data.payload;
-        console.log(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
+        sysLogger.info(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
         
         localTaskQueue.push(payload);
         processQueue(); // Start processing if not already
         
       } else if (parsed.event === 'TASK_ABORT') {
         const { reportId } = parsed.data;
-        console.log(`[AGENT] Received Remote Abort Request for report: ${reportId}`);
+        sysLogger.info(`[AGENT] Received Remote Abort Request for report: ${reportId}`);
         if (currentAbortController) {
           currentAbortController.abort();
         }
       } else if (parsed.event === 'RECORDING_START') {
         const { targetUrl, projectId, apiFilter, environment, pageId } = parsed.data || {};
-        console.log(`[AGENT] Received Recording Start: ${projectId}`);
+        sysLogger.info(`[AGENT] Received Recording Start: ${projectId}`);
         try {
           isRecordingActive = true;
           recordingStarted = false;
@@ -151,7 +149,7 @@ function connect() {
           emitRecordingEvent('recording-status', { status: 'RECEIVED' });
           await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, emitRecordingEvent);
         } catch (error) {
-          console.error('[AGENT] Failed to start recording:', error);
+          sysLogger.error('[AGENT] Failed to start recording:', error);
           isRecordingActive = false;
           recordingStarted = false;
           agentStatus = 'idle';
@@ -163,7 +161,7 @@ function connect() {
         if (!state || !isRecordingActive) return;
 
         if (state.action === 'STOP') {
-          console.log('[AGENT] Recorder stop requested');
+          sysLogger.info('[AGENT] Recorder stop requested');
           try {
             await stopRecordingSession();
           } finally {
@@ -184,11 +182,11 @@ function connect() {
         }
 
         if (recordingStarted) {
-          console.log('[AGENT] Recorder paused');
+          sysLogger.info('[AGENT] Recorder paused');
           emitRecordingEvent('recording-status', { status: 'PAUSED' });
         }
       } else if (parsed.event === 'RECORDING_STOP') {
-        console.log('[AGENT] Received Recording Stop');
+        sysLogger.info('[AGENT] Received Recording Stop');
         try {
           await stopRecordingSession();
         } finally {
@@ -201,18 +199,18 @@ function connect() {
         }
       }
     } catch (e) {
-      console.error('[AGENT] Error handling message:', e);
+      sysLogger.error('[AGENT] Error handling message:', e);
     }
   });
 
   ws.on('close', () => {
-    console.log('[AGENT] Connection closed. Reconnecting in 5s...');
+    sysLogger.info('[AGENT] Connection closed. Reconnecting in 5s...');
     clearInterval(pingInterval);
     setTimeout(connect, 5000);
   });
 
   ws.on('error', (err) => {
-    console.error(`[AGENT] WS Error: ${err.message}`);
+    sysLogger.error(`[AGENT] WS Error: ${err.message}`);
     ws.close();
   });
 }
@@ -238,7 +236,7 @@ async function handleExecution(payload: TaskPayload) {
   logger.log({ stepId: 'agent-init', status: 'INFO', message: `🚀 Task picked up by Remote Agent: ${AGENT_ID}` });
 
   const onEnvVarExtracted = (name: string, value: string) => {
-    console.log(`[AGENT] Extracted environment variable: ${name} = ${value}`);
+    sysLogger.info(`[AGENT] Extracted environment variable: ${name} = ${value}`);
   };
 
   try {
