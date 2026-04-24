@@ -5,6 +5,7 @@ import { getProject, saveProject } from '../projects/repository.ts';
 import { saveApiEndpoint, listApiEndpoints } from '../endpoints/repository.ts';
 import { saveHeaderProfile, listHeaderProfiles } from '../headers/repository.ts';
 import { saveBodyTemplate, listBodyTemplates } from '../bodies/repository.ts';
+import { randomId } from '../../shared/utils/index.ts';
 import type { Page, Project, TestStep } from '../../shared/contracts/index.ts';
 
 function getOrCreatePage(project: Project, url: string): Page {
@@ -17,7 +18,7 @@ function getOrCreatePage(project: Project, url: string): Page {
   if (!project.pages) project.pages = [];
   let page = project.pages.find(pg => pg.name === pName);
   if (!page) {
-    page = { id: `pg-${Date.now()}`, name: pName, elements: [] };
+    page = { id: randomId('pg'), name: pName, elements: [] };
     project.pages.push(page);
   }
 
@@ -44,14 +45,14 @@ function handleStepRecorded(data: any) {
   });
 
   if (!existingEl) {
-    existingEl = { ...element, id: `el-${Date.now()}` };
+    existingEl = { ...element, id: randomId('el') };
     page.elements!.push(existingEl);
   }
 
   saveProject(project);
 
   const step: TestStep = {
-    id: `step-${Date.now()}`,
+    id: randomId('step'),
     action,
     target: `${page.name}.${existingEl.name}`,
     data: dataValue || '',
@@ -74,7 +75,7 @@ function handleElementRecorded(data: any) {
   );
 
   if (!existingEl) {
-    element.id = `el-${Date.now()}`;
+    element.id = randomId('el');
     page.elements!.push(element);
     saveProject(project);
   }
@@ -98,7 +99,7 @@ function handleApiRecorded(data: any) {
   let endpoint = allEndpoints.find(e => e.projectId === projectId && e.name === endpointName);
   if (!endpoint) {
     endpoint = saveApiEndpoint({
-      id: `ep-${Date.now()}`,
+      id: randomId('ep'),
       projectId,
       name: endpointName,
       method: method as any,
@@ -145,7 +146,7 @@ function handleApiRecorded(data: any) {
       if (!profile) {
         const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
         profile = saveHeaderProfile({
-          id: `hp-${Date.now()}`,
+          id: randomId('hp'),
           projectId,
           name: profileName,
           headers: cleanHeaders
@@ -167,13 +168,13 @@ function handleApiRecorded(data: any) {
     } catch(e) {}
 
     let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
-    if (!bodyTemplate) {
-      const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
-      bodyTemplate = saveBodyTemplate({
-        id: `bt-${Date.now()}`,
-        projectId,
-        name: bodyName,
-        contentType,
+      if (!bodyTemplate) {
+        const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
+        bodyTemplate = saveBodyTemplate({
+          id: randomId('bt'),
+          projectId,
+          name: bodyName,
+          contentType,
         content: finalContent
       });
     }
@@ -186,7 +187,7 @@ function handleApiRecorded(data: any) {
   const stepAssertions = [] as any[];
   if (status && status !== 0) {
     stepAssertions.push({
-      id: `ast-${Date.now()}`,
+      id: randomId('ast'),
       source: 'API_STATUS',
       operator: 'EQUALS',
       expectedValue: String(status)
@@ -194,7 +195,7 @@ function handleApiRecorded(data: any) {
   }
 
   const step: TestStep = {
-    id: `step-${Date.now()}`,
+    id: randomId('step'),
     action: `API_${actionMethod}`,
     target: basePath,
     data: '',

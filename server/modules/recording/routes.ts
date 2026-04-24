@@ -6,6 +6,7 @@ import { saveHeaderProfile, listHeaderProfiles } from '../headers/repository.ts'
 import { saveBodyTemplate, listBodyTemplates } from '../bodies/repository.ts';
 import { agentRegistry } from '../agent/registry.ts';
 import { broadcast } from '../../shared/services/websocketService.ts';
+import { randomId } from '../../shared/utils/index.ts';
 import type { UIElement, Page, Project, TestStep } from '../../shared/contracts/index.ts';
 
 const router = Router();
@@ -24,7 +25,7 @@ function getOrCreatePage(project: Project, url: string): Page {
   let page = project.pages.find(pg => pg.name === pName);
   
   if (!page) {
-    page = { id: `pg-${Date.now()}`, name: pName, elements: [] };
+    page = { id: randomId('pg'), name: pName, elements: [] };
     project.pages.push(page);
   }
   
@@ -85,7 +86,7 @@ router.post('/start', async (req, res) => {
       );
 
       if (!existingEl) {
-        elementRecord.id = `el-${Date.now()}`;
+        elementRecord.id = randomId('el');
         page.elements!.push(elementRecord);
         saveProject(project);
       }
@@ -111,14 +112,14 @@ router.post('/start', async (req, res) => {
       });
 
       if (!existingEl) {
-        existingEl = { ...capturedEl, id: `el-${Date.now()}` };
+        existingEl = { ...capturedEl, id: randomId('el') };
         page.elements!.push(existingEl);
       }
       
       saveProject(project);
       
       const step: TestStep = {
-        id: `step-${Date.now()}`,
+        id: randomId('step'),
         action,
         target: `${page.name}.${existingEl.name}`,
         data: dataValue || '',
@@ -148,7 +149,7 @@ router.post('/start', async (req, res) => {
       
       if (!endpoint) {
         endpoint = saveApiEndpoint({
-          id: `ep-${Date.now()}`,
+          id: randomId('ep'),
           projectId,
           name: endpointName,
           method: method as any,
@@ -199,11 +200,11 @@ router.post('/start', async (req, res) => {
 
             if (!profile) {
                const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
-               profile = saveHeaderProfile({
-                 id: `hp-${Date.now()}`,
-                 projectId,
-                 name: profileName,
-                 headers: cleanHeaders
+             profile = saveHeaderProfile({
+                  id: randomId('hp'),
+                  projectId,
+                  name: profileName,
+                  headers: cleanHeaders
                });
             }
             headerProfileId = profile.id;
@@ -225,11 +226,11 @@ router.post('/start', async (req, res) => {
          let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
          if (!bodyTemplate) {
             const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
-            bodyTemplate = saveBodyTemplate({
-               id: `bt-${Date.now()}`,
-               projectId,
-               name: bodyName,
-               contentType,
+             bodyTemplate = saveBodyTemplate({
+                id: randomId('bt'),
+                projectId,
+                name: bodyName,
+                contentType,
                content: finalContent
             });
          }
@@ -243,15 +244,15 @@ router.post('/start', async (req, res) => {
       const stepAssertions = [];
       if (status && status !== 0) {
          stepAssertions.push({
-            id: `ast-${Date.now()}`,
-            source: 'API_STATUS',
-            operator: 'EQUALS',
-            expectedValue: String(status)
+             id: randomId('ast'),
+             source: 'API_STATUS',
+             operator: 'EQUALS',
+             expectedValue: String(status)
          });
       }
 
       const step: TestStep = {
-        id: `step-${Date.now()}`,
+        id: randomId('step'),
         action: `API_${actionMethod}`,
         target: basePath, // Critical: executor needs the path, not the display name
         data: '',

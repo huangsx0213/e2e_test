@@ -1,4 +1,5 @@
 import { chromium, Browser, Page, selectors } from 'playwright';
+import { randomId } from '../../shared/utils/index.ts';
 
 // Configure common test-id attributes globally
 try {
@@ -8,43 +9,84 @@ try {
 let activeBrowser: Browser | null = null;
 let activePage: Page | null = null;
 
-async function generateSmartSelector(page: Page, targetHtml: string, ariaInfo: { role: string, name: string } | null): Promise<{ name: string, selectorType: string, value: string, isVerified: boolean, locators: { selectorType: string, value: string }[] }> {
-  const candidates: { type: string, value: any, options?: any, nameHint?: string }[] = [];
+type SelectorCandidate = {
+  type: string;
+  value: any;
+  options?: any;
+  nameHint?: string;
+};
 
-  // 1. Role Locator (🥇 Highest priority)
+function normalizeRecordedUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
+function buildSelectorCandidates(targetHtml: string, ariaInfo: { role: string, name: string } | null): SelectorCandidate[] {
+  const candidates: SelectorCandidate[] = [];
+
   if (ariaInfo && ariaInfo.role) {
-    // Priority 1a: Exact match
-    candidates.push({ 
-      type: 'getByRole', 
-      value: ariaInfo.role, 
-      options: { name: ariaInfo.name, exact: true }, 
-      nameHint: ariaInfo.name 
+    candidates.push({
+      type: 'getByRole',
+      value: ariaInfo.role,
+      options: { name: ariaInfo.name, exact: true },
+      nameHint: ariaInfo.name,
     });
-    // Priority 1b: Fuzzy match
-    candidates.push({ 
-      type: 'getByRole', 
-      value: ariaInfo.role, 
-      options: { name: ariaInfo.name, exact: false }, 
-      nameHint: ariaInfo.name 
+    candidates.push({
+      type: 'getByRole',
+      value: ariaInfo.role,
+      options: { name: ariaInfo.name, exact: false },
+      nameHint: ariaInfo.name,
     });
   }
 
-  // 2. Test ID (🥈 High quality)
   const testIdMatch = targetHtml.match(/data-(?:test|testid|qa)=["']([^"']+)["']/i);
   if (testIdMatch) {
     candidates.push({ type: 'getByTestId', value: testIdMatch[1], nameHint: testIdMatch[1] });
   }
 
-  // 3. ID (🥉 Reliable if exists)
   const idMatch = targetHtml.match(/id=["']([^"']+)["']/i);
-  if (idMatch && !idMatch[1].match(/^\d+$/)) { // Avoid numeric auto-gen IDs
+  if (idMatch && !idMatch[1].match(/^\d+$/)) {
     candidates.push({ type: 'CSS', value: `#${idMatch[1]}`, nameHint: idMatch[1] });
   }
 
-  // 4. Text (🥉 Fallback)
   if (ariaInfo && ariaInfo.name && ariaInfo.name.length > 2 && ariaInfo.name.length < 50) {
     candidates.push({ type: 'getByText', value: ariaInfo.name, options: { exact: true }, nameHint: ariaInfo.name });
   }
+
+  return candidates;
+}
+
+function formatCandidateValue(candidate: SelectorCandidate): string {
+  if (candidate.type === 'getByRole' && candidate.options) {
+    const optsJson = JSON.stringify(candidate.options).replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'");
+    return `${candidate.value}, ${optsJson}`;
+  }
+
+  return String(candidate.value);
+}
+
+function fallbackCandidate(candidates: SelectorCandidate[], targetHtml: string) {
+  if (candidates[0]) return candidates[0];
+
+  const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
+  return {
+    type: 'CSS',
+    value: tagMatch ? tagMatch[1].toLowerCase() : 'div',
+    nameHint: 'RecordedElement',
+  };
+}
+
+async function generateSmartSelector(
+  page: Page,
+  targetHtml: string,
+  ariaInfo: { role: string, name: string } | null,
+  recordedPageUrl?: string,
+): Promise<{ name: string, selectorType: string, value: string, isVerified: boolean, locators: { selectorType: string, value: string }[] }> {
+  const candidates = buildSelectorCandidates(targetHtml, ariaInfo);
 
   const validate = async () => {
     const validLocs: { selectorType: string, value: string, name: string }[] = [];
@@ -55,8 +97,7 @@ async function generateSmartSelector(page: Page, targetHtml: string, ariaInfo: {
 
         if (cand.type === 'getByRole') {
           locator = page.getByRole(cand.value, cand.options);
-          const optsJson = JSON.stringify(cand.options).replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'");
-          finalValue = `${cand.value}, ${optsJson}`;
+          finalValue = formatCandidateValue(cand);
         } else if (cand.type === 'getByTestId') {
           locator = page.getByTestId(cand.value);
           finalValue = cand.value;
@@ -101,6 +142,21 @@ async function generateSmartSelector(page: Page, targetHtml: string, ariaInfo: {
     return validLocs;
   };
 
+  const shouldSkipLiveValidation = !!recordedPageUrl && normalizeRecordedUrl(page.url()) !== normalizeRecordedUrl(recordedPageUrl);
+
+  if (shouldSkipLiveValidation) {
+    const bestFallback = fallbackCandidate(candidates, targetHtml);
+    const fallbackValue = formatCandidateValue(bestFallback);
+    console.log(`[Validator] ⚠️ Page changed before validation, using snapshot fallback: ${bestFallback.type} -> ${fallbackValue}`);
+    return {
+      name: bestFallback.nameHint || 'RecordedElement',
+      selectorType: bestFallback.type,
+      value: fallbackValue,
+      isVerified: false,
+      locators: [{ selectorType: bestFallback.type, value: fallbackValue }],
+    };
+  }
+
   // Attempt to validate in live DOM
   let results = await validate();
 
@@ -113,14 +169,10 @@ async function generateSmartSelector(page: Page, targetHtml: string, ariaInfo: {
   if (results.length > 0) {
      // Pick the highest priority match from our candidates list
      for (const cand of candidates) {
-        let val = String(cand.value);
-        if (cand.type === 'getByRole' && cand.options) {
-           const optsJson = JSON.stringify(cand.options).replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'");
-           val = `${cand.value}, ${optsJson}`;
-        }
-        const match = results.find(r => r.selectorType === cand.type && r.value === val);
-        if (match) {
-           return { 
+         let val = formatCandidateValue(cand);
+         const match = results.find(r => r.selectorType === cand.type && r.value === val);
+         if (match) {
+            return { 
              ...match, 
              isVerified: true,
              locators: results.map(r => ({ selectorType: r.selectorType, value: r.value })) 
@@ -130,12 +182,8 @@ async function generateSmartSelector(page: Page, targetHtml: string, ariaInfo: {
   }
 
   // Final Fallback: Trust the Highest Priority Candidate even if validation failed (due to page navigation)
-  const bestFallback = candidates[0]; 
-  let fallbackValue = String(bestFallback.value);
-  if (bestFallback.type === 'getByRole' && bestFallback.options) {
-      const optsJson = JSON.stringify(bestFallback.options).replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'");
-      fallbackValue = `${bestFallback.value}, ${optsJson}`;
-  }
+  const bestFallback = fallbackCandidate(candidates, targetHtml);
+  const fallbackValue = formatCandidateValue(bestFallback);
   
   console.log(`[Validator] ⚠️ Blind Fallback used: ${bestFallback.type} -> ${fallbackValue}`);
   return { 
@@ -172,6 +220,7 @@ export async function startRecording(
   });
   const context = await activeBrowser.newContext({ viewport: null });
   activePage = await context.newPage();
+  let lastNavigationUrl = normalizeRecordedUrl(targetUrl);
 
   // Silence noisy browser logs, only show critical logic errors or our specific recorder logs
   activePage.on('console', msg => {
@@ -185,12 +234,33 @@ export async function startRecording(
     }
   });
 
+  activePage.on('request', (req) => {
+    try {
+      (req as any).__recordedPageUrl = req.frame()?.url() || activePage?.url() || targetUrl;
+    } catch {
+      (req as any).__recordedPageUrl = activePage?.url() || targetUrl;
+    }
+  });
+
+  activePage.on('framenavigated', (frame) => {
+    if (!activePage || frame !== activePage.mainFrame()) return;
+
+    const currentUrl = frame.url();
+    if (!currentUrl || currentUrl === 'about:blank') return;
+
+    const normalizedUrl = normalizeRecordedUrl(currentUrl);
+    if (normalizedUrl === lastNavigationUrl) return;
+
+    lastNavigationUrl = normalizedUrl;
+    console.log(`[Recorder] Navigation observed: ${currentUrl}`);
+  });
+
   // Expose function to be called from the browser
   await activePage.exposeFunction('onElementClicked', async (targetHtml: string, htmlContext: string, pageUrl: string, ariaInfo: any) => {
     try {
       if (!activePage) return { success: false };
       
-      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo);
+      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo, pageUrl);
 
       // --- Meaningful Description Generation ---
       const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
@@ -205,7 +275,7 @@ export async function startRecording(
       if (testIdMatch) desc += ` TestID: ${testIdMatch[1]}`;
 
       const newElement = {
-        id: `el-${Date.now()}`,
+        id: randomId('el'),
         name: selectorData.name || 'RecordedElement',
         selectorType: selectorData.selectorType,
         value: selectorData.value,
@@ -227,7 +297,7 @@ export async function startRecording(
   await activePage.exposeFunction('onStepRecordedAction', async (action: string, targetHtml: string, contextHtml: string, pageUrl: string, ariaInfo: any, dataValue: any) => {
     try {
       if (!activePage) return { success: false };
-      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo);
+      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo, pageUrl);
       
       const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
       const tagName = tagMatch ? tagMatch[1].toUpperCase() : 'ELEMENT';
@@ -241,7 +311,7 @@ export async function startRecording(
       if (testIdMatch) desc += ` TestID: ${testIdMatch[1]}`;
 
       const elementData = {
-        id: `el-${Date.now()}`,
+        id: randomId('el'),
         name: selectorData.name || 'RecordedElement',
         selectorType: selectorData.selectorType,
         value: selectorData.value,
@@ -306,7 +376,8 @@ export async function startRecording(
         let pageOrigin = '';
         try {
            targetOrigin = new URL(req.url()).origin;
-           pageOrigin = new URL(activePage!.url()).origin;
+           const recordedPageUrl = (req as any).__recordedPageUrl || activePage!.url();
+           pageOrigin = new URL(recordedPageUrl).origin;
         } catch(e) {}
         
         // Same-origin constraint (unless apiFilter is specifically overriding it)
@@ -358,20 +429,49 @@ export async function startRecording(
   await activePage.addInitScript(`
     (async function() {
       console.log('[Recorder] Unified Tracker injected');
+
+      const RECORDER_STATE_KEY = '__quantumqa_recorder_state__';
+      const readSavedState = () => {
+        try {
+          const raw = window.name || '';
+          const marker = raw.indexOf(RECORDER_STATE_KEY + '=');
+          if (marker === -1) return null;
+          const encoded = raw.slice(marker + RECORDER_STATE_KEY.length + 1);
+          return JSON.parse(decodeURIComponent(encoded));
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const writeSavedState = (state) => {
+        try {
+          const raw = window.name || '';
+          const marker = raw.indexOf(RECORDER_STATE_KEY + '=');
+          const base = marker === -1 ? raw : raw.slice(0, marker);
+          window.name = base + RECORDER_STATE_KEY + '=' + encodeURIComponent(JSON.stringify(state));
+        } catch (e) {}
+      };
       
       // Initialize with backend state if available, otherwise default
       window.__recorderState = { isPaused: true, mode: 'ui', started: false };
+      const savedState = readSavedState();
+      if (savedState) {
+        window.__recorderState = { isPaused: true, mode: 'ui', started: false, ...savedState };
+      }
       if (window.getInitialRecorderState) {
          try {
             const saved = await window.getInitialRecorderState();
             if (saved) window.__recorderState = { isPaused: true, mode: 'ui', started: false, ...saved };
          } catch(e) {}
       }
+
+      writeSavedState(window.__recorderState);
       
       let badge = null;
       let toolbar = null;
 
       const notifyState = () => {
+         writeSavedState(window.__recorderState);
          if (window.onRecorderStateChanged) {
             window.onRecorderStateChanged(window.__recorderState);
          }
@@ -417,10 +517,10 @@ export async function startRecording(
             });
          }
 
-          const btnPrimary = toolbar.querySelector('#btn-record-primary');
-          if (btnPrimary) {
-             btnPrimary.addEventListener('click', () => {
-                if (window.__recorderState.isPaused) {
+           const btnPrimary = toolbar.querySelector('#btn-record-primary');
+           if (btnPrimary) {
+              btnPrimary.addEventListener('click', () => {
+                 if (window.__recorderState.isPaused) {
                    window.__recorderState.isPaused = false;
                    window.__recorderState.started = true;
                    window.__recorderState.action = 'START';
@@ -447,8 +547,8 @@ export async function startRecording(
 
       const ensureUI = () => {
         if (!document.body && !document.documentElement) {
-           setTimeout(ensureUI, 100);
-           return;
+            setTimeout(ensureUI, 100);
+            return;
         }
         
         let container = document.body || document.documentElement;
@@ -475,8 +575,15 @@ export async function startRecording(
         }
       };
 
-      // Continuously ensure UI is present in case of SPA navigations or lazy loading
-      setInterval(ensureUI, 1000);
+      // Keep recorder UI attached across navigations and SPA rerenders
+      document.addEventListener('DOMContentLoaded', ensureUI, { once: false });
+      window.addEventListener('load', ensureUI);
+      const observerTarget = document.documentElement || document.body;
+      if (observerTarget && window.MutationObserver) {
+        const observer = new MutationObserver(() => ensureUI());
+        observer.observe(observerTarget, { childList: true, subtree: true });
+      }
+      setInterval(ensureUI, 250);
 
       // PRIMARY ACTION: Right Click to Record
       document.addEventListener('contextmenu', async (e) => {
@@ -489,7 +596,7 @@ export async function startRecording(
 
 
           const ariaInfo = getAriaInfo(target);
-          console.log('[Recorder] Right-Click detected. ARIA:', ariaInfo);
+           console.log('[Recorder] Right-Click detected. ARIA:', ariaInfo);
           
           const cleanNode = (node) => {
             const clone = node.cloneNode(false);
@@ -601,12 +708,12 @@ export async function startRecording(
              return; // let change event handle this
            }
 
-           if (window.onStepRecordedAction) {
-               console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
-               window.onStepRecordedAction(action, targetHtml, contextHtml, pageUrl, ariaInfo, null);
-           }
-        }
-      }, { capture: true });
+            if (window.onStepRecordedAction) {
+                console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
+                window.onStepRecordedAction(action, targetHtml, contextHtml, pageUrl, ariaInfo, null);
+            }
+         }
+       }, { capture: true });
 
       // Prevent empty duplicates by keeping track of the original value before changes
       document.addEventListener('focusin', async (e) => {
@@ -654,7 +761,7 @@ export async function startRecording(
       }, { capture: true });
 
       // Auto-show guide badge
-      setTimeout(ensureUI, 1000);
+      setTimeout(ensureUI, 100);
       console.log('[Recorder] Initialization complete. Right-Click to record elements, Left-Click to record steps.');
     })();
   `);

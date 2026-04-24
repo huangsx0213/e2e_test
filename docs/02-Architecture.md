@@ -507,11 +507,13 @@ graph TD
 - Captures clicks, inputs, focus changes, selections
 - Generates **smart selectors** using priority: `getByRole > getByTestId > CSS ID > getByText`
 - Validates selectors against the live DOM
+- When the page URL has already changed, falls back to the captured HTML snapshot instead of validating against the new DOM
 - Detects navigation and auto-injects `WAIT_FOR_NAVIGATION` steps
 
 ### 6.3 Network Interception
 
 - Uses Playwright's `page.on('request')` / `page.on('response')` to sniff traffic
+- Captures the request-time page URL so same-origin checks do not drift when the page navigates quickly
 - Filters by domain (API filter pattern)
 - Auto-creates:
   - **ApiEndpoint** from request URLs (with per-environment base URL)
