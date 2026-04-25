@@ -2,7 +2,7 @@ import { agentRegistry } from './registry.ts';
 import type { TaskPayload } from '../../../shared/contracts/index.ts';
 import { taskQueue } from '../execution/queue.ts';
 import EventEmitter from 'events';
-import { getActiveRunLogger } from '../execution/runner.ts';
+import { getActiveRunLogger } from '../execution/run-registry.ts';
 
 export const agentDispatcherEvents = new EventEmitter();
 

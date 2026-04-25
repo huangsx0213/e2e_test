@@ -2,10 +2,10 @@ import { Router } from 'express';
 import type { ExecutionRequest } from '../../shared/contracts/index.ts';
 import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { ValidationError, NotFoundError } from '../../shared/http/errors.ts';
-import { startExecution, getActiveRunLogger, isRunActive, abortActiveRun } from './runner.ts';
+import { startExecution } from './runner.ts';
+import { getActiveRunLogger, isRunActive, abortActiveRun } from './run-registry.ts';
 import { db } from '../../shared/db/client.ts';
 import { taskQueue } from './queue.ts';
-import { abortRemoteRun } from '../agent/dispatcher.ts';
 
 const router = Router();
 
@@ -151,8 +151,9 @@ router.get('/status/:reportId', withErrorHandling((req, res) => {
 }));
 
 // POST /api/runners/abort/:reportId — Abort a running execution
-router.post('/abort/:reportId', withErrorHandling((req, res) => {
+router.post('/abort/:reportId', withErrorHandling(async (req, res) => {
   const reportId = req.params.reportId as string;
+  const { abortRemoteRun } = await import('../agent/dispatcher.ts');
   const success = abortActiveRun(reportId) || abortRemoteRun(reportId);
   res.json({ success, message: success ? 'Abort signal sent' : 'No active run to abort' });
 }));

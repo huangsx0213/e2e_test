@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { dynamicVariableRepository } from './repository';
 import { dynamicVariableSchema } from '../../shared/validation/schemas';
-import { interpolate } from '../execution/interpolator';
+import { interpolate } from '../../shared/utils/interpolate';
 
 const router = Router();
 

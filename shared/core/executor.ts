@@ -68,23 +68,39 @@ export async function executeSingleCase(
     // Main steps
     await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
 
-    // Case teardown
-    if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
-      logger.log({ stepId: 'case-teardown', status: 'INFO', message: '🧹 Running Case Teardown Steps' });
-      await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 0);
-    }
-
-    // Suite teardown
-    if (suite.teardownSteps && suite.teardownSteps.length > 0) {
-      logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
-      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
-    }
-
   } catch (error) {
     passed = false;
     const msg = error instanceof Error ? error.message : String(error);
     logger.log({ stepId: 'case-fail', status: 'FAIL', message: `❌ Case Failed: ${msg}` });
   } finally {
+    try {
+      // Case teardown
+      if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
+        logger.log({ stepId: 'case-teardown', status: 'INFO', message: '🧹 Running Case Teardown Steps' });
+        await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 0);
+      }
+    } catch (teardownError) {
+      logger.log({
+        stepId: 'case-teardown',
+        status: 'FAIL',
+        message: `⚠️ Teardown Error: ${teardownError instanceof Error ? teardownError.message : String(teardownError)}`,
+      });
+    }
+
+    try {
+      // Suite teardown
+      if (suite.teardownSteps && suite.teardownSteps.length > 0) {
+        logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
+        await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
+      }
+    } catch (teardownError) {
+      logger.log({
+        stepId: 'suite-teardown',
+        status: 'FAIL',
+        message: `⚠️ Teardown Error: ${teardownError instanceof Error ? teardownError.message : String(teardownError)}`,
+      });
+    }
+
     context.clearCaseVars();
   }
 
@@ -164,8 +180,6 @@ async function runSuiteWithContext(
   let completedCases = 0;
 
   for (let rowIdx = 0; rowIdx < dataRows.length; rowIdx++) {
-    if (signal.aborted) throw new Error('Execution aborted');
-
     const rowData = dataRows[rowIdx];
     if (dataRows.length > 1) {
       logger.log({
@@ -202,66 +216,92 @@ async function runSuiteWithContext(
     // Inject shared dynamic caches (e.g. ONCE_PER_SCENARIO)
     context.setDynamicVariableCaches(sharedDynamicCaches);
 
-    // Suite setup
-    if (suite.setupSteps && suite.setupSteps.length > 0) {
-      logger.log({ stepId: 'suite-setup', status: 'INFO', message: '⚙️ Running Suite Setup Steps' });
-      await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
-    }
-
-    for (const testCase of suite.cases) {
+    try {
       if (signal.aborted) throw new Error('Execution aborted');
 
-      context.setCurrentContext(scenarioName, suite.name, testCase.name);
-
-      logger.log({
-        stepId: `case-${testCase.id}`,
-        status: 'INFO',
-        message: `  🧪 Running Case: ${testCase.name}`,
-      });
-
-      let casePassed = true;
-      try {
-        if (testCase.setupSteps && testCase.setupSteps.length > 0) {
-          await executeSteps(testCase.setupSteps, context, payload, logger, signal, uiExecutor, 1);
-        }
-        await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 1);
-        if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
-          await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 1, onEnvVarExtracted);
-        }
-      } catch (error) {
-        casePassed = false;
-        const msg = error instanceof Error ? error.message : String(error);
-        logger.log({
-          stepId: `case-${testCase.id}-fail`,
-          status: 'FAIL',
-          message: `  ❌ Case Failed: ${msg}`,
-        });
-      } finally {
-        context.clearCaseVars();
+      // Suite setup
+      if (suite.setupSteps && suite.setupSteps.length > 0) {
+        logger.log({ stepId: 'suite-setup', status: 'INFO', message: '⚙️ Running Suite Setup Steps' });
+        await executeSteps(suite.setupSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
       }
 
-      if (casePassed) passedCases++;
-      else failedCases++;
+      for (const testCase of suite.cases) {
+        if (signal.aborted) throw new Error('Execution aborted');
 
-      completedCases++;
-      logger.progress({
-        completed: completedCases,
-        total: totalCases,
-        percent: Math.round((completedCases / totalCases) * 100),
+        context.setCurrentContext(scenarioName, suite.name, testCase.name);
+
+        logger.log({
+          stepId: `case-${testCase.id}`,
+          status: 'INFO',
+          message: `  🧪 Running Case: ${testCase.name}`,
+        });
+
+        let casePassed = true;
+        try {
+          if (testCase.setupSteps && testCase.setupSteps.length > 0) {
+            await executeSteps(testCase.setupSteps, context, payload, logger, signal, uiExecutor, 1);
+          }
+          await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, 1);
+        } catch (error) {
+          casePassed = false;
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.log({
+            stepId: `case-${testCase.id}-fail`,
+            status: 'FAIL',
+            message: `  ❌ Case Failed: ${msg}`,
+          });
+        } finally {
+          try {
+            if (testCase.teardownSteps && testCase.teardownSteps.length > 0) {
+              await executeSteps(testCase.teardownSteps, context, payload, logger, signal, uiExecutor, 1, onEnvVarExtracted);
+            }
+          } catch (teardownError) {
+            logger.log({
+              stepId: `case-${testCase.id}-teardown`,
+              status: 'FAIL',
+              message: `  ⚠️ Teardown Error: ${teardownError instanceof Error ? teardownError.message : String(teardownError)}`,
+            });
+          }
+          context.clearCaseVars();
+        }
+
+        if (casePassed) passedCases++;
+        else failedCases++;
+
+        completedCases++;
+        logger.progress({
+          completed: completedCases,
+          total: totalCases,
+          percent: Math.round((completedCases / totalCases) * 100),
+        });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.log({
+        stepId: `suite-${suite.id}-fail`,
+        status: 'FAIL',
+        message: `❌ Suite Failed: ${msg}`,
       });
+      failedCases += suite.cases.length - completedCases;
+    } finally {
+      try {
+        if (suite.teardownSteps && suite.teardownSteps.length > 0) {
+          logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
+          await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
+        }
+      } catch (teardownError) {
+        logger.log({
+          stepId: 'suite-teardown',
+          status: 'FAIL',
+          message: `⚠️ Suite Teardown Error: ${teardownError instanceof Error ? teardownError.message : String(teardownError)}`,
+        });
+      }
+
+      // Capture updated caches (especially ONCE_PER_SCENARIO)
+      Object.assign(sharedDynamicCaches, context.getDynamicVariableCaches());
+      // Clear suite-scoped caches
+      context.clearSuiteVars();
     }
-
-    // Suite teardown
-    if (suite.teardownSteps && suite.teardownSteps.length > 0) {
-      logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
-      await executeSteps(suite.teardownSteps, context, payload, logger, signal, uiExecutor, 0, onEnvVarExtracted);
-    }
-
-    // Capture updated caches (especially ONCE_PER_SCENARIO)
-    Object.assign(sharedDynamicCaches, context.getDynamicVariableCaches());
-
-    // Clear suite-scoped caches
-    context.clearSuiteVars();
   }
 
   const allPassed = failedCases === 0;

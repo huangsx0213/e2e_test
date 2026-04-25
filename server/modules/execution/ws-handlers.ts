@@ -1,6 +1,6 @@
 import type { WebSocket } from 'ws';
 import { globalEventBus, type WsEventHandler } from '../../shared/services/eventBus.ts';
-import { getActiveRunLogger } from './runner.ts';
+import { getActiveRunLogger } from './run-registry.ts';
 
 function handleLogStream(data: any, ws: WebSocket) {
   const { reportId, log } = data;

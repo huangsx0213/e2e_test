@@ -1,4 +1,3 @@
-import { dispatchToAgent, abortRemoteRun } from '../agent/dispatcher.ts';
 import type {
   TestStep,
   TestSuite,
@@ -22,7 +21,7 @@ import { reportRepository } from '../reports/repository.ts';
 import { environmentRepository } from '../environments/repository.ts';
 import { dynamicVariableRepository } from '../dynamic-variables/repository.ts';
 import { ExecutionContext } from './context.ts';
-import { interpolate } from './interpolator.ts';
+import { interpolate } from '../../shared/utils/interpolate.ts';
 import { executeApiStep, type ApiAssets } from './api-executor.ts';
 import { ExecutionLogger } from './logger.ts';
 import { db } from '../../shared/db/client.ts';
@@ -31,55 +30,7 @@ import { UIExecutor } from './ui-executor.ts';
 import { executeSingleCase, executeSuite, executeScenario, executePlan } from '../../shared/core/executor.ts';
 import type { TaskPayload } from '../../shared/contracts/index.ts';
 import { settingsRepository } from '../settings/repository.ts';
-
-const MAX_MODULE_DEPTH = 20;
-
-
-
-// ─── Active Run Registry (multi-queue) ───
-
-const activeRuns = new Map<string, { id: string; abortController: AbortController; isLocal: boolean }>();
-const loggerRegistry = new Map<string, ExecutionLogger>();
-
-export function getActiveRunLogger(reportId: string): ExecutionLogger | undefined {
-  return loggerRegistry.get(reportId);
-}
-
-export function isRunActive(): boolean {
-  // Check if there is any local active run. (Remote runs don't lock local execution)
-  for (const run of activeRuns.values()) {
-    if (run.isLocal) return true;
-  }
-  return false;
-}
-
-export function abortActiveRun(reportId?: string): boolean {
-  // Aborts ALL runs if called generically, or we can abort specific runs
-  let aborted = false;
-  if (reportId) {
-    // Find the run id from database to match with activeRuns ?
-    // Or we can just search which run generated this logger/report
-    // Actually our run result doesn't have a direct reverse mapping here smoothly,
-    // let's do a simple DB lookup or just assume all local runs...
-    for (const run of activeRuns.values()) {
-      run.abortController.abort();
-      aborted = true;
-    }
-  } else {
-    for (const run of activeRuns.values()) {
-      run.abortController.abort();
-      aborted = true;
-    }
-  }
-  return aborted;
-}
-
-export function abortRunById(reportId: string): boolean {
-  // Find runId for reportId ? Wait, activeRuns key is runId right now.
-  // Actually we can iterate over activeRuns. If we find it, abort.
-  // Let's rely on abortRemoteRun inside dispatcher
-  return false;
-}
+import { getActiveRunLogger, setActiveRunLogger, removeActiveRunLogger, isRunActive, registerRun, unregisterRun, abortActiveRun } from './run-registry.ts';
 
 // ─── Main Entry Point ───
 
@@ -112,8 +63,8 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
   );
 
   const logger = new ExecutionLogger(reportId);
-  loggerRegistry.set(reportId, logger);
-  activeRuns.set(runId, { id: runId, abortController, isLocal });
+  setActiveRunLogger(reportId, logger);
+  registerRun(runId, { id: runId, abortController, isLocal });
 
   // Run asynchronously — don't block the HTTP response
   executeRunAsync(request, runId, reportId, logger, abortController.signal).catch(() => {
@@ -223,6 +174,7 @@ async function executeRunAsync(
     // ─── Execute (Remote or Local) ───
     if (request.agentId) {
       console.log(`[EXEC] Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
+      const { dispatchToAgent } = await import('../agent/dispatcher.ts');
       result = await dispatchToAgent(request.agentId, payload) as any;
     } else {
       const onEnvVarExtracted = (name: string, value: string) => {
@@ -317,6 +269,6 @@ async function executeRunAsync(
   console.log(`[EXEC] Task Finished: ${displayName} (${runId}) - Status: ${result.status} | Pass Rate: ${result.passRate}% | Cases: ${result.passedCases}/${result.totalCases}`);
 
   // Cleanup
-  loggerRegistry.delete(reportId);
-  activeRuns.delete(runId);
+  removeActiveRunLogger(reportId);
+  unregisterRun(runId);
 }
