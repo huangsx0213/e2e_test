@@ -16,6 +16,23 @@ type SelectorCandidate = {
   nameHint?: string;
 };
 
+type RichSnapshot = {
+  html: string;
+  contextHtml?: string;
+  textContent?: string;
+  pageUrl: string;
+  aria: {
+    role: string;
+    name: string;
+    describedBy?: string;
+    labelledBy?: string;
+    describedByText?: string;
+    labelledByText?: string;
+  };
+  rect?: { x: number; y: number; width: number; height: number };
+  attributes?: Record<string, string>;
+};
+
 function normalizeRecordedUrl(url: string): string {
   try {
     const parsed = new URL(url);
@@ -25,8 +42,15 @@ function normalizeRecordedUrl(url: string): string {
   }
 }
 
-function buildSelectorCandidates(targetHtml: string, ariaInfo: { role: string, name: string } | null): SelectorCandidate[] {
+function buildSelectorCandidates(snapshot: RichSnapshot | null): SelectorCandidate[] {
   const candidates: SelectorCandidate[] = [];
+
+  if (!snapshot) {
+    return candidates;
+  }
+
+  const targetHtml = snapshot.html;
+  const ariaInfo = snapshot.aria;
 
   if (ariaInfo && ariaInfo.role) {
     candidates.push({
@@ -57,6 +81,10 @@ function buildSelectorCandidates(targetHtml: string, ariaInfo: { role: string, n
     candidates.push({ type: 'getByText', value: ariaInfo.name, options: { exact: true }, nameHint: ariaInfo.name });
   }
 
+  if (snapshot.textContent && snapshot.textContent.length > 2 && snapshot.textContent.length < 50) {
+    candidates.push({ type: 'getByText', value: snapshot.textContent, options: { exact: true }, nameHint: snapshot.textContent });
+  }
+
   return candidates;
 }
 
@@ -69,9 +97,10 @@ function formatCandidateValue(candidate: SelectorCandidate): string {
   return String(candidate.value);
 }
 
-function fallbackCandidate(candidates: SelectorCandidate[], targetHtml: string) {
+function fallbackCandidate(candidates: SelectorCandidate[], snapshot: RichSnapshot | null) {
   if (candidates[0]) return candidates[0];
 
+  const targetHtml = snapshot?.html || '';
   const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
   return {
     type: 'CSS',
@@ -82,11 +111,10 @@ function fallbackCandidate(candidates: SelectorCandidate[], targetHtml: string) 
 
 async function generateSmartSelector(
   page: Page,
-  targetHtml: string,
-  ariaInfo: { role: string, name: string } | null,
+  snapshot: RichSnapshot | null,
   recordedPageUrl?: string,
 ): Promise<{ name: string, selectorType: string, value: string, isVerified: boolean, locators: { selectorType: string, value: string }[] }> {
-  const candidates = buildSelectorCandidates(targetHtml, ariaInfo);
+  const candidates = buildSelectorCandidates(snapshot);
 
   const validate = async () => {
     const validLocs: { selectorType: string, value: string, name: string }[] = [];
@@ -145,7 +173,7 @@ async function generateSmartSelector(
   const shouldSkipLiveValidation = !!recordedPageUrl && normalizeRecordedUrl(page.url()) !== normalizeRecordedUrl(recordedPageUrl);
 
   if (shouldSkipLiveValidation) {
-    const bestFallback = fallbackCandidate(candidates, targetHtml);
+    const bestFallback = fallbackCandidate(candidates, snapshot);
     const fallbackValue = formatCandidateValue(bestFallback);
     console.log(`[Validator] ⚠️ Page changed before validation, using snapshot fallback: ${bestFallback.type} -> ${fallbackValue}`);
     return {
@@ -182,7 +210,7 @@ async function generateSmartSelector(
   }
 
   // Final Fallback: Trust the Highest Priority Candidate even if validation failed (due to page navigation)
-  const bestFallback = fallbackCandidate(candidates, targetHtml);
+  const bestFallback = fallbackCandidate(candidates, snapshot);
   const fallbackValue = formatCandidateValue(bestFallback);
   
   console.log(`[Validator] ⚠️ Blind Fallback used: ${bestFallback.type} -> ${fallbackValue}`);
@@ -220,7 +248,64 @@ export async function startRecording(
   });
   const context = await activeBrowser.newContext({ viewport: null });
   activePage = await context.newPage();
-  let lastNavigationUrl = normalizeRecordedUrl(targetUrl);
+  let lastNavigationUrl = '';
+  let navigationBarrier: Promise<void> = Promise.resolve();
+
+  const waitForNavigationBarrier = async () => {
+    await navigationBarrier;
+  };
+
+  const setNavigationBarrier = (durationMs = 100) => {
+    navigationBarrier = new Promise((resolve) => {
+      setTimeout(resolve, durationMs);
+    });
+  };
+
+  const buildNavigationSnapshot = (navigationUrl: string, action: 'PAGE_LOAD' | 'NAVIGATE', previousUrl: string | null): RichSnapshot => ({
+    html: `<navigation url="${navigationUrl}"></navigation>`,
+    contextHtml: `<navigation url="${navigationUrl}"></navigation>`,
+    textContent: navigationUrl,
+    pageUrl: navigationUrl,
+    aria: {
+      role: 'navigation',
+      name: action === 'PAGE_LOAD' ? 'Page Load' : 'Navigation',
+      describedBy: previousUrl || undefined,
+      labelledBy: previousUrl || undefined,
+    },
+    rect: { x: 0, y: 0, width: 0, height: 0 },
+    attributes: {
+      url: navigationUrl,
+      action,
+      ...(previousUrl ? { previousUrl } : {}),
+    },
+  });
+
+  const emitNavigationStep = async (navigationUrl: string, action: 'PAGE_LOAD' | 'NAVIGATE', previousUrl: string | null) => {
+    if (!onStepRecorded) return;
+
+    const snapshot = buildNavigationSnapshot(navigationUrl, action, previousUrl);
+    await onStepRecorded({
+      action,
+      element: {
+        id: randomId('el'),
+        name: action === 'PAGE_LOAD' ? 'Page Load' : 'Navigation',
+        selectorType: 'URL',
+        value: navigationUrl,
+        description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
+        originalHtml: snapshot.html,
+        pageUrl: navigationUrl,
+        metadata: {
+          navigation: {
+            url: navigationUrl,
+            previousUrl,
+            action,
+          },
+          snapshot,
+        },
+      },
+      dataValue: navigationUrl,
+    });
+  };
 
   // Silence noisy browser logs, only show critical logic errors or our specific recorder logs
   activePage.on('console', msg => {
@@ -251,18 +336,26 @@ export async function startRecording(
     const normalizedUrl = normalizeRecordedUrl(currentUrl);
     if (normalizedUrl === lastNavigationUrl) return;
 
+    const previousUrl = lastNavigationUrl || null;
     lastNavigationUrl = normalizedUrl;
+    setNavigationBarrier();
     console.log(`[Recorder] Navigation observed: ${currentUrl}`);
+    void emitNavigationStep(currentUrl, previousUrl ? 'NAVIGATE' : 'PAGE_LOAD', previousUrl).catch((error) => {
+      console.error('❌ [Recorder] Failed to record navigation step:', error);
+    });
   });
 
   // Expose function to be called from the browser
-  await activePage.exposeFunction('onElementClicked', async (targetHtml: string, htmlContext: string, pageUrl: string, ariaInfo: any) => {
+  await activePage.exposeFunction('onElementClicked', async (snapshot: RichSnapshot) => {
     try {
       if (!activePage) return { success: false };
-      
-      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo, pageUrl);
+      await waitForNavigationBarrier();
+
+      const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
 
       // --- Meaningful Description Generation ---
+      const targetHtml = snapshot?.html || '';
+      const ariaInfo = snapshot?.aria || null;
       const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
       const tagName = tagMatch ? tagMatch[1].toUpperCase() : 'ELEMENT';
       const idMatch = targetHtml.match(/id=["']([^"']+)["']/);
@@ -282,7 +375,8 @@ export async function startRecording(
         locators: selectorData.locators,
         description: desc,
         originalHtml: targetHtml,
-        pageUrl: pageUrl,
+        pageUrl: snapshot?.pageUrl,
+        metadata: { snapshot },
       };
 
       console.log(`✨ [Recorder] Captured: ${newElement.name} via ${newElement.selectorType} (${newElement.value})`);
@@ -294,11 +388,15 @@ export async function startRecording(
     }
   });
 
-  await activePage.exposeFunction('onStepRecordedAction', async (action: string, targetHtml: string, contextHtml: string, pageUrl: string, ariaInfo: any, dataValue: any) => {
+  await activePage.exposeFunction('onStepRecordedAction', async (action: string, snapshot: RichSnapshot, dataValue: any) => {
     try {
       if (!activePage) return { success: false };
-      const selectorData = await generateSmartSelector(activePage, targetHtml, ariaInfo, pageUrl);
+      await waitForNavigationBarrier();
+
+      const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
       
+      const targetHtml = snapshot?.html || '';
+      const ariaInfo = snapshot?.aria || null;
       const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
       const tagName = tagMatch ? tagMatch[1].toUpperCase() : 'ELEMENT';
       const idMatch = targetHtml.match(/id=["']([^"']+)["']/);
@@ -318,7 +416,8 @@ export async function startRecording(
         locators: selectorData.locators,
         description: desc,
         originalHtml: targetHtml,
-        pageUrl: pageUrl,
+        pageUrl: snapshot?.pageUrl,
+        metadata: { snapshot },
       };
 
       console.log(`✨ [Recorder] Captured Step: ${action} on ${selectorData.selectorType}:${selectorData.value}`);
@@ -585,6 +684,38 @@ export async function startRecording(
       }
       setInterval(ensureUI, 250);
 
+      const readAttributes = (el) => {
+        const attrs = {};
+        if (!el.attributes) return attrs;
+        Array.from(el.attributes).forEach((attr) => {
+          attrs[attr.name] = attr.value;
+        });
+        return attrs;
+      };
+
+      const getElementRect = (el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+
+      const buildRichSnapshot = (target, contextNode) => {
+        const aria = getAriaInfo(target);
+        return {
+          html: cleanNode(target).outerHTML,
+          contextHtml: contextNode ? cleanNode(contextNode).outerHTML : undefined,
+          textContent: (target.innerText || target.textContent || '').trim().substring(0, 200),
+          pageUrl: window.location.href,
+          aria,
+          rect: getElementRect(target),
+          attributes: readAttributes(target),
+        };
+      };
+
       // PRIMARY ACTION: Right Click to Record
       document.addEventListener('contextmenu', async (e) => {
         if (window.__recorderState.isPaused || window.__recorderState.mode !== 'element') return;
@@ -595,8 +726,9 @@ export async function startRecording(
 
 
 
-          const ariaInfo = getAriaInfo(target);
-           console.log('[Recorder] Right-Click detected. ARIA:', ariaInfo);
+          const snapshot = buildRichSnapshot(target, target.parentElement || null);
+            console.log('[Recorder] Right-Click detected. ARIA:', snapshot.aria);
+          const ariaInfo = snapshot.aria;
           
           const cleanNode = (node) => {
             const clone = node.cloneNode(false);
@@ -608,21 +740,21 @@ export async function startRecording(
             return clone;
           }
 
-          const targetHtml = cleanNode(target).outerHTML;
-          let contextHtml = targetHtml;
+            const targetHtml = snapshot.html;
+            let contextHtml = snapshot.contextHtml || targetHtml;
           if (target.parentElement) {
             const parentClone = cleanNode(target.parentElement);
             parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
             contextHtml = parentClone.outerHTML;
           }
 
-          const pageUrl = window.location.href;
+            const pageUrl = snapshot.pageUrl;
           
           target.style.outline = '4px solid #10b981';
           target.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
 
           try {
-            await window.onElementClicked(targetHtml, contextHtml, pageUrl, ariaInfo);
+            await window.onElementClicked(snapshot);
             console.log('[Recorder] Element SUCCESS');
           } catch (err) {
             console.error('[Recorder] Element ERROR:', err);
@@ -638,10 +770,12 @@ export async function startRecording(
       
       const cleanNode = (node) => {
         const clone = node.cloneNode(false);
-        clone.removeAttribute('style');
+        if (clone.removeAttribute) {
+          clone.removeAttribute('style');
+        }
         const text = node.textContent?.trim() || '';
         if (text) {
-           clone.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
+          clone.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
         }
         return clone;
       };
@@ -655,28 +789,37 @@ export async function startRecording(
 
       // Official ACCESSIBLE NAME / ROLE Calculation (Browser-Side)
       const getAriaInfo = (el) => {
-        // 1. Get Role
         let role = el.getAttribute('role');
         if (!role) {
-           const tag = el.tagName.toLowerCase();
-           if (tag === 'button' || (tag === 'input' && (el.type === 'submit' || el.type === 'button'))) role = 'button';
-           else if (tag === 'select') role = 'combobox';
-           else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) role = el.type;
-           else if (tag === 'input' || tag === 'textarea') role = 'textbox';
-           else if (tag === 'a') role = 'link';
-           else if (tag === 'h1' || tag === 'h2' || tag === 'h3') role = 'heading';
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'button' || (tag === 'input' && (el.type === 'submit' || el.type === 'button'))) role = 'button';
+          else if (tag === 'select') role = 'combobox';
+          else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) role = el.type;
+          else if (tag === 'input' || tag === 'textarea') role = 'textbox';
+          else if (tag === 'a') role = 'link';
+          else if (tag === 'h1' || tag === 'h2' || tag === 'h3') role = 'heading';
         }
 
-        // 2. Get Accessible Name (Simple implementation of the official spec)
-        const name = el.innerText?.trim() || 
-                     el.getAttribute('aria-label') || 
-                     (el.placeholder) || 
-                     (el.labels && el.labels[0]?.innerText?.trim()) || 
-                     el.title || 
-                     el.alt || 
+        const name = el.innerText?.trim() ||
+                     el.getAttribute('aria-label') ||
+                     el.placeholder ||
+                     (el.labels && el.labels[0]?.innerText?.trim()) ||
+                     el.title ||
+                     el.alt ||
                      el.value || '';
-        
-        return { role, name: name.substring(0, 100).trim() };
+
+        const describedBy = el.getAttribute('aria-describedby') || '';
+        const labelledBy = el.getAttribute('aria-labelledby') || '';
+        const resolveReferences = (refIds) => refIds.split(/\s+/).map((id) => document.getElementById(id)?.innerText?.trim()).filter(Boolean).join(' ');
+
+        return {
+          role,
+          name: name.substring(0, 100).trim(),
+          describedBy: describedBy || undefined,
+          labelledBy: labelledBy || undefined,
+          describedByText: describedBy ? resolveReferences(describedBy).substring(0, 200).trim() || undefined : undefined,
+          labelledByText: labelledBy ? resolveReferences(labelledBy).substring(0, 200).trim() || undefined : undefined,
+        };
       };
 
       // 2. Left Click to Record Step
@@ -693,16 +836,16 @@ export async function startRecording(
              return;
            }
 
-           const ariaInfo = getAriaInfo(target);
-           const targetHtml = cleanNode(target).outerHTML;
-           let contextHtml = targetHtml;
+            const snapshot = buildRichSnapshot(target, target.parentElement || null);
+            const targetHtml = snapshot.html;
+            let contextHtml = snapshot.contextHtml || targetHtml;
            if (target.parentElement) {
              const parentClone = cleanNode(target.parentElement);
              parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
              contextHtml = parentClone.outerHTML;
            }
 
-           const pageUrl = window.location.href;
+            const pageUrl = snapshot.pageUrl;
            let action = 'CLICK';
            if (target.tagName.toLowerCase() === 'input' && (target.type === 'checkbox' || target.type === 'radio')) {
              return; // let change event handle this
@@ -710,7 +853,7 @@ export async function startRecording(
 
             if (window.onStepRecordedAction) {
                 console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
-                window.onStepRecordedAction(action, targetHtml, contextHtml, pageUrl, ariaInfo, null);
+                window.onStepRecordedAction(action, snapshot, null);
             }
          }
        }, { capture: true });
@@ -740,8 +883,8 @@ export async function startRecording(
            }
            target._trackerOriginalValue = currentValue; // update baseline
 
-           const ariaInfo = getAriaInfo(target);
-           const targetHtml = cleanNode(target).outerHTML;
+            const snapshot = buildRichSnapshot(target, target.parentElement || null);
+            const targetHtml = snapshot.html;
            let contextHtml = targetHtml;
            if (target.parentElement) {
              const parentClone = cleanNode(target.parentElement);
@@ -755,7 +898,7 @@ export async function startRecording(
            
            if (window.onStepRecordedAction) {
                console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
-               window.onStepRecordedAction(action, targetHtml, contextHtml, pageUrl, ariaInfo, value);
+                window.onStepRecordedAction(action, snapshot, value);
            }
         }
       }, { capture: true });

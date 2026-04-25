@@ -98,6 +98,30 @@ router.post('/start', async (req, res) => {
       if (!project) return;
       
       const { action, element: capturedEl, dataValue } = stepInfo;
+
+      if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
+        const navigationUrl = capturedEl?.pageUrl || capturedEl?.value || dataValue || '';
+        if (!navigationUrl) return;
+
+        const page = getOrCreatePage(project, navigationUrl);
+        const step: TestStep = {
+          id: randomId('step'),
+          action,
+          target: navigationUrl,
+          data: '',
+          description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
+          isVerified: true,
+          metadata: {
+            navigation: capturedEl?.metadata?.navigation,
+            snapshot: capturedEl?.metadata?.snapshot,
+            page: page.name,
+          },
+        };
+
+        broadcast('step-recorded', { projectId, step, type: 'UI' });
+        return;
+      }
+
       const page = getOrCreatePage(project, capturedEl.pageUrl);
       
       // Match element by locators to avoid duplicates and ensure reuse

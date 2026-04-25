@@ -32,6 +32,29 @@ function handleStepRecorded(data: any) {
   if (!project || !stepInfo) return;
 
   const { action, element, dataValue } = stepInfo;
+  if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
+    const navigationUrl = element?.pageUrl || element?.value || dataValue || '';
+    if (!navigationUrl) return;
+
+    const page = getOrCreatePage(project, navigationUrl);
+    const step: TestStep = {
+      id: randomId('step'),
+      action,
+      target: navigationUrl,
+      data: '',
+      description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
+      isVerified: true,
+      metadata: {
+        navigation: element?.metadata?.navigation,
+        snapshot: element?.metadata?.snapshot,
+        page: page.name,
+      },
+    };
+
+    broadcast('step-recorded', { projectId, step, type: 'UI' });
+    return;
+  }
+
   const page = getOrCreatePage(project, element.pageUrl);
 
   let existingEl = page.elements!.find(e => {

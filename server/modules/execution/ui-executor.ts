@@ -341,8 +341,14 @@ export class UIExecutor {
     const actionPromise = (async () => {
       switch (step.action) {
         case 'OPEN':
-          if (!data) throw new Error('Data (URL) is required for OPEN step');
-          await this.page.goto(data, { waitUntil: 'domcontentloaded' });
+        case 'GOTO':
+        case 'NAVIGATE':
+        case 'PAGE_LOAD':
+          {
+            const navigationUrl = data || resolvedSelector;
+            if (!navigationUrl) throw new Error('A URL is required for navigation steps');
+            await this.page.goto(navigationUrl, { waitUntil: 'domcontentloaded' });
+          }
           break;
 
         case 'WAIT':

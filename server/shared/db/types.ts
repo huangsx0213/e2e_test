@@ -26,6 +26,7 @@ export type DbElementRow = {
   description: string;
   original_html: string | null;
   page_url: string | null;
+  metadata: string | null;
 };
 
 export type DbModuleRow = {

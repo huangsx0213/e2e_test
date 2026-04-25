@@ -93,6 +93,7 @@ export const migration001InitialSchema: Migration = {
         description TEXT NOT NULL DEFAULT '',
         original_html TEXT,
         page_url TEXT,
+        metadata TEXT,
         position INTEGER NOT NULL
       );
 

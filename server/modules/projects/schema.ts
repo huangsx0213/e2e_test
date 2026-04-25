@@ -9,6 +9,7 @@ const elementSchema = z.object({
   description: z.string().optional(),
   originalHtml: z.string().optional(),
   pageUrl: z.string().optional(),
+  metadata: z.any().optional(),
 });
 
 const pageSchema = z.object({

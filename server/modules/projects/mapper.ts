@@ -20,6 +20,11 @@ function normalizeElement(input: Partial<UIElement>): UIElement {
     selectorType: asText(input.selectorType, 'CSS') as UIElement['selectorType'],
     value: asText(input.value),
     description: asText(input.description),
+    originalHtml: input.originalHtml,
+    pageUrl: input.pageUrl,
+    locators: Array.isArray(input.locators) ? input.locators : undefined,
+    isVerified: typeof input.isVerified === 'boolean' ? input.isVerified : undefined,
+    metadata: input.metadata,
   };
 }
 

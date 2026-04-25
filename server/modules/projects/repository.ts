@@ -46,8 +46,8 @@ export function saveProject(projectInput: Partial<Project>): Project {
       for (const [elementIndex, element] of page.elements.entries()) {
         db.prepare(
           `
-            INSERT INTO project_elements (id, page_id, name, selector_type, value, description, original_html, page_url, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO project_elements (id, page_id, name, selector_type, value, description, original_html, page_url, metadata, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         ).run(
           element.id,
@@ -58,6 +58,7 @@ export function saveProject(projectInput: Partial<Project>): Project {
           element.description || '',
           element.originalHtml || null,
           element.pageUrl || null,
+          element.metadata ? JSON.stringify(element.metadata) : null,
           elementIndex,
         );
       }
@@ -249,8 +250,8 @@ export function getProject(projectId: string): Project | undefined {
 
   // 2. All elements for every page in the project
   const allElements = db.prepare(
-    `SELECT id, page_id, name, selector_type, value, description, original_html, page_url
-     FROM project_elements
+    `SELECT id, page_id, name, selector_type, value, description, original_html, page_url, metadata
+       FROM project_elements
      WHERE page_id IN (SELECT id FROM project_pages WHERE project_id = ?)
      ORDER BY position`,
   ).all(projectId) as DbElementRow[];
@@ -403,6 +404,14 @@ export function getProject(projectId: string): Project | undefined {
       description: element.description,
       originalHtml: element.original_html || undefined,
       pageUrl: element.page_url || undefined,
+      metadata: (() => {
+        if (!element.metadata) return undefined;
+        try {
+          return JSON.parse(element.metadata);
+        } catch {
+          return undefined;
+        }
+      })(),
     })),
   }));
 
