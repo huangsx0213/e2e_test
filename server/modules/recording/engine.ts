@@ -17,6 +17,7 @@ type SelectorCandidate = {
 };
 
 type RichSnapshot = {
+  tagName: string;
   html: string;
   contextHtml?: string;
   textContent?: string;
@@ -107,6 +108,19 @@ function fallbackCandidate(candidates: SelectorCandidate[], snapshot: RichSnapsh
     value: tagMatch ? tagMatch[1].toLowerCase() : 'div',
     nameHint: 'RecordedElement',
   };
+}
+
+function buildElementDescription(snapshot: RichSnapshot): string {
+  const attrs = snapshot.attributes || {};
+  const testId = attrs['data-test'] || attrs['data-testid'] || attrs['data-qa'];
+
+  let desc = `[${snapshot.tagName || 'ELEMENT'}]`;
+  if (snapshot.aria?.role) desc += ` Role: ${snapshot.aria.role}`;
+  if (snapshot.aria?.name) desc += ` Name: "${snapshot.aria.name}"`;
+  if (attrs.id) desc += ` ID: #${attrs.id}`;
+  if (testId) desc += ` TestID: ${testId}`;
+
+  return desc;
 }
 
 async function generateSmartSelector(
@@ -262,6 +276,7 @@ export async function startRecording(
   };
 
   const buildNavigationSnapshot = (navigationUrl: string, action: 'PAGE_LOAD' | 'NAVIGATE', previousUrl: string | null): RichSnapshot => ({
+    tagName: 'NAVIGATION',
     html: `<navigation url="${navigationUrl}"></navigation>`,
     contextHtml: `<navigation url="${navigationUrl}"></navigation>`,
     textContent: navigationUrl,
@@ -307,6 +322,16 @@ export async function startRecording(
     });
   };
 
+  const recordNavigation = async (navigationUrl: string, action: 'PAGE_LOAD' | 'NAVIGATE', previousUrl: string | null) => {
+    const normalizedUrl = normalizeRecordedUrl(navigationUrl);
+    if (normalizedUrl === lastNavigationUrl) return;
+
+    lastNavigationUrl = normalizedUrl;
+    setNavigationBarrier();
+    console.log(`[Recorder] Navigation observed: ${navigationUrl}`);
+    await emitNavigationStep(navigationUrl, action, previousUrl);
+  };
+
   // Silence noisy browser logs, only show critical logic errors or our specific recorder logs
   activePage.on('console', msg => {
     const text = msg.text();
@@ -333,16 +358,22 @@ export async function startRecording(
     const currentUrl = frame.url();
     if (!currentUrl || currentUrl === 'about:blank') return;
 
-    const normalizedUrl = normalizeRecordedUrl(currentUrl);
-    if (normalizedUrl === lastNavigationUrl) return;
-
     const previousUrl = lastNavigationUrl || null;
-    lastNavigationUrl = normalizedUrl;
-    setNavigationBarrier();
-    console.log(`[Recorder] Navigation observed: ${currentUrl}`);
-    void emitNavigationStep(currentUrl, previousUrl ? 'NAVIGATE' : 'PAGE_LOAD', previousUrl).catch((error) => {
+    void recordNavigation(currentUrl, previousUrl ? 'NAVIGATE' : 'PAGE_LOAD', previousUrl).catch((error) => {
       console.error('❌ [Recorder] Failed to record navigation step:', error);
     });
+  });
+
+  await activePage.exposeFunction('onNavigationObserved', async (payload: { url: string; action: 'NAVIGATE'; previousUrl?: string | null }) => {
+    try {
+      if (!activePage || !payload?.url) return { success: false };
+
+      await recordNavigation(payload.url, payload.action, payload.previousUrl || null);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ [Recorder] Failed to capture navigation:', error);
+      return { success: false };
+    }
   });
 
   // Expose function to be called from the browser
@@ -354,18 +385,7 @@ export async function startRecording(
       const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
 
       // --- Meaningful Description Generation ---
-      const targetHtml = snapshot?.html || '';
-      const ariaInfo = snapshot?.aria || null;
-      const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
-      const tagName = tagMatch ? tagMatch[1].toUpperCase() : 'ELEMENT';
-      const idMatch = targetHtml.match(/id=["']([^"']+)["']/);
-      const testIdMatch = targetHtml.match(/data-test(?:id)?=["']([^"']+)["']/);
-
-      let desc = `[${tagName}]`;
-      if (ariaInfo?.role) desc += ` Role: ${ariaInfo.role}`;
-      if (ariaInfo?.name) desc += ` Name: "${ariaInfo.name}"`;
-      if (idMatch) desc += ` ID: #${idMatch[1]}`;
-      if (testIdMatch) desc += ` TestID: ${testIdMatch[1]}`;
+      const desc = buildElementDescription(snapshot);
 
       const newElement = {
         id: randomId('el'),
@@ -395,18 +415,7 @@ export async function startRecording(
 
       const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
       
-      const targetHtml = snapshot?.html || '';
-      const ariaInfo = snapshot?.aria || null;
-      const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
-      const tagName = tagMatch ? tagMatch[1].toUpperCase() : 'ELEMENT';
-      const idMatch = targetHtml.match(/id=["']([^"']+)["']/);
-      const testIdMatch = targetHtml.match(/data-test(?:id)?=["']([^"']+)["']/);
-
-      let desc = `[${tagName}]`;
-      if (ariaInfo?.role) desc += ` Role: ${ariaInfo.role}`;
-      if (ariaInfo?.name) desc += ` Name: "${ariaInfo.name}"`;
-      if (idMatch) desc += ` ID: #${idMatch[1]}`;
-      if (testIdMatch) desc += ` TestID: ${testIdMatch[1]}`;
+      const desc = buildElementDescription(snapshot);
 
       const elementData = {
         id: randomId('el'),
@@ -706,6 +715,7 @@ export async function startRecording(
       const buildRichSnapshot = (target, contextNode) => {
         const aria = getAriaInfo(target);
         return {
+          tagName: target.tagName.toUpperCase(),
           html: cleanNode(target).outerHTML,
           contextHtml: contextNode ? cleanNode(contextNode).outerHTML : undefined,
           textContent: (target.innerText || target.textContent || '').trim().substring(0, 200),
@@ -728,8 +738,6 @@ export async function startRecording(
 
           const snapshot = buildRichSnapshot(target, target.parentElement || null);
             console.log('[Recorder] Right-Click detected. ARIA:', snapshot.aria);
-          const ariaInfo = snapshot.aria;
-          
           const cleanNode = (node) => {
             const clone = node.cloneNode(false);
             clone.removeAttribute('style');
@@ -740,8 +748,6 @@ export async function startRecording(
             return clone;
           }
 
-            const targetHtml = snapshot.html;
-            let contextHtml = snapshot.contextHtml || targetHtml;
           if (target.parentElement) {
             const parentClone = cleanNode(target.parentElement);
             parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
@@ -837,7 +843,6 @@ export async function startRecording(
            }
 
             const snapshot = buildRichSnapshot(target, target.parentElement || null);
-            const targetHtml = snapshot.html;
             let contextHtml = snapshot.contextHtml || targetHtml;
            if (target.parentElement) {
              const parentClone = cleanNode(target.parentElement);
@@ -902,6 +907,33 @@ export async function startRecording(
            }
         }
       }, { capture: true });
+
+      const reportNavigation = (action) => {
+        const currentUrl = window.location.href;
+        if (currentUrl === window.__quantumqaLastNavigationUrl) return;
+
+        const previousUrl = window.__quantumqaLastNavigationUrl || null;
+        window.__quantumqaLastNavigationUrl = currentUrl;
+
+        if (window.onNavigationObserved) {
+          window.onNavigationObserved({ url: currentUrl, action, previousUrl });
+        }
+      };
+
+      window.__quantumqaLastNavigationUrl = window.location.href;
+
+      const { pushState, replaceState } = history;
+      history.pushState = function(...args) {
+        const result = pushState.apply(this, args);
+        reportNavigation('NAVIGATE');
+        return result;
+      };
+      history.replaceState = function(...args) {
+        const result = replaceState.apply(this, args);
+        reportNavigation('NAVIGATE');
+        return result;
+      };
+      window.addEventListener('popstate', () => reportNavigation('NAVIGATE'));
 
       // Auto-show guide badge
       setTimeout(ensureUI, 100);

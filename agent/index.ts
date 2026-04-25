@@ -31,7 +31,7 @@ const SERVER_URL = getArg('--url') || process.env.SERVER_URL || config.serverUrl
 const AGENT_ID = getArg('--name') || process.env.AGENT_ID || config.agentName || `agent-${Math.random().toString(36).substring(7)}`;
 
 const AGENT_SECRET = process.env.AGENT_SECRET || config.agentSecret || '';
-const AGENT_VERSION = config.agentVersion || CURRENT_AGENT_VERSION;
+const AGENT_VERSION = CURRENT_AGENT_VERSION;
 
 let ws: WebSocket;
 let isReconnect = false;

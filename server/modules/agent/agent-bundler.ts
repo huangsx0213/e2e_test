@@ -25,7 +25,6 @@ export async function createAgentPackage(serverUrl: string): Promise<Buffer> {
         const config = {
             serverUrl: serverUrl,
             agentName: `remote-agent-${Math.random().toString(36).substring(7)}`,
-            agentVersion: CURRENT_AGENT_VERSION,
         };
         fs.writeFileSync(path.join(tempDir, 'agent-config.json'), JSON.stringify(config, null, 2));
 
