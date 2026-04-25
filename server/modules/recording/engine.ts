@@ -394,7 +394,7 @@ export async function startRecording(
         value: selectorData.value,
         locators: selectorData.locators,
         description: desc,
-        originalHtml: targetHtml,
+originalHtml: snapshot.html,
         pageUrl: snapshot?.pageUrl,
         metadata: { snapshot },
       };
@@ -424,7 +424,7 @@ export async function startRecording(
         value: selectorData.value,
         locators: selectorData.locators,
         description: desc,
-        originalHtml: targetHtml,
+originalHtml: snapshot.html,
         pageUrl: snapshot?.pageUrl,
         metadata: { snapshot },
       };
