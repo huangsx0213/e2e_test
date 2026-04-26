@@ -1,5 +1,6 @@
 import type { Page, Project, TestModule, TestScenario, UIElement } from '../../shared/contracts/index.ts';
 import { db } from '../../shared/db/client.ts';
+import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type {
   DbBaseProjectRow,
   DbElementRow,
@@ -17,7 +18,10 @@ import { nullableText } from '../../shared/utils/index.ts';
 import { deserializeStep } from '../common/mapper.ts';
 import { normalizeProject } from './mapper.ts';
 
-export function saveProject(projectInput: Partial<Project>): Project {
+class ProjectRepository extends BaseCrudRepository<Project> {
+  protected table = 'projects';
+
+  save(projectInput: Partial<Project>): Project {
   const project = normalizeProject(projectInput);
 
   const transaction = db.transaction(() => {
@@ -232,7 +236,7 @@ export function saveProject(projectInput: Partial<Project>): Project {
   return getProject(project.id) || project;
 }
 
-export function getProject(projectId: string): Project | undefined {
+get(projectId: string): Project | undefined {
   const base = db
     .prepare('SELECT id, name, description FROM projects WHERE id = ?')
     .get(projectId) as DbBaseProjectRow | undefined;
@@ -493,23 +497,18 @@ export function getProject(projectId: string): Project | undefined {
   };
 }
 
-export function listProjects(): Project[] {
-  const rows = db.prepare('SELECT id FROM projects ORDER BY rowid').all() as Array<{
-    id: string;
-  }>;
-
-  return rows
-    .map((row) => getProject(row.id))
-    .filter((project): project is Project => Boolean(project));
 }
 
-export function deleteProject(projectId: string): void {
-  db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
-}
+const _repo = new ProjectRepository();
+
+export const listProjects = () => _repo.list();
+export const getProject = (id: string) => _repo.get(id);
+export const saveProject = (input: Partial<Project>) => _repo.save(input);
+export const deleteProject = (id: string) => _repo.remove(id);
 
 export const projectRepository = {
-  list: listProjects,
-  get: getProject,
-  save: saveProject,
-  remove: deleteProject,
+  list: _repo.list.bind(_repo),
+  get: _repo.get.bind(_repo),
+  save: _repo.save.bind(_repo),
+  remove: _repo.remove.bind(_repo),
 };

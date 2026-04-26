@@ -27,8 +27,8 @@ import { ExecutionLogger } from './logger.ts';
 import { db } from '../../shared/db/client.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { UIExecutor } from './ui-executor.ts';
-import { executeSingleCase, executeSuite, executeScenario, executePlan } from '../../shared/core/executor.ts';
-import type { TaskPayload } from '../../shared/contracts/index.ts';
+import { executeSingleCase, executeSuite, executeScenario, executePlan, type ExecutorDeps } from '../../shared/core/executor.ts';
+import type { TaskPayload, IVariableContext } from '../../shared/contracts/index.ts';
 import { settingsRepository } from '../settings/repository.ts';
 import { getActiveRunLogger, setActiveRunLogger, removeActiveRunLogger, isRunActive, registerRun, unregisterRun, abortActiveRun } from './run-registry.ts';
 
@@ -87,6 +87,12 @@ async function executeRunAsync(
   let result: RunResult;
   let displayName = `Execution: ${request.type}`;
   const uiExecutor = new UIExecutor();
+
+    const deps: ExecutorDeps = {
+      createContext: (options) => ExecutionContext.create(options) as IVariableContext,
+      executeApiStep: (step, context, assets, environment, logger, indent, onEnvVarExtracted) =>
+        executeApiStep(step, context as ExecutionContext, assets, environment, logger, indent, onEnvVarExtracted),
+    };
 
   try {
     // Load all required data from DB
@@ -185,16 +191,16 @@ async function executeRunAsync(
 
       if (request.type === 'case') {
         console.log(`[EXEC] Starting case execution for: ${displayName}`);
-        result = await executeSingleCase(payload, logger, signal, uiExecutor, onEnvVarExtracted);
+        result = await executeSingleCase(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
       } else if (request.type === 'suite') {
         console.log(`[EXEC] Starting suite execution for: ${displayName}`);
-        result = await executeSuite(payload, logger, signal, uiExecutor, onEnvVarExtracted);
+        result = await executeSuite(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
       } else if (request.type === 'scenario') {
         console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
-        result = await executeScenario(payload, logger, signal, uiExecutor, onEnvVarExtracted);
+        result = await executeScenario(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
       } else {
         console.log(`[EXEC] Starting plan execution for: ${displayName}`);
-        result = await executePlan(payload, logger, signal, uiExecutor, onEnvVarExtracted);
+        result = await executePlan(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
       }
     }
 

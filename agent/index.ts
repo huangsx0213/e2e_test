@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import WebSocket from 'ws';
 import { AgentLogger } from './AgentLogger.ts';
-import { executeSingleCase, executeSuite, executeScenario, executePlan } from '../shared/core/executor.ts';
+import { executeSingleCase, executeSuite, executeScenario, executePlan, type ExecutorDeps } from '../shared/core/executor.ts';
 import { UIExecutor } from '../server/modules/execution/ui-executor.ts';
+import { ExecutionContext } from '../server/modules/execution/context.ts';
+import { executeApiStep } from '../server/modules/execution/api-executor.ts';
 import { startRecording as startRecordingSession, stopRecording as stopRecordingSession } from './recording.ts';
 import type { TaskPayload } from '../shared/contracts/index.ts';
 import { CURRENT_AGENT_VERSION } from '../shared/constants/agent.ts';
@@ -231,6 +233,10 @@ function emitRecordingEvent(event: string, data: any) {
 async function handleExecution(payload: TaskPayload) {
   const logger = new AgentLogger(payload.reportId, sendMsg);
   const uiExecutor = new UIExecutor();
+  const deps: ExecutorDeps = {
+    createContext: (options) => ExecutionContext.create(options),
+    executeApiStep: executeApiStep as any,
+  };
   currentAbortController = new AbortController();
 
   logger.log({ stepId: 'agent-init', status: 'INFO', message: `🚀 Task picked up by Remote Agent: ${AGENT_ID}` });
@@ -242,13 +248,13 @@ async function handleExecution(payload: TaskPayload) {
   try {
     let result;
     if (payload.request.type === 'case') {
-      result = await executeSingleCase(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
+      result = await executeSingleCase(payload, logger, currentAbortController.signal, uiExecutor, deps, onEnvVarExtracted);
     } else if (payload.request.type === 'suite') {
-      result = await executeSuite(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
+      result = await executeSuite(payload, logger, currentAbortController.signal, uiExecutor, deps, onEnvVarExtracted);
     } else if (payload.request.type === 'scenario') {
-      result = await executeScenario(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
+      result = await executeScenario(payload, logger, currentAbortController.signal, uiExecutor, deps, onEnvVarExtracted);
     } else if (payload.request.type === 'plan') {
-      result = await executePlan(payload, logger, currentAbortController.signal, uiExecutor, onEnvVarExtracted);
+      result = await executePlan(payload, logger, currentAbortController.signal, uiExecutor, deps, onEnvVarExtracted);
     }
 
     if (result) {

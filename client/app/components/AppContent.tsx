@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import { Dashboard } from "@/features/dashboard/Dashboard";
 import { ElementRepo } from "@/features/elements/ElementRepo";
 import { TestRunner } from "@/features/execution/TestRunner";
@@ -12,73 +11,38 @@ import { TestBuilder } from "@/features/tests/TestBuilder";
 import { DynamicVariables } from "@/features/dynamic-variables/DynamicVariables";
 import { Documentation } from "@/features/documentation/Documentation";
 import { AgentManagement } from "@/features/agents/AgentManagement";
-import { AppTab, ExecutionState } from "@/app/types";
-import { CrudActions, EnvironmentActions } from "@/shared/hooks/useCrud";
-import {
-  ApiEndpoint,
-  BodyTemplate,
-  HeaderProfile,
-  Project,
-  TestSuite,
-  Settings as SettingsData,
-} from "@/shared/types";
+import type { Dispatch, SetStateAction } from "react";
+import { AppTab } from "@/app/types";
+import { useWorkspaceContext } from "@/app/contexts/WorkspaceContext";
+import { useDataContext } from "@/app/contexts/DataContext";
+import { useExecutionPanelContext } from "@/app/contexts/ExecutionContext";
 
 interface AppContentProps {
   activeTab: AppTab;
-  projects: Project[];
-  projectsApi: CrudActions<Project>;
-  suites: TestSuite[];
-  allSuites: TestSuite[];
-  suitesApi: CrudActions<TestSuite>;
-  headers: HeaderProfile[];
-  headersApi: CrudActions<HeaderProfile>;
-  bodies: BodyTemplate[];
-  bodiesApi: CrudActions<BodyTemplate>;
-  endpoints: ApiEndpoint[];
-  endpointsApi: CrudActions<ApiEndpoint>;
-  environments: string[];
-  environmentsApi: EnvironmentActions;
-  currentEnvironment: string;
-  currentProjectId: string;
-  setCurrentEnvironment: Dispatch<SetStateAction<string>>;
-  setCurrentProjectId: Dispatch<SetStateAction<string>>;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
-  setExecutionState: Dispatch<SetStateAction<ExecutionState | null>>;
-  settings: SettingsData[];
-  settingsApi: CrudActions<SettingsData>;
 }
 
-export function AppContent({
-  activeTab,
-  projects,
-  projectsApi,
-  suites,
-  allSuites,
-  suitesApi,
-  headers,
-  headersApi,
-  bodies,
-  bodiesApi,
-  endpoints,
-  endpointsApi,
-  environments,
-  environmentsApi,
-  currentEnvironment,
-  currentProjectId,
-  setCurrentEnvironment,
-  setCurrentProjectId,
-  setActiveTab,
-  setExecutionState,
-  settings,
-  settingsApi,
-}: AppContentProps) {
+export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
+  const {
+    projects, projectsApi, currentProjectId, currentEnvironment,
+    setCurrentEnvironment, setCurrentProjectId, settings, settingsApi,
+    environments, environmentsApi,
+  } = useWorkspaceContext();
+
+  const {
+    suites, suitesApi, headers, headersApi, bodies, bodiesApi,
+    endpoints, endpointsApi, scopedSuites, scopedHeaders, scopedBodies, scopedEndpoints,
+  } = useDataContext();
+
+  const { setExecutionState } = useExecutionPanelContext();
+
   switch (activeTab) {
     case "DASHBOARD":
       return (
         <Dashboard
           key={activeTab}
           projects={projects}
-          suites={suites}
+          suites={scopedSuites}
           environments={environments}
           currentProjectId={currentProjectId}
         />
@@ -89,11 +53,11 @@ export function AppContent({
           key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
-          suites={suites}
+          suites={scopedSuites}
           currentProjectId={currentProjectId}
-          headers={headers}
-          bodies={bodies}
-          endpoints={endpoints}
+          headers={scopedHeaders}
+          bodies={scopedBodies}
+          endpoints={scopedEndpoints}
           environments={environments}
           initialEnvironment={currentEnvironment}
         />
@@ -113,9 +77,9 @@ export function AppContent({
           key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
-          headers={headers}
-          bodies={bodies}
-          endpoints={endpoints}
+          headers={scopedHeaders}
+          bodies={scopedBodies}
+          endpoints={scopedEndpoints}
           currentProjectId={currentProjectId}
         />
       );
@@ -123,14 +87,14 @@ export function AppContent({
       return (
         <TestBuilder
           key={activeTab}
-          suites={suites}
+          suites={scopedSuites}
           suitesApi={suitesApi}
           projects={projects}
-          headers={headers}
+          headers={scopedHeaders}
           headersApi={headersApi}
-          bodies={bodies}
+          bodies={scopedBodies}
           bodiesApi={bodiesApi}
-          endpoints={endpoints}
+          endpoints={scopedEndpoints}
           endpointsApi={endpointsApi}
           onRunCase={(suiteId, caseId, runSuite) =>
             setExecutionState({ suiteId, caseId, runSuite })
@@ -143,7 +107,7 @@ export function AppContent({
       return (
         <EndpointManager
           key={activeTab}
-          endpoints={endpoints}
+          endpoints={scopedEndpoints}
           endpointsApi={endpointsApi}
           environments={environments}
           currentProjectId={currentProjectId}
@@ -153,7 +117,7 @@ export function AppContent({
       return (
         <HeadersManager
           key={activeTab}
-          headers={headers}
+          headers={scopedHeaders}
           headersApi={headersApi}
           currentProjectId={currentProjectId}
         />
@@ -162,17 +126,17 @@ export function AppContent({
       return (
         <BodyManager
           key={activeTab}
-          bodies={bodies}
+          bodies={scopedBodies}
           bodiesApi={bodiesApi}
           currentProjectId={currentProjectId}
         />
       );
     case "REPORTS":
       return (
-        <TestReport 
+        <TestReport
           key={activeTab}
-          currentProjectId={currentProjectId} 
-          suites={allSuites} 
+          currentProjectId={currentProjectId}
+          suites={suites}
         />
       );
     case "SETTINGS":

@@ -310,6 +310,90 @@ export interface ExecutionProgressEvent {
   percent: number;
 }
 
+export type LayerName =
+  | 'DYNAMIC'
+  | 'ENVIRONMENT'
+  | 'RUNTIME_ENVIRONMENT'
+  | 'SUITE'
+  | 'SUITE_DATA'
+  | 'RUNTIME_SUITE'
+  | 'MODULE_DEFAULT'
+  | 'SCENARIO'
+  | 'SCENARIO_DATA'
+  | 'RUNTIME_SCENARIO'
+  | 'OVERRIDE'
+  | 'CALLER_OVERRIDE'
+  | 'CASE';
+
+export interface IVariableContext {
+  resolve(key: string): string | undefined;
+  resolveAll(): Record<string, string>;
+  resolveDetailed(): Record<string, unknown>;
+  interpolate(template: string): string;
+  getCurrentStep(): string | null;
+  setCurrentStep(stepId: string): void;
+  setCurrentContext(scenarioName: string | null, suiteName: string | null, caseName: string | null): void;
+  onVariableSet(callback: (key: string, value: string, scope: string) => void): void;
+  createChildContext(moduleDefaults: Record<string, string>, callerOverrides: Record<string, string>): IVariableContext;
+  mergeChildExtractedVars(childContext: IVariableContext, namespace?: string): void;
+  clearCaseVars(): void;
+  clearSuiteVars(): void;
+  clearScenarioVars(): void;
+  setSharedRuntimeVars(vars: Record<string, string>): void;
+  setDynamicVariableCaches(caches: Record<string, string>): void;
+  getDynamicVariableCaches(): Record<string, string>;
+  setRuntimeVar(key: string, value: string, scope: string, namespace?: string): void;
+}
+
+export type IUiExecutor = {
+  initialize(options: {
+    headless: boolean;
+    viewportWidth?: number;
+    viewportHeight?: number;
+    logger?: IExecutionLogger;
+    recordVideo?: boolean;
+  }): Promise<void>;
+  executeStep(
+    step: TestStep,
+    context: IVariableContext,
+    pages: Page[],
+    environment: string,
+    onEnvVarExtracted?: (name: string, value: string) => void,
+  ): Promise<{
+    durationMs: number;
+    screenshot?: string;
+    extractedValue?: string;
+    assertionDetails?: { expected: string; actual: string; target?: string };
+    logs?: { status: string; level: string; message: string }[];
+  }>;
+  captureStateScreenshot(): Promise<string | undefined>;
+  cleanup(): Promise<void>;
+};
+
+export type IApiStepExecutor = (
+  step: TestStep,
+  context: IVariableContext,
+  assets: { headers: HeaderProfile[]; bodies: BodyTemplate[]; endpoints: ApiEndpoint[] },
+  environment: string,
+  logger?: IExecutionLogger,
+  indent?: string,
+  onEnvVarExtracted?: (name: string, value: string) => void,
+) => Promise<ApiExecutionResult>;
+
+export interface ApiExecutionResult {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  durationMs: number;
+  resolvedUrl: string;
+  resolvedMethod: string;
+  resolvedHeaders: Record<string, string>;
+  resolvedBody: string;
+  assertionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: any }[];
+  extractionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: any }[];
+}
+
 export interface TaskPayload {
   runId: string;
   reportId: string;
