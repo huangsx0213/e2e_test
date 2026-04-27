@@ -11,6 +11,16 @@ import type { UIElement, Page, Project, TestStep } from '../../shared/contracts/
 
 const router = Router();
 
+function scheduleRecorderWork(label: string, work: () => void) {
+  setImmediate(() => {
+    try {
+      work();
+    } catch (error) {
+      console.error(`[Recorder] Failed to process ${label}:`, error);
+    }
+  });
+}
+
 /**
  * Helper to resolve the correct Page object for a given URL
  */
@@ -72,222 +82,228 @@ router.post('/start', async (req, res) => {
       return res.json({ success: true, message: 'Recording started on agent' });
     }
 
-    await startRecording(targetUrl, projectId, apiFilter, async (elementRecord: any) => {
-      // 1. Right Click Element Recorder
-      const project = getProject(projectId);
-      if (!project) return;
-      
-      const page = getOrCreatePage(project, elementRecord.pageUrl);
-      
-      // Look for existing element by locator
-      const existingEl = page.elements!.find(e => 
-        e.value === elementRecord.value || 
-        (e.locators && e.locators.some(l => elementRecord.locators?.some((sl: any) => sl.value === l.value)))
-      );
+      await startRecording(targetUrl, projectId, apiFilter, async (elementRecord: any) => {
+      scheduleRecorderWork('element recording', () => {
+        // 1. Right Click Element Recorder
+        const project = getProject(projectId);
+        if (!project) return;
 
-      if (!existingEl) {
-        elementRecord.id = randomId('el');
-        page.elements!.push(elementRecord);
-        saveProject(project);
-      }
-      
-      broadcast('element-recorded', { projectId, pageId: page.id, element: existingEl || elementRecord });
+        const page = getOrCreatePage(project, elementRecord.pageUrl);
+
+        // Look for existing element by locator
+        const existingEl = page.elements!.find(e =>
+          e.value === elementRecord.value ||
+          (e.locators && e.locators.some(l => elementRecord.locators?.some((sl: any) => sl.value === l.value)))
+        );
+
+        if (!existingEl) {
+          elementRecord.id = randomId('el');
+          page.elements!.push(elementRecord);
+          saveProject(project);
+        }
+
+        broadcast('element-recorded', { projectId, pageId: page.id, element: existingEl || elementRecord });
+      });
     }, async (stepInfo: { action: string, element: any, dataValue: any }) => {
-      // 2. Left Click Step Recorder
-      const project = getProject(projectId);
-      if (!project) return;
-      
-      const { action, element: capturedEl, dataValue } = stepInfo;
+      scheduleRecorderWork('UI step recording', () => {
+        // 2. Left Click Step Recorder
+        const project = getProject(projectId);
+        if (!project) return;
 
-      if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
-        const navigationUrl = capturedEl?.pageUrl || capturedEl?.value || dataValue || '';
-        if (!navigationUrl) return;
+        const { action, element: capturedEl, dataValue } = stepInfo;
 
-        const page = getOrCreatePage(project, navigationUrl);
+        if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
+          const navigationUrl = capturedEl?.pageUrl || capturedEl?.value || dataValue || '';
+          if (!navigationUrl) return;
+
+          const page = getOrCreatePage(project, navigationUrl);
+          const step: TestStep = {
+            id: randomId('step'),
+            action,
+            target: navigationUrl,
+            data: '',
+            description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
+            isVerified: true,
+            metadata: {
+              navigation: capturedEl?.metadata?.navigation,
+              snapshot: capturedEl?.metadata?.snapshot,
+              page: page.name,
+            },
+          };
+
+          broadcast('step-recorded', { projectId, step, type: 'UI' });
+          return;
+        }
+
+        const page = getOrCreatePage(project, capturedEl.pageUrl);
+
+        // Match element by locators to avoid duplicates and ensure reuse
+        let existingEl = page.elements!.find(e => {
+          if (e.selectorType === capturedEl.selectorType && e.value === capturedEl.value) return true;
+          const incomingLocs = capturedEl.locators || [];
+          const savedLocs = e.locators || [];
+          return incomingLocs.some((il: any) =>
+            savedLocs.some((sl: any) => sl.selectorType === il.selectorType && sl.value === il.value) ||
+            (e.selectorType === il.selectorType && e.value === il.value)
+          );
+        });
+
+        if (!existingEl) {
+          existingEl = { ...capturedEl, id: randomId('el') };
+          page.elements!.push(existingEl);
+        }
+
+        saveProject(project);
+
         const step: TestStep = {
           id: randomId('step'),
           action,
-          target: navigationUrl,
-          data: '',
-          description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
-          isVerified: true,
-          metadata: {
-            navigation: capturedEl?.metadata?.navigation,
-            snapshot: capturedEl?.metadata?.snapshot,
-            page: page.name,
-          },
+          target: `${page.name}.${existingEl.name}`,
+          data: dataValue || '',
+          description: `Recorded: ${action} on ${existingEl.name}`,
+          isVerified: capturedEl.isVerified ?? existingEl.isVerified
         };
 
+        console.log('✨ [Recorder API] Emitting step to UI:', step);
         broadcast('step-recorded', { projectId, step, type: 'UI' });
-        return;
-      }
-
-      const page = getOrCreatePage(project, capturedEl.pageUrl);
-      
-      // Match element by locators to avoid duplicates and ensure reuse
-      let existingEl = page.elements!.find(e => {
-        if (e.selectorType === capturedEl.selectorType && e.value === capturedEl.value) return true;
-        const incomingLocs = capturedEl.locators || [];
-        const savedLocs = e.locators || [];
-        return incomingLocs.some((il: any) => 
-          savedLocs.some((sl: any) => sl.selectorType === il.selectorType && sl.value === il.value) ||
-          (e.selectorType === il.selectorType && e.value === il.value)
-        );
       });
 
-      if (!existingEl) {
-        existingEl = { ...capturedEl, id: randomId('el') };
-        page.elements!.push(existingEl);
-      }
-      
-      saveProject(project);
-      
-      const step: TestStep = {
-        id: randomId('step'),
-        action,
-        target: `${page.name}.${existingEl.name}`,
-        data: dataValue || '',
-        description: `Recorded: ${action} on ${existingEl.name}`,
-        isVerified: capturedEl.isVerified ?? existingEl.isVerified
-      };
-      
-      console.log('✨ [Recorder API] Emitting step to UI:', step);
-      broadcast('step-recorded', { projectId, step, type: 'UI' });
-
     }, async (apiInfo: any) => {
-      // 3. Network API Recorder
-      const { url, method, headers, postData, status } = apiInfo;
-      
-      let urlObj;
-      try { urlObj = new URL(url); } catch(e) { return; }
-      const basePath = urlObj.pathname;
-      const endpointName = `[${method}] ${basePath}`;
-      
-      // Auto-create or Update Endpoint
-      const allEndpoints = listApiEndpoints();
-      const currentOrigin = urlObj.origin;
-      const envKey = environment || "default";
-      const currentParams = Array.from(urlObj.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true }));
+      scheduleRecorderWork('API recording', () => {
+        // 3. Network API Recorder
+        const { url, method, headers, postData, status } = apiInfo;
 
-      let endpoint = allEndpoints.find(e => e.projectId === projectId && e.name === endpointName);
-      
-      if (!endpoint) {
-        endpoint = saveApiEndpoint({
-          id: randomId('ep'),
-          projectId,
-          name: endpointName,
-          method: method as any,
-          baseUrls: { [envKey]: currentOrigin },
-          parameters: currentParams
-        });
-      } else {
-        // Check for updates (new environment URL or new parameters)
-        let needsUpdate = false;
-        
-        // 1. Update Base URL for current environment if missing or different
-        if (!endpoint.baseUrls) endpoint.baseUrls = {};
-        if (endpoint.baseUrls[envKey] !== currentOrigin) {
-          endpoint.baseUrls[envKey] = currentOrigin;
-          needsUpdate = true;
-        }
+        let urlObj;
+        try { urlObj = new URL(url); } catch(e) { return; }
+        const basePath = urlObj.pathname;
+        const endpointName = `[${method}] ${basePath}`;
 
-        // 2. Merge Parameters
-        if (!endpoint.parameters) endpoint.parameters = [];
-        for (const p of currentParams) {
-          if (!endpoint.parameters.find(ep => ep.key === p.key)) {
-            endpoint.parameters.push(p);
+        // Auto-create or Update Endpoint
+        const allEndpoints = listApiEndpoints();
+        const currentOrigin = urlObj.origin;
+        const envKey = environment || "default";
+        const currentParams = Array.from(urlObj.searchParams.entries()).map(([key, value]) => ({ key, value, enabled: true }));
+
+        let endpoint = allEndpoints.find(e => e.projectId === projectId && e.name === endpointName);
+
+        if (!endpoint) {
+          endpoint = saveApiEndpoint({
+            id: randomId('ep'),
+            projectId,
+            name: endpointName,
+            method: method as any,
+            baseUrls: { [envKey]: currentOrigin },
+            parameters: currentParams
+          });
+        } else {
+          // Check for updates (new environment URL or new parameters)
+          let needsUpdate = false;
+
+          // 1. Update Base URL for current environment if missing or different
+          if (!endpoint.baseUrls) endpoint.baseUrls = {};
+          if (endpoint.baseUrls[envKey] !== currentOrigin) {
+            endpoint.baseUrls[envKey] = currentOrigin;
             needsUpdate = true;
+          }
+
+          // 2. Merge Parameters
+          if (!endpoint.parameters) endpoint.parameters = [];
+          for (const p of currentParams) {
+            if (!endpoint.parameters.find(ep => ep.key === p.key)) {
+              endpoint.parameters.push(p);
+              needsUpdate = true;
+            }
+          }
+
+          if (needsUpdate) {
+            endpoint = saveApiEndpoint(endpoint);
           }
         }
 
-        if (needsUpdate) {
-          endpoint = saveApiEndpoint(endpoint);
-        }
-      }
-      
-      // Auto-create Headers
-      const allHeaders = listHeaderProfiles();
-      let headerProfileId = undefined;
-      if (headers && Object.keys(headers).length > 0) {
-         const cleanHeaders = Object.entries(headers).filter(([k]) => {
-           const klow = k.toLowerCase();
-           return !['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'accept-encoding', 'accept', 'accept-language', 'dnt', 'origin', 'referer', 'user-agent', 'cookie', 'host', 'connection', 'content-length'].includes(klow);
-         }).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
+        // Auto-create Headers
+        const allHeaders = listHeaderProfiles();
+        let headerProfileId = undefined;
+        if (headers && Object.keys(headers).length > 0) {
+          const cleanHeaders = Object.entries(headers).filter(([k]) => {
+            const klow = k.toLowerCase();
+            return !['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site', 'accept-encoding', 'accept', 'accept-language', 'dnt', 'origin', 'referer', 'user-agent', 'cookie', 'host', 'connection', 'content-length'].includes(klow);
+          }).map(([k, v]) => ({ key: k, value: String(v), enabled: true }));
 
-         if (cleanHeaders.length > 0) {
+          if (cleanHeaders.length > 0) {
             const cleanHeadersStr = JSON.stringify(cleanHeaders.sort((a,b) => a.key.localeCompare(b.key)));
             let profile = allHeaders.find(h => {
-               if (h.projectId !== projectId) return false;
-               const hStr = JSON.stringify(h.headers.sort((a,b) => a.key.localeCompare(b.key)));
-               return hStr === cleanHeadersStr;
+              if (h.projectId !== projectId) return false;
+              const hStr = JSON.stringify(h.headers.sort((a,b) => a.key.localeCompare(b.key)));
+              return hStr === cleanHeadersStr;
             });
 
             if (!profile) {
-               const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
-             profile = saveHeaderProfile({
-                  id: randomId('hp'),
-                  projectId,
-                  name: profileName,
-                  headers: cleanHeaders
-               });
+              const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
+              profile = saveHeaderProfile({
+                id: randomId('hp'),
+                projectId,
+                name: profileName,
+                headers: cleanHeaders
+              });
             }
             headerProfileId = profile.id;
-         }
-      }
-      
-      // Auto-create Body
-      const allBodies = listBodyTemplates();
-      let bodyTemplateId = undefined;
-      if (postData) {
-         let finalContent = postData;
-         let contentType = 'text/plain';
-         try { 
-            const parsed = JSON.parse(postData); 
+          }
+        }
+
+        // Auto-create Body
+        const allBodies = listBodyTemplates();
+        let bodyTemplateId = undefined;
+        if (postData) {
+          let finalContent = postData;
+          let contentType = 'text/plain';
+          try {
+            const parsed = JSON.parse(postData);
             contentType = 'application/json';
             finalContent = JSON.stringify(parsed, null, 2);
-         } catch(e) {}
-         
-         let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
-         if (!bodyTemplate) {
+          } catch(e) {}
+
+          let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
+          if (!bodyTemplate) {
             const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
-             bodyTemplate = saveBodyTemplate({
-                id: randomId('bt'),
-                projectId,
-                name: bodyName,
-                contentType,
-               content: finalContent
+            bodyTemplate = saveBodyTemplate({
+              id: randomId('bt'),
+              projectId,
+              name: bodyName,
+              contentType,
+              content: finalContent
             });
-         }
-         bodyTemplateId = bodyTemplate.id;
-      }
-      
-      const validMethods = ['GET', 'POST', 'PUT', 'DELETE'];
-      const methodUpper = method.toUpperCase();
-      const actionMethod = validMethods.includes(methodUpper) ? methodUpper : 'GET';
+          }
+          bodyTemplateId = bodyTemplate.id;
+        }
 
-      const stepAssertions = [];
-      if (status && status !== 0) {
-         stepAssertions.push({
-             id: randomId('ast'),
-             source: 'API_STATUS',
-             operator: 'EQUALS',
-             expectedValue: String(status)
-         });
-      }
+        const validMethods = ['GET', 'POST', 'PUT', 'DELETE'];
+        const methodUpper = method.toUpperCase();
+        const actionMethod = validMethods.includes(methodUpper) ? methodUpper : 'GET';
 
-      const step: TestStep = {
-        id: randomId('step'),
-        action: `API_${actionMethod}`,
-        target: basePath, // Critical: executor needs the path, not the display name
-        data: '',
-        description: `Recorded API: ${method} ${basePath}`,
-        endpointId: endpoint.id,
-        headerProfileId: headerProfileId,
-        bodyTemplateId: bodyTemplateId,
-        assertions: stepAssertions
-      };
-      
-      broadcast('step-recorded', { projectId, step, type: 'API' });
+        const stepAssertions = [];
+        if (status && status !== 0) {
+          stepAssertions.push({
+            id: randomId('ast'),
+            source: 'API_STATUS',
+            operator: 'EQUALS',
+            expectedValue: String(status)
+          });
+        }
+
+        const step: TestStep = {
+          id: randomId('step'),
+          action: `API_${actionMethod}`,
+          target: basePath, // Critical: executor needs the path, not the display name
+          data: '',
+          description: `Recorded API: ${method} ${basePath}`,
+          endpointId: endpoint.id,
+          headerProfileId: headerProfileId,
+          bodyTemplateId: bodyTemplateId,
+          assertions: stepAssertions
+        };
+
+        broadcast('step-recorded', { projectId, step, type: 'API' });
+      });
     }, (state) => {
       broadcast('recorder-state-changed', { state });
     });

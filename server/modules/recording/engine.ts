@@ -828,6 +828,47 @@ originalHtml: snapshot.html,
         };
       };
 
+      const recentRecordedAction = { key: '', ts: 0 };
+
+      const buildActionKey = (action, snapshot) => action + '|' + snapshot.pageUrl + '|' + snapshot.html;
+
+      const recordUiAction = async (action, snapshot, dataValue) => {
+        if (!window.onStepRecordedAction) return;
+
+        const actionKey = buildActionKey(action, snapshot);
+        const now = Date.now();
+        if (recentRecordedAction.key === actionKey && now - recentRecordedAction.ts < 250) {
+          return;
+        }
+
+        recentRecordedAction.key = actionKey;
+        recentRecordedAction.ts = now;
+
+        console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
+        window.onStepRecordedAction(action, snapshot, dataValue);
+      };
+
+      document.addEventListener('pointerdown', async (e) => {
+        if (e.target.closest('#recorder-toolbar') || e.target.closest('#recorder-badge')) return;
+
+        if (window.__recorderState.isPaused || window.__recorderState.mode !== 'ui') return;
+
+        const target = e.target.closest('button, a, input, select, textarea, [role="button"], [tabindex]') || e.target;
+
+        if (target && target instanceof HTMLElement && isInteractive(target)) {
+          if (['input', 'textarea'].includes(target.tagName.toLowerCase()) && target.type !== 'submit' && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio') {
+            return;
+          }
+
+          if (target.tagName.toLowerCase() === 'input' && (target.type === 'checkbox' || target.type === 'radio')) {
+            return;
+          }
+
+          const snapshot = buildRichSnapshot(target, target.parentElement || null);
+          await recordUiAction('CLICK', snapshot, null);
+        }
+      }, { capture: true });
+
       // 2. Left Click to Record Step
       document.addEventListener('click', async (e) => {
         if (e.target.closest('#recorder-toolbar') || e.target.closest('#recorder-badge')) return;
