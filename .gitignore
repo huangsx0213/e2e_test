@@ -1,4 +1,10 @@
 node_modules/
+dist/
+.env
+.vite/
+temp/
+videos/
+scratch/
 database.sqlite
 database.sqlite-journal
 database.sqlite-shm
