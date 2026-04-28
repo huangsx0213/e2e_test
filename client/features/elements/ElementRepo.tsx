@@ -233,6 +233,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
 
 
   const startRecording = async () => {
+    if (!recordingTargetId) {
+      alert('Please select an agent to record on.');
+      return;
+    }
     if (!recordingUrl.trim() || !activePageId || !currentProjectId) return;
     setIsRecording(true);
     setIsRecordingModalOpen(false);
@@ -245,25 +249,26 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
           targetUrl: recordingUrl,
           projectId: currentProjectId,
           pageId: activePageId,
-          agentId: recordingTargetId || undefined,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || response.statusText);
-      }
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-      setIsRecording(false);
-    }
-  };
+        agentId: recordingTargetId,
+      }),
+    });
 
-  const stopRecording = async () => {
-    try {
-      const response = await fetch('/api/recording/stop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: recordingTargetId || undefined }),
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || response.statusText);
+    }
+  } catch (error) {
+    console.error('Failed to start recording:', error);
+    setIsRecording(false);
+  }
+};
+
+const stopRecording = async () => {
+  try {
+    const response = await fetch('/api/recording/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: recordingTargetId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);

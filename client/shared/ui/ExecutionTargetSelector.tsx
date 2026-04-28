@@ -67,26 +67,9 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
         </div>
 
         <div className="p-2 space-y-1 max-h-56 overflow-y-auto">
-          <button
-            type="button"
-            onClick={() => onSelect(null)}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors ${isLocal ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'hover:bg-slate-50 text-slate-700 border border-transparent'}`}
-          >
-            <div className="flex items-center gap-2">
-              <Server size={14} className="text-emerald-500" />
-              <div className="flex flex-col">
-                <span className="text-xs font-medium">Local Server</span>
-                <span className="text-[10px] text-slate-500">Run recording in this server process</span>
-              </div>
-            </div>
-            {isLocal && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-          </button>
-
-          <div className="pt-1 pb-0.5 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Remote Agents</div>
-
           {agents.length === 0 ? (
             <div className="px-3 py-3 text-center text-[11px] text-slate-500 italic border border-dashed border-slate-200 rounded-md bg-slate-50">
-              No remote agents connected.
+              No remote agents connected. Start an agent to begin recording.
             </div>
           ) : (
             agents.map(agent => (
