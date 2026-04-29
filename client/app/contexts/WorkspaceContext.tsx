@@ -1,19 +1,19 @@
 import { createContext, useContext } from 'react';
-import { CrudActions } from '@/shared/hooks/useCrud';
+import { MutationActions, EnvironmentMutationActions } from '@/shared/hooks/useQueryHooks';
 import { Project, Settings as SettingsData } from '@/shared/types';
 
 export interface WorkspaceContextValue {
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   currentProjectId: string;
   setCurrentProjectId: (id: string) => void;
   currentProject: Project | undefined;
   settings: SettingsData[];
-  settingsApi: CrudActions<SettingsData>;
+  settingsApi: MutationActions<SettingsData>;
   currentEnvironment: string;
   setCurrentEnvironment: (env: string) => void;
   environments: string[];
-  environmentsApi: import('@/shared/hooks/useCrud').EnvironmentActions;
+  environmentsApi: EnvironmentMutationActions;
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);

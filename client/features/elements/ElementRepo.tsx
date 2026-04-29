@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import { Project, Page, UIElement, SelectorType } from "@/shared/types";
 import {
   Trash2,
@@ -28,7 +30,7 @@ import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface ElementRepoProps {
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   currentProjectId: string;
 }
 
@@ -37,6 +39,8 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   projectsApi,
   currentProjectId,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activePageId, setActivePageId] = useState<string>("");
   const [activeElementId, setActiveElementId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -291,8 +295,8 @@ const stopRecording = async () => {
       try {
         const message = JSON.parse(event.data);
         if (message.event === 'element-recorded') {
-          console.log('New element recorded via WS, refreshing...');
-          projectsApi.refresh();
+          console.log('New element recorded via WS, invalidating projects...');
+          queryClient.invalidateQueries({ queryKey: queryKeys.projects });
         }
       } catch (e) {
         console.error('Failed to parse WS message:', e);
@@ -305,7 +309,7 @@ const stopRecording = async () => {
     return () => {
       ws.close();
     };
-  }, [projectsApi]);
+  }, []);
 
   return (
     <div className="h-full flex bg-gray-50 overflow-hidden relative">
@@ -333,16 +337,16 @@ const stopRecording = async () => {
       <div className="w-80 border-r border-gray-200 bg-gray-50 flex flex-col z-10">
         {/* Project Selector Header */}
         <div className="p-3 border-b border-gray-100 space-y-3 bg-gray-50/50">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <div className="flex items-center gap-2 px-2 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0"></div>
-                <span className="text-sm font-semibold text-gray-900 truncate">
-                  {activeProject?.name || "No Project Selected"}
-                </span>
-              </div>
-            </div>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <div className="flex items-center gap-2 px-2 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-green-500 shrink-0"></div>
+            <span className="text-sm font-semibold text-gray-900 truncate">
+              {activeProject?.name || "No Project Selected"}
+            </span>
           </div>
+        </div>
+      </div>
 
           <div className="relative">
             <Search
@@ -362,18 +366,31 @@ const stopRecording = async () => {
         {/* Page Tree */}
         <div className="flex-1 overflow-y-auto px-2 py-3">
           <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
-              Object Repository
-              <HelpTooltip content="Manage UI elements organized by pages. These elements can be reused across multiple test cases." />
-            </span>
-            <button
-              onClick={addPage}
-              disabled={!activeProject}
-              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
-              title="Add Page"
-            >
-              <Plus size={14} />
-            </button>
+        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+          Object Repository
+          <HelpTooltip content="Manage UI elements organized by pages. These elements can be reused across multiple test cases." />
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
+          <button
+            onClick={addPage}
+            disabled={!activeProject}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
+            title="Add Page"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
           </div>
 
           {!activeProject && (

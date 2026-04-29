@@ -1,22 +1,23 @@
 import { createContext, useContext } from 'react';
-import { CrudActions } from '@/shared/hooks/useCrud';
+import { MutationActions } from '@/shared/hooks/useQueryHooks';
 import {
   ApiEndpoint,
   BodyTemplate,
+  ExecutionReport,
   HeaderProfile,
   TestSuite,
 } from '@/shared/types';
 
 export interface DataContextValue {
   suites: TestSuite[];
-  suitesApi: CrudActions<TestSuite>;
+  suitesApi: MutationActions<TestSuite>;
   headers: HeaderProfile[];
-  headersApi: CrudActions<HeaderProfile>;
+  headersApi: MutationActions<HeaderProfile>;
   bodies: BodyTemplate[];
-  bodiesApi: CrudActions<BodyTemplate>;
+  bodiesApi: MutationActions<BodyTemplate>;
   endpoints: ApiEndpoint[];
-  endpointsApi: CrudActions<ApiEndpoint>;
-  reportsApi: CrudActions<import('@/shared/types').ExecutionReport>;
+  endpointsApi: MutationActions<ApiEndpoint>;
+  reportsApi: MutationActions<ExecutionReport>;
   scopedSuites: TestSuite[];
   scopedHeaders: HeaderProfile[];
   scopedBodies: BodyTemplate[];

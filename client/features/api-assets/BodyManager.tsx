@@ -8,15 +8,18 @@ import {
   AlignLeft,
   Check,
   X,
+  RefreshCw,
 } from "lucide-react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import { BodyTemplate } from "@/shared/types";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface BodyManagerProps {
   bodies: BodyTemplate[];
-  bodiesApi: CrudActions<BodyTemplate>;
+  bodiesApi: MutationActions<BodyTemplate>;
   currentProjectId: string;
 }
 
@@ -25,6 +28,8 @@ export const BodyManager: React.FC<BodyManagerProps> = ({
   bodiesApi,
   currentProjectId,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -50,17 +55,21 @@ export const BodyManager: React.FC<BodyManagerProps> = ({
       setSelectedId(null);
     }
   }, [bodies, selectedId]);
+const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (selectedTemplate) {
-      setEditName(selectedTemplate.name);
-      setEditDesc(selectedTemplate.description || "");
-      setEditType(selectedTemplate.contentType);
-      setEditContent(selectedTemplate.content);
-      setEditDefaultValues(selectedTemplate.defaultValues || {});
-      setSaveStatus("idle");
-    }
-  }, [selectedId, bodies]); // Re-run when selection changes
+useEffect(() => {
+  if (selectedId && selectedId !== lastSelectedId && selectedTemplate) {
+    setEditName(selectedTemplate.name);
+    setEditDesc(selectedTemplate.description || "");
+    setEditType(selectedTemplate.contentType);
+    setEditContent(selectedTemplate.content);
+    setEditDefaultValues(selectedTemplate.defaultValues || {});
+    setSaveStatus("idle");
+    setLastSelectedId(selectedId);
+  } else if (!selectedId) {
+    setLastSelectedId(null);
+  }
+}, [selectedId, selectedTemplate, lastSelectedId]);
 
   const handleCreate = async () => {
     if (!currentProjectId) return;
@@ -213,17 +222,31 @@ export const BodyManager: React.FC<BodyManagerProps> = ({
       {/* Sidebar List */}
       <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
         <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-              Body Templates
-              <HelpTooltip content="Create reusable request body templates with variables for your API calls." />
-            </h2>
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+            Body Templates
+            <HelpTooltip content="Create reusable request body templates with variables for your API calls." />
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                setIsRefreshing(true);
+                queryClient.invalidateQueries({ queryKey: queryKeys.bodies });
+                setTimeout(() => setIsRefreshing(false), 500);
+              }}
+              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            </button>
             <button
               onClick={handleCreate}
-              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+              title="Create Body Template"
             >
-              <Plus size={16} />
+              <Plus size={14} />
             </button>
+          </div>
           </div>
           <div className="relative">
             <Search

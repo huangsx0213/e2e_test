@@ -30,6 +30,8 @@ import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { AssertionEditor } from "./AssertionEditor";
 
+import { generateId } from "../utils";
+
 interface StepListProps {
   title?: string;
   steps: TestStep[];
@@ -1949,7 +1951,7 @@ export const StepList: React.FC<StepListProps> = ({
                                     onUpdateStep(step.id, {
                                       waitForNetwork: {
                                         ...step.waitForNetwork!,
-                                        extractors: [...exts, { id: crypto.randomUUID(), name: "", source: "API_BODY_JSON", expression: "", scope: "CASE" }]
+                                        extractors: [...exts, { id: generateId(), name: "", source: "API_BODY_JSON", expression: "", scope: "CASE" }]
                                       }
                                     });
                                   }}
@@ -2066,7 +2068,7 @@ export const StepList: React.FC<StepListProps> = ({
                             onClick={() => {
                               const mocks = step.networkMocks || [];
                               onUpdateStep(step.id, {
-                                networkMocks: [...mocks, { id: crypto.randomUUID(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
+                                networkMocks: [...mocks, { id: generateId(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
                               });
                             }}
                             className="text-blue-600 hover:text-blue-800 flex items-center gap-1"

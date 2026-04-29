@@ -11,11 +11,11 @@ import {
   TrendingUp,
   Globe,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 import { Project, TestSuite, ExecutionReport } from "@/shared/types";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
-import { useCrud } from "@/shared/hooks/useCrud";
-import { api } from "@/shared/services/api";
+import { useReports } from "@/shared/hooks/useQueryHooks";
 import {
   BarChart,
   Bar,
@@ -42,7 +42,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   environments,
   currentProjectId,
 }) => {
-  const [reports] = useCrud<ExecutionReport>(api.reports);
+  const { data: reports = [], refetch: refetchReports } = useReports();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const currentProject = projects.find((p) => p.id === currentProjectId);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
@@ -226,24 +227,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </p>
           </div>
-          <div className="flex items-center gap-3 print:hidden">
-            {/* Plan Selector */}
-            {availablePlans.length > 0 && (
-              <div className="relative">
-                <select
-                  value={selectedPlanId ?? ""}
-                  onChange={(e) => setSelectedPlanId(e.target.value || null)}
-                  className="appearance-none pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm cursor-pointer transition-colors"
-                >
-                  {availablePlans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      📋 {plan.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
-            )}
+        <div className="flex items-center gap-3 print:hidden">
+          {/* Plan Selector */}
+          {availablePlans.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedPlanId ?? ""}
+                onChange={(e) => setSelectedPlanId(e.target.value || null)}
+                className="appearance-none pl-4 pr-10 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm cursor-pointer transition-colors"
+              >
+                {availablePlans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    📋 {plan.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          )}
+        <button
+          onClick={() => {
+            setIsRefreshing(true);
+            refetchReports();
+            setTimeout(() => setIsRefreshing(false), 500);
+          }}
+          className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+        >
+          <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} /> Refresh
+          </button>
             <button
               onClick={handleExportHtml}
               className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"

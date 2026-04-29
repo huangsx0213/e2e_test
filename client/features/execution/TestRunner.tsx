@@ -36,18 +36,16 @@ import {
   BodyTemplate,
   ApiEndpoint,
 } from "@/shared/types";
-import { CrudActions, useCrud } from "@/shared/hooks/useCrud";
+import { MutationActions, useReports, useReportMutations } from "@/shared/hooks/useQueryHooks";
 import { ScenarioExecutionRunner } from "@/features/execution/ScenarioExecutionRunner";
 import { TestPlanBuilder } from "@/features/execution/TestPlanBuilder";
 import { TestPlanExecutionRunner } from "@/features/execution/TestPlanExecutionRunner";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
-import { api } from "@/shared/services/api";
-import { ExecutionReport } from "@/shared/types";
 
 interface TestRunnerProps {
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   suites: TestSuite[];
   currentProjectId: string;
   headers: HeaderProfile[];
@@ -99,7 +97,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   );
   const [isDataVariablesExpanded, setIsDataVariablesExpanded] = useState(false);
 
-  const [reports, reportsApi, loadingReports] = useCrud<ExecutionReport>(api.reports);
+  const { data: reports = [] } = useReports();
+  const reportsApi = useReportMutations();
 
   const handleAddDataRow = () => {
     if (!activeScenario) return;

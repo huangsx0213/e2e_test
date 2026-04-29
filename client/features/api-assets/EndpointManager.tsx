@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Save, Search, Globe, Check, X } from "lucide-react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { Plus, Trash2, Save, Search, Globe, Check, X, RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import { ApiEndpoint } from "@/shared/types";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface EndpointManagerProps {
   endpoints: ApiEndpoint[];
-  endpointsApi: CrudActions<ApiEndpoint>;
+  endpointsApi: MutationActions<ApiEndpoint>;
   environments: string[];
   currentProjectId: string;
 }
@@ -18,6 +20,8 @@ export const EndpointManager: React.FC<EndpointManagerProps> = ({
   environments,
   currentProjectId,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -124,36 +128,48 @@ export const EndpointManager: React.FC<EndpointManagerProps> = ({
         onClose={() => setDeleteConfirm(null)}
       />
       {/* Sidebar List */}
-      <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
-        <div className="p-4 border-b border-gray-200 bg-white space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-              <Globe size={18} className="text-blue-600" />
-              Endpoints
-              <HelpTooltip content="Manage API endpoints and their base URLs across different environments." />
-            </h2>
+    <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
+      <div className="p-4 border-b border-gray-200 bg-white space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+            Endpoints
+            <HelpTooltip content="Manage API endpoints and their base URLs across different environments." />
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                setIsRefreshing(true);
+                queryClient.invalidateQueries({ queryKey: queryKeys.endpoints });
+                setTimeout(() => setIsRefreshing(false), 500);
+              }}
+              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            </button>
             <button
               onClick={handleCreate}
-              className="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm"
+              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
               title="Create New Endpoint"
             >
-              <Plus size={16} />
+              <Plus size={14} />
             </button>
           </div>
-          <div className="relative">
-            <Search
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
-              size={14}
-            />
-            <input
-              type="text"
-              placeholder="Search endpoints..."
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
         </div>
+        <div className="relative">
+          <Search
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            size={14}
+          />
+          <input
+            type="text"
+            placeholder="Search endpoints..."
+            className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+      </div>
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {filteredEndpoints.map((endpoint) => (

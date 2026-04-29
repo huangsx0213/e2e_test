@@ -1,5 +1,5 @@
 import { chromium, Browser, Page, selectors } from 'playwright';
-import { randomId } from '../../shared/utils/index.ts';
+import { randomId } from '../server/shared/utils/index.ts';
 
 // Configure common test-id attributes globally
 try {
@@ -263,17 +263,7 @@ export async function startRecording(
   const context = await activeBrowser.newContext({ viewport: null });
   activePage = await context.newPage();
   let lastNavigationUrl = '';
-  let navigationBarrier: Promise<void> = Promise.resolve();
-
-  const waitForNavigationBarrier = async () => {
-    await navigationBarrier;
-  };
-
-  const setNavigationBarrier = (durationMs = 100) => {
-    navigationBarrier = new Promise((resolve) => {
-      setTimeout(resolve, durationMs);
-    });
-  };
+  let pendingUiAction: Promise<any> = Promise.resolve();
 
   const buildNavigationSnapshot = (navigationUrl: string, action: 'PAGE_LOAD' | 'NAVIGATE', previousUrl: string | null): RichSnapshot => ({
     tagName: 'NAVIGATION',
@@ -327,8 +317,8 @@ export async function startRecording(
     if (normalizedUrl === lastNavigationUrl) return;
 
     lastNavigationUrl = normalizedUrl;
-    setNavigationBarrier();
-    console.log(`[Recorder] Navigation observed: ${navigationUrl}`);
+    console.log(`[Recorder] Navigation observed: ${navigationUrl}, waiting for UI actions...`);
+    await pendingUiAction;
     await emitNavigationStep(navigationUrl, action, previousUrl);
   };
 
@@ -376,13 +366,12 @@ export async function startRecording(
     }
   });
 
-  // Expose function to be called from the browser
   await activePage.exposeFunction('onElementClicked', async (snapshot: RichSnapshot) => {
-    try {
-      if (!activePage) return { success: false };
-      await waitForNavigationBarrier();
+    const processAction = async () => {
+      try {
+        if (!activePage) return { success: false };
 
-      const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
+        const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
 
       // --- Meaningful Description Generation ---
       const desc = buildElementDescription(snapshot);
@@ -406,12 +395,16 @@ originalHtml: snapshot.html,
       console.error('❌ [Recorder] Failed to capture element:', error);
       return { success: false };
     }
+    };
+    const actionPromise = processAction();
+    pendingUiAction = pendingUiAction.then(() => actionPromise).catch(() => {});
+    return await actionPromise;
   });
 
   await activePage.exposeFunction('onStepRecordedAction', async (action: string, snapshot: RichSnapshot, dataValue: any) => {
-    try {
-      if (!activePage) return { success: false };
-      await waitForNavigationBarrier();
+    const processAction = async () => {
+      try {
+        if (!activePage) return { success: false };
 
       const selectorData = await generateSmartSelector(activePage, snapshot, snapshot?.pageUrl);
       
@@ -442,6 +435,10 @@ originalHtml: snapshot.html,
       console.error('❌ [Recorder] Failed to capture step:', error);
       return { success: false };
     }
+    };
+    const actionPromise = processAction();
+    pendingUiAction = pendingUiAction.then(() => actionPromise).catch(() => {});
+    return await actionPromise;
   });
 
   let recorderState = { isPaused: true, mode: 'ui', started: false, action: 'INIT' } as any;
@@ -748,11 +745,6 @@ originalHtml: snapshot.html,
             return clone;
           }
 
-          if (target.parentElement) {
-            const parentClone = cleanNode(target.parentElement);
-            parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
-            contextHtml = parentClone.outerHTML;
-          }
 
             const pageUrl = snapshot.pageUrl;
           
@@ -830,7 +822,10 @@ originalHtml: snapshot.html,
 
       const recentRecordedAction = { key: '', ts: 0 };
 
-      const buildActionKey = (action, snapshot) => action + '|' + snapshot.pageUrl + '|' + snapshot.html;
+      const buildActionKey = (action, snapshot) => {
+        const rectKey = snapshot.rect ? \`\${snapshot.rect.x},\${snapshot.rect.y}\` : '';
+        return \`\${action}|\${snapshot.pageUrl}|\${snapshot.tagName}|\${rectKey}\`;
+      };
 
       const recordUiAction = async (action, snapshot, dataValue) => {
         if (!window.onStepRecordedAction) return;
@@ -884,12 +879,6 @@ originalHtml: snapshot.html,
            }
 
             const snapshot = buildRichSnapshot(target, target.parentElement || null);
-            let contextHtml = snapshot.contextHtml || targetHtml;
-           if (target.parentElement) {
-             const parentClone = cleanNode(target.parentElement);
-             parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
-             contextHtml = parentClone.outerHTML;
-           }
 
             const pageUrl = snapshot.pageUrl;
            let action = 'CLICK';
@@ -897,10 +886,7 @@ originalHtml: snapshot.html,
              return; // let change event handle this
            }
 
-            if (window.onStepRecordedAction) {
-                console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
-                window.onStepRecordedAction(action, snapshot, null);
-            }
+            await recordUiAction(action, snapshot, null);
          }
        }, { capture: true });
 
@@ -930,13 +916,6 @@ originalHtml: snapshot.html,
            target._trackerOriginalValue = currentValue; // update baseline
 
             const snapshot = buildRichSnapshot(target, target.parentElement || null);
-            const targetHtml = snapshot.html;
-           let contextHtml = targetHtml;
-           if (target.parentElement) {
-             const parentClone = cleanNode(target.parentElement);
-             parentClone.innerHTML = '\\n  ' + targetHtml + '\\n';
-             contextHtml = parentClone.outerHTML;
-           }
            const pageUrl = window.location.href;
            
            let value = target.value;

@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Server, Trash2, PowerOff, Power, RefreshCw, Layers, Clock, X, Terminal, Download } from 'lucide-react';
 import { api } from '@/shared/services/api';
+import { useAgents, useQueue, useAgentMutations } from '@/shared/hooks/useQueryHooks';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 import { CURRENT_AGENT_VERSION } from '../../../shared/constants/agent';
@@ -142,51 +143,31 @@ function AgentLogPanel({ agentId, isOpen, onClose }: { agentId: string; isOpen: 
 }
 
 export function AgentManagement() {
-  const [agents, setAgents] = useState<RemoteAgent[]>([]);
-  const [queue, setQueue] = useState<QueuedTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { data: agents = [], isLoading: loadingAgents, refetch: refetchAgents } = useAgents();
+  const { data: queue = [], refetch: refetchQueue } = useQueue();
+  const agentMutations = useAgentMutations();
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editLabels, setEditLabels] = useState<string>('');
   const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchData = useCallback(async (isManualRefresh = false) => {
-    if (isManualRefresh) setIsRefreshing(true);
-    try {
-      const [agentData, queueData] = await Promise.all([
-        api.agents.list(),
-        api.queue.list(),
-      ]);
-      setAgents(agentData);
-      setQueue(queueData);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-      if (isManualRefresh) {
-        setTimeout(() => setIsRefreshing(false), 500);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  const handleManualRefresh = () => {
+    setIsRefreshing(true);
+    refetchAgents();
+    refetchQueue();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   const toggleAgentStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'disabled' ? 'offline' : 'disabled';
-    await api.agents.updateStatus(id, newStatus);
-    fetchData();
+    await agentMutations.updateStatus(id, newStatus);
   };
 
   const confirmDeleteAgent = async () => {
     if (agentToDelete) {
-      await api.agents.delete(agentToDelete);
+      await agentMutations.remove(agentToDelete);
       setAgentToDelete(null);
-      fetchData();
     }
   };
 
@@ -204,7 +185,7 @@ export function AgentManagement() {
     window.open('/api/agents/download', '_blank');
   };
 
-  if (loading && !agents.length) {
+  if (loadingAgents && !agents.length) {
     return <div className="p-8 text-slate-500">Loading runner nodes...</div>;
   }
 
@@ -277,7 +258,7 @@ export function AgentManagement() {
             </button>
             
             <button
-              onClick={() => fetchData(true)}
+              onClick={() => handleManualRefresh()}
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded shadow-sm text-slate-700 hover:bg-slate-50 transition-colors"
             >
               <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} /> Refresh
@@ -342,13 +323,13 @@ export function AgentManagement() {
                       <div className="w-24 text-center text-xs font-mono text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">v{agent.version || CURRENT_AGENT_VERSION}</div>
                       <div className="flex-1 min-w-[120px] flex items-center gap-1.5 flex-wrap">
                         {editingAgentId === agent.id ? (
-                          <input type="text" autoFocus className="text-xs px-2 py-0.5 border border-blue-400 rounded outline-none w-48 shadow-sm" value={editLabels} onChange={(e) => setEditLabels(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); } else if (e.key === 'Escape') setEditingAgentId(null); }} onBlur={() => { api.agents.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)).then(fetchData); setEditingAgentId(null); }} />
+                          <input type="text" autoFocus className="text-xs px-2 py-0.5 border border-blue-400 rounded outline-none w-48 shadow-sm" value={editLabels} onChange={(e) => setEditLabels(e.target.value)}                     onKeyDown={(e) => { if (e.key === 'Enter') { agentMutations.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)); setEditingAgentId(null); } else if (e.key === 'Escape') setEditingAgentId(null); }} onBlur={() => { agentMutations.updateLabels(agent.id, editLabels.split(',').map(s => s.trim()).filter(Boolean)); setEditingAgentId(null); }} />
                         ) : (
                           <>
                             {agent.labels.length > 0 ? agent.labels.map(label => (
                               <span key={label} className="group inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[11px] border border-indigo-100 font-medium">
                                 {label}
-                                <button onClick={(e) => { e.stopPropagation(); api.agents.updateLabels(agent.id, agent.labels.filter(l => l !== label)).then(fetchData); }} className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 ml-0.5"><X size={10} /></button>
+                                <button onClick={(e) => { e.stopPropagation(); agentMutations.updateLabels(agent.id, agent.labels.filter(l => l !== label)); }} className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-600 ml-0.5"><X size={10} /></button>
                               </span>
                             )) : <span className="text-[11px] text-slate-400 italic">—</span>}
                             <button onClick={() => { setEditingAgentId(agent.id); setEditLabels(agent.labels.join(', ')); }} className="px-1.5 py-0.5 text-slate-400 rounded text-[11px] border border-slate-200 hover:bg-slate-50 hover:text-slate-600 transition-colors">+</button>

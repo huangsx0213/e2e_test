@@ -6,23 +6,26 @@ import {
   Settings as SettingsIcon,
   Globe,
   FolderGit2,
+  RefreshCw,
 } from "lucide-react";
-import { CrudActions, EnvironmentActions } from "@/shared/hooks/useCrud";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions, EnvironmentMutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import { Project, Settings as SettingsType } from "@/shared/types";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface SettingsProps {
   environments: string[];
-  environmentsApi: EnvironmentActions;
+  environmentsApi: EnvironmentMutationActions;
   currentEnvironment: string;
   setCurrentEnvironment: React.Dispatch<React.SetStateAction<string>>;
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   currentProjectId: string;
   setCurrentProjectId: React.Dispatch<React.SetStateAction<string>>;
   settings: SettingsType[];
-  settingsApi: CrudActions<SettingsType>;
+  settingsApi: MutationActions<SettingsType>;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -37,6 +40,8 @@ export const Settings: React.FC<SettingsProps> = ({
   settings,
   settingsApi,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [activeTab, setActiveTab] = useState<
@@ -117,10 +122,23 @@ export const Settings: React.FC<SettingsProps> = ({
         {/* Settings Header & Tabs */}
         <div className="flex flex-col gap-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Settings
-              <HelpTooltip content="Configure projects, environments, and system settings." />
-            </h2>
+      <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+        Settings
+        <HelpTooltip content="Configure projects, environments, and system settings." />
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+              queryClient.invalidateQueries({ queryKey: queryKeys.environments });
+              queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            className="ml-2 p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={16} className={isRefreshing ? "animate-spin" : ""} />
+        </button>
+      </h2>
             <p className="text-slate-500 text-sm mt-1">
               Manage your workspace, environments, and system configuration.
             </p>

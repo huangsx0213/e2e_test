@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CrudActions } from '@/shared/hooks/useCrud';
+import { MutationActions } from '@/shared/hooks/useQueryHooks';
 import { Project, Settings } from '@/shared/types';
 
 interface WorkspaceSelectionParams {
@@ -9,7 +9,7 @@ interface WorkspaceSelectionParams {
   loadingProjects: boolean;
   loadingEnvironments: boolean;
   loadingSettings: boolean;
-  settingsApi: CrudActions<Settings>;
+  settingsApi: MutationActions<Settings>;
 }
 
 export function useWorkspaceSelection({

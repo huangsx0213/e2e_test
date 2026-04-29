@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ExecutionRunner } from "@/features/execution/ExecutionRunner";
 import { SuiteExecutionRunner } from "@/features/execution/SuiteExecutionRunner";
 import { AppContent } from "@/app/components/AppContent";
@@ -10,10 +11,12 @@ import { AppProviders } from "@/app/contexts/AppProviders";
 import { useWorkspaceContext } from "@/app/contexts/WorkspaceContext";
 import { useDataContext } from "@/app/contexts/DataContext";
 import { useExecutionPanelContext } from "@/app/contexts/ExecutionContext";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<AppTab>("DASHBOARD");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const queryClient = useQueryClient();
 
   const { currentProject, currentEnvironment, environments } = useWorkspaceContext();
   const { suites, headers, bodies, endpoints, reportsApi } = useDataContext();
@@ -21,11 +24,31 @@ function AppShell() {
 
   const currentProjectName = currentProject?.name || "No Project Selected";
 
+  const TAB_QUERY_KEYS: Record<AppTab, readonly string[]> = {
+    DASHBOARD: queryKeys.reports,
+    RUN: queryKeys.reports,
+    ELEMENTS: queryKeys.projects,
+    MODULES: queryKeys.projects,
+    TESTS: [...queryKeys.suites, ...queryKeys.headers, ...queryKeys.bodies, ...queryKeys.endpoints],
+    HEADERS: queryKeys.headers,
+    BODIES: queryKeys.bodies,
+    ENDPOINTS: queryKeys.endpoints,
+    REPORTS: queryKeys.reports,
+    SETTINGS: queryKeys.projects,
+    DOCUMENTATION: [],
+    DYNAMIC_VARIABLES: [],
+    AGENTS: queryKeys.agents,
+  };
+
   const handleTabChange = useCallback(
     (tab: AppTab) => {
       setActiveTab(tab);
+      const keys = TAB_QUERY_KEYS[tab];
+      if (keys.length > 0) {
+        queryClient.invalidateQueries({ queryKey: keys });
+      }
     },
-    [],
+    [queryClient],
   );
 
   const activeSuite = React.useMemo(

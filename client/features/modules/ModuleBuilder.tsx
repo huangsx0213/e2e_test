@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from "react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import {
   Project,
   TestModule,
@@ -21,6 +23,7 @@ import {
   Database,
   Workflow,
   Variable,
+  RefreshCw,
 } from "lucide-react";
 import { StepList } from "@/shared/testing/StepList";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
@@ -28,7 +31,7 @@ import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface ModuleBuilderProps {
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
   endpoints: ApiEndpoint[];
@@ -43,6 +46,8 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
   endpoints,
   currentProjectId,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeModuleId, setActiveModuleId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -259,18 +264,31 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
 
         <div className="flex-1 overflow-y-auto px-2 py-3">
           <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
-              Shared Modules
-              <HelpTooltip content="Create reusable sequences of test steps that can be included in multiple test cases." />
-            </span>
-            <button
-              onClick={addModule}
-              disabled={!activeProject}
-              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
-              title="Add Module"
-            >
-              <Plus size={14} />
-            </button>
+        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+          Shared Modules
+          <HelpTooltip content="Create reusable sequences of test steps that can be included in multiple test cases." />
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
+          <button
+            onClick={addModule}
+            disabled={!activeProject}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
+            title="Add Module"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
           </div>
 
           {!activeProject && (

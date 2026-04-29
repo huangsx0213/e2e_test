@@ -14,12 +14,14 @@ interface ExecutionTargetSelectorProps {
   selectedAgentId: string | null;
   onSelect: (agentId: string | null) => void;
   mode?: 'execution' | 'recording';
+  onSelectedStatusChange?: (status: RemoteAgent['status'] | null) => void;
 }
 
 export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = ({
   selectedAgentId,
   onSelect,
   mode = 'execution',
+  onSelectedStatusChange,
 }) => {
   const [agents, setAgents] = useState<RemoteAgent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,16 +48,26 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (onSelectedStatusChange) {
+      const agent = agents.find(a => a.id === selectedAgentId);
+      onSelectedStatusChange(agent?.status ?? null);
+    }
+  }, [agents, selectedAgentId]);
+
   const isAnyQueue = selectedAgentId === 'QUEUE:ANY';
   const isLabelQueue = selectedAgentId?.startsWith('QUEUE:LABEL:');
   const labelMatch = selectedAgentId?.replace('QUEUE:LABEL:', '');
   const isLocal = !selectedAgentId;
 
   if (mode === 'recording') {
+    const selectedAgent = agents.find(a => a.id === selectedAgentId);
+    const isNonIdle = selectedAgent && selectedAgent.status !== 'idle';
+
     return (
       <div className="w-full rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Recording Targets</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Recording Target</span>
           <button
             type="button"
             onClick={fetchAgents}
@@ -66,29 +78,41 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
           </button>
         </div>
 
+        {isNonIdle && (
+          <div className="px-3 py-2 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+            <Zap size={12} className="text-amber-500 shrink-0" />
+            <span className="text-[11px] text-amber-700">
+              This agent is <span className="font-semibold">{selectedAgent.status}</span>. Recording may fail or queue until it becomes idle.
+            </span>
+          </div>
+        )}
+
         <div className="p-2 space-y-1 max-h-56 overflow-y-auto">
           {agents.length === 0 ? (
             <div className="px-3 py-3 text-center text-[11px] text-slate-500 italic border border-dashed border-slate-200 rounded-md bg-slate-50">
               No remote agents connected. Start an agent to begin recording.
             </div>
           ) : (
-            agents.map(agent => (
-              <button
-                key={agent.id}
-                type="button"
-                onClick={() => onSelect(agent.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors ${selectedAgentId === agent.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'hover:bg-slate-50 text-slate-700 border border-transparent'}`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Monitor size={14} className={agent.status === 'disabled' ? 'text-slate-400' : 'text-slate-500'} />
-                  <div className="flex flex-col min-w-0">
-                    <span className={`text-xs font-medium truncate ${agent.status === 'disabled' ? 'line-through opacity-60' : ''}`}>{agent.id}</span>
-                    <span className="text-[10px] uppercase text-slate-500 truncate">{agent.os} • {agent.status}</span>
+            agents.map(agent => {
+              const nonIdle = agent.status !== 'idle';
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  onClick={() => onSelect(agent.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-colors ${selectedAgentId === agent.id ? 'bg-blue-50 text-blue-700 border border-blue-200' : nonIdle ? 'hover:bg-slate-50 text-slate-400 border border-transparent' : 'hover:bg-slate-50 text-slate-700 border border-transparent'}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Monitor size={14} className={agent.status === 'disabled' ? 'text-slate-400' : nonIdle ? 'text-amber-400' : 'text-slate-500'} />
+                    <div className="flex flex-col min-w-0">
+                      <span className={`text-xs font-medium truncate ${agent.status === 'disabled' ? 'line-through opacity-60' : ''}`}>{agent.id}</span>
+                      <span className={`text-[10px] uppercase truncate ${nonIdle ? 'text-amber-500 font-medium' : 'text-slate-500'}`}>{agent.os} • {agent.status}</span>
+                    </div>
                   </div>
-                </div>
-                {selectedAgentId === agent.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
-              </button>
-            ))
+                  {selectedAgentId === agent.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
+                </button>
+              );
+            })
           )}
         </div>
       </div>

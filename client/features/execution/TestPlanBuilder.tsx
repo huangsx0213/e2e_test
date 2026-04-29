@@ -9,15 +9,18 @@ import {
   X,
   Workflow,
   GripVertical,
+  RefreshCw,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Project, TestPlan, TestScenario } from "@/shared/types";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface TestPlanBuilderProps {
   projects: Project[];
-  projectsApi: CrudActions<Project>;
+  projectsApi: MutationActions<Project>;
   currentProjectId: string;
   onRunPlan: (planId: string) => void;
 }
@@ -28,6 +31,8 @@ export const TestPlanBuilder: React.FC<TestPlanBuilderProps> = ({
   currentProjectId,
   onRunPlan,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const currentProject = projects.find((p) => p.id === currentProjectId);
   const plans = currentProject?.plans || [];
   const scenarios = currentProject?.scenarios || [];
@@ -152,21 +157,33 @@ export const TestPlanBuilder: React.FC<TestPlanBuilderProps> = ({
       />
       {/* Left Sidebar - Plans List */}
       <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col z-10">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
-          <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-            <Workflow size={18} className="text-indigo-600" />
-            Test Plans
-            <HelpTooltip content="Manage test plans which orchestrate multiple test scenarios." />
-          </h2>
-          <button
-            onClick={handleCreatePlan}
-            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-            title="Create Test Plan"
-          >
-            <Plus size={18} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto px-2 py-3">
+          <div className="flex items-center justify-between px-2 mb-2">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+              Test Plans
+              <HelpTooltip content="Manage test plans which orchestrate multiple test scenarios." />
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  setIsRefreshing(true);
+                  queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+                  setTimeout(() => setIsRefreshing(false), 500);
+                }}
+                className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+              </button>
+              <button
+                onClick={handleCreatePlan}
+                className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+                title="Create Test Plan"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
           {plans.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">
               No test plans yet.

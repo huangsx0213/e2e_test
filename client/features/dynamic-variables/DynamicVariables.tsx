@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Plus, Trash2, Save, Play, RefreshCw, Search, Variable, Info, Check, X, Copy, ChevronDown, ChevronRight, Wand2, Zap, Braces } from 'lucide-react';
-import { api } from '@/shared/services/api';
 import { DynamicVariable } from '@/shared/types';
+import { useDynamicVariables, useDynamicVariableMutations } from '@/shared/hooks/useQueryHooks';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
+import { api } from '@/shared/services/api';
 
 interface DynamicVariablesProps {
   currentProjectId: string;
@@ -125,13 +126,11 @@ const SYSTEM_TRANSFORMATIONS = [
   }
 ];
 
-// Outside the component
-let variablesCache: { projectId: string, data: DynamicVariable[] } | null = null;
-
 export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProjectId }) => {
-  const [variables, setVariables] = useState<DynamicVariable[]>([]);
+  const { data: variables = [], isLoading: loading, refetch: refetchVariables } = useDynamicVariables(currentProjectId);
+  const variableMutations = useDynamicVariableMutations(currentProjectId);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedVarId, setSelectedVarId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(!variablesCache || variablesCache.projectId !== currentProjectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'manage' | 'reference'>('manage');
@@ -151,33 +150,6 @@ export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProje
   const [previewSamples, setPreviewSamples] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
-
-  useEffect(() => {
-    if (currentProjectId) {
-      loadVariables();
-    }
-  }, [currentProjectId]);
-
-  const loadVariables = async (forceRefresh = false) => {
-    if (!currentProjectId) return;
-    
-    if (!forceRefresh && variablesCache && variablesCache.projectId === currentProjectId) {
-      setVariables(variablesCache.data);
-      setLoading(false);
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const data = await api.dynamicVariables.list(currentProjectId);
-      variablesCache = { projectId: currentProjectId, data };
-      setVariables(data);
-    } catch (error) {
-      console.error('Failed to load dynamic variables', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -208,12 +180,11 @@ export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProje
     setSaveStatus('saving');
     try {
       if (selectedVarId) {
-        await api.dynamicVariables.update(selectedVarId, { name, expression, description, evaluationStrategy });
+        await variableMutations.update(selectedVarId, { name, expression, description, evaluationStrategy });
       } else {
-        const newVar = await api.dynamicVariables.create(currentProjectId, { name, expression, description, evaluationStrategy });
+        const newVar = await variableMutations.create({ name, expression, description, evaluationStrategy });
         setSelectedVarId(newVar.id);
       }
-      await loadVariables(true);
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (error) {
@@ -225,11 +196,10 @@ export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProje
 
   const handleDelete = async (id: string) => {
     try {
-      await api.dynamicVariables.delete(id);
+      await variableMutations.remove(id);
       if (selectedVarId === id) {
         handleCreateNew();
       }
-      await loadVariables(true);
       setDeleteConfirm(null);
     } catch (error) {
       console.error('Failed to delete dynamic variable', error);
@@ -293,13 +263,26 @@ export const DynamicVariables: React.FC<DynamicVariablesProps> = ({ currentProje
               Dynamic Variables
               <HelpTooltip content="Define reusable dynamic variables that can be used across your tests using {{variable_name}} syntax." />
             </span>
-            <button
-              onClick={handleCreateNew}
-              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
-              title="Add Variable"
-            >
-              <Plus size={14} />
-            </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              refetchVariables();
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
+          <button
+            onClick={handleCreateNew}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Add Variable"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
           </div>
 
           <div className="space-y-0.5">

@@ -1,4 +1,4 @@
-import { startRecording as engineStartRecording, stopRecording as engineStopRecording } from '../server/modules/recording/engine.ts';
+import { startRecording as engineStartRecording, stopRecording as engineStopRecording } from './engine.ts';
 
 type RecordingEmitter = (event: string, data: any) => void;
 
@@ -8,6 +8,8 @@ export async function startRecording(
   apiFilter: string | undefined,
   environment: string | undefined,
   pageId: string | undefined,
+  caseId: string | undefined,
+  suiteId: string | undefined,
   emit: RecordingEmitter,
 ) {
   if (environment) {
@@ -22,16 +24,16 @@ export async function startRecording(
     projectId,
     apiFilter,
     async (element: any) => {
-      emit('element-recorded', { projectId, pageId, element });
+      emit('element-recorded', { projectId, pageId, element, caseId, suiteId });
     },
     async (stepInfo: { action: string; element: any; dataValue: any }) => {
-      emit('step-recorded', { projectId, stepInfo, type: 'UI' });
+      emit('step-recorded', { projectId, stepInfo, type: 'UI', caseId, suiteId });
     },
     async (apiInfo: any) => {
-      emit('api-recorded', { projectId, environment, pageId, apiInfo });
+      emit('api-recorded', { projectId, environment, pageId, apiInfo, caseId, suiteId });
     },
     (state) => {
-      emit('recorder-state-changed', { state });
+      emit('recorder-state-changed', { state, caseId, suiteId });
     },
   );
 }

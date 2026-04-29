@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { StepAssertion, AssertionSource, AssertionOperator } from '@/shared/types';
+import { generateId } from '../utils';
 
 interface AssertionEditorProps {
   assertions: StepAssertion[];
@@ -11,7 +12,7 @@ interface AssertionEditorProps {
 export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEditorProps) {
   const handleAdd = () => {
     const newAssertion: StepAssertion = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       source: 'API_BODY_JSON',
       operator: 'EQUALS',
       expectedValue: '',

@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
+import { queryKeys } from "@/shared/hooks/queryKeys";
 import {
   TestSuite,
   TestCase,
@@ -46,14 +48,14 @@ import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface TestBuilderProps {
   suites: TestSuite[];
-  suitesApi: CrudActions<TestSuite>;
+  suitesApi: MutationActions<TestSuite>;
   projects: Project[];
   headers: HeaderProfile[];
-  headersApi: CrudActions<HeaderProfile>;
+  headersApi: MutationActions<HeaderProfile>;
   bodies: BodyTemplate[];
-  bodiesApi: CrudActions<BodyTemplate>;
+  bodiesApi: MutationActions<BodyTemplate>;
   endpoints: ApiEndpoint[];
-  endpointsApi: CrudActions<ApiEndpoint>;
+  endpointsApi: MutationActions<ApiEndpoint>;
   onRunCase: (suiteId: string, caseId?: string, runSuite?: boolean) => void;
   currentProjectId: string;
   currentEnvironment: string;
@@ -114,6 +116,8 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   currentProjectId,
   currentEnvironment,
 }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeSuiteId, setActiveSuiteId] = useState<string>("");
   // Default to empty to show Suite Overview first
   const [activeCaseId, setActiveCaseId] = useState<string>("");
@@ -124,6 +128,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [recordingUrl, setRecordingUrl] = useState("");
   const [apiFilter, setApiFilter] = useState("*api*");
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
+  const [recordingTargetStatus, setRecordingTargetStatus] = useState<'idle' | 'busy' | 'offline' | 'disabled' | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
 
@@ -421,9 +426,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       alert('Please select an agent to record on.');
       return;
     }
-    if (!recordingUrl.trim() || !activeSuiteId || !currentProjectId) return;
+  if (!recordingUrl.trim() || !activeSuiteId || !currentProjectId || !activeCaseId) return;
     setIsRecording(true);
     setIsRecordingModalOpen(false);
+    recordingCaseIdRef.current = activeCaseId;
 
     try {
       const response = await fetch('/api/recording/start', {
@@ -434,9 +440,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
           projectId: currentProjectId,
           environment: currentEnvironment,
           apiFilter: apiFilter,
-        agentId: recordingTargetId,
-      }),
-    });
+          agentId: recordingTargetId,
+          caseId: activeCaseId,
+          suiteId: activeSuiteId,
+        }),
+      });
 
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
@@ -464,26 +472,9 @@ const stopRecording = async () => {
     } finally {
       setIsRecording(false);
     }
-  };
+};
 
-  const pendingStepsRef = useRef<any[]>([]);
-  const activeCaseRef = useRef(activeCase);
-  const flushTimeoutRef = useRef<any>(null);
-  
-  // Keep ref strictly up to date without triggering dependency cycles
-  useEffect(() => {
-    activeCaseRef.current = activeCase;
-  }, [activeCase]);
-
-  const flushPendingSteps = useCallback(() => {
-    if (pendingStepsRef.current.length > 0) {
-      console.log('Flushing buffered steps:', pendingStepsRef.current.length);
-      updateCaseSpecific(activeSuiteId, activeCaseId, {
-        steps: [...(activeCaseRef.current?.steps || []), ...pendingStepsRef.current]
-      });
-      pendingStepsRef.current = [];
-    }
-  }, [activeSuiteId, activeCaseId]);
+  const recordingCaseIdRef = useRef<string | null>(null);
 
   // Real-time updates via WebSocket during recording
   useEffect(() => {
@@ -491,40 +482,53 @@ const stopRecording = async () => {
     const wsUrl = `${protocol}//${window.location.host}`;
     const ws = new WebSocket(wsUrl);
 
+    ws.onopen = () => {
+      if (currentProjectId) {
+        ws.send(JSON.stringify({ event: 'SUBSCRIBE_PROJECT', data: { projectId: currentProjectId } }));
+      }
+    };
+
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
         if (message.event === 'step-recorded' && message.data.projectId === currentProjectId) {
-          console.log('New step recorded via WS, refreshing...');
-          // Currently, this will reload the Project. Wait, we need to append to the current activeCase steps?
-          // Since the WS message might not know the activeCaseId, the backend just saved the Project? No, backend doesn't know activeCase.
-          // Wait! The backend doesn't have cases in db for steps in real-time recording, it just broadcasts.
           const step = message.data.step;
-          if (step && activeCaseId) {
-             console.log('Buffering recorded step:', step.action);
-             pendingStepsRef.current.push(step);
-             
-             if (message.data.type === 'API') {
-                endpointsApi.refresh();
-                headersApi.refresh();
-                bodiesApi.refresh();
-             }
+          const wsCaseId = message.data.caseId;
+          const wsSuiteId = message.data.suiteId;
+          if (step && wsCaseId) {
+            console.log('Optimistic update: step recorded', step.action, '-> case', wsCaseId);
+            queryClient.setQueryData<TestSuite[]>(queryKeys.suites, (oldSuites) => {
+              if (!oldSuites) return oldSuites;
+              return oldSuites.map(s => {
+                if (s.id !== wsSuiteId) return s;
+                return {
+                  ...s,
+                  cases: s.cases.map(c => {
+                    if (c.id !== wsCaseId) return c;
+                    return { ...c, steps: [...c.steps, step] };
+                  }),
+                };
+              });
+            });
 
-             if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current);
-             flushTimeoutRef.current = setTimeout(flushPendingSteps, 300);
+            if (message.data.type === 'API') {
+              queryClient.invalidateQueries({ queryKey: queryKeys.endpoints });
+              queryClient.invalidateQueries({ queryKey: queryKeys.headers });
+              queryClient.invalidateQueries({ queryKey: queryKeys.bodies });
+            }
           }
         } else if (message.event === 'recorder-state-changed') {
           const { state } = message.data;
           if (state.action === 'STOP') {
-             console.log('Recording stopped from toolbar, flushing...');
-             flushPendingSteps();
-             setIsRecording(false);
-             suitesApi.refresh();
+            console.log('Recording stopped from toolbar');
+            setIsRecording(false);
+            recordingCaseIdRef.current = null;
+            queryClient.invalidateQueries({ queryKey: queryKeys.suites });
           } else if (state.action === 'PAUSE') {
-             console.log('Recording paused from toolbar');
-             setIsRecording(true);
+            console.log('Recording paused from toolbar');
+            setIsRecording(true);
           } else if (state.action === 'START') {
-             setIsRecording(true);
+            setIsRecording(true);
           }
         }
       } catch (error) {
@@ -532,13 +536,12 @@ const stopRecording = async () => {
       }
     };
 
-    ws.onopen = () => console.log('WS connected for step recording updates');
     ws.onerror = (e) => console.error('WS error:', e);
 
     return () => {
       ws.close();
     };
-  }, [activeCaseId, activeSuiteId, currentProjectId, flushPendingSteps, endpointsApi, headersApi, bodiesApi, suitesApi]);
+  }, [activeSuiteId, currentProjectId]);
 
 
   return (
@@ -582,12 +585,12 @@ const stopRecording = async () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Recording Target</label>
-                <ExecutionTargetSelector
-                  selectedAgentId={recordingTargetId}
-                  onSelect={setRecordingTargetId}
-                  mode="recording"
-                />
+          <ExecutionTargetSelector
+            selectedAgentId={recordingTargetId}
+            onSelect={setRecordingTargetId}
+            onSelectedStatusChange={setRecordingTargetStatus}
+            mode="recording"
+          />
               </div>
 
               <div>
@@ -621,7 +624,7 @@ const stopRecording = async () => {
               </button>
               <button 
                 onClick={startRecording}
-                disabled={!recordingUrl}
+                disabled={!recordingUrl || recordingTargetStatus !== 'idle'}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Play size={14} className="fill-current" /> Start Recording
@@ -697,17 +700,30 @@ const stopRecording = async () => {
 
         <div className="flex-1 overflow-y-auto px-2 py-3">
           <div className="flex items-center justify-between px-2 mb-2">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
-              Test Explorer
-              <HelpTooltip content="Organize your tests into suites and cases." />
-            </span>
-            <button
-              onClick={addSuite}
-              className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
-              title="Add Suite"
-            >
-              <Plus size={14} />
-            </button>
+        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center">
+          Test Explorer
+          <HelpTooltip content="Organize your tests into suites and cases." />
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              queryClient.invalidateQueries({ queryKey: queryKeys.suites });
+              setTimeout(() => setIsRefreshing(false), 500);
+            }}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
+          <button
+            onClick={addSuite}
+            className="text-gray-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+            title="Add Suite"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
           </div>
 
           <div className="space-y-0.5">
@@ -943,12 +959,14 @@ const stopRecording = async () => {
                     <Square size={14} className="fill-current" /> Stop Recording
                   </button>
                 ) : (
-                  <button
-                    onClick={() => setIsRecordingModalOpen(true)}
-                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors"
-                  >
-                    <Video size={14} /> Record Steps
-                  </button>
+        <button
+          onClick={() => setIsRecordingModalOpen(true)}
+          disabled={!activeCaseId}
+          className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title={!activeCaseId ? 'Select a test case first' : 'Record steps into this case'}
+        >
+          <Video size={14} /> Record Steps
+        </button>
                 )}
                 <button
                   onClick={() => onRunCase(activeSuite.id, activeCase.id)}

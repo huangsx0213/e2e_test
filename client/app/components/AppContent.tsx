@@ -40,7 +40,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "DASHBOARD":
       return (
         <Dashboard
-          key={activeTab}
           projects={projects}
           suites={scopedSuites}
           environments={environments}
@@ -50,7 +49,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "RUN":
       return (
         <TestRunner
-          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           suites={scopedSuites}
@@ -65,7 +63,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "ELEMENTS":
       return (
         <ElementRepo
-          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           currentProjectId={currentProjectId}
@@ -74,7 +71,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "MODULES":
       return (
         <ModuleBuilder
-          key={activeTab}
           projects={projects}
           projectsApi={projectsApi}
           headers={scopedHeaders}
@@ -86,7 +82,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "TESTS":
       return (
         <TestBuilder
-          key={activeTab}
           suites={scopedSuites}
           suitesApi={suitesApi}
           projects={projects}
@@ -106,7 +101,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "ENDPOINTS":
       return (
         <EndpointManager
-          key={activeTab}
           endpoints={scopedEndpoints}
           endpointsApi={endpointsApi}
           environments={environments}
@@ -116,7 +110,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "HEADERS":
       return (
         <HeadersManager
-          key={activeTab}
           headers={scopedHeaders}
           headersApi={headersApi}
           currentProjectId={currentProjectId}
@@ -125,7 +118,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "BODIES":
       return (
         <BodyManager
-          key={activeTab}
           bodies={scopedBodies}
           bodiesApi={bodiesApi}
           currentProjectId={currentProjectId}
@@ -134,7 +126,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "REPORTS":
       return (
         <TestReport
-          key={activeTab}
           currentProjectId={currentProjectId}
           suites={suites}
         />
@@ -142,7 +133,6 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "SETTINGS":
       return (
         <Settings
-          key={activeTab}
           environments={environments}
           environmentsApi={environmentsApi}
           currentEnvironment={currentEnvironment}
@@ -156,11 +146,11 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
         />
       );
     case "DOCUMENTATION":
-      return <Documentation key={activeTab} />;
+      return <Documentation />;
     case "DYNAMIC_VARIABLES":
-      return <DynamicVariables key={activeTab} currentProjectId={currentProjectId} />;
+      return <DynamicVariables currentProjectId={currentProjectId} />;
     case "AGENTS":
-      return <AgentManagement key={activeTab} />;
+      return <AgentManagement />;
     default:
       return null;
   }

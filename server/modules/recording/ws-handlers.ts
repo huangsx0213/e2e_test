@@ -1,11 +1,12 @@
 import type { WebSocket } from 'ws';
 import { globalEventBus, type WsEventHandler } from '../../shared/services/eventBus.ts';
-import { broadcast } from '../../shared/services/websocketService.ts';
+import { broadcastToProject } from '../../shared/services/websocketService.ts';
 import { getProject, saveProject } from '../projects/repository.ts';
 import { saveApiEndpoint, listApiEndpoints } from '../endpoints/repository.ts';
 import { saveHeaderProfile, listHeaderProfiles } from '../headers/repository.ts';
 import { saveBodyTemplate, listBodyTemplates } from '../bodies/repository.ts';
-import { randomId } from '../../shared/utils/index.ts';
+import { randomId, nullableText } from '../../shared/utils/index.ts';
+import { db } from '../../shared/db/client.ts';
 import type { Page, Project, TestStep } from '../../shared/contracts/index.ts';
 
 function getOrCreatePage(project: Project, url: string): Page {
@@ -26,8 +27,40 @@ function getOrCreatePage(project: Project, url: string): Page {
   return page;
 }
 
+function insertCaseStep(caseId: string, step: TestStep): void {
+  const maxPos = db.prepare(
+    'SELECT COALESCE(MAX(position), -1) AS pos FROM case_steps WHERE case_id = ? AND step_group = ?'
+  ).get(caseId, 'main') as { pos: number } | undefined;
+  const nextPos = (maxPos?.pos ?? -1) + 1;
+
+  db.prepare(
+    `INSERT INTO case_steps (id, case_id, step_group, action, target, data, description,
+      header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+      extractors, assertions, wait_for_network, network_mocks, position)
+     VALUES (?, ?, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    step.id,
+    caseId,
+    step.action,
+    step.target || '',
+    step.data || '',
+    step.description || '',
+    nullableText(step.headerProfileId),
+    nullableText(step.bodyTemplateId),
+    nullableText(step.endpointId),
+    step.screenshot ? 1 : null,
+    step.enabled === false ? 0 : 1,
+    step.extractors ? JSON.stringify(step.extractors) : null,
+    step.assertions ? JSON.stringify(step.assertions) : null,
+    step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+    step.networkMocks ? JSON.stringify(step.networkMocks) : null,
+    nextPos,
+  );
+}
+
 function handleStepRecorded(data: any) {
-  const { projectId, stepInfo } = data || {};
+  const { projectId, stepInfo, caseId, suiteId } = data || {};
+  console.log(`[RECORDER WS] handleStepRecorded: action=${stepInfo?.action} caseId=${caseId} suiteId=${suiteId}`);
   const project = getProject(projectId);
   if (!project || !stepInfo) return;
 
@@ -40,8 +73,8 @@ function handleStepRecorded(data: any) {
     const step: TestStep = {
       id: randomId('step'),
       action,
-      target: navigationUrl,
-      data: '',
+      target: '',
+      data: navigationUrl,
       description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
       isVerified: true,
       metadata: {
@@ -51,39 +84,61 @@ function handleStepRecorded(data: any) {
       },
     };
 
-    broadcast('step-recorded', { projectId, step, type: 'UI' });
+    if (caseId) {
+      try {
+        insertCaseStep(caseId, step);
+        console.log(`[RECORDER WS] Nav step inserted: ${step.id} into case ${caseId}`);
+      } catch (err) {
+        console.error(`[RECORDER WS] Nav step insert FAILED for case ${caseId}:`, err);
+      }
+    }
+
+    broadcastToProject(projectId, 'step-recorded', { projectId, step, type: 'UI', caseId, suiteId });
     return;
   }
 
-  const page = getOrCreatePage(project, element.pageUrl);
+  try {
+    const page = getOrCreatePage(project, element?.pageUrl);
 
-  let existingEl = page.elements!.find(e => {
-    if (e.selectorType === element.selectorType && e.value === element.value) return true;
-    const incomingLocs = element.locators || [];
-    const savedLocs = e.locators || [];
-    return incomingLocs.some((il: any) =>
-      savedLocs.some((sl: any) => sl.selectorType === il.selectorType && sl.value === il.value) ||
-      (e.selectorType === il.selectorType && e.value === il.value)
-    );
-  });
+    let existingEl = page.elements!.find(e => {
+      if (e.selectorType === element.selectorType && e.value === element.value) return true;
+      const incomingLocs = element.locators || [];
+      const savedLocs = e.locators || [];
+      return incomingLocs.some((il: any) =>
+        savedLocs.some((sl: any) => sl.selectorType === il.selectorType && sl.value === il.value) ||
+        (e.selectorType === il.selectorType && e.value === il.value)
+      );
+    });
 
-  if (!existingEl) {
-    existingEl = { ...element, id: randomId('el') };
-    page.elements!.push(existingEl);
+    if (!existingEl) {
+      existingEl = { ...element, id: randomId('el') };
+      page.elements!.push(existingEl);
+    }
+
+    saveProject(project);
+
+    const step: TestStep = {
+      id: randomId('step'),
+      action,
+      target: `${page.name}.${existingEl.name}`,
+      data: dataValue || '',
+      description: `Recorded: ${action} on ${existingEl.name}`,
+      isVerified: element.isVerified ?? existingEl.isVerified,
+    };
+
+    if (caseId) {
+      try {
+        insertCaseStep(caseId, step);
+        console.log(`[RECORDER WS] UI step inserted: ${step.id} action=${action} into case ${caseId}`);
+      } catch (err) {
+        console.error(`[RECORDER WS] UI step insert FAILED for case ${caseId}:`, err);
+      }
+    }
+
+    broadcastToProject(projectId, 'step-recorded', { projectId, step, type: 'UI', caseId, suiteId });
+  } catch (err) {
+    console.error(`[RECORDER WS] handleStepRecorded (non-nav) FAILED:`, err);
   }
-
-  saveProject(project);
-
-  const step: TestStep = {
-    id: randomId('step'),
-    action,
-    target: `${page.name}.${existingEl.name}`,
-    data: dataValue || '',
-    description: `Recorded: ${action} on ${existingEl.name}`,
-    isVerified: element.isVerified ?? existingEl.isVerified,
-  };
-
-  broadcast('step-recorded', { projectId, step, type: 'UI' });
 }
 
 function handleElementRecorded(data: any) {
@@ -103,11 +158,11 @@ function handleElementRecorded(data: any) {
     saveProject(project);
   }
 
-  broadcast('element-recorded', { projectId, pageId: page.id, element: existingEl || element });
+  broadcastToProject(projectId, 'element-recorded', { projectId, pageId: page.id, element: existingEl || element });
 }
 
 function handleApiRecorded(data: any) {
-  const { projectId, environment, apiInfo } = data || {};
+  const { projectId, environment, apiInfo, caseId, suiteId } = data || {};
   const { url, method, headers, postData, status } = apiInfo || {};
 
   let urlObj;
@@ -191,13 +246,13 @@ function handleApiRecorded(data: any) {
     } catch(e) {}
 
     let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
-      if (!bodyTemplate) {
-        const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
-        bodyTemplate = saveBodyTemplate({
-          id: randomId('bt'),
-          projectId,
-          name: bodyName,
-          contentType,
+    if (!bodyTemplate) {
+      const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
+      bodyTemplate = saveBodyTemplate({
+        id: randomId('bt'),
+        projectId,
+        name: bodyName,
+        contentType,
         content: finalContent
       });
     }
@@ -229,7 +284,11 @@ function handleApiRecorded(data: any) {
     assertions: stepAssertions,
   };
 
-  broadcast('step-recorded', { projectId, step, type: 'API' });
+  if (caseId) {
+    insertCaseStep(caseId, step);
+  }
+
+  broadcastToProject(projectId, 'step-recorded', { projectId, step, type: 'API', caseId, suiteId });
 }
 
 function handleRecordingEvent(data: any, ws: WebSocket) {
@@ -251,7 +310,7 @@ function handleRecordingEvent(data: any, ws: WebSocket) {
     return;
   }
 
-  broadcast(event, innerData);
+  broadcastToProject(innerData?.projectId || '', event, innerData);
 }
 
 export function registerRecordingWsHandlers() {

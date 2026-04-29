@@ -1,0 +1,13 @@
+export const queryKeys = {
+  projects: ['projects'] as const,
+  suites: ['suites'] as const,
+  headers: ['headers'] as const,
+  bodies: ['bodies'] as const,
+  endpoints: ['endpoints'] as const,
+  settings: ['settings'] as const,
+  environments: ['environments'] as const,
+  reports: ['reports'] as const,
+  dynamicVariables: (projectId: string) => ['dynamic-variables', projectId] as const,
+  agents: ['agents'] as const,
+  queue: ['queue'] as const,
+};

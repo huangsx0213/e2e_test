@@ -103,15 +103,24 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
     const transaction = db.transaction(() => {
       db.prepare(
         `INSERT INTO suites (id, project_id, name, description) VALUES (?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           project_id = excluded.project_id,
-           name = excluded.name,
-           description = excluded.description`,
+        ON CONFLICT(id) DO UPDATE SET
+        project_id = excluded.project_id,
+        name = excluded.name,
+        description = excluded.description`,
       ).run(suite.id, nullableText(suite.projectId), suite.name, suite.description || '');
+
+      const existingCaseIds = new Set(
+        (db.prepare('SELECT id FROM suite_cases WHERE suite_id = ?').all(suite.id) as Array<{ id: string }>).map(r => r.id),
+      );
+      const payloadCaseIds = new Set(suite.cases.map(c => c.id));
+      for (const oldId of existingCaseIds) {
+        if (!payloadCaseIds.has(oldId)) {
+          db.prepare('DELETE FROM suite_cases WHERE id = ?').run(oldId);
+        }
+      }
 
       db.prepare('DELETE FROM suite_variables WHERE suite_id = ?').run(suite.id);
       db.prepare('DELETE FROM suite_data_rows WHERE suite_id = ?').run(suite.id);
-      db.prepare('DELETE FROM suite_cases WHERE suite_id = ?').run(suite.id);
       db.prepare('DELETE FROM suite_steps WHERE suite_id = ?').run(suite.id);
 
       for (const [variableIndex, variable] of (suite.variables || []).entries()) {
@@ -136,10 +145,10 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
       const insertStep = (table: string, parentColumn: string, parentId: string, stepGroup: string, step: typeof suite.setupSteps[0], stepIndex: number) => {
         db.prepare(
           `INSERT INTO ${table} (
-             id, ${parentColumn}, step_group, action, target, data, description,
-             header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
-             extractors, assertions, wait_for_network, network_mocks, position
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            id, ${parentColumn}, step_group, action, target, data, description,
+            header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+            extractors, assertions, wait_for_network, network_mocks, position
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           step.id, parentId, stepGroup,
           step.action, step.target, step.data, step.description || '',
@@ -161,21 +170,74 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
         insertStep('suite_steps', 'suite_id', suite.id, 'teardown', step, stepIndex);
       }
 
+      const upsertStep = (caseId: string, stepGroup: string, step: typeof suite.setupSteps[0], stepIndex: number) => {
+        db.prepare(
+          `INSERT INTO case_steps (
+            id, case_id, step_group, action, target, data, description,
+            header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+            extractors, assertions, wait_for_network, network_mocks, position
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            action = excluded.action,
+            target = excluded.target,
+            data = excluded.data,
+            description = excluded.description,
+            header_profile_id = excluded.header_profile_id,
+            body_template_id = excluded.body_template_id,
+            endpoint_id = excluded.endpoint_id,
+            screenshot = excluded.screenshot,
+            enabled = excluded.enabled,
+            extractors = excluded.extractors,
+            assertions = excluded.assertions,
+            wait_for_network = excluded.wait_for_network,
+            network_mocks = excluded.network_mocks,
+            position = excluded.position`,
+        ).run(
+          step.id, caseId, stepGroup,
+          step.action, step.target, step.data, step.description || '',
+          nullableText(step.headerProfileId), nullableText(step.bodyTemplateId), nullableText(step.endpointId),
+          step.screenshot ? 1 : null, step.enabled === false ? 0 : 1,
+          step.extractors ? JSON.stringify(step.extractors) : null,
+          step.assertions ? JSON.stringify(step.assertions) : null,
+          step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+          step.networkMocks ? JSON.stringify(step.networkMocks) : null,
+          stepIndex,
+        );
+      };
+
       for (const [caseIndex, testCase] of suite.cases.entries()) {
         db.prepare(
-          'INSERT INTO suite_cases (id, suite_id, name, description, position) VALUES (?, ?, ?, ?, ?)',
+          `INSERT INTO suite_cases (id, suite_id, name, description, position) VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            position = excluded.position`,
         ).run(testCase.id, suite.id, testCase.name, testCase.description || '', caseIndex);
 
+        const existingStepIds = new Set(
+          (db.prepare('SELECT id FROM case_steps WHERE case_id = ?').all(testCase.id) as Array<{ id: string }>).map(r => r.id),
+        );
+        const payloadStepIds = new Set<string>();
+
         for (const [stepIndex, step] of testCase.steps.entries()) {
-          insertStep('case_steps', 'case_id', testCase.id, 'main', step, stepIndex);
+          upsertStep(testCase.id, 'main', step, stepIndex);
+          payloadStepIds.add(step.id);
         }
 
         for (const [stepIndex, step] of (testCase.setupSteps || []).entries()) {
-          insertStep('case_steps', 'case_id', testCase.id, 'setup', step, stepIndex);
+          upsertStep(testCase.id, 'setup', step, stepIndex);
+          payloadStepIds.add(step.id);
         }
 
         for (const [stepIndex, step] of (testCase.teardownSteps || []).entries()) {
-          insertStep('case_steps', 'case_id', testCase.id, 'teardown', step, stepIndex);
+          upsertStep(testCase.id, 'teardown', step, stepIndex);
+          payloadStepIds.add(step.id);
+        }
+
+        for (const oldStepId of existingStepIds) {
+          if (!payloadStepIds.has(oldStepId)) {
+            db.prepare('DELETE FROM case_steps WHERE id = ?').run(oldStepId);
+          }
         }
       }
     });

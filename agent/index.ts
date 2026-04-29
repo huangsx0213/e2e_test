@@ -140,16 +140,16 @@ function connect() {
         if (currentAbortController) {
           currentAbortController.abort();
         }
-      } else if (parsed.event === 'RECORDING_START') {
-        const { targetUrl, projectId, apiFilter, environment, pageId } = parsed.data || {};
-        sysLogger.info(`[AGENT] Received Recording Start: ${projectId}`);
-        try {
-          isRecordingActive = true;
-          recordingStarted = false;
-          agentStatus = 'busy';
-          sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
-          emitRecordingEvent('recording-status', { status: 'RECEIVED' });
-          await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, emitRecordingEvent);
+} else if (parsed.event === 'RECORDING_START') {
+  const { targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId } = parsed.data || {};
+  sysLogger.info(`[AGENT] Received Recording Start: ${projectId} case=${caseId}`);
+  try {
+    isRecordingActive = true;
+    recordingStarted = false;
+    agentStatus = 'busy';
+    sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
+    emitRecordingEvent('recording-status', { status: 'RECEIVED', caseId, suiteId });
+    await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, emitRecordingEvent);
         } catch (error) {
           sysLogger.error('[AGENT] Failed to start recording:', error);
           isRecordingActive = false;

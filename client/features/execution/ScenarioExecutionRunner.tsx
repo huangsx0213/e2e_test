@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { CrudActions } from "@/shared/hooks/useCrud";
+import { MutationActions } from "@/shared/hooks/useQueryHooks";
 import {
   TestSuite,
   ExecutionLog,
@@ -36,7 +36,7 @@ interface ScenarioExecutionRunnerProps {
   environments: string[];
   initialEnvironment: string;
   onClose: () => void;
-  reportsApi: CrudActions<ExecutionReport>;
+  reportsApi: MutationActions<ExecutionReport>;
 }
 
 export const ScenarioExecutionRunner: React.FC<

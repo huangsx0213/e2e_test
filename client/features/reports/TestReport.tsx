@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { useCrud } from "@/shared/hooks/useCrud";
-import { api } from "@/shared/services/api";
+import { useReports, useReportMutations } from "@/shared/hooks/useQueryHooks";
 import { ExecutionReport, ExecutionLog, TestSuite } from "@/shared/types";
 import {
   CheckCircle2,
@@ -22,6 +21,7 @@ import {
   Zap,
   Table2,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
@@ -589,7 +589,9 @@ const StatChip: React.FC<{ icon: React.ReactNode; label: string; value: string |
 
 /* ──────────────────────────── Main Component ─────────────────────────── */
 export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites }) => {
-  const [reports, reportsApi, loading] = useCrud<ExecutionReport>(api.reports);
+  const { data: reports = [], isLoading: loading, refetch: refetchReports } = useReports();
+  const reportsApi = useReportMutations();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [reportToDelete, setReportToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -649,15 +651,6 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Auto-refresh when selected report is RUNNING
-  React.useEffect(() => {
-    if (!selectedReport || selectedReport.status !== "RUNNING") return;
-    const timer = setInterval(() => {
-      reportsApi.refresh?.();
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [selectedReport?.id, selectedReport?.status]);
-
   const onConfirmDelete = async () => {
     if (!reportToDelete) return;
     try {
@@ -703,13 +696,24 @@ export const TestReport: React.FC<TestReportProps> = ({ currentProjectId, suites
         <div className="w-72 border-r border-gray-200 flex flex-col bg-gray-50 shrink-0 shadow-sm z-10">
           {/* Sidebar header */}
           <div className="p-4 border-b border-gray-200 bg-white">
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 size={18} className="text-blue-600" />
-              <h2 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
-                Test Reports
-                <HelpTooltip content="View historical execution results, logs, and pass/fail metrics for your test suites and scenarios." />
-              </h2>
-            </div>
+    <div className="flex items-center gap-2 mb-3">
+    <BarChart3 size={18} className="text-blue-600" />
+    <h2 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
+      Test Reports
+      <HelpTooltip content="View historical execution results, logs, and pass/fail metrics for your test suites and scenarios." />
+    </h2>
+        <button
+          onClick={() => {
+            setIsRefreshing(true);
+            refetchReports();
+            setTimeout(() => setIsRefreshing(false), 500);
+          }}
+          className="ml-auto p-1 text-slate-400 hover:text-blue-600 rounded transition-colors"
+          title="Refresh reports"
+        >
+          <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+    </button>
+    </div>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input

@@ -13,6 +13,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.6",
     "@types/react-window": "^1.8.8",
     "@types/ws": "^8.18.1",
     "adm-zip": "^0.5.17",
