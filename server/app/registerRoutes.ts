@@ -13,7 +13,7 @@ import { recordingModule } from '../modules/recording/index.ts';
 import { dynamicVariablesModule } from '../modules/dynamic-variables/index.ts';
 
 import { agentsModule } from '../modules/agent/index.ts';
-import { demoRouter as autRouter } from '../../aut/server/routes';
+import { autRouter } from '../../aut/server/routes';
 
 export function registerRoutes(app: Express) {
   const modules = [

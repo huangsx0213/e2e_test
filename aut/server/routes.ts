@@ -3,12 +3,13 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import path from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Fix for esbuild CJS bundle warning
+const _filename = typeof import.meta !== 'undefined' && import.meta.url ? fileURLToPath(import.meta.url) : __filename;
+const _dirname = typeof import.meta !== 'undefined' && import.meta.url ? path.dirname(_filename) : __dirname;
 
-export const demoRouter = Router();
+export const autRouter = Router();
 
-const DB_FILE = path.join(__dirname, 'db.json');
+const DB_FILE = path.join(_dirname, 'db.json');
 
 // Initialize DB if not exists
 if (!fs.existsSync(DB_FILE)) {
@@ -36,7 +37,7 @@ const getDb = () => JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
 const saveDb = (data: any) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
 // Auth Flow
-demoRouter.post('/auth/login', (req, res) => {
+autRouter.post('/auth/login', (req, res) => {
   const { username, password } = req.body;
   if (username === 'admin' && password === 'admin123') {
     return res.json({
@@ -48,7 +49,7 @@ demoRouter.post('/auth/login', (req, res) => {
   return res.status(401).json({ success: false, error: 'Invalid credentials' });
 });
 
-demoRouter.get('/profile', (req, res) => {
+autRouter.get('/profile', (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.split(' ')[1] !== 'fake-jwt-token-12345') {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -57,7 +58,7 @@ demoRouter.get('/profile', (req, res) => {
 });
 
 // User CRUD
-demoRouter.get('/users', (req, res) => {
+autRouter.get('/users', (req, res) => {
   const { name, role, status, search, page = '1', limit = '10', sortBy = 'updatedAt', sortOrder = 'desc' } = req.query;
   const db = getDb();
   let filteredUsers = [...db.users];
@@ -110,14 +111,14 @@ demoRouter.get('/users', (req, res) => {
   });
 });
 
-demoRouter.get('/users/:id', (req, res) => {
+autRouter.get('/users/:id', (req, res) => {
   const db = getDb();
   const user = db.users.find((u: any) => u.id === parseInt(req.params.id));
   if (!user) return res.status(404).json({ success: false, error: 'Not found' });
   res.json({ success: true, data: user });
 });
 
-demoRouter.post('/users', (req, res) => {
+autRouter.post('/users', (req, res) => {
   const db = getDb();
   const { name, email, ...rest } = req.body;
   if (!name || typeof name !== 'string') {
@@ -144,7 +145,7 @@ demoRouter.post('/users', (req, res) => {
   res.status(201).json({ success: true, data: newUser });
 });
 
-demoRouter.patch('/users/:id', (req, res) => {
+autRouter.patch('/users/:id', (req, res) => {
   const db = getDb();
   const index = db.users.findIndex((u: any) => u.id === parseInt(req.params.id));
   if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
@@ -158,7 +159,7 @@ demoRouter.patch('/users/:id', (req, res) => {
   res.json({ success: true, data: db.users[index] });
 });
 
-demoRouter.put('/users/:id', (req, res) => {
+autRouter.put('/users/:id', (req, res) => {
   const db = getDb();
   const index = db.users.findIndex((u: any) => u.id === parseInt(req.params.id));
   if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
@@ -172,7 +173,7 @@ demoRouter.put('/users/:id', (req, res) => {
   res.json({ success: true, data: db.users[index] });
 });
 
-demoRouter.delete('/users/:id', (req, res) => {
+autRouter.delete('/users/:id', (req, res) => {
   const db = getDb();
   const index = db.users.findIndex((u: any) => u.id === parseInt(req.params.id));
   if (index === -1) return res.status(404).json({ success: false, error: 'Not found' });
@@ -183,7 +184,7 @@ demoRouter.delete('/users/:id', (req, res) => {
   res.json({ success: true, data: deletedUser });
 });
 
-demoRouter.post('/users/batch-update', (req, res) => {
+autRouter.post('/users/batch-update', (req, res) => {
   const db = getDb();
   const { ids, data } = req.body;
   if (!Array.isArray(ids)) return res.status(400).json({ success: false, error: 'IDs must be an array' });
@@ -199,7 +200,7 @@ demoRouter.post('/users/batch-update', (req, res) => {
   res.json({ success: true });
 });
 
-demoRouter.post('/users/:id/reset-password', (req, res) => {
+autRouter.post('/users/:id/reset-password', (req, res) => {
   const db = getDb();
   const id = parseInt(req.params.id);
   const index = db.users.findIndex((u: any) => u.id === id);
@@ -212,7 +213,7 @@ demoRouter.post('/users/:id/reset-password', (req, res) => {
   res.json({ success: true });
 });
 
-demoRouter.post('/users/batch-delete', (req, res) => {
+autRouter.post('/users/batch-delete', (req, res) => {
   const db = getDb();
   const { ids } = req.body;
   if (!Array.isArray(ids)) return res.status(400).json({ success: false, error: 'IDs must be an array' });
@@ -223,13 +224,13 @@ demoRouter.post('/users/batch-delete', (req, res) => {
 });
 
 // Fault Injection
-demoRouter.get('/fault/timeout', (req, res) => {
+autRouter.get('/fault/timeout', (req, res) => {
   setTimeout(() => {
     res.json({ success: true, message: 'Delayed response' });
   }, 5000);
 });
 
-demoRouter.get('/fault/simulate-500', (req, res) => {
+autRouter.get('/fault/simulate-500', (req, res) => {
   if (Math.random() > 0.5) {
     res.status(500).json({ success: false, error: 'Simulated strict internal failure' });
   } else {
@@ -237,7 +238,7 @@ demoRouter.get('/fault/simulate-500', (req, res) => {
   }
 });
 
-demoRouter.get('/fault/xml-content', (req, res) => {
+autRouter.get('/fault/xml-content', (req, res) => {
   const xmlResponse = `
     <response>
       <success>true</success>
@@ -248,7 +249,7 @@ demoRouter.get('/fault/xml-content', (req, res) => {
   res.send(xmlResponse.trim());
 });
 
-demoRouter.get('/dashboard/stats', (req, res) => {
+autRouter.get('/dashboard/stats', (req, res) => {
   const db = getDb();
   res.json({
     success: true,
@@ -260,7 +261,7 @@ demoRouter.get('/dashboard/stats', (req, res) => {
   });
 });
 
-demoRouter.get('/reports', (req, res) => {
+autRouter.get('/reports', (req, res) => {
   const db = getDb();
   const totalUsers = db.users.length;
   const activeUsers = db.users.filter((u: any) => u.status === 'active').length;
