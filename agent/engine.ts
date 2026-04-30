@@ -52,6 +52,7 @@ function buildSelectorCandidates(snapshot: RichSnapshot | null): SelectorCandida
 
   const targetHtml = snapshot.html;
   const ariaInfo = snapshot.aria;
+  const attrs = snapshot.attributes || {};
 
   if (ariaInfo && ariaInfo.role) {
     candidates.push({
@@ -86,11 +87,64 @@ function buildSelectorCandidates(snapshot: RichSnapshot | null): SelectorCandida
     candidates.push({ type: 'getByText', value: snapshot.textContent, options: { exact: true }, nameHint: snapshot.textContent });
   }
 
+  const placeholder = attrs['placeholder'];
+  if (placeholder && placeholder.length > 0 && placeholder.length < 80) {
+    candidates.push({ type: 'getByPlaceholder', value: placeholder, options: { exact: true }, nameHint: placeholder });
+    candidates.push({ type: 'getByPlaceholder', value: placeholder, options: { exact: false }, nameHint: placeholder });
+  }
+
+  const ariaLabel = attrs['aria-label'];
+  if (ariaLabel && ariaLabel.length > 0 && ariaLabel.length < 80) {
+    candidates.push({ type: 'getByLabel', value: ariaLabel, options: { exact: true }, nameHint: ariaLabel });
+    candidates.push({ type: 'getByLabel', value: ariaLabel, options: { exact: false }, nameHint: ariaLabel });
+  }
+
+  if (ariaInfo && ariaInfo.labelledByText) {
+    candidates.push({ type: 'getByLabel', value: ariaInfo.labelledByText, options: { exact: true }, nameHint: ariaInfo.labelledByText });
+  }
+
+  const altText = attrs['alt'];
+  if (altText && altText.length > 0 && altText.length < 80) {
+    candidates.push({ type: 'getByAltText', value: altText, options: { exact: true }, nameHint: altText });
+    candidates.push({ type: 'getByAltText', value: altText, options: { exact: false }, nameHint: altText });
+  }
+
+  const title = attrs['title'];
+  if (title && title.length > 0 && title.length < 80) {
+    candidates.push({ type: 'getByTitle', value: title, options: { exact: true }, nameHint: title });
+    candidates.push({ type: 'getByTitle', value: title, options: { exact: false }, nameHint: title });
+  }
+
+  const tagMatch = targetHtml.match(/^<([a-zA-Z0-9-]+)/);
+  const tagName = tagMatch ? tagMatch[1].toLowerCase() : '';
+  if (tagName) {
+    const typeAttr = attrs['type'];
+    const nameAttr = attrs['name'];
+    const classMatch = targetHtml.match(/class=["']([^"']+)["']/i);
+    const firstClass = classMatch ? classMatch[1].split(/\s+/).find(c => c && !c.match(/^(ng-|ng_|css-|sc-|sc-|styled|emotion|\\b\\d|hover|focus|active|disabled|selected|checked|visited|open|closed|hidden|visible)/i)) : null;
+
+    if (firstClass && idMatch) {
+      candidates.push({ type: 'CSS', value: `${tagName}#${idMatch[1]}.${firstClass}`, nameHint: `${tagName}#${idMatch[1]}` });
+    }
+
+    if (typeAttr && nameAttr) {
+      candidates.push({ type: 'CSS', value: `${tagName}[type="${typeAttr}"][name="${nameAttr}"]`, nameHint: `${tagName}[name="${nameAttr}"]` });
+    } else if (typeAttr) {
+      candidates.push({ type: 'CSS', value: `${tagName}[type="${typeAttr}"]`, nameHint: `${tagName}[type="${typeAttr}"]` });
+    } else if (nameAttr) {
+      candidates.push({ type: 'CSS', value: `${tagName}[name="${nameAttr}"]`, nameHint: `${tagName}[name="${nameAttr}"]` });
+    }
+
+    if (firstClass) {
+      candidates.push({ type: 'CSS', value: `${tagName}.${firstClass}`, nameHint: `${tagName}.${firstClass}` });
+    }
+  }
+
   return candidates;
 }
 
 function formatCandidateValue(candidate: SelectorCandidate): string {
-  if (candidate.type === 'getByRole' && candidate.options) {
+  if ((candidate.type === 'getByRole' || candidate.type === 'getByPlaceholder' || candidate.type === 'getByLabel' || candidate.type === 'getByAltText' || candidate.type === 'getByTitle') && candidate.options) {
     const optsJson = JSON.stringify(candidate.options).replace(/"([^"]+)":/g, '$1:').replace(/"/g, "'");
     return `${candidate.value}, ${optsJson}`;
   }
@@ -119,6 +173,10 @@ function buildElementDescription(snapshot: RichSnapshot): string {
   if (snapshot.aria?.name) desc += ` Name: "${snapshot.aria.name}"`;
   if (attrs.id) desc += ` ID: #${attrs.id}`;
   if (testId) desc += ` TestID: ${testId}`;
+  if (attrs.placeholder) desc += ` Placeholder: "${attrs.placeholder}"`;
+  if (attrs['aria-label']) desc += ` AriaLabel: "${attrs['aria-label']}"`;
+  if (attrs.name) desc += ` NameAttr: "${attrs.name}"`;
+  if (attrs.type) desc += ` Type: ${attrs.type}`;
 
   return desc;
 }
@@ -146,6 +204,18 @@ async function generateSmartSelector(
         } else if (cand.type === 'getByText') {
           locator = page.getByText(cand.value, cand.options);
           finalValue = cand.value;
+        } else if (cand.type === 'getByPlaceholder') {
+          locator = page.getByPlaceholder(cand.value, cand.options);
+          finalValue = formatCandidateValue(cand);
+        } else if (cand.type === 'getByLabel') {
+          locator = page.getByLabel(cand.value, cand.options);
+          finalValue = formatCandidateValue(cand);
+        } else if (cand.type === 'getByAltText') {
+          locator = page.getByAltText(cand.value, cand.options);
+          finalValue = formatCandidateValue(cand);
+        } else if (cand.type === 'getByTitle') {
+          locator = page.getByTitle(cand.value, cand.options);
+          finalValue = formatCandidateValue(cand);
         } else {
           locator = page.locator(cand.value);
           finalValue = cand.value;
@@ -778,46 +848,93 @@ originalHtml: snapshot.html,
         return clone;
       };
 
-      const isInteractive = (el) => {
-        const tag = el.tagName.toLowerCase();
-        return ['button', 'a', 'input', 'select', 'textarea'].includes(tag) || 
-               el.getAttribute('role') === 'button' || 
-               el.hasAttribute('tabindex');
-      };
+  const isInteractive = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (['button', 'a', 'input', 'select', 'textarea', 'option'].includes(tag)) return true;
+    if (el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link') return true;
+    if (el.hasAttribute('tabindex') && el.tabIndex >= 0) return true;
+    if (el.isContentEditable) return true;
+    if (['summary', 'details', 'dialog', 'menuitem', 'optgroup'].includes(tag)) return true;
+    return false;
+  };
 
-      // Official ACCESSIBLE NAME / ROLE Calculation (Browser-Side)
-      const getAriaInfo = (el) => {
-        let role = el.getAttribute('role');
-        if (!role) {
-          const tag = el.tagName.toLowerCase();
-          if (tag === 'button' || (tag === 'input' && (el.type === 'submit' || el.type === 'button'))) role = 'button';
-          else if (tag === 'select') role = 'combobox';
-          else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) role = el.type;
-          else if (tag === 'input' || tag === 'textarea') role = 'textbox';
-          else if (tag === 'a') role = 'link';
-          else if (tag === 'h1' || tag === 'h2' || tag === 'h3') role = 'heading';
-        }
+  const isClickableInput = (el) => {
+    if (el.tagName.toLowerCase() !== 'input') return false;
+    const t = el.type.toLowerCase();
+    return ['submit', 'button', 'image', 'reset'].includes(t);
+  };
 
-        const name = el.innerText?.trim() ||
-                     el.getAttribute('aria-label') ||
-                     el.placeholder ||
-                     (el.labels && el.labels[0]?.innerText?.trim()) ||
-                     el.title ||
-                     el.alt ||
-                     el.value || '';
+  const isCheckboxOrRadio = (el) => {
+    return el.tagName.toLowerCase() === 'input' && (el.type === 'checkbox' || el.type === 'radio');
+  };
 
-        const describedBy = el.getAttribute('aria-describedby') || '';
-        const labelledBy = el.getAttribute('aria-labelledby') || '';
-        const resolveReferences = (refIds) => refIds.split(/\s+/).map((id) => document.getElementById(id)?.innerText?.trim()).filter(Boolean).join(' ');
+  const isTextInput = (el) => {
+    if (el.tagName.toLowerCase() === 'textarea') return true;
+    if (el.tagName.toLowerCase() === 'input') {
+      const t = el.type.toLowerCase();
+      if (['submit', 'button', 'image', 'reset', 'hidden', 'checkbox', 'radio', 'file', 'range', 'color'].includes(t)) return false;
+      return true;
+    }
+    if (el.isContentEditable) return true;
+    return false;
+  };
 
-        return {
-          role,
-          name: name.substring(0, 100).trim(),
-          describedBy: describedBy || undefined,
-          labelledBy: labelledBy || undefined,
-          describedByText: describedBy ? resolveReferences(describedBy).substring(0, 200).trim() || undefined : undefined,
-          labelledByText: labelledBy ? resolveReferences(labelledBy).substring(0, 200).trim() || undefined : undefined,
-        };
+  const getAriaInfo = (el) => {
+    let role = (typeof el.computedRole === 'function') ? el.computedRole() : null;
+    if (!role) {
+      role = el.getAttribute('role');
+    }
+    if (!role) {
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'button' || (tag === 'input' && (el.type === 'submit' || el.type === 'button'))) role = 'button';
+      else if (tag === 'select') role = 'combobox';
+      else if (tag === 'input' && (el.type === 'checkbox' || el.type === 'radio')) role = el.type;
+      else if (tag === 'input' || tag === 'textarea') role = 'textbox';
+      else if (tag === 'a') role = 'link';
+      else if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') role = 'heading';
+      else if (tag === 'dialog') role = 'dialog';
+      else if (tag === 'summary') role = 'button';
+      else if (tag === 'menuitem') role = 'menuitem';
+      else if (tag === 'option') role = 'option';
+      else if (tag === 'optgroup') role = 'group';
+      else if (tag === 'details') role = 'group';
+    }
+
+    let name = (typeof el.computedName === 'function') ? el.computedName() : '';
+    if (!name) {
+      name = el.innerText?.trim() ||
+        el.getAttribute('aria-label') ||
+        el.placeholder ||
+        (el.labels && el.labels[0]?.innerText?.trim()) ||
+        el.title || el.alt || el.value || '';
+    }
+
+    const describedBy = el.getAttribute('aria-describedby') || '';
+    const labelledBy = el.getAttribute('aria-labelledby') || '';
+    const resolveReferences = (refIds) => refIds.split(/\\s+/).map((id) => document.getElementById(id)?.innerText?.trim()).filter(Boolean).join(' ');
+
+    return {
+      role,
+      name: name.substring(0, 100).trim(),
+      describedBy: describedBy || undefined,
+      labelledBy: labelledBy || undefined,
+      describedByText: describedBy ? resolveReferences(describedBy).substring(0, 200).trim() || undefined : undefined,
+      labelledByText: labelledBy ? resolveReferences(labelledBy).substring(0, 200).trim() || undefined : undefined,
+    };
+  };
+
+  const resolveTarget = (e) => {
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const node of path) {
+      if (node instanceof HTMLElement && isInteractive(node)) return node;
+    }
+    return e.target instanceof HTMLElement ? e.target : null;
+  };
+
+  const maskIfPassword = (el, value) => {
+    if (el.type === 'password') return '••••••••';
+    return value;
+  };
       };
 
       const recentRecordedAction = { key: '', ts: 0 };
@@ -843,90 +960,196 @@ originalHtml: snapshot.html,
         window.onStepRecordedAction(action, snapshot, dataValue);
       };
 
-      document.addEventListener('pointerdown', async (e) => {
-        if (e.target.closest('#recorder-toolbar') || e.target.closest('#recorder-badge')) return;
+  const isRecorderUI = (e) => e.target.closest('#recorder-toolbar') || e.target.closest('#recorder-badge');
+  const isUiMode = () => !window.__recorderState.isPaused && window.__recorderState.mode === 'ui';
 
-        if (window.__recorderState.isPaused || window.__recorderState.mode !== 'ui') return;
+  // CLICK — pointerdown for instant feedback, skip text inputs and check/radio (change handles those)
+  document.addEventListener('pointerdown', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = resolveTarget(e);
+    if (!target) return;
+    if (isTextInput(target) && !isClickableInput(target)) return;
+    if (isCheckboxOrRadio(target)) return;
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('CLICK', snapshot, null);
+  }, { capture: true });
 
-        const target = e.target.closest('button, a, input, select, textarea, [role="button"], [tabindex]') || e.target;
+  // CLICK — duplicate dedup (pointerdown fires first, click fires on release)
+  document.addEventListener('click', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = resolveTarget(e);
+    if (!target) return;
+    if (isTextInput(target) && !isClickableInput(target)) return;
+    if (isCheckboxOrRadio(target)) return;
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('CLICK', snapshot, null);
+  }, { capture: true });
 
-        if (target && target instanceof HTMLElement && isInteractive(target)) {
-          if (['input', 'textarea'].includes(target.tagName.toLowerCase()) && target.type !== 'submit' && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio') {
-            return;
-          }
+  // DOUBLE_CLICK
+  document.addEventListener('dblclick', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = resolveTarget(e);
+    if (!target) return;
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('DOUBLE_CLICK', snapshot, null);
+  }, { capture: true });
 
-          if (target.tagName.toLowerCase() === 'input' && (target.type === 'checkbox' || target.type === 'radio')) {
-            return;
-          }
+  // RIGHT_CLICK in UI mode (element mode keeps its own contextmenu handler above)
+  document.addEventListener('contextmenu', async (e) => {
+    if (window.__recorderState.mode === 'element') return;
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = resolveTarget(e);
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('RIGHT_CLICK', snapshot, null);
+  }, { capture: true });
 
-          const snapshot = buildRichSnapshot(target, target.parentElement || null);
-          await recordUiAction('CLICK', snapshot, null);
-        }
-      }, { capture: true });
+  // CHANGE — checkboxes, radios, selects, file inputs
+  document.addEventListener('change', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
 
-      // 2. Left Click to Record Step
-      document.addEventListener('click', async (e) => {
-        if (e.target.closest('#recorder-toolbar') || e.target.closest('#recorder-badge')) return;
-        
-        if (window.__recorderState.isPaused || window.__recorderState.mode !== 'ui') return;
-        
-        const target = e.target.closest('button, a, input, select, textarea, [role="button"], [tabindex]') || e.target;
-        
-        if (target && target instanceof HTMLElement && isInteractive(target)) {
-           // To avoid triggering on input focus where they will TYPE anyway
-           if (['input', 'textarea'].includes(target.tagName.toLowerCase()) && target.type !== 'submit' && target.type !== 'button' && target.type !== 'checkbox' && target.type !== 'radio') {
-             return;
-           }
+    if (isCheckboxOrRadio(target)) {
+      const snapshot = buildRichSnapshot(target, target.parentElement || null);
+      const action = target.checked ? 'CHECK' : 'UNCHECK';
+      await recordUiAction(action, snapshot, null);
+      return;
+    }
 
-            const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    if (target.tagName.toLowerCase() === 'select') {
+      const snapshot = buildRichSnapshot(target, target.parentElement || null);
+      await recordUiAction('SELECT_OPTION', snapshot, target.value);
+      return;
+    }
 
-            const pageUrl = snapshot.pageUrl;
-           let action = 'CLICK';
-           if (target.tagName.toLowerCase() === 'input' && (target.type === 'checkbox' || target.type === 'radio')) {
-             return; // let change event handle this
-           }
+    if (target.tagName.toLowerCase() === 'input' && target.type === 'file') {
+      const snapshot = buildRichSnapshot(target, target.parentElement || null);
+      const files = target.files;
+      const fileNames = files ? Array.from(files).map(f => f.name).join(', ') : '';
+      await recordUiAction('ATTACH_FILE', snapshot, fileNames);
+      return;
+    }
+  }, { capture: true });
 
-            await recordUiAction(action, snapshot, null);
-         }
-       }, { capture: true });
+  // FOCUSIN — track original value for text inputs + contenteditable
+  document.addEventListener('focusin', async (e) => {
+    if (window.__recorderState.isPaused) return;
+    if (window.__recorderState.mode !== 'ui' && window.__recorderState.mode !== 'element') return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (isTextInput(target)) {
+      target._trackerOriginalValue = target.value || target.innerText || '';
+    }
+    if (target.tagName.toLowerCase() === 'select') {
+      target._trackerOriginalValue = target.value || '';
+    }
+  }, { capture: true });
 
-      // Prevent empty duplicates by keeping track of the original value before changes
-      document.addEventListener('focusin', async (e) => {
-         if (window.__recorderState.isPaused || window.__recorderState.mode !== 'ui') return;
-         if (e.target && e.target instanceof HTMLElement && ['input', 'textarea', 'select'].includes(e.target.tagName.toLowerCase())) {
-            e.target._trackerOriginalValue = e.target.value || '';
-         }
-      }, { capture: true });
+  // FOCUSOUT — TYPE for text inputs + contenteditable (React-compatible blur-based capture)
+  document.addEventListener('focusout', async (e) => {
+    if (!isUiMode()) return;
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
 
-      // 3. Change capturing for Input/Select (use focusout for React compatibility)
-      document.addEventListener('focusout', async (e) => {
-        if (window.__recorderState.isPaused || window.__recorderState.mode !== 'ui') return;
-        
-        const target = e.target;
-        if (target && target instanceof HTMLElement && ['input', 'textarea', 'select'].includes(target.tagName.toLowerCase())) {
-           // Exclude buttons & non-text inputs from firing blur-based TYPE events
-           if (target.tagName.toLowerCase() === 'input' && ['submit', 'button', 'image', 'reset', 'hidden', 'checkbox', 'radio'].includes(target.type)) {
-              return;
-           }
+    if (target.tagName.toLowerCase() === 'select') return;
 
-           const currentValue = target.value || '';
-           if (target._trackerOriginalValue === currentValue) {
-              return; // Filter out clicks through the field without modifying
-           }
-           target._trackerOriginalValue = currentValue; // update baseline
+    if (isClickableInput(target) || isCheckboxOrRadio(target)) return;
 
-            const snapshot = buildRichSnapshot(target, target.parentElement || null);
-           const pageUrl = window.location.href;
-           
-           let value = target.value;
-           let action = target.tagName.toLowerCase() === 'select' ? 'SELECT_OPTION' : 'TYPE';
-           
-           if (window.onStepRecordedAction) {
-               console.log('[Browser] LOG: [Smart Recorder] ACTION: ' + action);
-                window.onStepRecordedAction(action, snapshot, value);
-           }
-        }
-      }, { capture: true });
+    if (isTextInput(target) || target.isContentEditable) {
+      let current, original;
+      if (target.isContentEditable) {
+        current = target.innerText || '';
+        original = target._trackerOriginalValue || '';
+      } else {
+        current = target.value || '';
+        original = target._trackerOriginalValue || '';
+      }
+
+      if (current === original) return;
+      target._trackerOriginalValue = current;
+
+      const snapshot = buildRichSnapshot(target, target.parentElement || null);
+      const value = maskIfPassword(target, target.isContentEditable ? target.innerText : target.value);
+      await recordUiAction('TYPE', snapshot, value);
+      return;
+    }
+
+    if (target.tagName.toLowerCase() === 'input' && target.type === 'range') {
+      const snapshot = buildRichSnapshot(target, target.parentElement || null);
+      await recordUiAction('TYPE', snapshot, target.value);
+      return;
+    }
+  }, { capture: true });
+
+  // PRESS_KEY — modifier combos and special keys
+  document.addEventListener('keydown', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    if (!e.key) return;
+
+    const isModifier = ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key);
+    const isSpecial = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown', 'F1','F2','F3','F4','F5','F6','F7','F8','F9','F10','F11','F12'].includes(e.key);
+
+    if (!isModifier && !isSpecial) return;
+
+    if (isModifier && !isSpecial) return;
+
+    const parts = [];
+    if (e.ctrlKey) parts.push('Control');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Meta');
+    parts.push(e.key);
+
+    const combo = parts.join('+');
+
+    const target = resolveTarget(e) || (e.target instanceof HTMLElement ? e.target : null);
+    if (!target) return;
+
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('PRESS_KEY', snapshot, combo);
+  }, { capture: true });
+
+  // HOVER — debounced mouseover
+  let _hoverTimer = null;
+  document.addEventListener('mouseover', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    if (_hoverTimer) return;
+    const target = resolveTarget(e);
+    if (!target) return;
+    _hoverTimer = setTimeout(() => { _hoverTimer = null; }, 500);
+    const snapshot = buildRichSnapshot(target, target.parentElement || null);
+    await recordUiAction('HOVER', snapshot, null);
+  }, { capture: true });
+
+  // DRAG_AND_DROP
+  let _dragSource = null;
+  document.addEventListener('dragstart', (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    const target = resolveTarget(e);
+    if (target) _dragSource = target;
+  }, { capture: true });
+  document.addEventListener('drop', async (e) => {
+    if (isRecorderUI(e)) return;
+    if (!isUiMode()) return;
+    if (!_dragSource) return;
+    const dropTarget = resolveTarget(e);
+    if (!dropTarget) return;
+    const snapshot = buildRichSnapshot(_dragSource, _dragSource.parentElement || null);
+    snapshot._dropTarget = buildRichSnapshot(dropTarget, dropTarget.parentElement || null);
+    await recordUiAction('DRAG_AND_DROP', snapshot, null);
+    _dragSource = null;
+  }, { capture: true });
 
       const reportNavigation = (action) => {
         const currentUrl = window.location.href;

@@ -267,6 +267,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             >
               <Printer size={16} /> PDF Report
             </button>
+            <button
+              onClick={() => window.open('/aut/login', '_blank')}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg cursor-pointer ml-1"
+            >
+              <Globe size={16} /> AUT Login
+            </button>
           </div>
         </div>
 
