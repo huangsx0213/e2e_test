@@ -7,7 +7,7 @@ import os from 'os';
 
 const router = Router();
 
-function getInternalIp(): string {
+export function getInternalIp(): string {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
@@ -22,6 +22,24 @@ function getInternalIp(): string {
 // GET /api/agents - List all registered agents
 router.get('/', (req, res) => {
   res.json(agentRegistry.list());
+});
+
+// GET /api/agents/server-info - Get server's internal IP and base URL
+router.get('/server-info', (req, res) => {
+  const protocol = req.protocol;
+  const host = req.get('host') || '';
+  const hostName = host.split(':')[0];
+  const isLocalOrIp = hostName === 'localhost' || /^(\d{1,3}\.){3}\d{1,3}$/.test(hostName) || hostName === '127.0.0.1';
+  
+  const internalIp = getInternalIp();
+  const port = host.includes(':') ? ':' + host.split(':')[1] : '';
+  
+  res.json({
+    internalIp,
+    host,
+    isLocal: isLocalOrIp,
+    baseUrl: isLocalOrIp ? `http://${internalIp}${port}` : `${protocol}://${host}`
+  });
 });
 
 // PUT /api/agents/:id/status - Update agent status (e.g. enable/disable)

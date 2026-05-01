@@ -125,7 +125,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
 
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
-  const [recordingUrl, setRecordingUrl] = useState("http://localhost:3000/aut/login");
+  const [recordingUrl, setRecordingUrl] = useState(`${window.location.origin}/aut/login`);
   const [apiFilter, setApiFilter] = useState("*api*");
   const [recordingMode, setRecordingMode] = useState<'all' | 'ui' | 'api' | 'element'>('all');
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
@@ -427,7 +427,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       alert('Please select an agent to record on.');
       return;
     }
-    const urlToUse = recordingUrl.trim() || "http://localhost:3000/aut/login";
+    const urlToUse = recordingUrl.trim() || `${window.location.origin}/aut/login`;
     if (!activeSuiteId || !currentProjectId || !activeCaseId) return;
     setIsRecording(true);
     setIsRecordingModalOpen(false);
@@ -546,6 +546,25 @@ const stopRecording = async () => {
     };
   }, [activeSuiteId, currentProjectId]);
 
+  // Fetch server info to set default recording URL (use intranet IP in dev)
+  useEffect(() => {
+    const fetchServerInfo = async () => {
+      try {
+        const response = await fetch('/api/agents/server-info');
+        if (response.ok) {
+          const info = await response.json();
+          // Only update if it's currently the default (to avoid overwriting user edits)
+          if (recordingUrl === `${window.location.origin}/aut/login` || recordingUrl === "http://localhost:3000/aut/login") {
+            setRecordingUrl(`${info.baseUrl}/aut/login`);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch server info for default URL:', err);
+      }
+    };
+    fetchServerInfo();
+  }, []);
+
 
   return (
     <div className="h-full flex overflow-hidden bg-gray-50 relative">
@@ -579,7 +598,7 @@ const stopRecording = async () => {
                   <input 
                     type="url"
                     className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
-                    placeholder="http://localhost:3000/aut/login"
+                    placeholder={`${window.location.origin}/aut/login`}
                     value={recordingUrl}
                     onChange={(e) => setRecordingUrl(e.target.value)}
                     autoFocus

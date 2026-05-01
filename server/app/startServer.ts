@@ -7,6 +7,8 @@ import { registerExecutionWsHandlers } from '../modules/execution/ws-handlers.ts
 import { registerRecordingWsHandlers } from '../modules/recording/ws-handlers.ts';
 import { runMigrations } from '../migrations/index.ts';
 
+import { getInternalIp } from '../modules/agent/index.ts';
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 export async function startServer() {
@@ -57,7 +59,10 @@ export async function startServer() {
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    const internalIp = getInternalIp();
+    console.log(`Server running on:`);
+    console.log(`  - Local:   http://localhost:${PORT}`);
+    console.log(`  - Network: http://${internalIp}:${PORT}`);
   });
 
   initializeWebSocket(server);
