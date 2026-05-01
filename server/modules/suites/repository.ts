@@ -37,14 +37,14 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
 
     const suiteSetupSteps = db.prepare(
       `SELECT id, action, target, data, description, header_profile_id, body_template_id,
-              endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-       FROM suite_steps WHERE suite_id = ? AND step_group = 'setup' ORDER BY position`,
+              endpoint_id, screenshot, enabled, metadata, extractors, assertions, wait_for_network, network_mocks
+        FROM suite_steps WHERE suite_id = ? AND step_group = 'setup' ORDER BY position`,
     ).all(suiteId) as DbStepRow[];
 
     const suiteTeardownSteps = db.prepare(
       `SELECT id, action, target, data, description, header_profile_id, body_template_id,
-              endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-       FROM suite_steps WHERE suite_id = ? AND step_group = 'teardown' ORDER BY position`,
+              endpoint_id, screenshot, enabled, metadata, extractors, assertions, wait_for_network, network_mocks
+        FROM suite_steps WHERE suite_id = ? AND step_group = 'teardown' ORDER BY position`,
     ).all(suiteId) as DbStepRow[];
 
     const cases = db.prepare(
@@ -54,20 +54,20 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
     const suiteCases: TestCase[] = cases.map((testCase) => {
       const mainSteps = db.prepare(
         `SELECT id, action, target, data, description, header_profile_id, body_template_id,
-                endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-         FROM case_steps WHERE case_id = ? AND step_group = 'main' ORDER BY position`,
+                endpoint_id, screenshot, enabled, metadata, extractors, assertions, wait_for_network, network_mocks
+          FROM case_steps WHERE case_id = ? AND step_group = 'main' ORDER BY position`,
       ).all(testCase.id) as DbStepRow[];
 
       const setupSteps = db.prepare(
         `SELECT id, action, target, data, description, header_profile_id, body_template_id,
-                endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-         FROM case_steps WHERE case_id = ? AND step_group = 'setup' ORDER BY position`,
+                endpoint_id, screenshot, enabled, metadata, extractors, assertions, wait_for_network, network_mocks
+          FROM case_steps WHERE case_id = ? AND step_group = 'setup' ORDER BY position`,
       ).all(testCase.id) as DbStepRow[];
 
       const teardownSteps = db.prepare(
         `SELECT id, action, target, data, description, header_profile_id, body_template_id,
-                endpoint_id, screenshot, enabled, extractors, assertions, wait_for_network, network_mocks
-         FROM case_steps WHERE case_id = ? AND step_group = 'teardown' ORDER BY position`,
+                endpoint_id, screenshot, enabled, metadata, extractors, assertions, wait_for_network, network_mocks
+          FROM case_steps WHERE case_id = ? AND step_group = 'teardown' ORDER BY position`,
       ).all(testCase.id) as DbStepRow[];
 
       return {
@@ -146,14 +146,15 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
         db.prepare(
           `INSERT INTO ${table} (
             id, ${parentColumn}, step_group, action, target, data, description,
-            header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+            header_profile_id, body_template_id, endpoint_id, screenshot, enabled, metadata,
             extractors, assertions, wait_for_network, network_mocks, position
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           step.id, parentId, stepGroup,
           step.action, step.target, step.data, step.description || '',
           nullableText(step.headerProfileId), nullableText(step.bodyTemplateId), nullableText(step.endpointId),
           step.screenshot ? 1 : null, step.enabled === false ? 0 : 1,
+          step.metadata ? JSON.stringify(step.metadata) : null,
           step.extractors ? JSON.stringify(step.extractors) : null,
           step.assertions ? JSON.stringify(step.assertions) : null,
           step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
@@ -174,9 +175,9 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
         db.prepare(
           `INSERT INTO case_steps (
             id, case_id, step_group, action, target, data, description,
-            header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+            header_profile_id, body_template_id, endpoint_id, screenshot, enabled, metadata,
             extractors, assertions, wait_for_network, network_mocks, position
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             action = excluded.action,
             target = excluded.target,
@@ -187,6 +188,7 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
             endpoint_id = excluded.endpoint_id,
             screenshot = excluded.screenshot,
             enabled = excluded.enabled,
+            metadata = excluded.metadata,
             extractors = excluded.extractors,
             assertions = excluded.assertions,
             wait_for_network = excluded.wait_for_network,
@@ -197,6 +199,7 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
           step.action, step.target, step.data, step.description || '',
           nullableText(step.headerProfileId), nullableText(step.bodyTemplateId), nullableText(step.endpointId),
           step.screenshot ? 1 : null, step.enabled === false ? 0 : 1,
+          step.metadata ? JSON.stringify(step.metadata) : null,
           step.extractors ? JSON.stringify(step.extractors) : null,
           step.assertions ? JSON.stringify(step.assertions) : null,
           step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,

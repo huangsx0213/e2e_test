@@ -26,12 +26,14 @@ export function deserializeStep(row: DbStepRow): TestStep {
   let assertions;
   let waitForNetwork;
   let networkMocks;
+  let metadata;
   
   try {
     if (row.extractors) extractors = JSON.parse(row.extractors);
     if (row.assertions) assertions = JSON.parse(row.assertions);
     if (row.wait_for_network) waitForNetwork = JSON.parse(row.wait_for_network);
     if (row.network_mocks) networkMocks = JSON.parse(row.network_mocks);
+    if (row.metadata) metadata = JSON.parse(row.metadata);
   } catch (e) {
     console.error('Failed to parse step JSON fields', e);
   }
@@ -51,5 +53,6 @@ export function deserializeStep(row: DbStepRow): TestStep {
     assertions,
     waitForNetwork,
     networkMocks,
+    metadata,
   };
 }

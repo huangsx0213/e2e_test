@@ -4,7 +4,7 @@ import { agentRegistry } from '../agent/registry.ts';
 const router = Router();
 
 router.post('/start', async (req, res) => {
-  const { targetUrl, projectId, apiFilter, environment, agentId, pageId, caseId, suiteId } = req.body;
+  const { targetUrl, projectId, apiFilter, environment, agentId, pageId, caseId, suiteId, mode } = req.body;
 
   if (!targetUrl || !projectId) {
     return res.status(400).json({ error: 'targetUrl and projectId are required' });
@@ -12,10 +12,6 @@ router.post('/start', async (req, res) => {
 
   if (!agentId) {
     return res.status(400).json({ error: 'agentId is required. Local server recording is not supported.' });
-  }
-
-  if (!caseId || !suiteId) {
-    return res.status(400).json({ error: 'caseId and suiteId are required' });
   }
 
   try {
@@ -38,6 +34,7 @@ router.post('/start', async (req, res) => {
         pageId,
         caseId,
         suiteId,
+        mode,
       },
     }), (err) => {
       if (err) {

@@ -13,6 +13,7 @@ import { runSeed } from './seed.ts';
 import { migration008AgentsQueues } from './008_agents_queues.ts';
 import { migration009AgentsVersion } from './009_agents_version.ts';
 import { migration010ProjectElementMetadata } from './010_project_element_metadata.ts';
+import { migration011StepMetadata } from './011_step_metadata.ts';
 
 export const migrations: Migration[] = [
   migration001InitialSchema,
@@ -25,6 +26,7 @@ export const migrations: Migration[] = [
   migration008AgentsQueues,
   migration009AgentsVersion,
   migration010ProjectElementMetadata,
+  migration011StepMetadata,
 ];
 
 function appliedMigrationIds(): Set<string> {

@@ -9,17 +9,26 @@ import { randomId, nullableText } from '../../shared/utils/index.ts';
 import { db } from '../../shared/db/client.ts';
 import type { Page, Project, TestStep } from '../../shared/contracts/index.ts';
 
-function getOrCreatePage(project: Project, url: string): Page {
+function getOrCreatePage(project: Project, url: string, pageId?: string): Page {
+  if (!project.pages) project.pages = [];
+
+  if (pageId) {
+    const existingById = project.pages.find((pg) => pg.id === pageId);
+    if (existingById) {
+      if (!existingById.elements) existingById.elements = [];
+      return existingById;
+    }
+  }
+
   let pName = 'Home';
   try {
     const urlObj = new URL(url);
     pName = urlObj.pathname === '/' ? 'Home' : urlObj.pathname.substring(1).replace(/\//g, '_');
   } catch(e) {}
 
-  if (!project.pages) project.pages = [];
   let page = project.pages.find(pg => pg.name === pName);
   if (!page) {
-    page = { id: randomId('pg'), name: pName, elements: [] };
+    page = { id: pageId || randomId('pg'), name: pName, elements: [] };
     project.pages.push(page);
   }
 
@@ -35,9 +44,9 @@ function insertCaseStep(caseId: string, step: TestStep): void {
 
   db.prepare(
     `INSERT INTO case_steps (id, case_id, step_group, action, target, data, description,
-      header_profile_id, body_template_id, endpoint_id, screenshot, enabled,
+      header_profile_id, body_template_id, endpoint_id, screenshot, enabled, metadata,
       extractors, assertions, wait_for_network, network_mocks, position)
-     VALUES (?, ?, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, 'main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     step.id,
     caseId,
@@ -50,6 +59,7 @@ function insertCaseStep(caseId: string, step: TestStep): void {
     nullableText(step.endpointId),
     step.screenshot ? 1 : null,
     step.enabled === false ? 0 : 1,
+    step.metadata ? JSON.stringify(step.metadata) : null,
     step.extractors ? JSON.stringify(step.extractors) : null,
     step.assertions ? JSON.stringify(step.assertions) : null,
     step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
@@ -59,17 +69,18 @@ function insertCaseStep(caseId: string, step: TestStep): void {
 }
 
 function handleStepRecorded(data: any) {
-  const { projectId, stepInfo, caseId, suiteId } = data || {};
+  const { projectId, stepInfo, caseId, suiteId, pageId } = data || {};
   console.log(`[RECORDER WS] handleStepRecorded: action=${stepInfo?.action} caseId=${caseId} suiteId=${suiteId}`);
   const project = getProject(projectId);
   if (!project || !stepInfo) return;
 
   const { action, element, dataValue } = stepInfo;
+  const structured = stepInfo.step || null;
   if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
     const navigationUrl = element?.pageUrl || element?.value || dataValue || '';
     if (!navigationUrl) return;
 
-    const page = getOrCreatePage(project, navigationUrl);
+    const page = getOrCreatePage(project, navigationUrl, pageId);
     const step: TestStep = {
       id: randomId('step'),
       action,
@@ -78,6 +89,7 @@ function handleStepRecorded(data: any) {
       description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
       isVerified: true,
       metadata: {
+        ...(structured?.metadata || {}),
         navigation: element?.metadata?.navigation,
         snapshot: element?.metadata?.snapshot,
         page: page.name,
@@ -98,7 +110,7 @@ function handleStepRecorded(data: any) {
   }
 
   try {
-    const page = getOrCreatePage(project, element?.pageUrl);
+    const page = getOrCreatePage(project, element?.pageUrl, pageId);
 
     let existingEl = page.elements!.find(e => {
       if (e.selectorType === element.selectorType && e.value === element.value) return true;
@@ -122,8 +134,12 @@ function handleStepRecorded(data: any) {
       action,
       target: `${page.name}.${existingEl.name}`,
       data: dataValue || '',
-      description: `Recorded: ${action} on ${existingEl.name}`,
+      description: structured?.description || `Recorded: ${action} on ${existingEl.name}`,
       isVerified: element.isVerified ?? existingEl.isVerified,
+      metadata: {
+        ...(structured?.metadata || {}),
+        recorder: structured?.metadata?.recorder || stepInfo.step?.metadata?.recorder || stepInfo.recorder || undefined,
+      },
     };
 
     if (caseId) {
@@ -146,7 +162,7 @@ function handleElementRecorded(data: any) {
   const project = getProject(projectId);
   if (!project || !element) return;
 
-  const page = getOrCreatePage(project, element.pageUrl);
+  const page = getOrCreatePage(project, element.pageUrl, pageId);
   const existingEl = page.elements!.find(e =>
     e.value === element.value ||
     (e.locators && e.locators.some(l => element.locators?.some((sl: any) => sl.value === l.value)))

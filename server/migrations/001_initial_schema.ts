@@ -196,6 +196,7 @@ export const migration001InitialSchema: Migration = {
         endpoint_id TEXT,
         screenshot INTEGER,
         enabled INTEGER NOT NULL DEFAULT 1,
+        metadata TEXT,
         position INTEGER NOT NULL
       );
 
@@ -212,6 +213,7 @@ export const migration001InitialSchema: Migration = {
         endpoint_id TEXT,
         screenshot INTEGER,
         enabled INTEGER NOT NULL DEFAULT 1,
+        metadata TEXT,
         position INTEGER NOT NULL
       );
 

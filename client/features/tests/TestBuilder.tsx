@@ -125,8 +125,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
 
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
-  const [recordingUrl, setRecordingUrl] = useState("");
+  const [recordingUrl, setRecordingUrl] = useState("http://localhost:3000/aut/login");
   const [apiFilter, setApiFilter] = useState("*api*");
+  const [recordingMode, setRecordingMode] = useState<'all' | 'ui' | 'api' | 'element'>('all');
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [recordingTargetStatus, setRecordingTargetStatus] = useState<'idle' | 'busy' | 'offline' | 'disabled' | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -426,7 +427,8 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       alert('Please select an agent to record on.');
       return;
     }
-  if (!recordingUrl.trim() || !activeSuiteId || !currentProjectId || !activeCaseId) return;
+    const urlToUse = recordingUrl.trim() || "http://localhost:3000/aut/login";
+    if (!activeSuiteId || !currentProjectId || !activeCaseId) return;
     setIsRecording(true);
     setIsRecordingModalOpen(false);
     recordingCaseIdRef.current = activeCaseId;
@@ -435,15 +437,16 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       const response = await fetch('/api/recording/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUrl: recordingUrl,
-          projectId: currentProjectId,
-          environment: currentEnvironment,
-          apiFilter: apiFilter,
-          agentId: recordingTargetId,
-          caseId: activeCaseId,
-          suiteId: activeSuiteId,
-        }),
+          body: JSON.stringify({
+            targetUrl: urlToUse,
+            projectId: currentProjectId,
+            environment: currentEnvironment,
+            apiFilter: apiFilter,
+            mode: recordingMode,
+            agentId: recordingTargetId,
+            caseId: activeCaseId,
+            suiteId: activeSuiteId,
+          }),
       });
 
     if (!response.ok) {
@@ -576,7 +579,7 @@ const stopRecording = async () => {
                   <input 
                     type="url"
                     className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
-                    placeholder="https://your-app.com"
+                    placeholder="http://localhost:3000/aut/login"
                     value={recordingUrl}
                     onChange={(e) => setRecordingUrl(e.target.value)}
                     autoFocus
@@ -585,10 +588,25 @@ const stopRecording = async () => {
               </div>
 
               <div>
-          <ExecutionTargetSelector
-            selectedAgentId={recordingTargetId}
-            onSelect={setRecordingTargetId}
-            onSelectedStatusChange={setRecordingTargetStatus}
+                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Recording Mode</label>
+                <select
+                  value={recordingMode}
+                  onChange={(e) => setRecordingMode(e.target.value as 'all' | 'ui' | 'api' | 'element')}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                >
+                  <option value="all">All Events</option>
+                  <option value="ui">UI Steps Only</option>
+                  <option value="api">API Requests Only</option>
+                  <option value="element">Elements Only</option>
+                </select>
+                <p className="text-[11px] text-gray-400 mt-1.5">No in-page toolbar. Recording is controlled from this dialog.</p>
+              </div>
+
+              <div>
+            <ExecutionTargetSelector
+              selectedAgentId={recordingTargetId}
+              onSelect={setRecordingTargetId}
+              onSelectedStatusChange={setRecordingTargetStatus}
             mode="recording"
           />
               </div>
@@ -624,7 +642,7 @@ const stopRecording = async () => {
               </button>
               <button 
                 onClick={startRecording}
-                disabled={!recordingUrl || recordingTargetStatus !== 'idle'}
+                disabled={recordingTargetStatus !== 'idle'}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 <Play size={14} className="fill-current" /> Start Recording

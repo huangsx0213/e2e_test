@@ -141,22 +141,22 @@ function connect() {
           currentAbortController.abort();
         }
 } else if (parsed.event === 'RECORDING_START') {
-  const { targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId } = parsed.data || {};
+  const { targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, mode } = parsed.data || {};
   sysLogger.info(`[AGENT] Received Recording Start: ${projectId} case=${caseId}`);
   try {
     isRecordingActive = true;
     recordingStarted = false;
     agentStatus = 'busy';
     sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
-    emitRecordingEvent('recording-status', { status: 'RECEIVED', caseId, suiteId });
-    await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, emitRecordingEvent);
+    emitRecordingEvent('recording-status', { status: 'RECEIVED', caseId, suiteId, mode });
+    await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, mode, emitRecordingEvent);
         } catch (error) {
           sysLogger.error('[AGENT] Failed to start recording:', error);
           isRecordingActive = false;
           recordingStarted = false;
           agentStatus = 'idle';
           sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
-          emitRecordingEvent('recording-status', { status: 'FAILED', message: error instanceof Error ? error.message : String(error) });
+          emitRecordingEvent('recording-status', { status: 'FAILED', message: error instanceof Error ? error.message : String(error), mode });
         }
       } else if (parsed.event === 'recorder-state-changed') {
         const { state } = parsed.data || {};

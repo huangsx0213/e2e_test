@@ -100,6 +100,7 @@ export type DbStepRow = {
   endpoint_id: string | null;
   screenshot: number | null;
   enabled: number;
+  metadata?: string | null;
   extractors?: string | null;
   assertions?: string | null;
   wait_for_network?: string | null;

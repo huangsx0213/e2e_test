@@ -172,30 +172,42 @@ export class UIExecutor {
       data = executionContext.interpolate(data);
     }
 
+    const framePath = Array.isArray((step.metadata as any)?.recorder?.framePath)
+      ? (step.metadata as any).recorder.framePath.filter((value: unknown) => typeof value === 'string' && value.trim().length > 0)
+      : [];
+    let locatorRoot: any = this.page!;
+    for (const frameSelector of framePath) {
+      locatorRoot = locatorRoot.frameLocator(frameSelector);
+    }
+
     // Helper: get a Playwright Locator from a formal locator definition
     const createLocator = (loc: { selectorType: string; value: string }): { locator: Locator; methodInfo: string } => {
       const st = loc.selectorType.toLowerCase();
       const val = executionContext.interpolate(loc.value);
 
       if (st === 'css' || st === 'CSS') {
-        return { locator: this.page!.locator(val), methodInfo: `css(${val})` };
+        return { locator: locatorRoot.locator(val), methodInfo: `css(${val})` };
+      } else if (st === 'official') {
+        return { locator: locatorRoot.locator(val), methodInfo: `official(${val})` };
       } else if (st === 'xpath') {
-        return { locator: this.page!.locator(`xpath=${val}`), methodInfo: `xpath(${val})` };
+        return { locator: locatorRoot.locator(`xpath=${val}`), methodInfo: `xpath(${val})` };
       } else if (st === 'text') {
-        return { locator: this.page!.locator(`text=${val}`), methodInfo: `text(${val})` };
+        return { locator: locatorRoot.locator(`text=${val}`), methodInfo: `text(${val})` };
       } else if (st === 'testid' || st === 'getbytestid' || st === 'data-test') {
-        return { locator: this.page!.getByTestId(val), methodInfo: `getByTestId(${val})` };
-      } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext'].includes(st)) {
-        switch (st) {
-          case 'getbylabel':
-            return { locator: this.page!.getByLabel(val), methodInfo: `getByLabel(${val})` };
-          case 'getbytext':
-            return { locator: this.page!.getByText(val), methodInfo: `getByText(${val})` };
-          case 'getbyplaceholder':
-            return { locator: this.page!.getByPlaceholder(val), methodInfo: `getByPlaceholder(${val})` };
-          case 'getbyalttext':
-            return { locator: this.page!.getByAltText(val), methodInfo: `getByAltText(${val})` };
-          case 'getbyrole': {
+        return { locator: locatorRoot.getByTestId(val), methodInfo: `getByTestId(${val})` };
+        } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext', 'getbytitle'].includes(st)) {
+          switch (st) {
+            case 'getbylabel':
+              return { locator: locatorRoot.getByLabel(val), methodInfo: `getByLabel(${val})` };
+            case 'getbytext':
+              return { locator: locatorRoot.getByText(val), methodInfo: `getByText(${val})` };
+            case 'getbyplaceholder':
+              return { locator: locatorRoot.getByPlaceholder(val), methodInfo: `getByPlaceholder(${val})` };
+            case 'getbyalttext':
+              return { locator: locatorRoot.getByAltText(val), methodInfo: `getByAltText(${val})` };
+            case 'getbytitle':
+              return { locator: locatorRoot.getByTitle(val), methodInfo: `getByTitle(${val})` };
+            case 'getbyrole': {
             let role = val;
             let options: any = {};
 
@@ -221,13 +233,52 @@ export class UIExecutor {
               }
             }
 
-            return { locator: this.page!.getByRole(role as any, options), methodInfo: `getByRole(${role}, ${JSON.stringify(options)})` };
+            return { locator: locatorRoot.getByRole(role as any, options), methodInfo: `getByRole(${role}, ${JSON.stringify(options)})` };
           }
         }
       }
 
       // Default fallback
-      return { locator: this.page!.locator(val), methodInfo: `locator(${val})` };
+      return { locator: locatorRoot.locator(val), methodInfo: `locator(${val})` };
+    };
+
+    const locatorInfoFromRef = (ref: any): { selectorType: string; value: string } | null => {
+      if (!ref) return null;
+      switch (ref.kind) {
+        case 'getByRole': {
+          const parts = [`${ref.role}`];
+          const options: string[] = [];
+          if (ref.name !== undefined) options.push(`name: '${String(ref.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
+          if (ref.exact !== undefined) options.push(`exact: ${ref.exact ? 'true' : 'false'}`);
+          if (options.length) parts.push(`{ ${options.join(', ')} }`);
+          return { selectorType: 'getByRole', value: parts.join(', ') };
+        }
+        case 'getByLabel':
+        case 'getByPlaceholder':
+        case 'getByText':
+        case 'getByAltText':
+        case 'getByTitle':
+        case 'getByTestId':
+          return { selectorType: ref.kind, value: ref.text };
+        case 'css':
+          return { selectorType: 'css', value: ref.selector };
+        case 'official':
+          return { selectorType: 'official', value: ref.selector };
+        default:
+          return null;
+      }
+    };
+
+    const filePayloadsFromRecorder = (files: any): Array<{ name: string; mimeType: string; buffer: Buffer }> | null => {
+      if (!Array.isArray(files) || files.length === 0) return null;
+      const payloads = files
+        .filter((file) => file && typeof file.name === 'string' && typeof file.bufferBase64 === 'string')
+        .map((file) => ({
+          name: file.name,
+          mimeType: typeof file.mimeType === 'string' && file.mimeType ? file.mimeType : 'application/octet-stream',
+          buffer: Buffer.from(file.bufferBase64, 'base64'),
+        }));
+      return payloads.length > 0 ? payloads : null;
     };
 
     // Helper: Safely get the best single locator with smart waiting and actionability checks
@@ -670,19 +721,28 @@ export class UIExecutor {
           break;
 
         case 'ATTACH_FILE': {
-          if (!data) throw new Error('Data (file path) is required for ATTACH_FILE step');
           const locator = await getSmartLocator();
+          const recorder = (step.metadata as any)?.recorder || {};
+          const filePayloads = filePayloadsFromRecorder(recorder.files || recorder.raw?.metadata?.files);
+          if (filePayloads) {
+            await locator.setInputFiles(filePayloads, { timeout: DEFAULT_TIMEOUT });
+            break;
+          }
+          if (!data) throw new Error('Data (file path) or recorded file payloads are required for ATTACH_FILE step');
           const filePaths = data.split(',').map(p => p.trim());
           await locator.setInputFiles(filePaths, { timeout: DEFAULT_TIMEOUT });
           break;
         }
 
         case 'DRAG_AND_DROP': {
-          if (!data) throw new Error('Data (target selector) is required for DRAG_AND_DROP step');
+          const recorder = (step.metadata as any)?.recorder || {};
+          const targetRef = recorder.secondaryLocator || recorder.raw?.secondaryLocator;
+          const targetLocInfo = locatorInfoFromRef(targetRef) || (data ? { selectorType: 'css', value: data } : null);
+          if (!targetLocInfo) throw new Error('Data (target selector) is required for DRAG_AND_DROP step');
           const sourceLocator = await getSmartLocator();
 
           // Also wait for target element
-          const targetLocator = this.page!.locator(data);
+          const targetLocator = createLocator(targetLocInfo).locator;
           await targetLocator.first().waitFor({ state: 'attached', timeout: DEFAULT_TIMEOUT });
 
           await sourceLocator.dragTo(targetLocator, { timeout: DEFAULT_TIMEOUT });

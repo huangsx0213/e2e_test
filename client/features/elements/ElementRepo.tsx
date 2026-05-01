@@ -49,6 +49,7 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   // Recording States
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState("");
+  const [recordingMode, setRecordingMode] = useState<'element' | 'all'>('element');
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -253,8 +254,9 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
           targetUrl: recordingUrl,
           projectId: currentProjectId,
           pageId: activePageId,
-        agentId: recordingTargetId,
-      }),
+          mode: recordingMode,
+          agentId: recordingTargetId,
+        }),
     });
 
     if (!response.ok) {
@@ -921,6 +923,23 @@ const stopRecording = async () => {
                 onChange={(e) => setRecordingUrl(e.target.value)}
                 autoFocus
               />
+
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Recording Mode
+                </label>
+                <select
+                  value={recordingMode}
+                  onChange={(e) => setRecordingMode(e.target.value as 'element' | 'all')}
+                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none transition-all"
+                >
+                  <option value="element">Elements Only</option>
+                  <option value="all">All Events</option>
+                </select>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  The recorder runs without an in-page toolbar.
+                </p>
+              </div>
 
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
