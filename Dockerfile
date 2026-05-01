@@ -43,4 +43,4 @@ LABEL description="QuantumQA E2E Matrix - Unified Recording Engine"
 EXPOSE 7860
 
 # Start the application using node directly for better signal handling in Docker
-CMD ["node", "dist/server.cjs"]
+CMD ["node", "dist/server.js"]
