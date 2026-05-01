@@ -361,6 +361,7 @@ export function recorderInit(config: RuntimeConfig) {
       if (!target) return;
       if (isTextInput(target) && !isClickableInput(target)) return;
       if (isCheckboxOrRadio(target)) return;
+      if (target.tagName.toLowerCase() === 'select') return;
       if (target.tagName.toLowerCase() === 'label' && (target as HTMLLabelElement).control) return;
       emitUi('CLICK', target, undefined, { clickCount: (e as MouseEvent).detail || 1 });
     }, { capture: true });
