@@ -51,7 +51,7 @@ export async function startServer() {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get(/^\/aut/, (req, res) => {
-      res.sendFile(path.join(distPath, 'aut.html'));
+      res.sendFile(path.join(distPath, 'aut', 'aut.html'));
     });
     app.get(/.*/, (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
