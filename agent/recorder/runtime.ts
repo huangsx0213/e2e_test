@@ -276,14 +276,28 @@ export function recorderInit(config: RuntimeConfig) {
     const isTextInput = (el: Element) => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable);
     const isInteractive = (el: Element) => {
       const tag = el.tagName.toLowerCase();
-      return ['button', 'a', 'input', 'select', 'textarea', 'option'].includes(tag) || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' || el.hasAttribute('tabindex') || (el instanceof HTMLElement && el.isContentEditable);
+      return ['button', 'a', 'input', 'select', 'textarea', 'option', 'li'].includes(tag) || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link' || el.hasAttribute('tabindex') || (el instanceof HTMLElement && el.isContentEditable);
     };
     const resolveTarget = (e: Event) => {
       const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
       for (const node of path) {
-        if (node instanceof Element && isInteractive(node)) return node;
+        if (node instanceof Element) {
+          // If we hit a LABEL, use its associated control instead
+          if (node.tagName.toLowerCase() === 'label' && (node as HTMLLabelElement).control) {
+            return (node as HTMLLabelElement).control;
+          }
+          if (isInteractive(node)) return node;
+        }
       }
-      return e.target instanceof Element ? e.target : null;
+      const target = e.target;
+      if (target instanceof Element) {
+        // Fallback check for labels
+        if (target.tagName.toLowerCase() === 'label' && (target as HTMLLabelElement).control) {
+          return (target as HTMLLabelElement).control;
+        }
+        return target;
+      }
+      return null;
     };
 
     const emitRaw = (payload: any) => send(payload);
@@ -347,6 +361,7 @@ export function recorderInit(config: RuntimeConfig) {
       if (!target) return;
       if (isTextInput(target) && !isClickableInput(target)) return;
       if (isCheckboxOrRadio(target)) return;
+      if (target.tagName.toLowerCase() === 'label' && (target as HTMLLabelElement).control) return;
       emitUi('CLICK', target, undefined, { clickCount: (e as MouseEvent).detail || 1 });
     }, { capture: true });
 
@@ -405,16 +420,37 @@ export function recorderInit(config: RuntimeConfig) {
     document.addEventListener('keydown', (e) => {
       if (!isEnabled('ui')) return;
       if (!(e.target instanceof Element)) return;
-      const special = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown'];
+
+      const target = e.target;
+      const tag = target.tagName.toLowerCase();
+      const isInput = tag === 'input' || tag === 'textarea' || (target instanceof HTMLElement && target.isContentEditable);
+
+      // 1. Ignore pure modifiers
       const isModifier = ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key);
-      if (!isModifier && !special.includes(e.key)) return;
+      if (isModifier) return;
+
+      // 2. Ignore Tab entirely (following official Playwright logic)
+      if (e.key === 'Tab') return;
+
+      // 3. Define special keys to record
+      const special = ['Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete', 'Home', 'End', 'PageUp', 'PageDown'];
+      if (!special.includes(e.key)) return;
+
+      // 4. Ignore navigation keys inside text inputs (handled by filling the value)
+      const navigationKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'];
+      if (isInput && navigationKeys.includes(e.key)) return;
+
+      // 5. Ignore Enter on buttons (it will fire a CLICK event which we already record)
+      if (e.key === 'Enter' && (tag === 'button' || (target as HTMLElement).getAttribute('role') === 'button' || (target as HTMLInputElement).type === 'submit')) return;
+
       const parts = [];
       if (e.ctrlKey) parts.push('Control');
       if (e.altKey) parts.push('Alt');
       if (e.shiftKey) parts.push('Shift');
       if (e.metaKey) parts.push('Meta');
       parts.push(e.key);
-      emitUi('PRESS_KEY', e.target, parts.join('+'));
+      
+      emitUi('PRESS_KEY', target, parts.join('+'));
     }, { capture: true });
 
     let hoverTimer = 0;

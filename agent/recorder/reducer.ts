@@ -13,6 +13,12 @@ export class RecorderReducer {
       return null;
     }
 
+    // 官方去噪逻辑：只录制第一个进来的 URL (Session 的第一个动作)
+    // 如果已经录制过任何动作，则忽略后续的导航事件
+    if (event.type === 'navigate' && this.actions.length > 0) {
+      return null;
+    }
+
     const action: RecorderStepPayload = event.type === 'navigate'
       ? {
           action: event.action,

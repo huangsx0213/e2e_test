@@ -286,10 +286,13 @@ export function UserManagement() {
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-4 w-full">
           <div className="space-y-1.5 flex-1 min-w-[200px] max-w-xs">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Search Name</label>
+            <label htmlFor="filter-name" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Search Name</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input
+                id="filter-name"
+                name="filter-name"
+                aria-label="Search by name"
                 type="text"
                 placeholder="e.g. John..."
                 className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
@@ -300,8 +303,11 @@ export function UserManagement() {
           </div>
 
           <div className="space-y-1.5 w-40">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</label>
+            <label htmlFor="filter-role" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</label>
             <select
+              id="filter-role"
+              name="filter-role"
+              aria-label="Filter by role"
               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
               value={filterInputRole}
               onChange={e => setFilterInputRole(e.target.value)}
@@ -314,8 +320,11 @@ export function UserManagement() {
           </div>
 
           <div className="space-y-1.5 w-40">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</label>
+            <label htmlFor="filter-status" className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</label>
             <select
+              id="filter-status"
+              name="filter-status"
+              aria-label="Filter by status"
               className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
               value={filterInputStatus}
               onChange={e => setFilterInputStatus(e.target.value)}
@@ -368,26 +377,26 @@ export function UserManagement() {
           <table className="w-full text-left min-w-[1200px] table-fixed">
             <thead className="bg-gray-50 border-b border-gray-100 text-sm font-semibold text-gray-700 sticky top-0 z-10 shadow-sm">
               <tr>
-                <th className="px-6 py-4 w-12"><input type="checkbox" onChange={e => setSelectedIds(e.target.checked ? users.map(u => u.id) : [])} checked={selectedIds.length === users.length && users.length > 0} /></th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[220px]" onClick={() => handleSort('name')}>
+                <th scope="col" className="px-6 py-4 w-12"><input aria-label="Select all users" type="checkbox" onChange={e => setSelectedIds(e.target.checked ? users.map(u => u.id) : [])} checked={selectedIds.length === users.length && users.length > 0} /></th>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[220px]" onClick={() => handleSort('name')}>
                   <div className="flex items-center gap-1">Name <SortIcon field="name" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[250px]" onClick={() => handleSort('email')}>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[250px]" onClick={() => handleSort('email')}>
                   <div className="flex items-center gap-1">Email <SortIcon field="email" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[120px]" onClick={() => handleSort('role')}>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[120px]" onClick={() => handleSort('role')}>
                   <div className="flex items-center gap-1">Role <SortIcon field="role" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[120px]" onClick={() => handleSort('status')}>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[120px]" onClick={() => handleSort('status')}>
                   <div className="flex items-center gap-1">Status <SortIcon field="status" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[180px]" onClick={() => handleSort('createdAt')}>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[180px]" onClick={() => handleSort('createdAt')}>
                   <div className="flex items-center gap-1">Created At <SortIcon field="createdAt" /></div>
                 </th>
-                <th className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[180px]" onClick={() => handleSort('updatedAt')}>
+                <th scope="col" className="px-6 py-4 cursor-pointer hover:bg-gray-100 transition-colors group w-[180px]" onClick={() => handleSort('updatedAt')}>
                   <div className="flex items-center gap-1">Last Modified <SortIcon field="updatedAt" /></div>
                 </th>
-                <th className="px-6 py-4 text-right w-[140px]">Actions</th>
+                <th scope="col" className="px-6 py-4 text-right w-[140px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm whitespace-nowrap">
@@ -428,6 +437,7 @@ export function UserManagement() {
                           onClick={() => { setViewingUser(u); setModalMode('view'); }}
                           className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors border border-transparent shadow-none hover:shadow-sm"
                           title="View Details"
+                          aria-label={`View details for ${u.name}`}
                         >
                           <Eye size={16} />
                         </motion.button>
@@ -435,6 +445,7 @@ export function UserManagement() {
                           onClick={() => { setFormData({ ...initialForm, ...u }); setEditingId(u.id); setModalMode('advanced'); }}
                           className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:shadow-sm"
                           title="Edit"
+                          aria-label={`Edit user ${u.name}`}
                         >
                           <Edit2 size={16} />
                         </motion.button>
@@ -442,6 +453,7 @@ export function UserManagement() {
                           onClick={() => handleDelete(u.id)}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:shadow-sm"
                           title="Delete"
+                          aria-label={`Delete user ${u.name}`}
                         >
                           <Trash2 size={16} />
                         </motion.button>
@@ -450,6 +462,7 @@ export function UserManagement() {
                           onClick={(e) => openActionDrawer(u, e)}
                           className="p-1.5 text-gray-400 hover:text-gray-900 bg-gray-50 hover:bg-white rounded-lg transition-colors border border-transparent hover:shadow-sm"
                           title="More Options"
+                          aria-label="More options"
                         >
                           <MoveHorizontal size={16} />
                         </motion.button>
@@ -472,6 +485,7 @@ export function UserManagement() {
               disabled={page === 1}
               onClick={() => setPage(p => Math.max(1, p - 1))}
               className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              aria-label="Previous page"
             >
               <ChevronLeft size={18} />
             </button>
@@ -488,6 +502,7 @@ export function UserManagement() {
               disabled={page >= Math.ceil(total / limit)}
               onClick={() => setPage(p => p + 1)}
               className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              aria-label="Next page"
             >
               <ChevronRight size={18} />
             </button>
