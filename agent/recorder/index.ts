@@ -93,7 +93,10 @@ export async function startRecording(
       const module = { exports: {} as any };
       const fn = new Function('module', 'exports', `${source}\nreturn module.exports;`);
       const exports = fn(module, module.exports);
-      const InjectedScript = exports.InjectedScript;
+      const injectedScriptExport = exports.InjectedScript;
+      const InjectedScript = typeof injectedScriptExport === 'function' && !injectedScriptExport.prototype
+        ? injectedScriptExport()
+        : injectedScriptExport;
       (window as any).__qqaOfficialInjectedScript = new InjectedScript(window, options);
     } catch (error) {
       console.warn('[RecorderV2] Failed to initialize official injected script', error);
