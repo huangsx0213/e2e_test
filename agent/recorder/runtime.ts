@@ -36,162 +36,51 @@ export function recorderInit(config: RuntimeConfig) {
       return attrs;
     };
 
-    const escapeSingle = (value: string) => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    const escapeDouble = (value: string) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const escapeDouble = (value: string) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
     const getText = (el: Element) => {
       const text = (el as HTMLElement).innerText || el.textContent || '';
       return text.trim().replace(/\s+/g, ' ').slice(0, 80);
     };
 
-    const inferRole = (el: Element): string | null => {
-      const explicit = el.getAttribute('role');
-      if (explicit) return explicit;
-      const tag = el.tagName.toLowerCase();
-      if (tag === 'button') return 'button';
-      if (tag === 'a') return 'link';
-      if (tag === 'select') return 'combobox';
-      if (tag === 'textarea') return 'textbox';
-      if (tag === 'input') {
-        const type = (el as HTMLInputElement).type || 'text';
-        if (type === 'button' || type === 'submit' || type === 'reset') return 'button';
-        if (type === 'checkbox') return 'checkbox';
-        if (type === 'radio') return 'radio';
-        return 'textbox';
-      }
-      if (/^h[1-6]$/.test(tag)) return 'heading';
-      if (tag === 'img') return 'img';
-      return null;
-    };
+  const buildCssFallback = (el: Element): string => {
+    const attrId = el.getAttribute('id');
+    if (attrId) return `#${CSS.escape(attrId)}`;
 
-    const getAriaName = (el: Element): string | null => {
-      const ariaLabel = el.getAttribute('aria-label');
-      if (ariaLabel) return ariaLabel.trim();
-      const labelledBy = el.getAttribute('aria-labelledby');
-      if (labelledBy) {
-        const text = labelledBy
-          .split(/\s+/)
-          .map((id) => document.getElementById(id)?.textContent?.trim() || '')
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-        if (text) return text;
-      }
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-        if (el.labels && el.labels.length > 0) {
-          const label = Array.from(el.labels)
-            .map((l) => l.textContent?.trim() || '')
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-          if (label) return label;
-        }
-      }
-      const text = getText(el);
-      if (text) return text;
-      const placeholder = el.getAttribute('placeholder');
-      if (placeholder) return placeholder.trim();
-      const title = el.getAttribute('title');
-      if (title) return title.trim();
-      const alt = el.getAttribute('alt');
-      if (alt) return alt.trim();
-      return null;
-    };
+    const testId = el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-qa');
+    if (testId) return `${el.tagName.toLowerCase()}[data-testid="${escapeDouble(testId)}"]`;
 
-    const isStableClass = (value: string) => {
-      if (!value) return false;
-      if (value.length > 40) return false;
-      if (/^[a-zA-Z]+-[a-zA-Z0-9]{6,}$/.test(value)) return false;
-      if (/^css-[a-z0-9]+$/i.test(value)) return false;
-      if (/^(ng-|sc-|css-|jsx-|tw-)/i.test(value)) return false;
-      return /[a-zA-Z]/.test(value);
-    };
+    const nameAttr = el.getAttribute('name');
+    if (nameAttr) return `${el.tagName.toLowerCase()}[name="${escapeDouble(nameAttr)}"]`;
 
-    const buildCssSelector = (el: Element): string => {
-      const attrId = el.getAttribute('id');
-      if (attrId) return `#${CSS.escape(attrId)}`;
-
-      const testId = el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-qa');
-      if (testId) return `${el.tagName.toLowerCase()}[data-testid="${escapeDouble(testId)}"]`;
-
-      const nameAttr = el.getAttribute('name');
-      if (nameAttr) return `${el.tagName.toLowerCase()}[name="${escapeDouble(nameAttr)}"]`;
-
-      const typeAttr = el.getAttribute('type');
-      if (typeAttr) return `${el.tagName.toLowerCase()}[type="${escapeDouble(typeAttr)}"]`;
-
-      const className = (el as HTMLElement).className;
-      if (typeof className === 'string') {
-        const classList = className.split(/\s+/).filter(isStableClass);
-        if (classList.length) return `${el.tagName.toLowerCase()}.${classList[0]}`;
-      }
-
-      const parts: string[] = [];
-      let current: Element | null = el;
-      while (current && current !== document.body) {
-        let segment = current.tagName.toLowerCase();
-        const id = current.getAttribute('id');
-        if (id) {
-          segment = `#${CSS.escape(id)}`;
-          parts.unshift(segment);
-          break;
-        }
-        const parent = current.parentElement;
-        if (parent) {
-          const sameTag = Array.from(parent.children).filter((child) => child.tagName === current!.tagName);
-          if (sameTag.length > 1) {
-            segment += `:nth-of-type(${sameTag.indexOf(current) + 1})`;
-          }
-        }
+    const parts: string[] = [];
+    let current: Element | null = el;
+    while (current && current !== document.body) {
+      let segment = current.tagName.toLowerCase();
+      const id = current.getAttribute('id');
+      if (id) {
+        segment = `#${CSS.escape(id)}`;
         parts.unshift(segment);
-        current = current.parentElement;
+        break;
       }
-      return parts.join(' > ');
-    };
-
-    const buildLocator = (el: Element): LocatorRef => {
-      const role = inferRole(el);
-      const name = getAriaName(el);
-      if (role && name) {
-        return { kind: 'getByRole', role, name, exact: true };
-      }
-
-      const tag = el.tagName.toLowerCase();
-      const placeholder = el.getAttribute('placeholder');
-      if (placeholder && (tag === 'input' || tag === 'textarea')) {
-        return { kind: 'getByPlaceholder', text: placeholder.trim(), exact: true };
-      }
-
-      const labelText = (() => {
-        if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) return '';
-        if (el.labels && el.labels.length) {
-          return Array.from(el.labels).map((l) => l.textContent?.trim() || '').filter(Boolean).join(' ').trim();
+      const parent = current.parentElement;
+      if (parent) {
+        const sameTag = Array.from(parent.children).filter((child) => child.tagName === current!.tagName);
+        if (sameTag.length > 1) {
+          segment += `:nth-of-type(${sameTag.indexOf(current) + 1})`;
         }
-        const id = el.getAttribute('id');
-        if (id) {
-          const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
-          return label?.textContent?.trim() || '';
-        }
-        return '';
-      })();
-      if (labelText) return { kind: 'getByLabel', text: labelText, exact: true };
-
-      const text = getText(el);
-      if (text && !['input', 'textarea', 'select'].includes(tag)) {
-        return { kind: 'getByText', text, exact: true };
       }
+      parts.unshift(segment);
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  };
 
-      const alt = el.getAttribute('alt');
-      if (alt) return { kind: 'getByAltText', text: alt.trim(), exact: true };
-
-      const title = el.getAttribute('title');
-      if (title) return { kind: 'getByTitle', text: title.trim(), exact: true };
-
-      const testId = el.getAttribute('data-testid') || el.getAttribute('data-test') || el.getAttribute('data-qa');
-      if (testId) return { kind: 'getByTestId', text: testId.trim() };
-
-      return { kind: 'css', selector: buildCssSelector(el) };
-    };
+  const buildLocatorRef = (el: Element): LocatorRef => {
+    const official = buildOfficialSelector(el);
+    if (official) return { kind: 'official', selector: official };
+    return { kind: 'css', selector: buildCssFallback(el) };
+  };
 
     const buildOfficialSelector = (el: Element): string | null => {
       try {
@@ -211,41 +100,36 @@ export function recorderInit(config: RuntimeConfig) {
         const frameElement = currentWindow.frameElement;
         if (!(frameElement instanceof Element)) break;
         const officialSelector = buildOfficialSelector(frameElement);
-        path.unshift(officialSelector || buildCssSelector(frameElement));
+        path.unshift(officialSelector || buildCssFallback(frameElement));
         currentWindow = currentWindow.parent;
         depth++;
       }
       return path;
     };
 
-    const toLegacyLocator = (ref: LocatorRef) => {
-      switch (ref.kind) {
-        case 'getByRole':
-          return { selectorType: 'getByRole', value: ref.name ? `${ref.role}, { name: '${escapeSingle(ref.name)}'${ref.exact !== undefined ? `, exact: ${ref.exact ? 'true' : 'false'}` : ''} }` : ref.role };
-        case 'getByLabel':
-          return { selectorType: 'getByLabel', value: ref.text };
-        case 'getByPlaceholder':
-          return { selectorType: 'getByPlaceholder', value: ref.text };
-        case 'getByText':
-          return { selectorType: 'getByText', value: ref.text };
-        case 'getByAltText':
-          return { selectorType: 'getByAltText', value: ref.text };
-        case 'getByTitle':
-          return { selectorType: 'getByTitle', value: ref.text };
-        case 'getByTestId':
-          return { selectorType: 'getByTestId', value: ref.text };
-        case 'css':
-          return { selectorType: 'css', value: ref.selector };
+  const elementName = (el: Element) => {
+    const official = buildOfficialSelector(el);
+    if (official) {
+      const roleMatch = official.match(/internal:role=([^\[]+)(?:\[name=(['"])(.*?)\2(?:i)?\])?/);
+      if (roleMatch) {
+        const name = roleMatch[3]?.trim();
+        if (name) return name;
       }
-    };
-
-    const elementName = (el: Element) => {
-      const ref = buildLocator(el);
-      if (ref.kind === 'getByRole' && ref.name) return ref.name;
-      if ('text' in ref) return ref.text;
-      if (ref.kind === 'css') return ref.selector;
-      return el.tagName.toLowerCase();
-    };
+      const labelMatch = official.match(/internal:label=(['"])(.*?)\1(?:i)?/);
+      if (labelMatch) return labelMatch[2].trim();
+    }
+    const ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel) return ariaLabel.trim();
+    const text = getText(el);
+    if (text) return text;
+    const placeholder = el.getAttribute('placeholder');
+    if (placeholder) return placeholder.trim();
+    const title = el.getAttribute('title');
+    if (title) return title.trim();
+    const alt = el.getAttribute('alt');
+    if (alt) return alt.trim();
+    return el.tagName.toLowerCase();
+  };
 
     const buildSnapshot = (el: Element) => ({
       tagName: el.tagName.toUpperCase(),
@@ -301,44 +185,40 @@ export function recorderInit(config: RuntimeConfig) {
     };
 
     const emitRaw = (payload: any) => send(payload);
-    const emitUi = (action: string, target: Element, value?: string, extra?: Record<string, any>) => {
-      if (!isEnabled('ui')) return;
-      const locator = buildLocator(target);
-      const officialSelector = buildOfficialSelector(target);
-      emitRaw({
-        type: 'ui',
-        action,
-        locator,
-        value,
-        pageUrl: window.location.href,
-        timestamp: Date.now(),
-        metadata: {
-          snapshot: buildSnapshot(target),
-          legacyLocator: toLegacyLocator(locator),
-          officialSelector,
-          framePath: buildFramePath(),
-          ...extra,
-        },
-      });
-    };
+  const emitUi = (action: string, target: Element, value?: string, extra?: Record<string, any>) => {
+    if (!isEnabled('ui')) return;
+    const locator = buildLocatorRef(target);
+    emitRaw({
+      type: 'ui',
+      action,
+      locator,
+      value,
+      pageUrl: window.location.href,
+      timestamp: Date.now(),
+      metadata: {
+        snapshot: buildSnapshot(target),
+        officialSelector: locator.kind === 'official' ? locator.selector : null,
+        framePath: buildFramePath(),
+        ...extra,
+      },
+    });
+  };
 
-    const emitElement = (target: Element) => {
-      if (!isEnabled('element')) return;
-      const locator = buildLocator(target);
-      const officialSelector = buildOfficialSelector(target);
-      emitRaw({
-        type: 'element',
-        locator,
-        pageUrl: window.location.href,
-        timestamp: Date.now(),
-        metadata: {
-          snapshot: buildSnapshot(target),
-          legacyLocator: toLegacyLocator(locator),
-          officialSelector,
-          framePath: buildFramePath(),
-        },
-      });
-    };
+  const emitElement = (target: Element) => {
+    if (!isEnabled('element')) return;
+    const locator = buildLocatorRef(target);
+    emitRaw({
+      type: 'element',
+      locator,
+      pageUrl: window.location.href,
+      timestamp: Date.now(),
+      metadata: {
+        snapshot: buildSnapshot(target),
+        officialSelector: locator.kind === 'official' ? locator.selector : null,
+        framePath: buildFramePath(),
+      },
+    });
+  };
 
     document.addEventListener('contextmenu', (e) => {
       const target = resolveTarget(e);
@@ -464,32 +344,32 @@ export function recorderInit(config: RuntimeConfig) {
       emitUi('HOVER', target);
     }, { capture: true });
 
-    let dragSource: Element | null = null;
-    document.addEventListener('dragstart', (e) => {
-      if (!isEnabled('ui')) return;
-      const target = resolveTarget(e);
-      if (target) dragSource = target;
-    }, { capture: true });
-    document.addEventListener('drop', (e) => {
-      if (!isEnabled('ui')) return;
-      const target = resolveTarget(e);
-      if (!dragSource || !target) return;
-      const locator = buildLocator(dragSource);
-      emitRaw({
-        type: 'ui',
-        action: 'DRAG_AND_DROP',
-        locator,
-        secondaryLocator: buildLocator(target),
-        pageUrl: window.location.href,
-        timestamp: Date.now(),
-        metadata: {
-          snapshot: buildSnapshot(dragSource),
-          dropTarget: buildSnapshot(target),
-          legacyLocator: toLegacyLocator(locator),
-        },
-      });
-      dragSource = null;
-    }, { capture: true });
+  let dragSource: Element | null = null;
+  document.addEventListener('dragstart', (e) => {
+    if (!isEnabled('ui')) return;
+    const target = resolveTarget(e);
+    if (target) dragSource = target;
+  }, { capture: true });
+  document.addEventListener('drop', (e) => {
+    if (!isEnabled('ui')) return;
+    const target = resolveTarget(e);
+    if (!dragSource || !target) return;
+    const locator = buildLocatorRef(dragSource);
+    emitRaw({
+      type: 'ui',
+      action: 'DRAG_AND_DROP',
+      locator,
+      secondaryLocator: buildLocatorRef(target),
+      pageUrl: window.location.href,
+      timestamp: Date.now(),
+      metadata: {
+        snapshot: buildSnapshot(dragSource),
+        dropTarget: buildSnapshot(target),
+        officialSelector: locator.kind === 'official' ? locator.selector : null,
+      },
+    });
+    dragSource = null;
+  }, { capture: true });
 
     const reportNavigation = (action: 'PAGE_LOAD' | 'NAVIGATE') => {
       const currentUrl = window.location.href;

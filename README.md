@@ -18,7 +18,7 @@ QuantumQA is a unified, low-code **E2E Testing Matrix** designed for high-fideli
 - **Unified Logic**: Seamlessly mix Playwright-driven UI steps and fetch-driven API steps in a single test case.
 - **Deterministic Engine**: Built on a robust Node.js backend to ensure zero "hallucinations" and maximum execution stability.
 - **Intelligent Recording**: 
-    - **UI Recorder**: Captured interactions generate resilient selectors (TEST_ID > ARIA > CSS).
+    - **UI Recorder**: Uses Playwright's official selector engine (same as `codegen`) to generate resilient selectors; CSS fallback for edge cases.
     - **API Recorder**: Traffic sniffer automatically maps network requests to environment-aware endpoints.
 - **Layered Variable System**: Advanced scoping (Case, Suite, Scenario, Environment) with dynamic generators and transformation pipes.
 - **Resilient POM**: A centralized Element Repository that decouples test steps from brittle UI selectors.

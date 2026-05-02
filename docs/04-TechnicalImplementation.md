@@ -65,8 +65,8 @@ By injecting a smart tracker into a Playwright-controlled browser and leveraging
 3. **Action Interception**: 
     *   *UI*: Tracker captures `click`/`input` events.
     *   *API*: Playwright intercepts requests matching the filter, capturing URL, Method, Headers, and Response Status.
-4. **Smart Auto-Mapping**:
-    *   *UI*: Resolves elements via `generateSmartSelector` with live DOM validation.
+4. **Official Selector Generation**:
+* *UI*: Uses Playwright's official `InjectedScript.generateSelectorSimple` to produce `internal:role=...` / `internal:label=...` / `internal:testid=...` selectors — the same engine that powers `playwright codegen`. Falls back to minimal CSS (ID → `data-testid` → `name` → structural path) only if the official engine fails.
     *   *API*: **Environment-Aware Mapping**. The request origin is saved as the `baseUrl` for the *selected environment* in the `ApiEndpoint` model.
 5. **Intelligent Asset Merging**:
     *   If an endpoint (Method + Path) already exists, the engine **updates** it by adding/updating the `baseUrl` for the current environment and merging new query parameters.
@@ -77,9 +77,10 @@ By injecting a smart tracker into a Playwright-controlled browser and leveraging
 ## 3. Core Implementation Details
 
 ### 3.1. UI Recording: Injected Tracker
-*   **Floating Toolbar**: Draggable UI for toggling UI/API recording and adding assertions.
-*   **Smart Filtering**: Only captures interactions on semantic elements (buttons, inputs, links).
-*   **Event Debouncing**: Captures final values on `blur` or `change` for efficiency.
+* **Official Selector Engine**: Delegates to Playwright's `InjectedScript.generateSelectorSimple` for selector generation — the same engine used by `playwright codegen`. Produces `internal:role=...`, `internal:label=...`, and `internal:testid=...` selectors.
+* **CSS Fallback**: If the official engine fails (rare), builds a minimal CSS selector (ID → `data-testid` → `name` attribute → structural `nth-of-type` path).
+* **Smart Filtering**: Only captures interactions on semantic elements (buttons, inputs, links).
+* **Event Debouncing**: Captures final values on `blur` or `change` for efficiency.
 
 ### 3.2. API Recording: Environment-Aware Mapping
 > [!IMPORTANT]

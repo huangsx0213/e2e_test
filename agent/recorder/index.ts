@@ -1,7 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { recorderInit } from './runtime.ts';
 import { RecorderReducer } from './reducer.ts';
-import { locatorRefFromOfficialSelector, locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
+import { locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
 import type { LocatorRef, RecorderMode, RecorderState } from './protocol.ts';
 
 declare const require: NodeJS.Require;
@@ -240,31 +240,20 @@ export async function stopRecording() {
 async function handleBrowserEvent(event: any) {
   if (!session) return;
 
-  const officialSelector = event?.metadata?.officialSelector;
-  if (officialSelector && event.locator) {
-    try {
-      event = {
-        ...event,
-        locator: locatorRefFromOfficialSelector(officialSelector),
-      };
-    } catch (error) {
-      console.warn('[RecorderV2] Failed to parse official selector, falling back to manual locator', error);
-    }
-  }
-
   if (event.type === 'element') {
-    const legacy = locatorRefToLegacyDef(event.locator as LocatorRef);
+    const locator = event.locator as LocatorRef;
+    const legacy = locatorRefToLegacyDef(locator);
     const element = {
       id: `el-${Math.random().toString(36).slice(2, 10)}`,
-      name: locatorRefToName(event.locator as LocatorRef),
+      name: locatorRefToName(locator),
       selectorType: legacy.selectorType,
       value: legacy.value,
-      description: event.metadata?.snapshot?.text || locatorRefToName(event.locator as LocatorRef),
+      description: event.metadata?.snapshot?.text || locatorRefToName(locator),
       pageUrl: event.pageUrl,
       locators: [legacy],
       metadata: {
         recorder: {
-          locator: event.locator,
+          locator,
           snapshot: event.metadata?.snapshot,
           legacyLocator: legacy,
           officialSelector: event.metadata?.officialSelector,

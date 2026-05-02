@@ -464,16 +464,13 @@ API 步骤可引用可复用资产：
 3. 在步骤中以 `页面名.元素名` 引用元素（如 `LoginPage.usernameInput`）
 4. 如果选择器变更，只需在一处更新 — 所有引用该元素的步骤自动生效
 
-### 选择器优先级（录制时）
+### 选择器生成（录制时）
 
-录制时，系统按优先级顺序生成选择器：
+录制器使用 **Playwright 官方选择器引擎**（`InjectedScript.generateSelectorSimple`）生成最具韧性的选择器。该引擎与 Playwright 内置的 `codegen` 录制器使用同一套逻辑，确保选择器准确、稳定，且在执行时可被 Playwright 直接定位。
 
-1. **getByRole** — ARIA 角色 + 可访问名称（最具韧性）
-2. **getByTestId** — `data-test`、`data-testid` 或 `data-qa` 属性
-3. **CSS ID** — `#id` 选择器
-4. **getByText** — 文本内容匹配（兜底方案）
+引擎产出的选择器格式如 `internal:role=button[name="Sign in"i]` 或 `internal:label="Email"`，执行时直接映射为 Playwright Locator。
 
-每个候选选择器都会在实时 DOM 上验证 — 只接受唯一匹配单个元素的选择器。
+若官方引擎失败（极少见），会使用最小化的 **CSS 兜底策略**（ID → `data-testid` → `name` 属性 → 结构路径）。
 
 ---
 
@@ -635,14 +632,15 @@ API 步骤可引用可复用资产：
 
 ### 智能选择器生成
 
-对于每个录制的元素，引擎按优先级顺序生成选择器：
+录制器使用 **Playwright 官方 `InjectedScript`** 选择器引擎——与 `playwright codegen` 相同的引擎。它生成 Playwright 原生选择器，执行时可直接使用：
 
-1. `getByRole`（ARIA 角色 + 名称）— 对 UI 变更最具韧性
-2. `getByTestId`（`data-test`、`data-testid`、`data-qa`）
-3. CSS ID（`#id`）
-4. `getByText`（兜底方案）
+| 选择器格式 | 示例 | 韧性 |
+| :--- | :--- | :--- |
+| `internal:role=...` | `internal:role=button[name="Sign in"i]` | 高 — 不受布局/样式类变更影响 |
+| `internal:label=...` | `internal:label="Email"` | 高 — 绑定可访问标签 |
+| `internal:testid=...` | `internal:testid=login-btn` | 最高 — 显式稳定标识符 |
 
-选择器会在实时 DOM 上验证 — 只接受唯一匹配的选择器。
+若官方引擎无法生成选择器（极少见），会使用最小化 CSS 兜底（元素 ID → `data-testid` → `name` 属性 → 结构路径）。
 
 ### API 录制
 

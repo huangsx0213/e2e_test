@@ -316,7 +316,7 @@ The **authoring pipeline** — captures UI interactions and API traffic:
 | File | Role |
 | :--- | :--- |
 | `routes.ts` | `POST /start` and `POST /stop` endpoints; 3 callback processors (element/step/API recorder) |
-| `engine.ts` | Playwright-based engine: injects 738-line client script for smart selector generation (getByRole > getByTestId > CSS ID > getByText) |
+| `engine.ts` | Playwright-based engine: injects official `InjectedScript` from `playwright-core` for selector generation + lightweight client tracker (~400 lines) |
 
 ---
 
@@ -488,12 +488,15 @@ Recording is split into two synchronized workflows:
 graph TD
     subgraph "Recording Engine (Playwright)"
         Browser[Chromium Browser]
-        Script[Injected Client Script - 738 lines]
+        Official[Playwright InjectedScript - Official Selector Engine]
+        Tracker[Client Tracker - ~400 lines event capture]
         Network[Network Interceptor]
     end
 
-    Browser -->|User Interactions| Script
-    Script -->|Smart Selectors| Callbacks[Server Callbacks]
+    Browser -->|User Interactions| Tracker
+    Tracker -->|element ref| Official
+    Official -->|official selector| Tracker
+    Tracker -->|LocatorRef| Callbacks[Server Callbacks]
     Network -->|Request/Response Pairs| Callbacks
     Callbacks -->|element-recorded| ProjectPages[Project Pages + Elements]
     Callbacks -->|step-recorded| TestSteps[Test Steps]
@@ -503,11 +506,11 @@ graph TD
 
 ### 6.2 UI Event Tracking
 
-- Injects a JavaScript tracker into the target page
+- Injects a lightweight JavaScript tracker (~400 lines) into the target page
+- Delegates **selector generation** to Playwright's official `InjectedScript.generateSelectorSimple` — the same engine used by `playwright codegen`
+- Produces `internal:role=...` / `internal:label=...` / `internal:testid=...` selectors that are directly executable by Playwright at runtime
+- Falls back to minimal CSS (ID → `data-testid` → `name` → structural path) only if the official engine fails
 - Captures clicks, inputs, focus changes, selections
-- Generates **smart selectors** using priority: `getByRole > getByTestId > CSS ID > getByText`
-- Validates selectors against the live DOM
-- When the page URL has already changed, falls back to the captured HTML snapshot instead of validating against the new DOM
 - Detects navigation and auto-injects `WAIT_FOR_NAVIGATION` steps
 
 ### 6.3 Network Interception

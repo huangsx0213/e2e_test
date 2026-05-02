@@ -195,14 +195,14 @@ export function locatorRefToName(ref: LocatorRef): string {
 }
 
 function humanizeOfficialSelector(selector: string): string {
-  const roleMatch = selector.match(/^internal:role=([^\[]+)(?:\[name=(['"])(.*?)\2(?:i)?\])?$/);
+  const roleMatch = selector.match(/internal:role=([^\[]+)(?:\[name=(['"])(.*?)\2(?:i)?\])?/);
   if (roleMatch) {
     const role = roleMatch[1].trim();
     const name = roleMatch[3]?.trim();
     return name ? `${role}: ${name}` : role;
   }
 
-  const labelMatch = selector.match(/^internal:label=(['"])(.*?)\1(?:i)?$/);
+  const labelMatch = selector.match(/internal:label=(['"])(.*?)\1(?:i)?/);
   if (labelMatch)
     return `label: ${labelMatch[2].trim()}`;
 

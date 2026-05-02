@@ -464,16 +464,13 @@ The Element Repository decouples test steps from brittle UI selectors.
 3. Reference elements in steps as `PageName.ElementName` (e.g., `LoginPage.usernameInput`)
 4. If a selector changes, update it in one place — all referencing steps are automatically updated
 
-### Selector Priority (Recording)
+### Selector Generation (Recording)
 
-When recording, the system generates selectors in priority order:
+The recorder leverages **Playwright's official selector engine** (`InjectedScript.generateSelectorSimple`) to produce the most resilient selectors. This is the same engine that powers Playwright's built-in codegen, ensuring selectors are accurate, stable, and executable by Playwright at runtime.
 
-1. **getByRole** — ARIA role + accessible name (most resilient)
-2. **getByTestId** — `data-test`, `data-testid`, or `data-qa` attributes
-3. **CSS ID** — `#id` selector
-4. **getByText** — Text content match (fallback)
+The engine produces selectors like `internal:role=button[name="Sign in"i]` or `internal:label="Email"`, which map directly to Playwright locators during execution.
 
-Each candidate is validated against the live DOM — only selectors that uniquely identify a single element are accepted.
+If the official engine fails (rare), a minimal **CSS fallback** is used (ID → `data-testid` → `name` attribute → structural path).
 
 ---
 
@@ -635,14 +632,15 @@ The floating toolbar offers three modes:
 
 ### Smart Selector Generation
 
-For every recorded element, the engine generates selectors in priority order:
+The recorder uses **Playwright's official `InjectedScript`** selector engine — the same engine that powers `playwright codegen`. It produces Playwright-native selectors that are directly executable at runtime:
 
-1. `getByRole` (ARIA role + name) — most resilient to UI changes
-2. `getByTestId` (`data-test`, `data-testid`, `data-qa`)
-3. CSS ID (`#id`)
-4. `getByText` (fallback)
+| Selector Pattern | Example | Resilience |
+| :--- | :--- | :--- |
+| `internal:role=...` | `internal:role=button[name="Sign in"i]` | High — survives layout/class changes |
+| `internal:label=...` | `internal:label="Email"` | High — tied to accessible label |
+| `internal:testid=...` | `internal:testid=login-btn` | Highest — explicit stable identifier |
 
-Selectors are validated against the live DOM — only unique matches are accepted.
+If the official engine cannot produce a selector (rare edge case), a minimal CSS fallback is used (element ID → `data-testid` → `name` attribute → structural path).
 
 ### API Recording
 
