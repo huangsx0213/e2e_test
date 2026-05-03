@@ -165,7 +165,7 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
     if (!activeModule) return;
     const newStep: TestStep = {
       id: `ms-${Date.now()}`,
-      action: action || "CLICK",
+      action: action || "click",
       target: "",
       data: "",
       description: "",

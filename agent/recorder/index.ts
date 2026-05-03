@@ -22,7 +22,6 @@ type RecordingSession = {
   onStepRecorded?: OnStepRecorded;
   onApiRecorded?: OnApiRecorded;
   onRecorderStateChanged?: OnRecorderStateChanged;
-  cdp?: any;
   closing?: boolean;
   closeReason?: string;
 };
@@ -83,10 +82,14 @@ export async function startRecording(
     onRecorderStateChanged,
   };
 
-  const cdp = await context.newCDPSession(page);
-  session.cdp = cdp;
-  await cdp.send('Runtime.enable');
-  await cdp.send('Runtime.addBinding', { name: BINDING_NAME });
+  await page.exposeBinding(BINDING_NAME, (_source, payload: string) => {
+    try {
+      const event = JSON.parse(payload);
+      handleBrowserEvent(event);
+    } catch (error) {
+      console.error('[RecorderV2] Failed to handle binding payload:', error);
+    }
+  });
 
   await page.addInitScript(({ source, options }) => {
     try {
@@ -103,16 +106,6 @@ export async function startRecording(
     }
   }, { source: injectedScriptSource, options: OFFICIAL_INJECTED_OPTIONS });
 
-  cdp.on('Runtime.bindingCalled', async (payload: { name: string; payload: string }) => {
-    if (payload.name !== BINDING_NAME) return;
-    try {
-      const event = JSON.parse(payload.payload);
-      await handleBrowserEvent(event);
-    } catch (error) {
-      console.error('[RecorderV2] Failed to handle binding payload:', error);
-    }
-  });
-
   await page.addInitScript(recorderInit as any, { bindingName: BINDING_NAME, mode });
 
   const handleTerminalClose = async (reason: string) => {
@@ -125,11 +118,6 @@ export async function startRecording(
       if (session.onRecorderStateChanged) session.onRecorderStateChanged(stoppedState);
     } catch (error) {
       console.warn('[RecorderV2] Failed to emit stop state:', error);
-    }
-    try {
-      if (session.cdp) await session.cdp.detach();
-    } catch {
-      // ignore detach failures during shutdown
     }
     try {
       if (!session.browser.isConnected()) return;
@@ -152,8 +140,9 @@ export async function startRecording(
     if (mode !== 'ui' && mode !== 'all') return;
     const raw = {
       type: 'navigate' as const,
-      url: frame.url(),
-      action: 'NAVIGATE' as const,
+      value: frame.url(),
+      pageUrl: frame.url(),
+      action: 'goto' as const,
       previousUrl: null,
       timestamp: Date.now(),
     };
@@ -220,13 +209,6 @@ export async function stopRecording() {
       session.onRecorderStateChanged({ isPaused: true, started: false, mode: session.mode, action: 'STOP' });
     }
     session.closing = true;
-    if (session.cdp) {
-      try {
-        await session.cdp.detach();
-      } catch {
-        // ignore detach failures
-      }
-    }
     try {
       await session.browser.close();
     } catch {
@@ -279,7 +261,7 @@ async function handleBrowserEvent(event: any) {
     const step = {
       id: `step-${Math.random().toString(36).slice(2, 10)}`,
       action: normalized.action,
-      target: `${locatorRefToName(locator)}`,
+      target: normalized.action === 'goto' ? (normalized.value || '') : `${locatorRefToName(locator)}`,
       data: dataValue,
       description: buildStepDescription(normalized.action, locator, dataValue),
       isVerified: true,
@@ -299,7 +281,18 @@ async function handleBrowserEvent(event: any) {
         },
       },
     };
-    if (session.onStepRecorded) session.onStepRecorded({ action: normalized.action, element: { ...legacy, name: locatorRefToName(locator), pageUrl: normalized.pageUrl, metadata: step.metadata }, dataValue, step });
+    const elementName = locatorRefToName(locator);
+    if (session.onStepRecorded) session.onStepRecorded({
+      action: normalized.action,
+      element: {
+        ...legacy,
+        name: elementName,
+        pageUrl: normalized.pageUrl,
+        metadata: step.metadata,
+      },
+      dataValue,
+      step,
+    });
     return;
   }
 }

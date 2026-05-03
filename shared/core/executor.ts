@@ -569,7 +569,7 @@ async function executeSteps(
     }
 
     // ─── RUN_MODULE ───
-    if (step.action === 'RUN_MODULE') {
+    if (step.action === 'runModule') {
       if (depth >= MAX_MODULE_DEPTH) {
         throw new Error(`Max module depth (${MAX_MODULE_DEPTH}) exceeded — possible infinite recursion`);
       }
@@ -607,7 +607,7 @@ async function executeSteps(
     }
 
     // ─── WAIT ───
-    if (step.action.trim().toUpperCase() === 'WAIT') {
+    if (step.action.trim() === 'waitForTimeout') {
       const ms = parseInt(context.interpolate(step.data || '1000'), 10) || 1000;
       logger.log({ stepId: step.id, status: 'RUNNING', message: `${indent}⏳ Waiting ${ms}ms` });
       await new Promise(resolve => setTimeout(resolve, ms));
@@ -616,7 +616,7 @@ async function executeSteps(
     }
 
     // ─── API Steps ───
-    if (step.action.startsWith('API_')) {
+    if (step.action.startsWith('api')) {
       const resolvedTarget = context.interpolate(step.target || '');
       logger.log({
         stepId: step.id,
@@ -724,7 +724,7 @@ async function executeSteps(
       uiResult = await uiExecutor.executeStep(step, context, payload.project.pages || [], payload.request.environment, onEnvVarExtracted);
 
       let logMessage = `${indent}✅ [${step.action}] Completed (${uiResult.durationMs}ms)`;
-      if (step.action.startsWith('ASSERT_') && uiResult.assertionDetails) {
+      if (step.action.startsWith('assert') && uiResult.assertionDetails) {
         const { expected, actual, target } = uiResult.assertionDetails;
         const targetStr = target ? ` ${target}` : '';
         logMessage = `${indent}✅ Assertion Passed: [${step.action}]${targetStr} (Expected: '${expected}', Actual: '${actual}')`;
@@ -768,7 +768,7 @@ async function executeSteps(
       const failScreenshot = await uiExecutor.captureStateScreenshot();
 
       let logMessage = `${indent}❌ UI Action Failed: ${msg}`;
-      if (step.action.startsWith('ASSERT_') && (error as any).assertionDetails) {
+      if (step.action.startsWith('assert') && (error as any).assertionDetails) {
         const { expected, actual, target } = (error as any).assertionDetails;
         const targetStr = target ? ` ${target}` : '';
         logMessage = `${indent}❌ Assertion Failed: [${step.action}]${targetStr} (Expected: '${expected}', Actual: '${actual}')`;

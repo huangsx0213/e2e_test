@@ -185,7 +185,7 @@ export class UIExecutor {
       const st = loc.selectorType.toLowerCase();
       const val = executionContext.interpolate(loc.value);
 
-      if (st === 'css' || st === 'CSS') {
+      if (st === 'css') {
         return { locator: locatorRoot.locator(val), methodInfo: `css(${val})` };
       } else if (st === 'official') {
         return { locator: locatorRoot.locator(val), methodInfo: `official(${val})` };
@@ -195,78 +195,80 @@ export class UIExecutor {
         return { locator: locatorRoot.locator(`text=${val}`), methodInfo: `text(${val})` };
       } else if (st === 'testid' || st === 'getbytestid' || st === 'data-test') {
         return { locator: locatorRoot.getByTestId(val), methodInfo: `getByTestId(${val})` };
-        } else if (['getbylabel', 'getbyrole', 'getbytext', 'getbyplaceholder', 'getbyalttext', 'getbytitle'].includes(st)) {
-          switch (st) {
-            case 'getbylabel':
-              return { locator: locatorRoot.getByLabel(val), methodInfo: `getByLabel(${val})` };
-            case 'getbytext':
-              return { locator: locatorRoot.getByText(val), methodInfo: `getByText(${val})` };
-            case 'getbyplaceholder':
-              return { locator: locatorRoot.getByPlaceholder(val), methodInfo: `getByPlaceholder(${val})` };
-            case 'getbyalttext':
-              return { locator: locatorRoot.getByAltText(val), methodInfo: `getByAltText(${val})` };
-            case 'getbytitle':
-              return { locator: locatorRoot.getByTitle(val), methodInfo: `getByTitle(${val})` };
-            case 'getbyrole': {
-            let role = val;
-            let options: any = {};
+      }
 
-            // Robust Support format: "button, {name: 'Login', exact: true}"
-            if (val.includes('{')) {
-              const parts = val.split(/,(?=\s*\{)/);
-              role = parts[0].trim();
-              const optionsStr = parts[1]?.trim();
-              if (optionsStr) {
-                // Improved regex for parsing options
-                const nameMatch = optionsStr.match(/(?:['"]?name['"]?)\s*:\s*(['"])(.*?)\1/);
-                if (nameMatch) options.name = nameMatch[2];
-                const exactMatch = optionsStr.match(/(?:['"]?exact['"]?)\s*:\s*(true|false)/);
-                if (exactMatch) options.exact = exactMatch[1] === 'true';
-              }
-            }
-            // Support format: "button[name='Login']"
-            else if (val.includes('[name=')) {
-              const bracketMatch = val.match(/^(\w+)\[name=['"](.+)['"]\]$/);
-              if (bracketMatch) {
-                role = bracketMatch[1];
-                options.name = bracketMatch[2];
-              }
-            }
+      // Legacy support: getBy* kinds from previously recorded/edited steps
+      if (['getbylabel', 'getbytext', 'getbyplaceholder', 'getbyalttext', 'getbytitle'].includes(st)) {
+        switch (st) {
+          case 'getbylabel':
+            return { locator: locatorRoot.getByLabel(val), methodInfo: `getByLabel(${val})` };
+          case 'getbytext':
+            return { locator: locatorRoot.getByText(val), methodInfo: `getByText(${val})` };
+          case 'getbyplaceholder':
+            return { locator: locatorRoot.getByPlaceholder(val), methodInfo: `getByPlaceholder(${val})` };
+          case 'getbyalttext':
+            return { locator: locatorRoot.getByAltText(val), methodInfo: `getByAltText(${val})` };
+          case 'getbytitle':
+            return { locator: locatorRoot.getByTitle(val), methodInfo: `getByTitle(${val})` };
+        }
+      }
 
-            return { locator: locatorRoot.getByRole(role as any, options), methodInfo: `getByRole(${role}, ${JSON.stringify(options)})` };
+      if (st === 'getbyrole') {
+        let role = val;
+        let options: any = {};
+
+        // Format: "button, {name: 'Login', exact: true}"
+        if (val.includes('{')) {
+          const parts = val.split(/,(?=\s*\{)/);
+          role = parts[0].trim();
+          const optionsStr = parts[1]?.trim();
+          if (optionsStr) {
+            const nameMatch = optionsStr.match(/(?:['"]?name['"]?)\s*:\s*(['"])(.*?)\1/);
+            if (nameMatch) options.name = nameMatch[2];
+            const exactMatch = optionsStr.match(/(?:['"]?exact['"]?)\s*:\s*(true|false)/);
+            if (exactMatch) options.exact = exactMatch[1] === 'true';
           }
         }
+        // Format: "button[name='Login']"
+        else if (val.includes('[name=')) {
+          const bracketMatch = val.match(/^(\w+)\[name=['"](.+)['"]\]$/);
+          if (bracketMatch) {
+            role = bracketMatch[1];
+            options.name = bracketMatch[2];
+          }
+        }
+
+        return { locator: locatorRoot.getByRole(role as any, options), methodInfo: `getByRole(${role}, ${JSON.stringify(options)})` };
       }
 
       // Default fallback
       return { locator: locatorRoot.locator(val), methodInfo: `locator(${val})` };
     };
 
+    /**
+         * Convert a LocatorRef (simplified: only official/css) to a legacy-style locator info
+         * for use by createLocator. Also handles legacy kinds for backward compatibility
+         * with previously recorded steps.
+         */
     const locatorInfoFromRef = (ref: any): { selectorType: string; value: string } | null => {
       if (!ref) return null;
-      switch (ref.kind) {
-        case 'getByRole': {
-          const parts = [`${ref.role}`];
-          const options: string[] = [];
-          if (ref.name !== undefined) options.push(`name: '${String(ref.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
-          if (ref.exact !== undefined) options.push(`exact: ${ref.exact ? 'true' : 'false'}`);
-          if (options.length) parts.push(`{ ${options.join(', ')} }`);
-          return { selectorType: 'getByRole', value: parts.join(', ') };
-        }
-        case 'getByLabel':
-        case 'getByPlaceholder':
-        case 'getByText':
-        case 'getByAltText':
-        case 'getByTitle':
-        case 'getByTestId':
-          return { selectorType: ref.kind, value: ref.text };
-        case 'css':
-          return { selectorType: 'css', value: ref.selector };
-        case 'official':
-          return { selectorType: 'official', value: ref.selector };
-        default:
-          return null;
+      // Simplified LocatorRef (official/css)
+      if (ref.kind === 'official' || ref.kind === 'css') {
+        return { selectorType: ref.kind, value: ref.selector };
       }
+      // Legacy LocatorRef kinds (for backward compatibility with stored steps)
+      if (ref.kind === 'getByRole') {
+        const parts = [`${ref.role}`];
+        const options: string[] = [];
+        if (ref.name !== undefined) options.push(`name: '${String(ref.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
+        if (ref.exact !== undefined) options.push(`exact: ${ref.exact ? 'true' : 'false'}`);
+        if (options.length) parts.push(`{ ${options.join(', ')} }`);
+        return { selectorType: 'getByRole', value: parts.join(', ') };
+      }
+      if (['getByLabel', 'getByPlaceholder', 'getByText', 'getByAltText', 'getByTitle', 'getByTestId'].includes(ref.kind)) {
+        return { selectorType: ref.kind, value: ref.text };
+      }
+      return null;
     };
 
     const filePayloadsFromRecorder = (files: any): Array<{ name: string; mimeType: string; buffer: Buffer }> | null => {
@@ -391,10 +393,9 @@ export class UIExecutor {
 
     const actionPromise = (async () => {
       switch (step.action) {
-        case 'OPEN':
-        case 'GOTO':
-        case 'NAVIGATE':
-        case 'PAGE_LOAD':
+        case 'goto':
+        case 'navigate':
+        case 'pageLoad':
           {
             const navigationUrl = data || resolvedSelector;
             if (!navigationUrl) throw new Error('A URL is required for navigation steps');
@@ -402,7 +403,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'WAIT':
+        case 'waitForTimeout':
           if (data) {
             const waitTime = parseInt(data, 10);
             if (!isNaN(waitTime)) {
@@ -411,19 +412,19 @@ export class UIExecutor {
           }
           break;
 
-        case 'WAIT_FOR_VISIBLE': {
+        case 'waitForVisible': {
           const locator = await getSmartLocator({ skipActionabilityCheck: true });
           await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
           break;
         }
 
-        case 'WAIT_FOR_INVISIBLE': {
+        case 'waitForHidden': {
           const locator = await getSmartLocator({ skipActionabilityCheck: true });
           await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
           break;
         }
 
-        case 'CLICK': {
+        case 'click': {
           const locator = await getSmartLocator();
           await performActionWithFallback(
             locator,
@@ -433,13 +434,13 @@ export class UIExecutor {
           break;
         }
 
-        case 'DOUBLE_CLICK': {
+        case 'dblclick': {
           const locator = await getSmartLocator();
           await locator.dblclick({ timeout: DEFAULT_TIMEOUT, force: true });
           break;
         }
 
-        case 'RIGHT_CLICK': {
+        case 'rightClick': {
           const locator = await getSmartLocator();
           await locator.click({ button: 'right', timeout: DEFAULT_TIMEOUT, force: true });
           break;
@@ -447,7 +448,7 @@ export class UIExecutor {
 
 
 
-        case 'TYPE': {
+        case 'fill': {
           if (data === undefined) throw new Error('Data is required for TYPE step');
           const locator = await getSmartLocator();
           await performActionWithFallback(
@@ -463,7 +464,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'CLEAR': {
+        case 'clear': {
           const locator = await getSmartLocator();
           await performActionWithFallback(
             locator,
@@ -477,11 +478,11 @@ export class UIExecutor {
           break;
         }
 
-        case 'HOVER':
+        case 'hover':
           await (await getSmartLocator()).hover({ timeout: DEFAULT_TIMEOUT, force: true });
           break;
 
-        case 'HIGHLIGHT': {
+        case 'highlight': {
           const locator = await getSmartLocator({ skipActionabilityCheck: true });
           await locator.evaluate(async (node: HTMLElement) => {
             if (node.scrollIntoView) {
@@ -505,25 +506,25 @@ export class UIExecutor {
           break;
         }
 
-        case 'SCROLL_TO': {
+        case 'scrollIntoView': {
           const locator = await getSmartLocator();
           await locator.scrollIntoViewIfNeeded({ timeout: DEFAULT_TIMEOUT });
           break;
         }
 
-        case 'CHECK': {
+        case 'check': {
           const locator = await getSmartLocator();
           await locator.check({ timeout: DEFAULT_TIMEOUT, force: true });
           break;
         }
 
-        case 'UNCHECK': {
+        case 'uncheck': {
           const locator = await getSmartLocator();
           await locator.uncheck({ timeout: DEFAULT_TIMEOUT, force: true });
           break;
         }
 
-        case 'TOGGLE': {
+        case 'toggle': {
           const locator = await getSmartLocator();
           const isChecked = await locator.isChecked();
           if (isChecked) {
@@ -534,14 +535,14 @@ export class UIExecutor {
           break;
         }
 
-        case 'SELECT_OPTION': {
+        case 'selectOption': {
           if (data === undefined) throw new Error('Data is required for SELECT_OPTION step');
           const locator = await getSmartLocator();
           await locator.selectOption(data, { timeout: DEFAULT_TIMEOUT });
           break;
         }
 
-        case 'PRESS_KEY':
+        case 'press':
           if (data) {
             // If there's a target element, focus it first
             if (step.target && resolvedSelector) {
@@ -556,7 +557,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'ASSERT_VISIBLE': {
+        case 'assertVisible': {
           const locator = await getSmartLocator();
           assertionDetails = { expected: 'VISIBLE', actual: 'VISIBLE', target: resolvedSelector };
           try {
@@ -569,7 +570,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'ASSERT_INVISIBLE': {
+        case 'assertHidden': {
           const locator = await getSmartLocator();
           assertionDetails = { expected: 'HIDDEN', actual: 'HIDDEN', target: resolvedSelector };
           try {
@@ -582,7 +583,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'ASSERT_DISABLED': {
+        case 'assertDisabled': {
           const locator = await getSmartLocator();
           const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
           assertionDetails = { expected: 'DISABLED', actual: isDisabled ? 'DISABLED' : 'ENABLED', target: resolvedSelector };
@@ -594,7 +595,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'ASSERT_TEXT':
+        case 'assertText':
           if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
           {
             const locator = await getSmartLocator();
@@ -608,7 +609,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'ASSERT_VALUE':
+        case 'assertValue':
           if (data === undefined) throw new Error('Data is required for ASSERT_VALUE step');
           {
             const locator = await getSmartLocator();
@@ -622,7 +623,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'ASSERT_URL':
+        case 'assertUrl':
           if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
           {
             const currentUrl = this.page.url();
@@ -635,7 +636,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'ASSERT_TITLE':
+        case 'assertTitle':
           if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
           {
             const title = await this.page.title();
@@ -648,7 +649,7 @@ export class UIExecutor {
           }
           break;
 
-        case 'EXTRACT_VAR':
+        case 'extractVar':
           if (!data) throw new Error('Data (variable key) is required for EXTRACT_VAR step');
           {
             const locator = await getSmartLocator({ skipActionabilityCheck: true });
@@ -658,14 +659,14 @@ export class UIExecutor {
           }
           break;
 
-        case 'EVALUATE_JS':
+        case 'evaluate':
           if (data) {
             const jsResult = await this.page.evaluate(data);
             extractedValue = String(jsResult);
           }
           break;
 
-        case 'SWITCH_TO_WINDOW': {
+        case 'switchToWindow': {
           const target = data || resolvedSelector;
           if (!target) throw new Error('Target URL or title is required for SWITCH_TO_WINDOW step');
           if (this.context) {
@@ -687,7 +688,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'SWITCH_TO_FRAME': {
+        case 'switchToFrame': {
           if (!resolvedSelector) throw new Error('Frame selector is required for SWITCH_TO_FRAME step');
           const locator = await getSmartLocator();
           const frameElement = await locator.elementHandle({ timeout: DEFAULT_TIMEOUT });
@@ -698,7 +699,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'ACCEPT_ALERT':
+        case 'acceptDialog':
           // Set up dialog handler for next dialog
           if (this.dialogHandler) {
             this.page.off('dialog', this.dialogHandler);
@@ -709,7 +710,7 @@ export class UIExecutor {
           this.page.once('dialog', this.dialogHandler);
           break;
 
-        case 'DISMISS_ALERT':
+        case 'dismissDialog':
           // Set up dialog handler for next dialog
           if (this.dialogHandler) {
             this.page.off('dialog', this.dialogHandler);
@@ -720,7 +721,7 @@ export class UIExecutor {
           this.page.once('dialog', this.dialogHandler);
           break;
 
-        case 'ATTACH_FILE': {
+        case 'setInputFiles': {
           const locator = await getSmartLocator();
           const recorder = (step.metadata as any)?.recorder || {};
           const filePayloads = filePayloadsFromRecorder(recorder.files || recorder.raw?.metadata?.files);
@@ -734,7 +735,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'DRAG_AND_DROP': {
+        case 'dragTo': {
           const recorder = (step.metadata as any)?.recorder || {};
           const targetRef = recorder.secondaryLocator || recorder.raw?.secondaryLocator;
           const targetLocInfo = locatorInfoFromRef(targetRef) || (data ? { selectorType: 'css', value: data } : null);
@@ -758,7 +759,7 @@ export class UIExecutor {
           break;
         }
 
-        case 'UI_EXTRACT':
+        case 'uiExtract':
           // Do nothing, just wait for the element if there is a target
           if (resolvedSelector) {
             await getSmartLocator({ skipActionabilityCheck: true });
@@ -978,6 +979,8 @@ export class UIExecutor {
   async takeScreenshot(): Promise<string> {
     if (!this.page) return '';
     try {
+      // Wait for 0.5s to allow animations/renders to settle before screenshot
+      await this.page.waitForTimeout(500);
       const buffer = await this.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
       return `data:image/jpeg;base64,${buffer.toString('base64')}`;
     } catch (e) {

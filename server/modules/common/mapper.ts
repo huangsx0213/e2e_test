@@ -5,7 +5,7 @@ import { asId, asOptionalText, asText, textFromDb } from '../../shared/utils/ind
 export function normalizeStep(input: Partial<TestStep>): TestStep {
   return {
     id: asId(input.id, 'step'),
-    action: asText(input.action, 'CLICK') as TestStep['action'],
+    action: asText(input.action, 'click') as TestStep['action'],
     target: asText(input.target),
     data: asText(input.data),
     description: asText(input.description),

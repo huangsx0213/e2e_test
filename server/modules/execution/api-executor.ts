@@ -34,7 +34,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * API_GET → GET, API_POST → POST, etc.
  */
 function methodFromAction(action: string): string {
-  return action.replace('API_', '');
+  return action.replace(/^api/i, '').toUpperCase();
 }
 
 /**

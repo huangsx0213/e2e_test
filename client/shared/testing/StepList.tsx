@@ -49,45 +49,44 @@ interface StepListProps {
 }
 
 const ACTION_TYPES: ActionType[] = [
-  "OPEN",
-  "CLICK",
-  "TYPE",
-  "HOVER",
-  "HIGHLIGHT",
-  "SCROLL_TO",
-  "SELECT_OPTION",
-  "CHECK",
-  "UNCHECK",
-  "DRAG_AND_DROP",
-  "UPLOAD_FILE",
-  "ASSERT_VISIBLE",
-  "ASSERT_INVISIBLE",
-  "ASSERT_TEXT",
-  "ASSERT_VALUE",
-  "ASSERT_URL",
-  "ASSERT_TITLE",
-  "ASSERT_DISABLED",
-  "EXTRACT_VAR",
-  "EVALUATE_JS",
-  "PRESS_KEY",
-  "CLEAR",
-  "WAIT",
-  "WAIT_FOR_VISIBLE",
-  "WAIT_FOR_INVISIBLE",
-  "API_GET",
-  "API_POST",
-  "API_PUT",
-  "API_DELETE",
-  "RUN_MODULE",
-  "DOUBLE_CLICK",
-  "RIGHT_CLICK",
-  "SWITCH_TO_WINDOW",
-  "SWITCH_TO_FRAME",
-  "ACCEPT_ALERT",
-  "DISMISS_ALERT",
-  "ATTACH_FILE",
-  "TOGGLE",
-  "UI_EXTRACT",
+  "goto",
+  "click",
+  "fill",
+  "hover",
+  "highlight",
+  "scrollIntoView",
+  "selectOption",
+  "check",
+  "uncheck",
+  "dragTo",
+  "setInputFiles",
+  "assertVisible",
+  "assertHidden",
+  "assertText",
+  "assertValue",
+  "assertUrl",
+  "assertTitle",
+  "assertDisabled",
+  "extractVar",
+  "evaluate",
+  "press",
+  "clear",
+  "waitForTimeout",
+  "waitForVisible",
+  "waitForHidden",
+  "apiGet",
+  "apiPost",
+  "apiPut",
+  "apiDelete",
+  "runModule",
+  "dblclick",
+  "rightClick",
+  "switchToWindow",
+  "switchToFrame",
+  "acceptDialog",
+  "dismissDialog",
+  "toggle",
+  "uiExtract",
 ];
 
 export const StepList: React.FC<StepListProps> = ({
@@ -146,13 +145,13 @@ export const StepList: React.FC<StepListProps> = ({
   };
 
   const getActionColorClass = (action: ActionType) => {
-    if (action === "RUN_MODULE")
+    if (action === "runModule")
       return "bg-blue-100 text-blue-800 border-blue-300";
-    if (action.startsWith("API_"))
+    if (action.startsWith("api"))
       return "bg-emerald-100 text-emerald-800 border-emerald-300";
-    if (action.startsWith("ASSERT_"))
+    if (action.startsWith("assert"))
       return "bg-slate-100 text-slate-800 border-slate-300";
-    if (action === "WAIT") return "bg-gray-100 text-gray-800 border-gray-300";
+    if (action === "waitForTimeout") return "bg-gray-100 text-gray-800 border-gray-300";
     return "bg-blue-100 text-blue-800 border-blue-300";
   };
 
@@ -348,7 +347,7 @@ export const StepList: React.FC<StepListProps> = ({
                     {/* Action Dropdown */}
                     <div>
                       <select
-                        className={`w-full text-xs font-bold rounded-md border px-2 py-2 focus:ring-2 focus:ring-opacity-50 outline-none uppercase cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
+                        className={`w-full text-xs font-bold rounded-md border px-2 py-2 focus:ring-2 focus:ring-opacity-50 outline-none cursor-pointer transition-colors ${getActionColorClass(step.action)}`}
                         value={step.action}
                         onChange={(e) =>
                           onUpdateStep(step.id, {
@@ -363,71 +362,58 @@ export const StepList: React.FC<StepListProps> = ({
                         disabled={step.enabled === false}
                       >
                         <optgroup label="Web Actions">
-                          <option value="OPEN">Open URL</option>
-                          <option value="CLICK">Click Element</option>
-                          <option value="DOUBLE_CLICK">Double Click</option>
-                          <option value="RIGHT_CLICK">Right Click</option>
-                          <option value="TYPE">Type Text</option>
-                          <option value="CLEAR">Clear Input</option>
-                          <option value="HOVER">Hover Element</option>
-                          <option value="HIGHLIGHT">Highlight Element</option>
-                          <option value="SCROLL_TO">Scroll To</option>
-                          <option value="SELECT_OPTION">Select Option</option>
-                          <option value="CHECK">Check Box</option>
-                          <option value="UNCHECK">Uncheck Box</option>
-                          <option value="TOGGLE">Toggle Element</option>
-                          <option value="DRAG_AND_DROP">Drag & Drop</option>
-                          <option value="UPLOAD_FILE">Upload File</option>
-                          <option value="ATTACH_FILE">Attach File</option>
-                          <option value="PRESS_KEY">Press Key</option>
+                          <option value="goto">goto</option>
+                          <option value="click">click</option>
+                          <option value="dblclick">dblclick</option>
+                          <option value="rightClick">rightClick</option>
+                          <option value="fill">fill</option>
+                          <option value="clear">clear</option>
+                          <option value="hover">hover</option>
+                          <option value="highlight">highlight</option>
+                          <option value="scrollIntoView">scrollIntoView</option>
+                          <option value="selectOption">selectOption</option>
+                          <option value="check">check</option>
+                          <option value="uncheck">uncheck</option>
+                          <option value="toggle">toggle</option>
+                          <option value="dragTo">dragTo</option>
+                          <option value="setInputFiles">setInputFiles</option>
+                          <option value="press">press</option>
                         </optgroup>
                         <optgroup label="Assertions">
-                          <option value="ASSERT_VISIBLE">Assert Visible</option>
-                          <option value="ASSERT_INVISIBLE">
-                            Assert Invisible
-                          </option>
-                          <option value="ASSERT_TEXT">Assert Text</option>
-                          <option value="ASSERT_VALUE">Assert Value</option>
-                          <option value="ASSERT_URL">Assert URL</option>
-                          <option value="ASSERT_TITLE">Assert Title</option>
-                          <option value="ASSERT_DISABLED">
-                            Assert Disabled
-                          </option>
+                          <option value="assertVisible">assertVisible</option>
+                          <option value="assertHidden">assertHidden</option>
+                          <option value="assertText">assertText</option>
+                          <option value="assertValue">assertValue</option>
+                          <option value="assertUrl">assertUrl</option>
+                          <option value="assertTitle">assertTitle</option>
+                          <option value="assertDisabled">assertDisabled</option>
                         </optgroup>
                         <optgroup label="Browser & Alert Actions">
-                          <option value="SWITCH_TO_WINDOW">
-                            Switch to Window
-                          </option>
-                          <option value="SWITCH_TO_FRAME">
-                            Switch to Frame
-                          </option>
-                          <option value="ACCEPT_ALERT">Accept Alert</option>
-                          <option value="DISMISS_ALERT">Dismiss Alert</option>
+                          <option value="switchToWindow">switchToWindow</option>
+                          <option value="switchToFrame">switchToFrame</option>
+                          <option value="acceptDialog">acceptDialog</option>
+                          <option value="dismissDialog">dismissDialog</option>
                         </optgroup>
                         <optgroup label="Logic & Modules">
-                          <option value="WAIT">Wait (ms)</option>
-                          <option value="WAIT_FOR_VISIBLE">
-                            Wait for Visible
-                          </option>
-                          <option value="WAIT_FOR_INVISIBLE">
-                            Wait for Invisible
-                          </option>
-                          <option value="EXTRACT_VAR">Extract Variable</option>
-                          <option value="EVALUATE_JS">Evaluate JS</option>
-                          <option value="RUN_MODULE">Run Module</option>
+                          <option value="waitForTimeout">waitForTimeout</option>
+                          <option value="waitForVisible">waitForVisible</option>
+                          <option value="waitForHidden">waitForHidden</option>
+                          <option value="extractVar">extractVar</option>
+                          <option value="evaluate">evaluate</option>
+                          <option value="runModule">runModule</option>
                         </optgroup>
                         <optgroup label="API Actions">
-                          <option value="API_GET">API GET</option>
-                          <option value="API_POST">API POST</option>
-                          <option value="API_PUT">API PUT</option>
-                          <option value="API_DELETE">API DELETE</option>
+                          <option value="apiGet">apiGet</option>
+                          <option value="apiPost">apiPost</option>
+                          <option value="apiPut">apiPut</option>
+                          <option value="apiDelete">apiDelete</option>
                         </optgroup>
                       </select>
                     </div>
 
                     {/* Target / Module */}
                     <div className="relative">
-                      {step.action === "RUN_MODULE" ? (
+                      {step.action === "runModule" ? (
                         <select
                           className="w-full bg-blue-50 text-blue-900 rounded-md border border-blue-200 px-3 py-2 text-xs font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                           value={step.target}
@@ -446,7 +432,7 @@ export const StepList: React.FC<StepListProps> = ({
                             </option>
                           ))}
                         </select>
-                      ) : step.action.startsWith("API_") ? (
+                      ) : step.action.startsWith("api") ? (
                         <select
                           className="w-full bg-emerald-50 text-emerald-900 rounded-md border border-emerald-200 px-3 py-2 text-xs font-medium focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                           value={step.endpointId || ""}
@@ -562,15 +548,15 @@ export const StepList: React.FC<StepListProps> = ({
                             }
                             placeholder={
                               [
-                                "OPEN",
-                                "WAIT",
-                                "WAIT_FOR_VISIBLE",
-                                "WAIT_FOR_INVISIBLE",
-                                "EVALUATE_JS",
-                                "SWITCH_TO_WINDOW",
-                                "SWITCH_TO_FRAME",
-                                "ACCEPT_ALERT",
-                                "DISMISS_ALERT",
+                                "goto",
+                                "waitForTimeout",
+                                "waitForVisible",
+                                "waitForHidden",
+                                "evaluate",
+                                "switchToWindow",
+                                "switchToFrame",
+                                "acceptDialog",
+                                "dismissDialog",
                               ].includes(step.action)
                                 ? "Not required"
                                 : "PageName.ElementName or Selector"
@@ -578,20 +564,20 @@ export const StepList: React.FC<StepListProps> = ({
                             disabled={
                               step.enabled === false ||
                               [
-                                "OPEN",
-                                "WAIT",
-                                "WAIT_FOR_VISIBLE",
-                                "WAIT_FOR_INVISIBLE",
-                                "EVALUATE_JS",
-                                "SWITCH_TO_WINDOW",
-                                "SWITCH_TO_FRAME",
-                                "ACCEPT_ALERT",
-                                "DISMISS_ALERT",
+                                "goto",
+                                "waitForTimeout",
+                                "waitForVisible",
+                                "waitForHidden",
+                                "evaluate",
+                                "switchToWindow",
+                                "switchToFrame",
+                                "acceptDialog",
+                                "dismissDialog",
                               ].includes(step.action)
                             }
                           />
                           <div className="absolute right-1 flex items-center gap-0.5">
-                            {!["OPEN", "WAIT", "EVALUATE_JS"].includes(
+                            {!["goto", "waitForTimeout", "evaluate"].includes(
                               step.action,
                             ) && (
                               <button
@@ -705,7 +691,7 @@ export const StepList: React.FC<StepListProps> = ({
 
                     {/* Value / Data */}
                     <div>
-                      {step.action === "RUN_MODULE" ? (
+                      {step.action === "runModule" ? (
                         <div className="bg-blue-50/50 rounded-md border border-blue-100 p-2 space-y-2">
                           <div className="flex items-center gap-2 mb-2">
                             <label className="text-[10px] font-mono font-medium text-blue-700 w-20 truncate text-right shrink-0" title="Namespace">
@@ -822,7 +808,7 @@ export const StepList: React.FC<StepListProps> = ({
                             ));
                           })()}
                         </div>
-                      ) : step.action.startsWith("API_") ? (
+                      ) : step.action.startsWith("api") ? (
                         <div className="space-y-2">
                           <div className="flex gap-2">
                             <select
@@ -966,8 +952,8 @@ export const StepList: React.FC<StepListProps> = ({
                                 </option>
                               ))}
                             </select>
-                            {(step.action === "API_POST" ||
-                              step.action === "API_PUT") && (
+                            {(step.action === "apiPost" ||
+                              step.action === "apiPut") && (
                               <select
                                 className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                 value={step.bodyTemplateId || ""}
@@ -1635,57 +1621,57 @@ export const StepList: React.FC<StepListProps> = ({
                               onUpdateStep(step.id, { data: e.target.value })
                             }
                             placeholder={
-                              step.action === "OPEN"
+                              step.action === "goto"
                                 ? "URL (e.g., https://google.com)"
-                                : step.action === "WAIT"
+                                : step.action === "waitForTimeout"
                                   ? "Duration in ms (e.g., 2000)"
-                                  : step.action === "WAIT_FOR_VISIBLE"
+                                  : step.action === "waitForVisible"
                                     ? "Element selector..."
-                                    : step.action === "WAIT_FOR_INVISIBLE"
+                                    : step.action === "waitForHidden"
                                       ? "Element selector..."
-                                      : step.action === "EVALUATE_JS"
+                                      : step.action === "evaluate"
                                         ? "JS Expression"
-                                        : step.action === "TYPE"
+                                        : step.action === "fill"
                                           ? "Text to type..."
-                                          : step.action === "ASSERT_TEXT"
+                                          : step.action === "assertText"
                                             ? "Expected text..."
-                                            : step.action === "ASSERT_VALUE"
+                                            : step.action === "assertValue"
                                               ? "Expected value..."
-                                              : step.action === "ASSERT_URL"
+                                              : step.action === "assertUrl"
                                                 ? "Expected URL..."
-                                                : step.action === "ASSERT_TITLE"
+                                                : step.action === "assertTitle"
                                                   ? "Expected title..."
                                                   : step.action ===
-                                                      "ASSERT_DISABLED"
+                                                      "assertDisabled"
                                                     ? "Element selector..."
                                                     : step.action ===
-                                                        "SELECT_OPTION"
+                                                        "selectOption"
                                                       ? "Option value..."
                                                       : step.action ===
-                                                          "DRAG_AND_DROP"
+                                                          "dragTo"
                                                         ? "Target selector..."
                                                         : step.action ===
-                                                            "ATTACH_FILE"
+                                                            "setInputFiles"
                                                           ? "File path..."
                                                           : step.action ===
-                                                              "SWITCH_TO_WINDOW"
+                                                              "switchToWindow"
                                                             ? "URL or title to match..."
                                                             : step.action ===
-                                                                "SWITCH_TO_FRAME"
+                                                                "switchToFrame"
                                                               ? "Frame selector..."
                                                               : [
-                                                                    "CLICK",
-                                                                    "ASSERT_VISIBLE",
-                                                                    "ASSERT_INVISIBLE",
-                                                                    "HOVER",
-                                                                    "HIGHLIGHT",
-                                                                    "DOUBLE_CLICK",
-                                                                    "RIGHT_CLICK",
-                                                                    "SCROLL_TO",
-                                                                    "CHECK",
-                                                                    "UNCHECK",
-                                                                    "ACCEPT_ALERT",
-                                                                    "DISMISS_ALERT",
+                                                                    "click",
+                                                                    "assertVisible",
+                                                                    "assertHidden",
+                                                                    "hover",
+                                                                    "highlight",
+                                                                    "dblclick",
+                                                                    "rightClick",
+                                                                    "scrollIntoView",
+                                                                    "check",
+                                                                    "uncheck",
+                                                                    "acceptDialog",
+                                                                    "dismissDialog",
                                                                   ].includes(
                                                                     step.action,
                                                                   )
@@ -1695,38 +1681,38 @@ export const StepList: React.FC<StepListProps> = ({
                             disabled={
                               step.enabled === false ||
                               [
-                                "CLICK",
-                                "HOVER",
-                                "HIGHLIGHT",
-                                "SCROLL_TO",
-                                "CHECK",
-                                "UNCHECK",
-                                "ASSERT_VISIBLE",
-                                "ASSERT_INVISIBLE",
-                                "DOUBLE_CLICK",
-                                "RIGHT_CLICK",
-                                "SWITCH_TO_WINDOW",
-                                "SWITCH_TO_FRAME",
-                                "ACCEPT_ALERT",
-                                "DISMISS_ALERT",
+                                "click",
+                                "hover",
+                                "highlight",
+                                "scrollIntoView",
+                                "check",
+                                "uncheck",
+                                "assertVisible",
+                                "assertHidden",
+                                "dblclick",
+                                "rightClick",
+                                "switchToWindow",
+                                "switchToFrame",
+                                "acceptDialog",
+                                "dismissDialog",
                               ].includes(step.action)
                             }
                           />
                           {![
-                            "CLICK",
-                            "HOVER",
-                            "HIGHLIGHT",
-                            "SCROLL_TO",
-                            "CHECK",
-                            "UNCHECK",
-                            "ASSERT_VISIBLE",
-                            "ASSERT_INVISIBLE",
-                            "DOUBLE_CLICK",
-                            "RIGHT_CLICK",
-                            "SWITCH_TO_WINDOW",
-                            "SWITCH_TO_FRAME",
-                            "ACCEPT_ALERT",
-                            "DISMISS_ALERT",
+                            "click",
+                            "hover",
+                            "highlight",
+                            "scrollIntoView",
+                            "check",
+                            "uncheck",
+                            "assertVisible",
+                            "assertHidden",
+                            "dblclick",
+                            "rightClick",
+                            "switchToWindow",
+                            "switchToFrame",
+                            "acceptDialog",
+                            "dismissDialog",
                           ].includes(step.action) && (
                             <button
                               className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
@@ -1859,8 +1845,8 @@ export const StepList: React.FC<StepListProps> = ({
                   {expandedAdvancedOptions.has(step.id) && (
                     <div className="bg-gray-50/30 rounded-b-md pb-2 mt-2 border-t border-gray-100 flex flex-col divide-y divide-gray-100">
                       {/* Advanced Options (Wait For Network) */}
-                      {!step.action.startsWith("API_") &&
-                        !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
+                      {!step.action.startsWith("api") &&
+                        !["waitForTimeout", "evaluate", "runModule"].includes(step.action) && (
                           <div className="pl-8 py-2">
                             <div className="flex items-center gap-2 mb-2">
                           <input
@@ -2050,8 +2036,8 @@ export const StepList: React.FC<StepListProps> = ({
                     )}
 
                   {/* Network Mocks Section */}
-                  {!step.action.startsWith("API_") &&
-                    !["WAIT", "EVALUATE_JS", "RUN_MODULE"].includes(step.action) && (
+                  {!step.action.startsWith("api") &&
+                    !["waitForTimeout", "evaluate", "runModule"].includes(step.action) && (
                       <div className="pl-8 py-2">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
                           <div className="flex items-center gap-1">
@@ -2348,7 +2334,7 @@ export const StepList: React.FC<StepListProps> = ({
                   Add Web Step
                 </button>
                 <button
-                  onClick={() => onAddStep("API_GET")}
+                  onClick={() => onAddStep("apiGet")}
                   className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
                 >
                   <Globe
@@ -2358,7 +2344,7 @@ export const StepList: React.FC<StepListProps> = ({
                   Add API Step
                 </button>
                 <button
-                  onClick={() => onAddStep("RUN_MODULE")}
+                  onClick={() => onAddStep("runModule")}
                   className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-purple-600 hover:border-purple-300 hover:bg-purple-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
                 >
                   <Workflow

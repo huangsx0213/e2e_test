@@ -357,7 +357,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     updateItems: (items: TestStep[]) => void,
   ) => {
     return {
-      add: (action: ActionType = "CLICK") => {
+      add: (action: ActionType = "click") => {
         const newStep: TestStep = {
           id: `step-${Date.now()}`,
           action,

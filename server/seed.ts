@@ -118,10 +118,10 @@ function seedProjects(): void {
           { id: 'param-sauce-pass', name: 'PASS', defaultValue: 'secret_sauce' },
         ],
         steps: [
-          { id: 's-sauce-open', action: 'OPEN', target: '', data: 'https://www.saucedemo.com', description: 'Open site' },
-          { id: 's-sauce-type-user', action: 'TYPE', target: 'Login Page.Username', data: '{{USER}}' },
-          { id: 's-sauce-type-pass', action: 'TYPE', target: 'Login Page.Password', data: '{{PASS}}' },
-          { id: 's-sauce-click-login', action: 'CLICK', target: 'Login Page.Login Button', data: '', screenshot: true },
+          { id: 's-sauce-open', action: 'goto', target: '', data: 'https://www.saucedemo.com', description: 'Open site' },
+          { id: 's-sauce-type-user', action: 'fill', target: 'Login Page.Username', data: '{{USER}}' },
+          { id: 's-sauce-type-pass', action: 'fill', target: 'Login Page.Password', data: '{{PASS}}' },
+          { id: 's-sauce-click-login', action: 'click', target: 'Login Page.Login Button', data: '', screenshot: true },
         ],
       },
       {
@@ -134,11 +134,11 @@ function seedProjects(): void {
           { id: 'param-sauce-zip', name: 'ZIP', defaultValue: '12345' },
         ],
         steps: [
-          { id: 's-sauce-type-fname', action: 'TYPE', target: 'Checkout Info.First Name', data: '{{FNAME}}' },
-          { id: 's-sauce-type-lname', action: 'TYPE', target: 'Checkout Info.Last Name', data: '{{LNAME}}' },
-          { id: 's-sauce-type-zip', action: 'TYPE', target: 'Checkout Info.Zip Code', data: '{{ZIP}}' },
-          { id: 's-sauce-click-cont', action: 'CLICK', target: 'Checkout Info.Continue Button', data: '' },
-          { id: 's-sauce-click-finish', action: 'CLICK', target: 'Checkout Overview.Finish Button', data: '', screenshot: true },
+          { id: 's-sauce-type-fname', action: 'fill', target: 'Checkout Info.First Name', data: '{{FNAME}}' },
+          { id: 's-sauce-type-lname', action: 'fill', target: 'Checkout Info.Last Name', data: '{{LNAME}}' },
+          { id: 's-sauce-type-zip', action: 'fill', target: 'Checkout Info.Zip Code', data: '{{ZIP}}' },
+          { id: 's-sauce-click-cont', action: 'click', target: 'Checkout Info.Continue Button', data: '' },
+          { id: 's-sauce-click-finish', action: 'click', target: 'Checkout Overview.Finish Button', data: '', screenshot: true },
         ],
       },
     ],
@@ -282,7 +282,7 @@ function seedSuites(): void {
         name: 'Health GET',
         description: 'Check connectivity via GET.',
         steps: [
-          { id: 's-sauce-api-get', action: 'API_GET', target: '/get', data: '', endpointId: 'endpoint-sauce-httpbin-get', headerProfileId: 'header-sauce-json' },
+          { id: 's-sauce-api-get', action: 'apiGet', target: '/get', data: '', endpointId: 'endpoint-sauce-httpbin-get', headerProfileId: 'header-sauce-json' },
         ],
       },
       {
@@ -292,7 +292,7 @@ function seedSuites(): void {
         steps: [
           { 
             id: 's-sauce-api-post', 
-            action: 'API_POST', 
+            action: 'apiPost', 
             target: '/post', 
             data: '', 
             endpointId: 'endpoint-sauce-httpbin-post', 
@@ -315,7 +315,7 @@ function seedSuites(): void {
         steps: [
           { 
             id: 's-sauce-api-post-fail', 
-            action: 'API_POST', 
+            action: 'apiPost', 
             target: '/post', 
             data: '', 
             endpointId: 'endpoint-sauce-httpbin-post', 
@@ -350,8 +350,8 @@ function seedSuites(): void {
         name: 'User Login',
         description: 'Verification of successful login.',
         steps: [
-          { id: 'step-sauce-login-mod', action: 'RUN_MODULE', target: 'mod-sauce-login', data: '{"USER":"{{USER_NAME}}","PASS":"{{USER_PASS}}"}' },
-          { id: 'step-sauce-assert-inv', action: 'ASSERT_VISIBLE', target: 'Products Page.Inventory List', data: '' },
+          { id: 'step-sauce-login-mod', action: 'runModule', target: 'mod-sauce-login', data: '{"USER":"{{USER_NAME}}","PASS":"{{USER_PASS}}"}' },
+          { id: 'step-sauce-assert-inv', action: 'assertVisible', target: 'Products Page.Inventory List', data: '' },
         ],
       },
       {
@@ -359,12 +359,12 @@ function seedSuites(): void {
         name: 'Add and Checkout',
         description: 'Adds backpack to cart and completes checkout.',
         steps: [
-          { id: 'step-sauce-add-bp', action: 'CLICK', target: 'Products Page.Add Backpack', data: '' },
-          { id: 'step-sauce-assert-badge', action: 'ASSERT_TEXT', target: 'Products Page.Cart Badge', data: '1' },
-          { id: 'step-sauce-goto-cart', action: 'CLICK', target: 'Products Page.Cart Link', data: '' },
-          { id: 'step-sauce-click-checkout', action: 'CLICK', target: 'Cart Page.Checkout Button', data: '' },
-          { id: 'step-sauce-checkout-mod', action: 'RUN_MODULE', target: 'mod-sauce-checkout', data: '{"FNAME":"Tester","LNAME":"Auto","ZIP":"90001"}' },
-          { id: 'step-sauce-assert-complete', action: 'ASSERT_TEXT', target: 'Checkout Complete.Complete Header', data: 'Thank you for your order!' },
+          { id: 'step-sauce-add-bp', action: 'click', target: 'Products Page.Add Backpack', data: '' },
+          { id: 'step-sauce-assert-badge', action: 'assertText', target: 'Products Page.Cart Badge', data: '1' },
+          { id: 'step-sauce-goto-cart', action: 'click', target: 'Products Page.Cart Link', data: '' },
+          { id: 'step-sauce-click-checkout', action: 'click', target: 'Cart Page.Checkout Button', data: '' },
+          { id: 'step-sauce-checkout-mod', action: 'runModule', target: 'mod-sauce-checkout', data: '{"FNAME":"Tester","LNAME":"Auto","ZIP":"90001"}' },
+          { id: 'step-sauce-assert-complete', action: 'assertText', target: 'Checkout Complete.Complete Header', data: 'Thank you for your order!' },
         ],
       },
     ],
@@ -382,8 +382,8 @@ function seedSuites(): void {
         name: 'Verify Products Loaded',
         description: 'Asserts that item cards are visible after login.',
         steps: [
-          { id: 's-sauce-inv-login', action: 'RUN_MODULE', target: 'mod-sauce-login', data: '{"USER":"{{TARGET_USER}}","PASS":"secret_sauce"}' },
-          { id: 's-sauce-assert-items', action: 'ASSERT_VISIBLE', target: 'Products Page.Item Card', data: '' },
+          { id: 's-sauce-inv-login', action: 'runModule', target: 'mod-sauce-login', data: '{"USER":"{{TARGET_USER}}","PASS":"secret_sauce"}' },
+          { id: 's-sauce-assert-items', action: 'assertVisible', target: 'Products Page.Item Card', data: '' },
         ],
       },
     ],
@@ -403,7 +403,7 @@ function seedSuites(): void {
         id: 'case-baidu-api-get',
         name: 'GET /get returns 200',
         steps: [
-          { id: 'step-baidu-api-get', action: 'API_GET', target: '/get', data: '', endpointId: 'endpoint-sauce-httpbin-get', headerProfileId: 'header-sauce-json' },
+          { id: 'step-baidu-api-get', action: 'apiGet', target: '/get', data: '', endpointId: 'endpoint-sauce-httpbin-get', headerProfileId: 'header-sauce-json' },
         ],
       },
     ],
@@ -422,11 +422,11 @@ function seedSuites(): void {
         id: 'case-baidu-hybrid-ui-search',
         name: 'Search Baidu and verify results',
         steps: [
-          { id: 'step-hybrid-open', action: 'OPEN', target: '', data: 'https://www.baidu.com' },
-          { id: 'step-hybrid-type', action: 'TYPE', target: 'Baidu Home.Search Input', data: '{{SEARCH_KEYWORD}}' },
-          { id: 'step-hybrid-click', action: 'CLICK', target: 'Baidu Home.Search Button', data: '', screenshot: true },
-          { id: 'step-hybrid-wait', action: 'WAIT', target: '', data: '3000' },
-          { id: 'step-hybrid-assert', action: 'ASSERT_VISIBLE', target: 'Baidu Results.Results Container', data: '' },
+          { id: 'step-hybrid-open', action: 'goto', target: '', data: 'https://www.baidu.com' },
+          { id: 'step-hybrid-type', action: 'fill', target: 'Baidu Home.Search Input', data: '{{SEARCH_KEYWORD}}' },
+          { id: 'step-hybrid-click', action: 'click', target: 'Baidu Home.Search Button', data: '', screenshot: true },
+          { id: 'step-hybrid-wait', action: 'waitForTimeout', target: '', data: '3000' },
+          { id: 'step-hybrid-assert', action: 'assertVisible', target: 'Baidu Results.Results Container', data: '' },
         ],
       },
     ],

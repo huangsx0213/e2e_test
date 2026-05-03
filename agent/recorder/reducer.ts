@@ -1,49 +1,48 @@
-import type { RawRecorderEvent, RecorderStepPayload } from './protocol.ts';
-import { locatorRefToCandidateStrings, locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
+import type { RecorderEvent, RecorderStepPayload } from './protocol.ts';
+import { locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
 
 export class RecorderReducer {
   private actions: RecorderStepPayload[] = [];
 
-  consume(event: RawRecorderEvent): RecorderStepPayload | null {
-    if (event.type === 'element') {
+  consume(event: RecorderEvent): RecorderStepPayload | null {
+    if (event.action === 'recordElement') {
       return null;
     }
 
-    if (event.type === 'ui' && event.action === 'HOVER') {
+    if (event.action === 'hover') {
       return null;
     }
 
-    // 官方去噪逻辑：只录制第一个进来的 URL
-    if (event.type === 'navigate' && this.actions.length > 0) {
+    // Only record the first navigation URL to avoid noisy sub-navigations
+    if (event.action === 'goto' && this.actions.length > 0) {
       return null;
     }
 
-    const action: RecorderStepPayload = event.type === 'navigate'
+    const action: RecorderStepPayload = event.action === 'goto'
       ? {
           action: event.action,
-          locator: { kind: 'css', selector: `navigation[url="${escapeDoubleQuotes(event.url)}"]` } as const,
-          locatorCandidates: [{ kind: 'css', selector: `navigation[url="${escapeDoubleQuotes(event.url)}"]` } as const],
-          value: event.url,
-          pageUrl: event.url,
+          locator: { kind: 'css', selector: `navigation[url="${escapeDoubleQuotes((event.value || event.pageUrl) ?? '')}"]` } as const,
+          locatorCandidates: [{ kind: 'css', selector: `navigation[url="${escapeDoubleQuotes((event.value || event.pageUrl) ?? '')}"]` } as const],
+          value: event.value || event.pageUrl,
+          pageUrl: event.pageUrl,
           timestamp: event.timestamp,
           metadata: {
-            previousUrl: event.previousUrl || null,
-            navigation: { url: event.url, action: event.action, previousUrl: event.previousUrl || null },
+            previousUrl: event.metadata?.previousUrl || null,
+            navigation: { url: event.value || event.pageUrl, action: event.action, previousUrl: event.metadata?.previousUrl || null },
           },
         }
       : {
           action: event.action,
-          locator: event.locator,
-          locatorCandidates: [event.locator],
+          locator: event.locator!,
+          locatorCandidates: [event.locator!],
           secondaryLocator: event.secondaryLocator,
           value: event.value,
           pageUrl: event.pageUrl,
           timestamp: event.timestamp,
           metadata: {
             ...event.metadata,
-            displayName: locatorRefToName(event.locator),
-            legacyLocator: locatorRefToLegacyDef(event.locator),
-            candidateStrings: locatorRefToCandidateStrings(event.locator),
+            displayName: locatorRefToName(event.locator!),
+            legacyLocator: locatorRefToLegacyDef(event.locator!),
           },
         };
 
@@ -59,20 +58,20 @@ export function collapseActions(actions: RecorderStepPayload[]): RecorderStepPay
   const result: RecorderStepPayload[] = [];
   for (const action of actions) {
     const lastAction = result[result.length - 1];
-    
-    // 1. 检查是否应该直接丢弃（去噪）
+
+    // 1. Check if should discard (noise reduction)
     if (shouldDiscard(action, lastAction)) {
       continue;
     }
 
-    // 2. 检查是否应该合并到上一个动作
+    // 2. Check if should merge with previous action
     const shouldMerge = shouldMergeAction(action, lastAction);
     if (!shouldMerge) {
       result.push(action);
       continue;
     }
 
-    // 执行合并（如果是替换模式，保留旧的时间戳）
+    // Merge: replace last action, preserve its timestamp
     const timestamp = result[result.length - 1].timestamp;
     result[result.length - 1] = action;
     result[result.length - 1].timestamp = timestamp;
@@ -83,17 +82,17 @@ export function collapseActions(actions: RecorderStepPayload[]): RecorderStepPay
 function shouldDiscard(action: RecorderStepPayload, lastAction?: RecorderStepPayload): boolean {
   if (!lastAction) return false;
 
-  // 1. 过滤 UI 动作触发的侧边效应导航
-  if ((action.action === 'OPEN' || action.action === 'NAVIGATE') && 
-      (lastAction.action !== 'OPEN' && lastAction.action !== 'NAVIGATE' && lastAction.action !== 'PAGE_LOAD')) {
+  // 1. Filter out sidebar navigation triggered by UI actions within 2s
+  if ((action.action === 'goto' || action.action === 'navigate') &&
+      (lastAction.action !== 'goto' && lastAction.action !== 'navigate' && lastAction.action !== 'pageLoad')) {
     return (action.timestamp - lastAction.timestamp) < 2000;
   }
-  
-  // 2. 过滤 SELECT_OPTION 后的冗余点击
-  if (action.action === 'CLICK' && lastAction.action === 'SELECT_OPTION' && isSameLocator(action, lastAction)) {
+
+  // 2. Filter redundant click after selectOption on same element within 1s
+  if (action.action === 'click' && lastAction.action === 'selectOption' && isSameLocator(action, lastAction)) {
     return (action.timestamp - lastAction.timestamp) < 1000;
   }
-  
+
   return false;
 }
 
@@ -101,27 +100,27 @@ function shouldMergeAction(action: RecorderStepPayload, lastAction?: RecorderSte
   if (!lastAction) return false;
 
   switch (action.action) {
-    case 'TYPE':
-      if (lastAction.action === 'CLICK' && isSameLocator(action, lastAction)) return true;
+    case 'fill':
+      if (lastAction.action === 'click' && isSameLocator(action, lastAction)) return true;
       return isSameAction(action, lastAction) && isSameLocator(action, lastAction);
-    case 'SELECT_OPTION':
+    case 'selectOption':
       return isSameAction(action, lastAction) && isSameLocator(action, lastAction) && action.value === lastAction.value;
-    case 'CHECK':
-    case 'UNCHECK':
-    case 'ATTACH_FILE':
+    case 'check':
+    case 'uncheck':
+    case 'setInputFiles':
       return isSameAction(action, lastAction) && isSameLocator(action, lastAction) && action.value === lastAction.value;
-    case 'NAVIGATE':
-    case 'PAGE_LOAD':
+    case 'navigate':
+    case 'pageLoad':
       return isSameAction(action, lastAction);
-    case 'CLICK':
+    case 'click':
       return isSameAction(action, lastAction)
         && isSameLocator(action, lastAction)
         && isShortlyAfter(action, lastAction, 500)
         && getClickCount(action) > getClickCount(lastAction);
-    case 'DOUBLE_CLICK':
-    case 'RIGHT_CLICK':
-    case 'DRAG_AND_DROP':
-    case 'PRESS_KEY':
+    case 'dblclick':
+    case 'rightClick':
+    case 'dragTo':
+    case 'press':
       return isSameAction(action, lastAction)
         && isSameLocator(action, lastAction)
         && action.value === lastAction.value
@@ -135,21 +134,12 @@ function isSameAction(a: RecorderStepPayload, b: RecorderStepPayload): boolean {
   return a.action === b.action && a.pageUrl === b.pageUrl;
 }
 
+/**
+ * Compare two locators by their selector strings directly.
+ * LocatorRef now only has official/css, both with a `.selector` field.
+ */
 function isSameLocator(a: RecorderStepPayload, b: RecorderStepPayload): boolean {
-  // 1. 严格匹配 (使用 JSON 序列化避开 Union Type 的属性访问限制)
-  if (JSON.stringify(a.locator) === JSON.stringify(b.locator)) return true;
-  
-  // 2. 模糊匹配（交叉对比候选定位器）
-  const aStrings = a.metadata?.candidateStrings || [];
-  const bStrings = b.metadata?.candidateStrings || [];
-  
-  if (Array.isArray(aStrings) && Array.isArray(bStrings) && aStrings.length && bStrings.length) {
-    for (const sa of aStrings) {
-      if (bStrings.includes(sa)) return true;
-    }
-  }
-
-  return false;
+  return a.locator.selector === b.locator.selector;
 }
 
 function isShortlyAfter(a: RecorderStepPayload, b: RecorderStepPayload, thresholdMs: number): boolean {

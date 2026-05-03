@@ -76,7 +76,7 @@ function handleStepRecorded(data: any) {
 
   const { action, element, dataValue } = stepInfo;
   const structured = stepInfo.step || null;
-  if (action === 'NAVIGATE' || action === 'PAGE_LOAD') {
+  if (action === 'goto' || action === 'navigate' || action === 'pageLoad') {
     const navigationUrl = element?.pageUrl || element?.value || dataValue || '';
     if (!navigationUrl) return;
 
@@ -86,7 +86,7 @@ function handleStepRecorded(data: any) {
       action,
       target: '',
       data: navigationUrl,
-      description: action === 'PAGE_LOAD' ? `Page loaded: ${navigationUrl}` : `Navigated to ${navigationUrl}`,
+      description: action === 'goto' ? `Navigated to ${navigationUrl}` : `Page loaded: ${navigationUrl}`,
       isVerified: true,
       metadata: {
         ...(structured?.metadata || {}),
@@ -278,6 +278,7 @@ function handleApiRecorded(data: any) {
   const validMethods = ['GET', 'POST', 'PUT', 'DELETE'];
   const methodUpper = String(method || '').toUpperCase();
   const actionMethod = validMethods.includes(methodUpper) ? methodUpper : 'GET';
+  const apiActionMap: Record<string, string> = { 'GET': 'apiGet', 'POST': 'apiPost', 'PUT': 'apiPut', 'DELETE': 'apiDelete' };
   const stepAssertions = [] as any[];
   if (status && status !== 0) {
     stepAssertions.push({
@@ -290,7 +291,7 @@ function handleApiRecorded(data: any) {
 
   const step: TestStep = {
     id: randomId('step'),
-    action: `API_${actionMethod}`,
+    action: apiActionMap[actionMethod],
     target: basePath,
     data: '',
     description: `Recorded API: ${method} ${basePath}`,
