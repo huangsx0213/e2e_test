@@ -125,7 +125,7 @@ export const StepList: React.FC<StepListProps> = ({
       let dataObj: Record<string, string> = {};
       try {
         dataObj = JSON.parse(step.data || "{}");
-      } catch (e) {}
+      } catch (e) { }
       const currentVal = dataObj[paramName] || "";
       const newVal = `${currentVal}{{${variableKey}}}`;
       dataObj[paramName] = newVal;
@@ -147,7 +147,7 @@ export const StepList: React.FC<StepListProps> = ({
     let dataObj = {};
     try {
       dataObj = JSON.parse(currentDataJSON || "{}");
-    } catch (e) {}
+    } catch (e) { }
     dataObj = { ...dataObj, [paramKey]: newValue };
     onUpdateStep(stepId, { data: JSON.stringify(dataObj) });
   };
@@ -211,48 +211,48 @@ export const StepList: React.FC<StepListProps> = ({
                 <div>Target / Module</div>
                 <div className="flex items-center gap-1">
                   Value / Data
-                  <HelpTooltip 
+                  <HelpTooltip
                     maxWidthClass="max-w-[500px]"
                     content={
-                    <div className="w-[480px] text-xs">
-                      <p className="font-semibold mb-2 text-sm border-b border-gray-700 pb-1">Dynamic Variables Cheat Sheet</p>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="font-semibold text-blue-300 mb-1">Generators (Start with $)</p>
-                          <ul className="space-y-1 text-gray-300">
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$uuid()}}"}</code> - UUID v4</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$timestamp()}}"}</code> - 13-digit ms</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$now('YYYY-MM-DD', 'Asia/Shanghai')}}"}</code></li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomInt(1, 100)}}"}</code> - Random int</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomString(8)}}"}</code> - Random string</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomUpper(3)}}"}</code> - Random uppercase</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomEmail()}}"}</code> - Random email</li>
-                            <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomPhone()}}"}</code> - Random phone</li>
-                          </ul>
+                      <div className="w-[480px] text-xs">
+                        <p className="font-semibold mb-2 text-sm border-b border-gray-700 pb-1">Dynamic Variables Cheat Sheet</p>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="font-semibold text-blue-300 mb-1">Generators (Start with $)</p>
+                            <ul className="space-y-1 text-gray-300">
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$uuid()}}"}</code> - UUID v4</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$timestamp()}}"}</code> - 13-digit ms</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$now('YYYY-MM-DD', 'Asia/Shanghai')}}"}</code></li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomInt(1, 100)}}"}</code> - Random int</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomString(8)}}"}</code> - Random string</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomUpper(3)}}"}</code> - Random uppercase</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomEmail()}}"}</code> - Random email</li>
+                              <li><code className="text-blue-200 bg-gray-900 px-1 rounded">{"{{$randomPhone()}}"}</code> - Random phone</li>
+                            </ul>
+                          </div>
+
+                          <div>
+                            <p className="font-semibold text-green-300 mb-1">Transformers (Use | pipe)</p>
+                            <ul className="space-y-1 text-gray-300">
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| md5</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| sha256</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| base64</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| base64Decode</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| date('YYYY-MM-DD', 'UTC')</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| substring(0, 5)</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| replace('a', 'b')</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| default('N/A')</code></li>
+                              <li><code className="text-green-200 bg-gray-900 px-1 rounded">| jsonPath('$.id')</code></li>
+                            </ul>
+                          </div>
                         </div>
 
-                        <div>
-                          <p className="font-semibold text-green-300 mb-1">Transformers (Use | pipe)</p>
-                          <ul className="space-y-1 text-gray-300">
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| md5</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| sha256</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| base64</code>, <code className="text-green-200 bg-gray-900 px-1 rounded">| base64Decode</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| date('YYYY-MM-DD', 'UTC')</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| substring(0, 5)</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| replace('a', 'b')</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| default('N/A')</code></li>
-                            <li><code className="text-green-200 bg-gray-900 px-1 rounded">| jsonPath('$.id')</code></li>
-                          </ul>
+                        <p className="font-semibold text-purple-300 mt-3 mb-1">Example Combinations</p>
+                        <div className="bg-gray-900 p-1.5 rounded text-gray-300 space-y-1">
+                          <div><code className="text-purple-200">{"{{ $timestamp() | md5 | uppercase }}"}</code></div>
+                          <div><code className="text-purple-200">{"{{ $randomUpper(3) }}{{ $timestamp() }}"}</code> &rarr; ABC1712220000000</div>
                         </div>
                       </div>
-
-                      <p className="font-semibold text-purple-300 mt-3 mb-1">Example Combinations</p>
-                      <div className="bg-gray-900 p-1.5 rounded text-gray-300 space-y-1">
-                        <div><code className="text-purple-200">{"{{ $timestamp() | md5 | uppercase }}"}</code></div>
-                        <div><code className="text-purple-200">{"{{ $randomUpper(3) }}{{ $timestamp() }}"}</code> &rarr; ABC1712220000000</div>
-                      </div>
-                    </div>
-                  } />
+                    } />
                 </div>
                 <div></div>
               </div>
@@ -399,7 +399,7 @@ export const StepList: React.FC<StepListProps> = ({
                             let currentValues: Record<string, string> = {};
                             try {
                               currentValues = JSON.parse(step.data || "{}");
-                            } catch (err) {}
+                            } catch (err) { }
 
                             let newValues: Record<string, string> = {};
 
@@ -537,22 +537,22 @@ export const StepList: React.FC<StepListProps> = ({
                             {!["goto", "waitForTimeout", "evaluate"].includes(
                               step.action,
                             ) && (
-                              <button
-                                className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setElementMenuOpen(
-                                    elementMenuOpen === step.id
-                                      ? null
-                                      : step.id,
-                                  );
-                                  setVariableMenuOpen(null);
-                                }}
-                                title="Select Element from Repo"
-                              >
-                                <MousePointer2 size={14} />
-                              </button>
-                            )}
+                                <button
+                                  className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setElementMenuOpen(
+                                      elementMenuOpen === step.id
+                                        ? null
+                                        : step.id,
+                                    );
+                                    setVariableMenuOpen(null);
+                                  }}
+                                  title="Select Element from Repo"
+                                >
+                                  <MousePointer2 size={14} />
+                                </button>
+                              )}
                             <button
                               className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
                               onClick={(e) => {
@@ -685,7 +685,7 @@ export const StepList: React.FC<StepListProps> = ({
                             let currentData: Record<string, string> = {};
                             try {
                               currentData = JSON.parse(step.data || "{}");
-                            } catch (e) {}
+                            } catch (e) { }
 
                             return module.params.map((param) => (
                               <div
@@ -720,13 +720,13 @@ export const StepList: React.FC<StepListProps> = ({
                                       setVariableMenuOpen(
                                         variableMenuOpen?.stepId === step.id &&
                                           variableMenuOpen?.paramName ===
-                                            param.name
+                                          param.name
                                           ? null
                                           : {
-                                              stepId: step.id,
-                                              field: "data",
-                                              paramName: param.name,
-                                            },
+                                            stepId: step.id,
+                                            field: "data",
+                                            paramName: param.name,
+                                          },
                                       );
                                     }}
                                   >
@@ -736,7 +736,7 @@ export const StepList: React.FC<StepListProps> = ({
                                   {/* Variable Dropdown (Module Param) */}
                                   {variableMenuOpen?.stepId === step.id &&
                                     variableMenuOpen?.paramName ===
-                                      param.name && (
+                                    param.name && (
                                       <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                         <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
                                           Insert Suite Variable
@@ -777,7 +777,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 let currentValues: Record<string, string> = {};
                                 try {
                                   currentValues = JSON.parse(step.data || "{}");
-                                } catch (err) {}
+                                } catch (err) { }
 
                                 let newValues: Record<string, string> = {};
 
@@ -911,45 +911,63 @@ export const StepList: React.FC<StepListProps> = ({
                             </select>
                             {(step.action === "apiPost" ||
                               step.action === "apiPut") && (
-                              <select
-                                className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                value={step.bodyTemplateId || ""}
-                                disabled={step.enabled === false}
-                                onChange={(e) => {
-                                  const newTemplateId =
-                                    e.target.value || undefined;
-                                  let currentValues: Record<string, string> =
-                                    {};
-                                  try {
-                                    currentValues = JSON.parse(
-                                      step.data || "{}",
-                                    );
-                                  } catch (err) {}
-
-                                  let newValues: Record<string, string> = {};
-
-                                  // Preserve URL variables
-                                  const urlVars = new Set<string>();
-                                  if (step.target) {
-                                    const matches = step.target.match(
-                                      /\{\{([^}]+)\}\}|\{([^}]+)\}/g,
-                                    );
-                                    if (matches)
-                                      matches.forEach((m) =>
-                                        urlVars.add(
-                                          m.replace(/\{\{|\}\}|\{|\}/g, ""),
-                                        ),
+                                <select
+                                  className="flex-1 bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-2 py-1.5 focus:border-emerald-500 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  value={step.bodyTemplateId || ""}
+                                  disabled={step.enabled === false}
+                                  onChange={(e) => {
+                                    const newTemplateId =
+                                      e.target.value || undefined;
+                                    let currentValues: Record<string, string> =
+                                      {};
+                                    try {
+                                      currentValues = JSON.parse(
+                                        step.data || "{}",
                                       );
-                                  }
-                                  if (step.endpointId) {
-                                    const endpoint = endpoints.find(
-                                      (ep) => ep.id === step.endpointId,
-                                    );
-                                    if (endpoint) {
-                                      Object.values(endpoint.baseUrls).forEach(
-                                        (url) => {
-                                          if (typeof url === "string") {
-                                            const matches = url.match(
+                                    } catch (err) { }
+
+                                    let newValues: Record<string, string> = {};
+
+                                    // Preserve URL variables
+                                    const urlVars = new Set<string>();
+                                    if (step.target) {
+                                      const matches = step.target.match(
+                                        /\{\{([^}]+)\}\}|\{([^}]+)\}/g,
+                                      );
+                                      if (matches)
+                                        matches.forEach((m) =>
+                                          urlVars.add(
+                                            m.replace(/\{\{|\}\}|\{|\}/g, ""),
+                                          ),
+                                        );
+                                    }
+                                    if (step.endpointId) {
+                                      const endpoint = endpoints.find(
+                                        (ep) => ep.id === step.endpointId,
+                                      );
+                                      if (endpoint) {
+                                        Object.values(endpoint.baseUrls).forEach(
+                                          (url) => {
+                                            if (typeof url === "string") {
+                                              const matches = url.match(
+                                                /\{\{([^}]+)\}\}|\{([^}]+)\}/g,
+                                              );
+                                              if (matches)
+                                                matches.forEach((m) =>
+                                                  urlVars.add(
+                                                    m.replace(
+                                                      /\{\{|\}\}|\{|\}/g,
+                                                      "",
+                                                    ),
+                                                  ),
+                                                );
+                                            }
+                                          },
+                                        );
+                                        if (endpoint.parameters) {
+                                          endpoint.parameters.forEach((p) => {
+                                            if (!p.enabled) return;
+                                            const matches = p.value.match(
                                               /\{\{([^}]+)\}\}|\{([^}]+)\}/g,
                                             );
                                             if (matches)
@@ -961,122 +979,104 @@ export const StepList: React.FC<StepListProps> = ({
                                                   ),
                                                 ),
                                               );
-                                          }
-                                        },
+                                          });
+                                        }
+                                      }
+                                    }
+                                    urlVars.forEach((varName) => {
+                                      if (currentValues[varName] !== undefined) {
+                                        newValues[varName] =
+                                          currentValues[varName];
+                                      }
+                                    });
+
+                                    // Preserve header variables
+                                    if (step.headerProfileId) {
+                                      const profile = headers.find(
+                                        (h) => h.id === step.headerProfileId,
                                       );
-                                      if (endpoint.parameters) {
-                                        endpoint.parameters.forEach((p) => {
-                                          if (!p.enabled) return;
-                                          const matches = p.value.match(
-                                            /\{\{([^}]+)\}\}|\{([^}]+)\}/g,
-                                          );
-                                          if (matches)
-                                            matches.forEach((m) =>
-                                              urlVars.add(
-                                                m.replace(
-                                                  /\{\{|\}\}|\{|\}/g,
-                                                  "",
-                                                ),
-                                              ),
-                                            );
+                                      if (profile) {
+                                        profile.headers.forEach((h) => {
+                                          const matches =
+                                            h.value.match(/\{\{([^}]+)\}\}/g);
+                                          if (matches) {
+                                            matches.forEach((m) => {
+                                              const varName = m.replace(
+                                                /\{\{|\}\}/g,
+                                                "",
+                                              );
+                                              if (
+                                                currentValues[varName] !==
+                                                undefined
+                                              ) {
+                                                newValues[varName] =
+                                                  currentValues[varName];
+                                              }
+                                            });
+                                          }
                                         });
                                       }
                                     }
-                                  }
-                                  urlVars.forEach((varName) => {
-                                    if (currentValues[varName] !== undefined) {
-                                      newValues[varName] =
-                                        currentValues[varName];
-                                    }
-                                  });
 
-                                  // Preserve header variables
-                                  if (step.headerProfileId) {
-                                    const profile = headers.find(
-                                      (h) => h.id === step.headerProfileId,
-                                    );
-                                    if (profile) {
-                                      profile.headers.forEach((h) => {
+                                    if (newTemplateId) {
+                                      const template = bodies.find(
+                                        (b) => b.id === newTemplateId,
+                                      );
+                                      if (template) {
+                                        const bodyVars = new Set<string>();
                                         const matches =
-                                          h.value.match(/\{\{([^}]+)\}\}/g);
+                                          template.content.match(
+                                            /\{\{([^}]+)\}\}/g,
+                                          );
                                         if (matches) {
-                                          matches.forEach((m) => {
-                                            const varName = m.replace(
-                                              /\{\{|\}\}/g,
-                                              "",
-                                            );
-                                            if (
-                                              currentValues[varName] !==
-                                              undefined
-                                            ) {
-                                              newValues[varName] =
-                                                currentValues[varName];
-                                            }
-                                          });
+                                          matches.forEach((m) =>
+                                            bodyVars.add(
+                                              m.replace(/\{\{|\}\}/g, ""),
+                                            ),
+                                          );
                                         }
-                                      });
-                                    }
-                                  }
 
-                                  if (newTemplateId) {
-                                    const template = bodies.find(
-                                      (b) => b.id === newTemplateId,
-                                    );
-                                    if (template) {
-                                      const bodyVars = new Set<string>();
-                                      const matches =
-                                        template.content.match(
-                                          /\{\{([^}]+)\}\}/g,
-                                        );
-                                      if (matches) {
-                                        matches.forEach((m) =>
-                                          bodyVars.add(
-                                            m.replace(/\{\{|\}\}/g, ""),
-                                          ),
-                                        );
+                                        bodyVars.forEach((varName) => {
+                                          if (
+                                            currentValues[varName] !== undefined
+                                          ) {
+                                            newValues[varName] =
+                                              currentValues[varName];
+                                          } else if (
+                                            template.defaultValues?.[varName]
+                                          ) {
+                                            newValues[varName] =
+                                              template.defaultValues[varName];
+                                          }
+                                        });
                                       }
-
-                                      bodyVars.forEach((varName) => {
-                                        if (
-                                          currentValues[varName] !== undefined
-                                        ) {
-                                          newValues[varName] =
-                                            currentValues[varName];
-                                        } else if (
-                                          template.defaultValues?.[varName]
-                                        ) {
-                                          newValues[varName] =
-                                            template.defaultValues[varName];
-                                        }
-                                      });
                                     }
-                                  }
 
-                                  onUpdateStep(step.id, {
-                                    bodyTemplateId: newTemplateId,
-                                    data:
-                                      Object.keys(newValues).length > 0
-                                        ? JSON.stringify(newValues)
-                                        : "",
-                                  });
-                                }}
-                              >
-                                <option value="">No Body</option>
-                                {bodies.map((b) => (
-                                  <option key={b.id} value={b.id}>
-                                    {b.name}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                                    onUpdateStep(step.id, {
+                                      bodyTemplateId: newTemplateId,
+                                      data:
+                                        Object.keys(newValues).length > 0
+                                          ? JSON.stringify(newValues)
+                                          : "",
+                                    });
+                                  }}
+                                >
+                                  <option value="">No Body</option>
+                                  {bodies.map((b) => (
+                                    <option key={b.id} value={b.id}>
+                                      {b.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                           </div>
 
                           {/* Dynamic Variable Inputs for URL, Header & Body */}
                           {step.headerProfileId ||
-                          step.bodyTemplateId ||
-                          step.endpointId ||
-                          step.target?.includes("{{") ||
-                          step.target?.includes("{") ? (
+                            step.bodyTemplateId ||
+                            step.endpointId ||
+                            step.target?.includes("{{") ||
+                            step.target?.includes("{") ? (
                             <div className="bg-gray-50 rounded-md border border-gray-200 p-2 space-y-3">
                               {/* URL Variables */}
                               {(() => {
@@ -1137,7 +1137,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 let currentValues: Record<string, string> = {};
                                 try {
                                   currentValues = JSON.parse(step.data || "{}");
-                                } catch (e) {}
+                                } catch (e) { }
 
                                 return (
                                   <div>
@@ -1182,13 +1182,13 @@ export const StepList: React.FC<StepListProps> = ({
                                                   variableMenuOpen?.stepId ===
                                                     step.id &&
                                                     variableMenuOpen?.paramName ===
-                                                      varName
+                                                    varName
                                                     ? null
                                                     : {
-                                                        stepId: step.id,
-                                                        field: "data",
-                                                        paramName: varName,
-                                                      },
+                                                      stepId: step.id,
+                                                      field: "data",
+                                                      paramName: varName,
+                                                    },
                                                 );
                                               }}
                                             >
@@ -1198,7 +1198,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             {variableMenuOpen?.stepId ===
                                               step.id &&
                                               variableMenuOpen?.paramName ===
-                                                varName && (
+                                              varName && (
                                                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                   <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
                                                     Insert Suite Variable
@@ -1212,7 +1212,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                           e.stopPropagation();
                                                           const currentVal =
                                                             currentValues[
-                                                              varName
+                                                            varName
                                                             ] || "";
                                                           const newData = {
                                                             ...currentValues,
@@ -1270,7 +1270,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 let currentValues: Record<string, string> = {};
                                 try {
                                   currentValues = JSON.parse(step.data || "{}");
-                                } catch (e) {}
+                                } catch (e) { }
 
                                 return (
                                   <div>
@@ -1315,13 +1315,13 @@ export const StepList: React.FC<StepListProps> = ({
                                                   variableMenuOpen?.stepId ===
                                                     step.id &&
                                                     variableMenuOpen?.paramName ===
-                                                      varName
+                                                    varName
                                                     ? null
                                                     : {
-                                                        stepId: step.id,
-                                                        field: "data",
-                                                        paramName: varName,
-                                                      },
+                                                      stepId: step.id,
+                                                      field: "data",
+                                                      paramName: varName,
+                                                    },
                                                 );
                                               }}
                                             >
@@ -1331,7 +1331,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             {variableMenuOpen?.stepId ===
                                               step.id &&
                                               variableMenuOpen?.paramName ===
-                                                varName && (
+                                              varName && (
                                                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                   <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
                                                     Insert Suite Variable
@@ -1345,7 +1345,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                           e.stopPropagation();
                                                           const currentVal =
                                                             currentValues[
-                                                              varName
+                                                            varName
                                                             ] || "";
                                                           const newData = {
                                                             ...currentValues,
@@ -1399,7 +1399,7 @@ export const StepList: React.FC<StepListProps> = ({
                                 let currentValues: Record<string, string> = {};
                                 try {
                                   currentValues = JSON.parse(step.data || "{}");
-                                } catch (e) {}
+                                } catch (e) { }
 
                                 return (
                                   <div>
@@ -1423,7 +1423,7 @@ export const StepList: React.FC<StepListProps> = ({
                                               className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                               placeholder={
                                                 template.defaultValues?.[
-                                                  varName
+                                                varName
                                                 ] || "Value"
                                               }
                                               value={
@@ -1448,13 +1448,13 @@ export const StepList: React.FC<StepListProps> = ({
                                                   variableMenuOpen?.stepId ===
                                                     step.id &&
                                                     variableMenuOpen?.paramName ===
-                                                      varName
+                                                    varName
                                                     ? null
                                                     : {
-                                                        stepId: step.id,
-                                                        field: "data",
-                                                        paramName: varName,
-                                                      },
+                                                      stepId: step.id,
+                                                      field: "data",
+                                                      paramName: varName,
+                                                    },
                                                 );
                                               }}
                                             >
@@ -1464,7 +1464,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             {variableMenuOpen?.stepId ===
                                               step.id &&
                                               variableMenuOpen?.paramName ===
-                                                varName && (
+                                              varName && (
                                                 <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 text-xs">
                                                   <div className="px-2 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
                                                     Insert Suite Variable
@@ -1478,7 +1478,7 @@ export const StepList: React.FC<StepListProps> = ({
                                                           e.stopPropagation();
                                                           const currentVal =
                                                             currentValues[
-                                                              varName
+                                                            varName
                                                             ] || "";
                                                           const newData = {
                                                             ...currentValues,
@@ -1599,39 +1599,39 @@ export const StepList: React.FC<StepListProps> = ({
                                                 : step.action === "assertTitle"
                                                   ? "Expected title..."
                                                   : step.action ===
-                                                      "assertDisabled"
+                                                    "assertDisabled"
                                                     ? "Element selector..."
                                                     : step.action ===
-                                                        "selectOption"
+                                                      "selectOption"
                                                       ? "Option value..."
                                                       : step.action ===
-                                                          "dragTo"
+                                                        "dragTo"
                                                         ? "Target selector..."
                                                         : step.action ===
-                                                            "setInputFiles"
+                                                          "setInputFiles"
                                                           ? "File path..."
                                                           : step.action ===
-                                                              "switchToWindow"
+                                                            "switchToWindow"
                                                             ? "URL or title to match..."
                                                             : step.action ===
-                                                                "switchToFrame"
+                                                              "switchToFrame"
                                                               ? "Frame selector..."
                                                               : [
-                                                                    "click",
-                                                                    "assertVisible",
-                                                                    "assertHidden",
-                                                                    "hover",
-                                                                    "highlight",
-                                                                    "dblclick",
-                                                                    "rightClick",
-                                                                    "scrollIntoView",
-                                                                    "check",
-                                                                    "uncheck",
-                                                                    "acceptDialog",
-                                                                    "dismissDialog",
-                                                                  ].includes(
-                                                                    step.action,
-                                                                  )
+                                                                "click",
+                                                                "assertVisible",
+                                                                "assertHidden",
+                                                                "hover",
+                                                                "highlight",
+                                                                "dblclick",
+                                                                "rightClick",
+                                                                "scrollIntoView",
+                                                                "check",
+                                                                "uncheck",
+                                                                "acceptDialog",
+                                                                "dismissDialog",
+                                                              ].includes(
+                                                                step.action,
+                                                              )
                                                                 ? "Not required"
                                                                 : "Value / Data"
                             }
@@ -1671,24 +1671,24 @@ export const StepList: React.FC<StepListProps> = ({
                             "acceptDialog",
                             "dismissDialog",
                           ].includes(step.action) && (
-                            <button
-                              className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setVariableMenuOpen(
-                                  variableMenuOpen?.stepId === step.id &&
-                                    variableMenuOpen.field === "data" &&
-                                    !variableMenuOpen.paramName
-                                    ? null
-                                    : { stepId: step.id, field: "data" },
-                                );
-                                setElementMenuOpen(null);
-                              }}
-                              title="Insert Variable"
-                            >
-                              <Braces size={14} />
-                            </button>
-                          )}
+                              <button
+                                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVariableMenuOpen(
+                                    variableMenuOpen?.stepId === step.id &&
+                                      variableMenuOpen.field === "data" &&
+                                      !variableMenuOpen.paramName
+                                      ? null
+                                      : { stepId: step.id, field: "data" },
+                                  );
+                                  setElementMenuOpen(null);
+                                }}
+                                title="Insert Variable"
+                              >
+                                <Braces size={14} />
+                              </button>
+                            )}
 
                           {/* Variable Dropdown (Data) */}
                           {variableMenuOpen?.stepId === step.id &&
@@ -1806,273 +1806,52 @@ export const StepList: React.FC<StepListProps> = ({
                         !["waitForTimeout", "evaluate", "runModule"].includes(step.action) && (
                           <div className="pl-8 py-2">
                             <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="checkbox"
-                            id={`wait-network-${step.id}`}
-                            checked={step.waitForNetwork?.enabled || false}
-                            onChange={(e) => {
-                              onUpdateStep(step.id, {
-                                waitForNetwork: {
-                                  ...(step.waitForNetwork || { urlPattern: "", method: "ANY", expectedStatus: 200, timeoutMs: 10000, extractors: [] }),
-                                  enabled: e.target.checked,
-                                }
-                              });
-                            }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <div className="flex items-center gap-1">
-                            <label htmlFor={`wait-network-${step.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer">
-                              Wait for API Response (Smart Wait)
-                            </label>
-                            <HelpTooltip content={
-                              <div className="w-64">
-                                <p className="mb-1 font-semibold">Smart Wait & Hybrid Extraction</p>
-                                <p className="mb-1 text-gray-300">Wait for a specific API request to complete after this UI action.</p>
-                                <p className="mb-1 text-gray-300">You can also extract data directly from the API response (e.g., using JSONPath) for subsequent steps.</p>
-                              </div>
-                            } />
-                          </div>
-                        </div>
-                        
-                        {step.waitForNetwork?.enabled && (
-                          <div className="bg-gray-50 p-2 rounded-md border border-gray-200 mt-1 space-y-2">
-                            <div className="grid grid-cols-5 gap-2">
-                              <div className="col-span-2">
-                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern / Keyword</label>
-                                <input
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                  placeholder="/api/v1/orders"
-                                  value={step.waitForNetwork.urlPattern || ""}
-                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: e.target.value } })}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
-                                <select
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                  value={step.waitForNetwork.method || "ANY"}
-                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, method: e.target.value } })}
-                                >
-                                  <option value="ANY">ANY</option>
-                                  <option value="GET">GET</option>
-                                  <option value="POST">POST</option>
-                                  <option value="PUT">PUT</option>
-                                  <option value="DELETE">DELETE</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Expected Status</label>
-                                <input
-                                  type="number"
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                  placeholder="200"
-                                  value={step.waitForNetwork.expectedStatus || ""}
-                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(e.target.value) || undefined } })}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Timeout (ms)</label>
-                                <input
-                                  type="number"
-                                  className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                  placeholder="10000"
-                                  value={step.waitForNetwork.timeoutMs || ""}
-                                  onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(e.target.value) || undefined } })}
-                                />
-                              </div>
-                            </div>
-                            
-                            {/* API Extractors inside Smart Wait */}
-                            <div className="pt-2 border-t border-gray-200 mt-2">
-                              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <span>API Extractors (Hybrid Extraction)</span>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    const exts = step.waitForNetwork!.extractors || [];
-                                    onUpdateStep(step.id, {
-                                      waitForNetwork: {
-                                        ...step.waitForNetwork!,
-                                        extractors: [...exts, { id: generateId(), name: "", source: "API_BODY_JSON", expression: "", scope: "CASE" }]
-                                      }
-                                    });
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                >
-                                  <Plus size={10} /> Add Extractor
-                                </button>
-                              </div>
-                              
-                              {(step.waitForNetwork.extractors || []).length > 0 && (
-                                <div className="space-y-2">
-                                  {(step.waitForNetwork.extractors || []).map((ext, idx) => (
-                                    <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
-                                      <input
-                                        className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                                        placeholder="Variable Name"
-                                        value={ext.name}
-                                        onChange={(e) => {
-                                          const newExts = [...step.waitForNetwork!.extractors!];
-                                          newExts[idx].name = e.target.value;
-                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                        }}
-                                      />
-                                      <select
-                                        className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                                        value={ext.source}
-                                        onChange={(e) => {
-                                          const newExts = [...step.waitForNetwork!.extractors!];
-                                          newExts[idx].source = e.target.value as any;
-                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                        }}
-                                      >
-                                        <option value="API_BODY_JSON">JSON Body</option>
-                                        <option value="API_BODY_XML">XML Body</option>
-                                        <option value="API_BODY_REGEX">Regex</option>
-                                        <option value="API_HEADER">Header</option>
-                                      </select>
-                                      <input
-                                        className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                                        placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? "Authorization" : "Expression"}
-                                        value={ext.expression || ""}
-                                        onChange={(e) => {
-                                          const newExts = [...step.waitForNetwork!.extractors!];
-                                          newExts[idx].expression = e.target.value;
-                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                        }}
-                                      />
-                                      <select
-                                        className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                                        value={ext.scope || 'CASE'}
-                                        onChange={(e) => {
-                                          const newExts = [...step.waitForNetwork!.extractors!];
-                                          newExts[idx].scope = e.target.value as any;
-                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                        }}
-                                      >
-                                        <option value="CASE">Case</option>
-                                        <option value="SUITE">Suite</option>
-                                        <option value="SCENARIO">Scenario</option>
-                                        <option value="ENVIRONMENT">Environment</option>
-                                      </select>
-                                      <button
-                                        onClick={() => {
-                                          const newExts = [...step.waitForNetwork!.extractors!];
-                                          newExts.splice(idx, 1);
-                                          onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
-                                        }}
-                                        className="text-gray-400 hover:text-red-500 p-1"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* API Assertions inside Smart Wait */}
-                            <div className="pt-2 border-t border-gray-200 mt-2">
-                              <AssertionEditor
-                                isApiStep={false}
-                                assertions={step.waitForNetwork.assertions || []}
-                                onChange={(assertions) => {
+                              <input
+                                type="checkbox"
+                                id={`wait-network-${step.id}`}
+                                checked={step.waitForNetwork?.enabled || false}
+                                onChange={(e) => {
                                   onUpdateStep(step.id, {
                                     waitForNetwork: {
-                                      ...step.waitForNetwork!,
-                                      assertions,
+                                      ...(step.waitForNetwork || { urlPattern: "", method: "ANY", expectedStatus: 200, timeoutMs: 10000, extractors: [] }),
+                                      enabled: e.target.checked,
                                     }
                                   });
                                 }}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                  {/* Network Mocks Section */}
-                  {!step.action.startsWith("api") &&
-                    !["waitForTimeout", "evaluate", "runModule"].includes(step.action) && (
-                      <div className="pl-8 py-2">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <span>Network Mocks</span>
-                            <HelpTooltip content={
-                              <div className="w-64">
-                                <p className="mb-1 font-semibold">Network Interception</p>
-                                <p className="mb-1 text-gray-300">Mock API responses triggered by this UI action.</p>
-                                <p className="mb-1 text-gray-300">Useful for testing error states (e.g., 500) or bypassing third-party services.</p>
-                              </div>
-                            } />
-                          </div>
-                          <button
-                            onClick={() => {
-                              const mocks = step.networkMocks || [];
-                              onUpdateStep(step.id, {
-                                networkMocks: [...mocks, { id: generateId(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
-                              });
-                            }}
-                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                          >
-                            <Plus size={10} /> Add Mock
-                          </button>
-                        </div>
-
-                        {(step.networkMocks || []).length > 0 && (
-                          <div className="space-y-2">
-                            {(step.networkMocks || []).map((mock, idx) => (
-                              <div key={mock.id} className="bg-gray-50 p-2 rounded-md border border-gray-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={mock.enabled}
-                                      onChange={(e) => {
-                                        const newMocks = [...step.networkMocks!];
-                                        newMocks[idx].enabled = e.target.checked;
-                                        onUpdateStep(step.id, { networkMocks: newMocks });
-                                      }}
-                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-xs font-medium text-gray-700">Mock Rule {idx + 1}</span>
+                              <div className="flex items-center gap-1">
+                                <label htmlFor={`wait-network-${step.id}`} className="text-[10px] font-bold text-gray-500 uppercase tracking-wider cursor-pointer">
+                                  Wait for API Response (Smart Wait)
+                                </label>
+                                <HelpTooltip content={
+                                  <div className="w-64">
+                                    <p className="mb-1 font-semibold">Smart Wait & Hybrid Extraction</p>
+                                    <p className="mb-1 text-gray-300">Wait for a specific API request to complete after this UI action.</p>
+                                    <p className="mb-1 text-gray-300">You can also extract data directly from the API response (e.g., using JSONPath) for subsequent steps.</p>
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      const newMocks = [...step.networkMocks!];
-                                      newMocks.splice(idx, 1);
-                                      onUpdateStep(step.id, { networkMocks: newMocks });
-                                    }}
-                                    className="text-gray-400 hover:text-red-500"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-6 gap-2 mb-2">
-                                  <div className="col-span-3">
-                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern (Regex)</label>
+                                } />
+                              </div>
+                            </div>
+
+                            {step.waitForNetwork?.enabled && (
+                              <div className="bg-gray-50 p-2 rounded-md border border-gray-200 mt-1 space-y-2">
+                                <div className="grid grid-cols-5 gap-2">
+                                  <div className="col-span-2">
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern / Keyword</label>
                                     <input
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                      placeholder=".*\/api\/payment.*"
-                                      value={mock.urlPattern}
-                                      onChange={(e) => {
-                                        const newMocks = [...step.networkMocks!];
-                                        newMocks[idx].urlPattern = e.target.value;
-                                        onUpdateStep(step.id, { networkMocks: newMocks });
-                                      }}
+                                      placeholder="/api/v1/orders"
+                                      value={step.waitForNetwork.urlPattern || ""}
+                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: e.target.value } })}
                                     />
                                   </div>
-                                  <div className="col-span-1">
+                                  <div>
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
                                     <select
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                      value={mock.method || "ANY"}
-                                      onChange={(e) => {
-                                        const newMocks = [...step.networkMocks!];
-                                        newMocks[idx].method = e.target.value;
-                                        onUpdateStep(step.id, { networkMocks: newMocks });
-                                      }}
+                                      value={step.waitForNetwork.method || "ANY"}
+                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, method: e.target.value } })}
                                     >
                                       <option value="ANY">ANY</option>
                                       <option value="GET">GET</option>
@@ -2081,207 +1860,428 @@ export const StepList: React.FC<StepListProps> = ({
                                       <option value="DELETE">DELETE</option>
                                     </select>
                                   </div>
-                                  <div className="col-span-1">
-                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
+                                  <div>
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Expected Status</label>
                                     <input
                                       type="number"
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="200"
-                                      value={mock.status}
-                                      onChange={(e) => {
-                                        const newMocks = [...step.networkMocks!];
-                                        newMocks[idx].status = parseInt(e.target.value) || 200;
-                                        onUpdateStep(step.id, { networkMocks: newMocks });
-                                      }}
+                                      value={step.waitForNetwork.expectedStatus || ""}
+                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(e.target.value) || undefined } })}
                                     />
                                   </div>
-                                  <div className="col-span-1">
-                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Delay (ms)</label>
+                                  <div>
+                                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Timeout (ms)</label>
                                     <input
                                       type="number"
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-                                      placeholder="0"
-                                      value={mock.delayMs || ""}
-                                      onChange={(e) => {
-                                        const newMocks = [...step.networkMocks!];
-                                        newMocks[idx].delayMs = parseInt(e.target.value) || undefined;
-                                        onUpdateStep(step.id, { networkMocks: newMocks });
-                                      }}
+                                      placeholder="10000"
+                                      value={step.waitForNetwork.timeoutMs || ""}
+                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(e.target.value) || undefined } })}
                                     />
                                   </div>
                                 </div>
-                                <div>
-                                  <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Response Body (JSON)</label>
-                                  <textarea
-                                    className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
-                                    placeholder='{"success": true}'
-                                    value={mock.body}
-                                    onChange={(e) => {
-                                      const newMocks = [...step.networkMocks!];
-                                      newMocks[idx].body = e.target.value;
-                                      onUpdateStep(step.id, { networkMocks: newMocks });
+
+                                {/* API Extractors inside Smart Wait */}
+                                <div className="pt-2 border-t border-gray-200 mt-2">
+                                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <div className="flex items-center gap-1">
+                                      <span>API Extractors (Hybrid Extraction)</span>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        const exts = step.waitForNetwork!.extractors || [];
+                                        onUpdateStep(step.id, {
+                                          waitForNetwork: {
+                                            ...step.waitForNetwork!,
+                                            extractors: [...exts, { id: generateId(), name: "", source: "API_BODY_JSON", expression: "", scope: "CASE" }]
+                                          }
+                                        });
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                    >
+                                      <Plus size={10} /> Add Extractor
+                                    </button>
+                                  </div>
+
+                                  {(step.waitForNetwork.extractors || []).length > 0 && (
+                                    <div className="space-y-2">
+                                      {(step.waitForNetwork.extractors || []).map((ext, idx) => (
+                                        <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
+                                          <input
+                                            className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                            placeholder="Variable Name"
+                                            value={ext.name}
+                                            onChange={(e) => {
+                                              const newExts = [...step.waitForNetwork!.extractors!];
+                                              newExts[idx].name = e.target.value;
+                                              onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                            }}
+                                          />
+                                          <select
+                                            className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                            value={ext.source}
+                                            onChange={(e) => {
+                                              const newExts = [...step.waitForNetwork!.extractors!];
+                                              newExts[idx].source = e.target.value as any;
+                                              onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                            }}
+                                          >
+                                            <option value="API_BODY_JSON">JSON Body</option>
+                                            <option value="API_BODY_XML">XML Body</option>
+                                            <option value="API_BODY_REGEX">Regex</option>
+                                            <option value="API_HEADER">Header</option>
+                                          </select>
+                                          <input
+                                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                            placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? "Authorization" : "Expression"}
+                                            value={ext.expression || ""}
+                                            onChange={(e) => {
+                                              const newExts = [...step.waitForNetwork!.extractors!];
+                                              newExts[idx].expression = e.target.value;
+                                              onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                            }}
+                                          />
+                                          <select
+                                            className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                            value={ext.scope || 'CASE'}
+                                            onChange={(e) => {
+                                              const newExts = [...step.waitForNetwork!.extractors!];
+                                              newExts[idx].scope = e.target.value as any;
+                                              onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                            }}
+                                          >
+                                            <option value="CASE">Case</option>
+                                            <option value="SUITE">Suite</option>
+                                            <option value="SCENARIO">Scenario</option>
+                                            <option value="ENVIRONMENT">Environment</option>
+                                          </select>
+                                          <button
+                                            onClick={() => {
+                                              const newExts = [...step.waitForNetwork!.extractors!];
+                                              newExts.splice(idx, 1);
+                                              onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
+                                            }}
+                                            className="text-gray-400 hover:text-red-500 p-1"
+                                          >
+                                            <Trash2 size={12} />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* API Assertions inside Smart Wait */}
+                                <div className="pt-2 border-t border-gray-200 mt-2">
+                                  <AssertionEditor
+                                    isApiStep={false}
+                                    assertions={step.waitForNetwork.assertions || []}
+                                    onChange={(assertions) => {
+                                      onUpdateStep(step.id, {
+                                        waitForNetwork: {
+                                          ...step.waitForNetwork!,
+                                          assertions,
+                                        }
+                                      });
                                     }}
                                   />
                                 </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      {/* Network Mocks Section */}
+                      {!step.action.startsWith("api") &&
+                        !["waitForTimeout", "evaluate", "runModule"].includes(step.action) && (
+                          <div className="pl-8 py-2">
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                              <div className="flex items-center gap-1">
+                                <span>Network Mocks</span>
+                                <HelpTooltip content={
+                                  <div className="w-64">
+                                    <p className="mb-1 font-semibold">Network Interception</p>
+                                    <p className="mb-1 text-gray-300">Mock API responses triggered by this UI action.</p>
+                                    <p className="mb-1 text-gray-300">Useful for testing error states (e.g., 500) or bypassing third-party services.</p>
+                                  </div>
+                                } />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const mocks = step.networkMocks || [];
+                                  onUpdateStep(step.id, {
+                                    networkMocks: [...mocks, { id: generateId(), enabled: true, urlPattern: "", method: "ANY", status: 200, body: "{}" }]
+                                  });
+                                }}
+                                className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                              >
+                                <Plus size={10} /> Add Mock
+                              </button>
+                            </div>
+
+                            {(step.networkMocks || []).length > 0 && (
+                              <div className="space-y-2">
+                                {(step.networkMocks || []).map((mock, idx) => (
+                                  <div key={mock.id} className="bg-gray-50 p-2 rounded-md border border-gray-200">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={mock.enabled}
+                                          onChange={(e) => {
+                                            const newMocks = [...step.networkMocks!];
+                                            newMocks[idx].enabled = e.target.checked;
+                                            onUpdateStep(step.id, { networkMocks: newMocks });
+                                          }}
+                                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs font-medium text-gray-700">Mock Rule {idx + 1}</span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          const newMocks = [...step.networkMocks!];
+                                          newMocks.splice(idx, 1);
+                                          onUpdateStep(step.id, { networkMocks: newMocks });
+                                        }}
+                                        className="text-gray-400 hover:text-red-500"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-6 gap-2 mb-2">
+                                      <div className="col-span-3">
+                                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern (Regex)</label>
+                                        <input
+                                          className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
+                                          placeholder=".*\/api\/payment.*"
+                                          value={mock.urlPattern}
+                                          onChange={(e) => {
+                                            const newMocks = [...step.networkMocks!];
+                                            newMocks[idx].urlPattern = e.target.value;
+                                            onUpdateStep(step.id, { networkMocks: newMocks });
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="col-span-1">
+                                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Method</label>
+                                        <select
+                                          className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
+                                          value={mock.method || "ANY"}
+                                          onChange={(e) => {
+                                            const newMocks = [...step.networkMocks!];
+                                            newMocks[idx].method = e.target.value;
+                                            onUpdateStep(step.id, { networkMocks: newMocks });
+                                          }}
+                                        >
+                                          <option value="ANY">ANY</option>
+                                          <option value="GET">GET</option>
+                                          <option value="POST">POST</option>
+                                          <option value="PUT">PUT</option>
+                                          <option value="DELETE">DELETE</option>
+                                        </select>
+                                      </div>
+                                      <div className="col-span-1">
+                                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
+                                        <input
+                                          type="number"
+                                          className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
+                                          placeholder="200"
+                                          value={mock.status}
+                                          onChange={(e) => {
+                                            const newMocks = [...step.networkMocks!];
+                                            newMocks[idx].status = parseInt(e.target.value) || 200;
+                                            onUpdateStep(step.id, { networkMocks: newMocks });
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="col-span-1">
+                                        <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Delay (ms)</label>
+                                        <input
+                                          type="number"
+                                          className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
+                                          placeholder="0"
+                                          value={mock.delayMs || ""}
+                                          onChange={(e) => {
+                                            const newMocks = [...step.networkMocks!];
+                                            newMocks[idx].delayMs = parseInt(e.target.value) || undefined;
+                                            onUpdateStep(step.id, { networkMocks: newMocks });
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Response Body (JSON)</label>
+                                      <textarea
+                                        className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
+                                        placeholder='{"success": true}'
+                                        value={mock.body}
+                                        onChange={(e) => {
+                                          const newMocks = [...step.networkMocks!];
+                                          newMocks[idx].body = e.target.value;
+                                          onUpdateStep(step.id, { networkMocks: newMocks });
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      {/* API Assertions Section */}
+                      {step.action.startsWith("API_") && (
+                        <div className="pl-8 py-2">
+                          <AssertionEditor
+                            isApiStep={true}
+                            assertions={step.assertions || []}
+                            onChange={(assertions) => {
+                              onUpdateStep(step.id, { assertions });
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Extractors Section */}
+                      <div className="pl-8 py-2">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <span>Variable Extractors</span>
+                            <HelpTooltip content={
+                              <div className="w-64">
+                                {step.action.startsWith('API_') ? (
+                                  <>
+                                    <p className="mb-1 font-semibold">JSON / XML Extraction</p>
+                                    <p className="mb-1 text-gray-300">Use JSONPath syntax (e.g., <code className="text-blue-300">$.data.id</code>).</p>
+                                    <p className="mb-1 text-gray-300">XML is auto-converted to JSON. Attributes get an <code className="text-blue-300">@_</code> prefix.</p>
+                                    <div className="bg-gray-900 p-1.5 rounded mt-1">
+                                      <p className="text-gray-400 mb-1">XML: &lt;user id="1"&gt;John&lt;/user&gt;</p>
+                                      <p className="text-gray-400">Path: <code className="text-blue-300">$.user['@_id']</code> &rarr; 1</p>
+                                      <p className="text-gray-400">Path: <code className="text-blue-300">$.user['#text']</code> &rarr; John</p>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="mb-1 font-semibold">UI Variable Extraction</p>
+                                    <ul className="list-disc pl-4 text-gray-300 space-y-1 mt-1">
+                                      <li><strong>Text / Value:</strong> Extracts text content or input value of the element.</li>
+                                      <li><strong>Attribute:</strong> Extracts an HTML attribute. Enter the attribute name (e.g., <code className="text-blue-300">href</code>, <code className="text-blue-300">src</code>) in the Expression field.</li>
+                                      <li><strong>Page URL / Title:</strong> Extracts the current page's URL or Title.</li>
+                                    </ul>
+                                  </>
+                                )}
+                                <div className="mt-2 pt-2 border-t border-gray-700">
+                                  <p className="font-semibold mb-1">How to use:</p>
+                                  <p className="text-gray-300">Reference the extracted variable in subsequent steps using <code className="text-blue-300">{"{{"}variable_name{"}}"}</code>.</p>
+                                </div>
+                              </div>
+                            } />
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: (step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT') as any, scope: 'SUITE' as any }];
+                              onUpdateStep(step.id, { extractors: newExtractors });
+                            }}
+                            className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Add Extractor
+                          </button>
+                        </div>
+                        {step.extractors && step.extractors.length > 0 && (
+                          <div className="space-y-2">
+                            {step.extractors.map((ext, extIndex) => (
+                              <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
+                                <input
+                                  className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                  placeholder="Variable Name"
+                                  value={ext.name}
+                                  onChange={(e) => {
+                                    const newExts = [...step.extractors!];
+                                    newExts[extIndex] = { ...ext, name: e.target.value };
+                                    onUpdateStep(step.id, { extractors: newExts });
+                                  }}
+                                />
+                                <select
+                                  className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                  value={ext.source}
+                                  onChange={(e) => {
+                                    const newExts = [...step.extractors!];
+                                    newExts[extIndex] = { ...ext, source: e.target.value as any };
+                                    onUpdateStep(step.id, { extractors: newExts });
+                                  }}
+                                >
+                                  {step.action.startsWith('API_') ? (
+                                    <>
+                                      <option value="API_BODY_JSON">JSON Body</option>
+                                      <option value="API_BODY_XML">XML Body</option>
+                                      <option value="API_BODY_REGEX">Regex</option>
+                                      <option value="API_HEADER">Header</option>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <option value="UI_TEXT">Element Text</option>
+                                      <option value="UI_VALUE">Input Value</option>
+                                      <option value="UI_ATTRIBUTE">Attribute</option>
+                                      <option value="UI_PAGE_URL">Page URL</option>
+                                      <option value="UI_PAGE_TITLE">Page Title</option>
+                                    </>
+                                  )}
+                                </select>
+                                {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
+                                  <input
+                                    className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                                    placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
+                                    value={ext.expression || ''}
+                                    onChange={(e) => {
+                                      const newExts = [...step.extractors!];
+                                      newExts[extIndex] = { ...ext, expression: e.target.value };
+                                      onUpdateStep(step.id, { extractors: newExts });
+                                    }}
+                                  />
+                                )}
+                                <select
+                                  className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                                  value={ext.scope || 'CASE'}
+                                  onChange={(e) => {
+                                    const newExts = [...step.extractors!];
+                                    newExts[extIndex] = { ...ext, scope: e.target.value as any };
+                                    onUpdateStep(step.id, { extractors: newExts });
+                                  }}
+                                >
+                                  <option value="CASE">Case</option>
+                                  <option value="SUITE">Suite</option>
+                                  <option value="SCENARIO">Scenario</option>
+                                  <option value="ENVIRONMENT">Environment</option>
+                                </select>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const newExts = step.extractors!.filter((_, i) => i !== extIndex);
+                                    onUpdateStep(step.id, { extractors: newExts });
+                                  }}
+                                  className="text-gray-400 hover:text-red-500 p-1"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    )}
-
-                  {/* API Assertions Section */}
-                  {step.action.startsWith("API_") && (
-                    <div className="pl-8 py-2">
-                      <AssertionEditor
-                        isApiStep={true}
-                        assertions={step.assertions || []}
-                        onChange={(assertions) => {
-                          onUpdateStep(step.id, { assertions });
-                        }}
-                      />
                     </div>
                   )}
-
-                  {/* Extractors Section */}
-                  <div className="pl-8 py-2">
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                      <div className="flex items-center gap-1">
-                        <span>Variable Extractors</span>
-                        <HelpTooltip content={
-                          <div className="w-64">
-                            {step.action.startsWith('API_') ? (
-                              <>
-                                <p className="mb-1 font-semibold">JSON / XML Extraction</p>
-                                <p className="mb-1 text-gray-300">Use JSONPath syntax (e.g., <code className="text-blue-300">$.data.id</code>).</p>
-                                <p className="mb-1 text-gray-300">XML is auto-converted to JSON. Attributes get an <code className="text-blue-300">@_</code> prefix.</p>
-                                <div className="bg-gray-900 p-1.5 rounded mt-1">
-                                  <p className="text-gray-400 mb-1">XML: &lt;user id="1"&gt;John&lt;/user&gt;</p>
-                                  <p className="text-gray-400">Path: <code className="text-blue-300">$.user['@_id']</code> &rarr; 1</p>
-                                  <p className="text-gray-400">Path: <code className="text-blue-300">$.user['#text']</code> &rarr; John</p>
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <p className="mb-1 font-semibold">UI Variable Extraction</p>
-                                <ul className="list-disc pl-4 text-gray-300 space-y-1 mt-1">
-                                  <li><strong>Text / Value:</strong> Extracts text content or input value of the element.</li>
-                                  <li><strong>Attribute:</strong> Extracts an HTML attribute. Enter the attribute name (e.g., <code className="text-blue-300">href</code>, <code className="text-blue-300">src</code>) in the Expression field.</li>
-                                  <li><strong>Page URL / Title:</strong> Extracts the current page's URL or Title.</li>
-                                </ul>
-                              </>
-                            )}
-                            <div className="mt-2 pt-2 border-t border-gray-700">
-                              <p className="font-semibold mb-1">How to use:</p>
-                              <p className="text-gray-300">Reference the extracted variable in subsequent steps using <code className="text-blue-300">{"{{"}variable_name{"}}"}</code>.</p>
-                            </div>
-                          </div>
-                        } />
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: (step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT') as any, scope: 'SUITE' as any }];
-                          onUpdateStep(step.id, { extractors: newExtractors });
-                        }}
-                        className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                      >
-                        <Plus size={10} /> Add Extractor
-                      </button>
-                    </div>
-                    {step.extractors && step.extractors.length > 0 && (
-                      <div className="space-y-2">
-                        {step.extractors.map((ext, extIndex) => (
-                          <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
-                            <input
-                              className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                              placeholder="Variable Name"
-                              value={ext.name}
-                              onChange={(e) => {
-                                const newExts = [...step.extractors!];
-                                newExts[extIndex] = { ...ext, name: e.target.value };
-                                onUpdateStep(step.id, { extractors: newExts });
-                              }}
-                            />
-                            <select
-                              className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                              value={ext.source}
-                              onChange={(e) => {
-                                const newExts = [...step.extractors!];
-                                newExts[extIndex] = { ...ext, source: e.target.value as any };
-                                onUpdateStep(step.id, { extractors: newExts });
-                              }}
-                            >
-                              {step.action.startsWith('API_') ? (
-                                <>
-                                  <option value="API_BODY_JSON">JSON Body</option>
-                                  <option value="API_BODY_XML">XML Body</option>
-                                  <option value="API_BODY_REGEX">Regex</option>
-                                  <option value="API_HEADER">Header</option>
-                                </>
-                              ) : (
-                                <>
-                                  <option value="UI_TEXT">Element Text</option>
-                                  <option value="UI_VALUE">Input Value</option>
-                                  <option value="UI_ATTRIBUTE">Attribute</option>
-                                  <option value="UI_PAGE_URL">Page URL</option>
-                                  <option value="UI_PAGE_TITLE">Page Title</option>
-                                </>
-                              )}
-                            </select>
-                            {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
-                              <input
-                                className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                                placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
-                                value={ext.expression || ''}
-                                onChange={(e) => {
-                                  const newExts = [...step.extractors!];
-                                  newExts[extIndex] = { ...ext, expression: e.target.value };
-                                  onUpdateStep(step.id, { extractors: newExts });
-                                }}
-                              />
-                            )}
-                            <select
-                              className="w-24 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                              value={ext.scope || 'CASE'}
-                              onChange={(e) => {
-                                const newExts = [...step.extractors!];
-                                newExts[extIndex] = { ...ext, scope: e.target.value as any };
-                                onUpdateStep(step.id, { extractors: newExts });
-                              }}
-                            >
-                              <option value="CASE">Case</option>
-                              <option value="SUITE">Suite</option>
-                              <option value="SCENARIO">Scenario</option>
-                              <option value="ENVIRONMENT">Environment</option>
-                            </select>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const newExts = step.extractors!.filter((_, i) => i !== extIndex);
-                                onUpdateStep(step.id, { extractors: newExts });
-                              }}
-                              className="text-gray-400 hover:text-red-500 p-1"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
-              )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
           {onAddStep && (
             <div className="mt-4 flex flex-col gap-2 pb-48">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => onAddStep("CLICK")}
+                  onClick={() => onAddStep("click")}
                   className="flex-1 py-2.5 border border-gray-200 rounded-lg text-gray-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 transition-all flex items-center justify-center gap-1.5 text-xs font-medium group shadow-sm"
                 >
                   <MousePointer2
