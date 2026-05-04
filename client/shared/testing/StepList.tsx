@@ -3,7 +3,6 @@ import {
   TestStep,
   Project,
   ActionType,
-  TestSuite,
   HeaderProfile,
   BodyTemplate,
   ApiEndpoint,
@@ -24,7 +23,6 @@ import {
   Camera,
   Power,
   PowerOff,
-  HelpCircle,
 } from "lucide-react";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
@@ -47,47 +45,6 @@ interface StepListProps {
   headers: HeaderProfile[];
   bodies: BodyTemplate[];
 }
-
-const ACTION_TYPES: ActionType[] = [
-  "goto",
-  "click",
-  "fill",
-  "hover",
-  "highlight",
-  "scrollIntoView",
-  "selectOption",
-  "check",
-  "uncheck",
-  "dragTo",
-  "setInputFiles",
-  "assertVisible",
-  "assertHidden",
-  "assertText",
-  "assertValue",
-  "assertUrl",
-  "assertTitle",
-  "assertDisabled",
-  "extractVar",
-  "evaluate",
-  "press",
-  "clear",
-  "waitForTimeout",
-  "waitForVisible",
-  "waitForHidden",
-  "apiGet",
-  "apiPost",
-  "apiPut",
-  "apiDelete",
-  "runModule",
-  "dblclick",
-  "rightClick",
-  "switchToWindow",
-  "switchToFrame",
-  "acceptDialog",
-  "dismissDialog",
-  "toggle",
-  "uiExtract",
-];
 
 export const StepList: React.FC<StepListProps> = ({
   title,

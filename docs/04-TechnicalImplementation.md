@@ -1,9 +1,5 @@
 # QuantumQA Core Technical Implementation Details
 
-
-
----
-
 # 🌐 API Recording Engine Best Practices (Implemented)
 
 Target scenario: **Automatically orchestrating pure API test assets and link chains via UI roaming**.
@@ -51,6 +47,12 @@ The Unified Recording Engine is a core subsystem of the QuantumQA Automation Mat
 By injecting a smart tracker into a Playwright-controlled browser and leveraging Playwright's native network interception, the engine captures user intents (clicks, typing) and background network requests (XHR/Fetch). It then automatically maps these actions to the existing Page Object Model (POM) Element Repository and API Asset Library.
 
 ## 2. Architecture & Tech Stack
+
+### Private API Dependency
+
+- The UI recording engine uses Playwright's internal private API `_enableRecorder` (exposed as `BrowserContext._enableRecorder`) for programmatic recording.
+- This is a private API and is not guaranteed to be covered by Playwright's semver guarantees. The Playwright version is pinned in `package.json` to prevent accidental upgrades that could break recording functionality.
+- Before upgrading Playwright, verify that `_enableRecorder` still exists and has the expected signature by running the adapter's feature-detection check (`PlaywrightRecorderAdapter.isAvailable()`).
 
 ### Tech Stack
 *   **Browser Automation**: Playwright (Node.js)

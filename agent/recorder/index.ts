@@ -1,11 +1,10 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { recorderInit } from './runtime.ts';
-import { RecorderReducer } from './reducer.ts';
+import { PlaywrightRecorderAdapter } from './adapter.ts';
+import { StepConsolidator } from './consolidation.ts';
+import { translateAction } from './translator.ts';
+import type { ActionInContext, RecorderStepPayload } from './protocol.ts';
 import { locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
 import type { LocatorRef, RecorderMode, RecorderState } from './protocol.ts';
-
-declare const require: NodeJS.Require;
-const playwrightCoreDir = require.resolve('playwright-core').replace(/[/\\][^/\\]+$/, '');
 
 type OnElementRecorded = (element: any) => void;
 type OnStepRecorded = (stepInfo: any) => void;
@@ -16,7 +15,7 @@ type RecordingSession = {
   browser: Browser;
   context: BrowserContext;
   page: Page;
-  reducer: RecorderReducer;
+  adapter: PlaywrightRecorderAdapter;
   mode: RecorderMode;
   onElementRecorded: OnElementRecorded;
   onStepRecorded?: OnStepRecorded;
@@ -27,19 +26,7 @@ type RecordingSession = {
 };
 
 let session: RecordingSession | null = null;
-
-const BINDING_NAME = '__qqaRecorderSend';
-const { source: injectedScriptSource } = require(`${playwrightCoreDir}/lib/generated/injectedScriptSource.js`);
-const OFFICIAL_INJECTED_OPTIONS = {
-  isUnderTest: false,
-  sdkLanguage: 'javascript',
-  testIdAttributeName: 'data-testid',
-  stableRafCount: 1,
-  browserName: 'chromium',
-  shouldPrependErrorPrefix: false,
-  isUtilityWorld: false,
-  customEngines: [],
-};
+let consolidator = new StepConsolidator();
 
 export async function startRecording(
   targetUrl: string,
@@ -55,6 +42,10 @@ export async function startRecording(
     await stopRecording();
   }
 
+  // Reset consolidator for the new session
+  consolidator.reset();
+
+
   const headless = process.env.HEADLESS === 'true';
   const browser = await chromium.launch({
     headless,
@@ -68,13 +59,35 @@ export async function startRecording(
 
   const context = await browser.newContext({ viewport: null });
   const page = await context.newPage();
-  const reducer = new RecorderReducer();
+
+  const adapter = new PlaywrightRecorderAdapter({
+    onActionAdded: (page, actionInContext: ActionInContext) => {
+      if (!session) return;
+      const step = translateAction(actionInContext);
+      if (!step) return;
+
+      // Fill pageUrl from the actual page if translator left it empty
+      if (!step.pageUrl) {
+        step.pageUrl = page.url();
+      }
+
+      for (const consolidated of consolidator.add(step)) {
+        emitConsolidatedStep(consolidated);
+      }
+    },
+    onSignalAdded: (_page, _signalInContext) => {
+      // Signals are logged for metadata but don't produce steps directly
+      // Playwright's recorder already correlates signals with actions
+    },
+  });
+
+  adapter.start(context);
 
   session = {
     browser,
     context,
     page,
-    reducer,
+    adapter,
     mode,
     onElementRecorded,
     onStepRecorded,
@@ -82,42 +95,22 @@ export async function startRecording(
     onRecorderStateChanged,
   };
 
-  await page.exposeBinding(BINDING_NAME, (_source, payload: string) => {
-    try {
-      const event = JSON.parse(payload);
-      handleBrowserEvent(event);
-    } catch (error) {
-      console.error('[RecorderV2] Failed to handle binding payload:', error);
-    }
-  });
-
-  await page.addInitScript(({ source, options }) => {
-    try {
-      const module = { exports: {} as any };
-      const fn = new Function('module', 'exports', `${source}\nreturn module.exports;`);
-      const exports = fn(module, module.exports);
-      const injectedScriptExport = exports.InjectedScript;
-      const InjectedScript = typeof injectedScriptExport === 'function' && !injectedScriptExport.prototype
-        ? injectedScriptExport()
-        : injectedScriptExport;
-      (window as any).__qqaOfficialInjectedScript = new InjectedScript(window, options);
-    } catch (error) {
-      console.warn('[RecorderV2] Failed to initialize official injected script', error);
-    }
-  }, { source: injectedScriptSource, options: OFFICIAL_INJECTED_OPTIONS });
-
-  await page.addInitScript(recorderInit as any, { bindingName: BINDING_NAME, mode });
-
   const handleTerminalClose = async (reason: string) => {
     if (!session || session.closing) return;
     session.closing = true;
     session.closeReason = reason;
     console.log(`[RecorderV2] Session closing: ${reason}`);
+    flushConsolidatedSteps();
     const stoppedState: RecorderState = { isPaused: true, started: false, mode: session.mode, action: 'STOP' };
     try {
       if (session.onRecorderStateChanged) session.onRecorderStateChanged(stoppedState);
     } catch (error) {
       console.warn('[RecorderV2] Failed to emit stop state:', error);
+    }
+    try {
+      session.adapter.stop();
+    } catch {
+      // best-effort
     }
     try {
       if (!session.browser.isConnected()) return;
@@ -134,20 +127,6 @@ export async function startRecording(
   browser.on('disconnected', () => { void handleTerminalClose('browser_disconnected'); });
   page.on('crash', () => { void handleTerminalClose('page_crashed'); });
   page.on('pageerror', (error) => console.warn('[RecorderV2] Page error:', error));
-
-  page.on('framenavigated', (frame) => {
-    if (!session || frame !== page.mainFrame()) return;
-    if (mode !== 'ui' && mode !== 'all') return;
-    const raw = {
-      type: 'navigate' as const,
-      value: frame.url(),
-      pageUrl: frame.url(),
-      action: 'goto' as const,
-      previousUrl: null,
-      timestamp: Date.now(),
-    };
-    void handleBrowserEvent(raw);
-  });
 
   if (mode === 'api' || mode === 'all') {
     page.on('requestfinished', async (req) => {
@@ -205,10 +184,16 @@ export async function startRecording(
 export async function stopRecording() {
   if (!session) return;
   try {
+    flushConsolidatedSteps();
     if (!session.closing && session.onRecorderStateChanged) {
       session.onRecorderStateChanged({ isPaused: true, started: false, mode: session.mode, action: 'STOP' });
     }
     session.closing = true;
+    try {
+      session.adapter.stop();
+    } catch {
+      // best-effort stop
+    }
     try {
       await session.browser.close();
     } catch {
@@ -219,87 +204,102 @@ export async function stopRecording() {
   }
 }
 
-async function handleBrowserEvent(event: any) {
+function flushConsolidatedSteps() {
+  for (const step of consolidator.flush()) {
+    emitConsolidatedStep(step);
+  }
+}
+
+function emitConsolidatedStep(cleanStep: RecorderStepPayload) {
   if (!session) return;
 
-  if (event.type === 'element') {
-    const locator = event.locator as LocatorRef;
-    const legacy = locatorRefToLegacyDef(locator);
-    const element = {
+  const locator = cleanStep.locator;
+  const legacy = locator ? locatorRefToLegacyDef(locator) : undefined;
+  const elementName = locator ? locatorRefToName(locator) : '';
+  const dataValue = cleanStep.value || '';
+
+  const stepRecord = {
+    id: `step-${Math.random().toString(36).slice(2, 10)}`,
+    action: cleanStep.action,
+    target: cleanStep.action === 'goto' ? (cleanStep.value || '') : elementName,
+    data: dataValue,
+    description: buildStepDescription(cleanStep.action, locator, dataValue),
+    isVerified: true,
+    metadata: {
+      recorder: {
+        locator,
+        locatorCandidates: cleanStep.locatorCandidates,
+        legacyLocator: legacy,
+        framePath: cleanStep.metadata?.framePath || [],
+        pageUrl: cleanStep.pageUrl,
+        timestamp: cleanStep.timestamp,
+      },
+    },
+  };
+
+  if (session.onStepRecorded) {
+    session.onStepRecorded({
+      action: cleanStep.action,
+      element: locator && legacy ? {
+        ...legacy,
+        name: elementName,
+        pageUrl: cleanStep.pageUrl,
+        metadata: stepRecord.metadata,
+      } : undefined,
+      dataValue,
+      step: stepRecord,
+    });
+  }
+
+  if (session.onElementRecorded && locator) {
+    session.onElementRecorded({
       id: `el-${Math.random().toString(36).slice(2, 10)}`,
-      name: locatorRefToName(locator),
+      name: elementName,
       selectorType: legacy.selectorType,
       value: legacy.value,
-      description: event.metadata?.snapshot?.text || locatorRefToName(locator),
-      pageUrl: event.pageUrl,
+      description: elementName,
+      pageUrl: cleanStep.pageUrl,
       locators: [legacy],
       metadata: {
         recorder: {
           locator,
-          snapshot: event.metadata?.snapshot,
-          legacyLocator: legacy,
-          officialSelector: event.metadata?.officialSelector,
-          framePath: event.metadata?.framePath || [],
+          framePath: cleanStep.metadata?.framePath || [],
         },
       },
-    };
-    session.onElementRecorded(element);
-    return;
-  }
-
-  const reducer = session.reducer;
-  const normalized = reducer.consume(event);
-  if (!normalized) return;
-
-  if (event.type === 'navigate' || event.type === 'ui') {
-    const locator = normalized.locator;
-    const legacy = locatorRefToLegacyDef(locator);
-    const secondaryLegacy = normalized.secondaryLocator ? locatorRefToLegacyDef(normalized.secondaryLocator) : null;
-    const dataValue = normalized.action === 'DRAG_AND_DROP'
-      ? secondaryLegacy?.value || normalized.value || ''
-      : normalized.value || '';
-    const step = {
-      id: `step-${Math.random().toString(36).slice(2, 10)}`,
-      action: normalized.action,
-      target: normalized.action === 'goto' ? (normalized.value || '') : `${locatorRefToName(locator)}`,
-      data: dataValue,
-      description: buildStepDescription(normalized.action, locator, dataValue),
-      isVerified: true,
-      metadata: {
-        recorder: {
-          locator: normalized.locator,
-          locatorCandidates: normalized.locatorCandidates,
-          secondaryLocator: normalized.secondaryLocator,
-          legacyLocator: legacy,
-          secondaryLegacyLocator: secondaryLegacy,
-          officialSelector: event.metadata?.officialSelector,
-          framePath: event.metadata?.framePath || [],
-          files: event.metadata?.files,
-          pageUrl: normalized.pageUrl,
-          timestamp: normalized.timestamp,
-          raw: event,
-        },
-      },
-    };
-    const elementName = locatorRefToName(locator);
-    if (session.onStepRecorded) session.onStepRecorded({
-      action: normalized.action,
-      element: {
-        ...legacy,
-        name: elementName,
-        pageUrl: normalized.pageUrl,
-        metadata: step.metadata,
-      },
-      dataValue,
-      step,
     });
-    return;
   }
 }
 
-function buildStepDescription(action: string, locator: LocatorRef, value?: string) {
-  const base = action === 'DRAG_AND_DROP'
-    ? `DRAG_AND_DROP from ${locatorRefToName(locator)}`
-    : `${action} on ${locatorRefToName(locator)}`;
-  return value ? `${base}: ${value}` : base;
+function buildStepDescription(action: string, locator?: LocatorRef, value?: string) {
+  if (action === 'goto') return `Navigate to ${value || 'URL'}`;
+
+  const name = locatorRefToName(locator) || 'unknown element';
+
+  switch (action) {
+    case 'click':
+      return `Click on ${name}`;
+    case 'dblclick':
+      return `Double click on ${name}`;
+    case 'rightClick':
+      return `Right click on ${name}`;
+    case 'fill':
+      return `Type "${value}" into ${name}`;
+    case 'press':
+      return `Press ${value} key on ${name}`;
+    case 'selectOption':
+      return `Select "${value}" in ${name}`;
+    case 'check':
+      return `Check ${name}`;
+    case 'uncheck':
+      return `Uncheck ${name}`;
+    case 'hover':
+      return `Hover over ${name}`;
+    case 'dragTo':
+      return `Drag ${name} to destination`;
+    case 'setInputFiles':
+      return `Upload file(s) to ${name}: ${value}`;
+    default:
+      const base = `${action} on ${name}`;
+      return value ? `${base}: ${value}` : base;
+  }
 }

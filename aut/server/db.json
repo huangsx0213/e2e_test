@@ -48,6 +48,23 @@
       "createdAt": "2026-04-30T00:43:14.298Z",
       "updatedAt": "2026-04-30T01:48:49.988Z",
       "lastPasswordResetSentAt": "2026-04-30T00:44:20.033Z"
+    },
+    {
+      "id": 3,
+      "name": "June",
+      "email": "June@qq.com",
+      "role": "admin",
+      "status": "active",
+      "bio": "",
+      "accessLevel": 3,
+      "dateStart": "",
+      "dateEnd": "",
+      "shiftTime": "",
+      "permissions": [],
+      "twoFactorAuth": false,
+      "departmentPath": [],
+      "createdAt": "2026-05-04T01:05:46.295Z",
+      "updatedAt": "2026-05-04T01:05:46.295Z"
     }
   ]
 }

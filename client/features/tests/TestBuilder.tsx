@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MutationActions } from "@/shared/hooks/useQueryHooks";
 import { queryKeys } from "@/shared/hooks/queryKeys";
@@ -24,17 +24,10 @@ import {
   Edit2,
   Check,
   X,
-  Database,
   Search,
   Layers,
-  TextQuote,
   Variable,
   Table2,
-  Braces,
-  MousePointer2,
-  GripVertical,
-  Workflow,
-  FileCode,
   Globe,
   Video,
   Square,
@@ -60,47 +53,6 @@ interface TestBuilderProps {
   currentProjectId: string;
   currentEnvironment: string;
 }
-
-const ACTION_TYPES: ActionType[] = [
-  "OPEN",
-  "CLICK",
-  "TYPE",
-  "HOVER",
-  "HIGHLIGHT",
-  "SCROLL_TO",
-  "SELECT_OPTION",
-  "CHECK",
-  "UNCHECK",
-  "DRAG_AND_DROP",
-  "UPLOAD_FILE",
-  "ASSERT_VISIBLE",
-  "ASSERT_INVISIBLE",
-  "ASSERT_TEXT",
-  "ASSERT_VALUE",
-  "ASSERT_URL",
-  "ASSERT_TITLE",
-  "ASSERT_DISABLED",
-  "EXTRACT_VAR",
-  "EVALUATE_JS",
-  "PRESS_KEY",
-  "CLEAR",
-  "WAIT",
-  "WAIT_FOR_VISIBLE",
-  "WAIT_FOR_INVISIBLE",
-  "API_GET",
-  "API_POST",
-  "API_PUT",
-  "API_DELETE",
-  "RUN_MODULE",
-  "DOUBLE_CLICK",
-  "RIGHT_CLICK",
-  "SWITCH_TO_WINDOW",
-  "SWITCH_TO_FRAME",
-  "ACCEPT_ALERT",
-  "DISMISS_ALERT",
-  "ATTACH_FILE",
-  "TOGGLE",
-];
 
 export const TestBuilder: React.FC<TestBuilderProps> = ({
   suites,
@@ -431,7 +383,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     if (!activeSuiteId || !currentProjectId || !activeCaseId) return;
     setIsRecording(true);
     setIsRecordingModalOpen(false);
-    recordingCaseIdRef.current = activeCaseId;
 
     try {
       const response = await fetch('/api/recording/start', {
@@ -476,8 +427,6 @@ const stopRecording = async () => {
       setIsRecording(false);
     }
 };
-
-  const recordingCaseIdRef = useRef<string | null>(null);
 
   // Real-time updates via WebSocket during recording
   useEffect(() => {
@@ -525,7 +474,6 @@ const stopRecording = async () => {
           if (state.action === 'STOP') {
             console.log('Recording stopped from toolbar');
             setIsRecording(false);
-            recordingCaseIdRef.current = null;
             queryClient.invalidateQueries({ queryKey: queryKeys.suites });
           } else if (state.action === 'PAUSE') {
             console.log('Recording paused from toolbar');

@@ -5,7 +5,8 @@ import type { LocatorRef } from './protocol.ts';
  * - official: parses Playwright internal selector format (role, label, testid)
  * - css: returns the CSS selector as-is
  */
-export function locatorRefToName(ref: LocatorRef): string {
+export function locatorRefToName(ref?: LocatorRef): string {
+  if (!ref) return '';
   switch (ref.kind) {
     case 'css':
       return ref.selector;
@@ -19,7 +20,8 @@ export function locatorRefToName(ref: LocatorRef): string {
  * used by UIElement and the test step storage layer.
  * Since LocatorRef now only has official/css, selectorType === ref.kind and value === ref.selector.
  */
-export function locatorRefToLegacyDef(ref: LocatorRef): { selectorType: string; value: string } {
+export function locatorRefToLegacyDef(ref?: LocatorRef): { selectorType: string; value: string } {
+  if (!ref) return { selectorType: 'none', value: '' };
   return {
     selectorType: ref.kind,
     value: ref.selector,

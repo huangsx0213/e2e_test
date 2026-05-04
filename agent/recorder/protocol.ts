@@ -33,7 +33,7 @@ export type RecorderEvent = {
 
 export type RecorderStepPayload = {
   action: string;
-  locator: LocatorRef;
+  locator?: LocatorRef;
   locatorCandidates: LocatorRef[];
   secondaryLocator?: LocatorRef;
   value?: string;
@@ -47,4 +47,55 @@ export type RecorderState = {
   started: boolean;
   mode: RecorderMode;
   action?: 'START' | 'STOP' | 'PAUSE';
+};
+
+// NOTE: The following types extend the protocol with Playwright-internal context models
+// for input actions and their contextual signals.
+
+// Comprehensive Playwright action shapes (discriminated union by `name`)
+export type PlaywrightAction =
+  | { name: 'click'; selector: string; clickCount: number; button: 'left' | 'right' | 'middle'; modifiers: number; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'fill'; selector: string; text: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'navigate'; url: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'press'; selector: string; key: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'select'; selector: string; options: string[]; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'check'; selector: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'uncheck'; selector: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'hover'; selector: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'setInputFiles'; selector: string; files: string[]; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'assertText'; selector: string; text: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'assertValue'; selector: string; value: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'assertChecked'; selector: string; checked: boolean; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'assertVisible'; selector: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'assertSnapshot'; selector: string; snapshot: string; signals: Signal[]; ariaSnapshot?: string }
+  | { name: 'closePage'; signals: Signal[] }
+  | { name: 'openPage'; url: string; signals: Signal[] };
+
+// Description of a frame context (page + frame path) for actions
+export type FrameDescription = {
+  pageGuid: string;
+  pageAlias: string;
+  framePath: string[];
+};
+
+// An action performed in a specific frame context, with timing information
+export type ActionInContext = {
+  frame: FrameDescription;
+  action: PlaywrightAction;
+  startTime: number;
+  endTime?: number;
+};
+
+// Signals emitted during navigation/interaction
+export type NavigationSignal = { name: 'navigation'; url: string; redirectFrom?: string };
+export type PopupSignal = { name: 'popup'; popupAlias: string };
+export type DownloadSignal = { name: 'download'; downloadAlias: string };
+export type DialogSignal = { name: 'dialog'; dialogAlias: string };
+export type Signal = NavigationSignal | PopupSignal | DownloadSignal | DialogSignal;
+
+// A signal attached to a contextual frame
+export type SignalInContext = {
+  frame: FrameDescription;
+  signal: Signal;
+  timestamp: number;
 };
