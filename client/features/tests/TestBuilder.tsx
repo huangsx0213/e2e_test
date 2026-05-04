@@ -79,7 +79,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState(`${window.location.origin}/aut/login`);
   const [apiFilter, setApiFilter] = useState("*api*");
-  const [recordingMode, setRecordingMode] = useState<'all' | 'ui' | 'api' | 'element'>('all');
+  const [recordingMode, setRecordingMode] = useState<'ui' | 'api' | 'all'>('ui');
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [recordingTargetStatus, setRecordingTargetStatus] = useState<'idle' | 'busy' | 'offline' | 'disabled' | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -558,13 +558,12 @@ const stopRecording = async () => {
                 <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Recording Mode</label>
                 <select
                   value={recordingMode}
-                  onChange={(e) => setRecordingMode(e.target.value as 'all' | 'ui' | 'api' | 'element')}
+                  onChange={(e) => setRecordingMode(e.target.value as 'all' | 'ui' | 'api')}
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                 >
-                  <option value="all">All Events</option>
                   <option value="ui">UI Steps Only</option>
                   <option value="api">API Requests Only</option>
-                  <option value="element">Elements Only</option>
+                  <option value="all">All Events</option>
                 </select>
                 <p className="text-[11px] text-gray-400 mt-1.5">No in-page toolbar. Recording is controlled from this dialog.</p>
               </div>

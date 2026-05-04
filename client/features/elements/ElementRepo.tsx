@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MutationActions } from "@/shared/hooks/useQueryHooks";
 import { queryKeys } from "@/shared/hooks/queryKeys";
@@ -20,13 +20,10 @@ import {
   Filter,
   FolderPlus,
   Settings,
-  Video,
-  Square,
   RefreshCw,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
-import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
 
 interface ElementRepoProps {
   projects: Project[];
@@ -45,13 +42,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
   const [activeElementId, setActiveElementId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
-
-  // Recording States
-  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
-  const [recordingUrl, setRecordingUrl] = useState("");
-  const [recordingMode, setRecordingMode] = useState<'element' | 'all'>('element');
-  const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
 
   // Edit States
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
@@ -235,84 +225,6 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
     }));
     if (activeElementId === elementId) setActiveElementId("");
   };
-
-
-  const startRecording = async () => {
-    if (!recordingTargetId) {
-      alert('Please select an agent to record on.');
-      return;
-    }
-    if (!recordingUrl.trim() || !activePageId || !currentProjectId) return;
-    setIsRecording(true);
-    setIsRecordingModalOpen(false);
-
-    try {
-      const response = await fetch('/api/recording/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUrl: recordingUrl,
-          projectId: currentProjectId,
-          pageId: activePageId,
-          mode: recordingMode,
-          agentId: recordingTargetId,
-        }),
-    });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      throw new Error(payload?.error || response.statusText);
-    }
-  } catch (error) {
-    console.error('Failed to start recording:', error);
-    setIsRecording(false);
-  }
-};
-
-const stopRecording = async () => {
-  try {
-    const response = await fetch('/api/recording/stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: recordingTargetId }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || response.statusText);
-      }
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-    } finally {
-      setIsRecording(false);
-    }
-  };
-
-  // Real-time updates via WebSocket during recording
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.event === 'element-recorded') {
-          console.log('New element recorded via WS, invalidating projects...');
-          queryClient.invalidateQueries({ queryKey: queryKeys.projects });
-        }
-      } catch (e) {
-        console.error('Failed to parse WS message:', e);
-      }
-    };
-
-    ws.onopen = () => console.log('WS connected for real-time updates');
-    ws.onerror = (e) => console.error('WS error:', e);
-
-    return () => {
-      ws.close();
-    };
-  }, []);
-
   return (
     <div className="h-full flex bg-gray-50 overflow-hidden relative">
       <ConfirmModal
@@ -742,21 +654,6 @@ const stopRecording = async () => {
                 <span className="text-xs text-gray-400 font-medium mr-2">
                   {activePage.elements.length} Elements
                 </span>
-                {isRecording ? (
-                  <button
-                    onClick={stopRecording}
-                    className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md flex items-center gap-2 transition-colors animate-pulse"
-                  >
-                    <Square size={14} className="fill-current" /> Stop Recording
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setIsRecordingModalOpen(true)}
-                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors"
-                  >
-                    <Video size={14} /> Record Elements
-                  </button>
-                )}
               </div>
             </div>
 
@@ -898,79 +795,6 @@ const stopRecording = async () => {
       </div>
 
 
-      {isRecordingModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white p-0 rounded-xl w-[500px] shadow-2xl border border-gray-200 animate-in fade-in zoom-in duration-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-lg font-bold flex items-center gap-2 text-gray-900">
-                <Video className="text-green-600" size={20} />
-                Record Elements
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Enter the URL you want to record. A new browser window will open. Click on elements to automatically extract and save them.
-              </p>
-            </div>
-
-            <div className="p-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Target URL
-              </label>
-              <input
-                type="url"
-                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none transition-all placeholder-gray-400"
-                placeholder="https://example.com"
-                value={recordingUrl}
-                onChange={(e) => setRecordingUrl(e.target.value)}
-                autoFocus
-              />
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Recording Mode
-                </label>
-                <select
-                  value={recordingMode}
-                  onChange={(e) => setRecordingMode(e.target.value as 'element' | 'all')}
-                  className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none transition-all"
-                >
-                  <option value="element">Elements Only</option>
-                  <option value="all">All Events</option>
-                </select>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  The recorder runs without an in-page toolbar.
-                </p>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Recording Target
-                </label>
-                <ExecutionTargetSelector
-                  selectedAgentId={recordingTargetId}
-                  onSelect={setRecordingTargetId}
-                  mode="recording"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setIsRecordingModalOpen(false)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={startRecording}
-                  disabled={!recordingUrl.trim()}
-                  className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 font-medium shadow-sm transition-all hover:shadow-green-500/20"
-                >
-                  Start Recording
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
