@@ -8,14 +8,17 @@ import type { Page, Project, TestStep, UIElement, StepAssertion, ApiEndpoint } f
 import { addStepToCase } from '../suites/repository.ts';
 import type { StepRecordedEvent, ElementRecordedEvent, ApiRecordedEvent } from '../../../shared/recording/protocol.ts';
 
+function getPageNameFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.pathname === '/' ? 'Home' : urlObj.pathname.substring(1).replace(/\//g, '_');
+  } catch { return 'Home'; }
+}
+
 function getOrCreatePage(project: Project, url: string): Page {
   if (!project.pages) project.pages = [];
 
-  let pName = 'Home';
-  try {
-    const urlObj = new URL(url);
-    pName = urlObj.pathname === '/' ? 'Home' : urlObj.pathname.substring(1).replace(/\//g, '_');
-  } catch(e) {}
+  const pName = getPageNameFromUrl(url);
 
   let page = project.pages.find(pg => pg.name === pName);
   if (!page) {
@@ -144,6 +147,7 @@ export function handleApiRecorded(data: ApiRecordedEvent['data']) {
   let urlObj: URL;
   try { urlObj = new URL(url); } catch(e) { return; }
   const basePath = urlObj.pathname;
+  const pageName = getPageNameFromUrl(url);
   const endpointName = `[${method}] ${basePath}`;
   const allEndpoints = listApiEndpoints();
   const currentOrigin = urlObj.origin;
@@ -198,7 +202,10 @@ export function handleApiRecorded(data: ApiRecordedEvent['data']) {
       });
 
       if (!profile) {
-        const profileName = `Headers: ${urlObj.hostname}${basePath !== '/' ? ' ' + basePath.split('/').pop() : ''}`;
+        const profileShort = basePath.split('/').filter(Boolean).slice(-2).join('/');
+        const profileName = profileShort
+          ? `${method} /${profileShort} (Headers)`
+          : `${method} / (Headers)`;
         profile = saveHeaderProfile({
           id: randomId('hp'),
           projectId,
@@ -214,16 +221,43 @@ export function handleApiRecorded(data: ApiRecordedEvent['data']) {
   let bodyTemplateId: string | undefined;
   if (postData) {
     let finalContent = postData;
-    let contentType = 'text/plain';
+    let contentType: string = 'text/plain';
+    let dedupKey: string;
+
     try {
       const parsed = JSON.parse(postData);
       contentType = 'application/json';
       finalContent = JSON.stringify(parsed, null, 2);
-    } catch(e) {}
+      dedupKey = 'json:' + JSON.stringify(Object.keys(parsed).sort());
+    } catch {
+      if (/^\s*<\?xml|<[\w:]+/.test(postData)) {
+        contentType = 'application/xml';
+        const tagKeys = Array.from(postData.matchAll(/<(\/?[\w:]+)/g), m => m[1].replace(/^\//, ''));
+        dedupKey = 'xml:' + JSON.stringify([...new Set(tagKeys)].sort());
+        finalContent = postData;
+      } else {
+        dedupKey = 'text:' + postData;
+        finalContent = postData;
+      }
+    }
 
-    let bodyTemplate = allBodies.find(b => b.projectId === projectId && b.content === finalContent);
+    let bodyTemplate = allBodies.find(b => {
+      if (b.projectId !== projectId) return false;
+      if (b.contentType === 'application/json') {
+        try { return JSON.stringify(Object.keys(JSON.parse(b.content)).sort()) === JSON.stringify(Object.keys(JSON.parse(finalContent)).sort()); } catch { return b.content === finalContent; }
+      }
+      if (b.contentType === 'application/xml') {
+        const existingTags = Array.from(b.content.matchAll(/<(\/?[\w:]+)/g), m => m[1].replace(/^\//, ''));
+        const incomingTags = Array.from(finalContent.matchAll(/<(\/?[\w:]+)/g), m => m[1].replace(/^\//, ''));
+        return JSON.stringify([...new Set(existingTags)].sort()) === JSON.stringify([...new Set(incomingTags)].sort());
+      }
+      return b.content === finalContent;
+    });
     if (!bodyTemplate) {
-      const bodyName = `Body: ${basePath.split('/').pop() || 'Root'} (${method})`;
+      const bodyShort = basePath.split('/').filter(Boolean).slice(-2).join('/');
+      const bodyName = bodyShort
+        ? `${method} /${bodyShort} (Body)`
+        : `${method} / (Body)`;
       bodyTemplate = saveBodyTemplate({
         id: randomId('bt'),
         projectId,
@@ -254,7 +288,7 @@ export function handleApiRecorded(data: ApiRecordedEvent['data']) {
     action: apiActionMap[actionMethod],
     target: basePath,
     data: '',
-    description: `Recorded API: ${method} ${basePath}`,
+    description: pageName && pageName !== 'Home' ? `${pageName}.${method} ${basePath}` : `${method} ${basePath}`,
     endpointId: endpoint.id,
     headerProfileId,
     bodyTemplateId,
