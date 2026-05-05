@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/hooks/queryKeys";
 import type { TestSuite } from "@/shared/types";
@@ -16,6 +16,65 @@ interface UseTestCaseRecordingOptions {
   activeSuiteId: string;
   currentEnvironment: string;
   currentProjectId: string;
+}
+
+function useRecordingSocket(
+  projectId: string,
+  onStepRecorded: (step: any, caseId: string, suiteId: string, type: 'UI' | 'API') => void,
+  onRecordingStart: () => void,
+  onRecordingStop: () => void,
+) {
+  const onStepRef = useRef(onStepRecorded);
+  const onStartRef = useRef(onRecordingStart);
+  const onStopRef = useRef(onRecordingStop);
+  onStepRef.current = onStepRecorded;
+  onStartRef.current = onRecordingStart;
+  onStopRef.current = onRecordingStop;
+
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      if (projectId) {
+        ws.send(
+          JSON.stringify({
+            event: "SUBSCRIBE_PROJECT",
+            data: { projectId },
+          }),
+        );
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (
+          message.event === "step-recorded" &&
+          message.data.projectId === projectId
+        ) {
+          const { step, caseId, suiteId, type } = message.data;
+          if (step && caseId) {
+            onStepRef.current(step, caseId, suiteId, type);
+          }
+        } else if (message.event === "recorder-state-changed") {
+          const { state } = message.data;
+          if (state.action === "STOP") {
+            onStopRef.current();
+          } else if (state.action === "START") {
+            onStartRef.current();
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [projectId]);
 }
 
 export function useTestCaseRecording({
@@ -92,76 +151,41 @@ export function useTestCaseRecording({
     }
   };
 
-  useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}`;
-    const ws = new WebSocket(wsUrl);
+  const onStepRecorded = useCallback(
+    (step: any, wsCaseId: string, wsSuiteId: string, type: 'UI' | 'API') => {
+      queryClient.setQueryData<TestSuite[]>(queryKeys.suites, (oldSuites) => {
+        if (!oldSuites) return oldSuites;
+        return oldSuites.map((suite) => {
+          if (suite.id !== wsSuiteId) return suite;
+          return {
+            ...suite,
+            cases: suite.cases.map((testCase) => {
+              if (testCase.id !== wsCaseId) return testCase;
+              return { ...testCase, steps: [...testCase.steps, step] };
+            }),
+          };
+        });
+      });
 
-    ws.onopen = () => {
-      if (currentProjectId) {
-        ws.send(
-          JSON.stringify({
-            event: "SUBSCRIBE_PROJECT",
-            data: { projectId: currentProjectId },
-          }),
-        );
+      if (type === "API") {
+        queryClient.invalidateQueries({ queryKey: queryKeys.endpoints });
+        queryClient.invalidateQueries({ queryKey: queryKeys.headers });
+        queryClient.invalidateQueries({ queryKey: queryKeys.bodies });
       }
-    };
+    },
+    [queryClient],
+  );
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (
-          message.event === "step-recorded" &&
-          message.data.projectId === currentProjectId
-        ) {
-          const step = message.data.step;
-          const wsCaseId = message.data.caseId;
-          const wsSuiteId = message.data.suiteId;
+  const onWsRecordingStart = useCallback(() => {
+    setIsRecording(true);
+  }, []);
 
-          if (step && wsCaseId) {
-            queryClient.setQueryData<TestSuite[]>(queryKeys.suites, (oldSuites) => {
-              if (!oldSuites) return oldSuites;
+  const onWsRecordingStop = useCallback(() => {
+    setIsRecording(false);
+    queryClient.invalidateQueries({ queryKey: queryKeys.suites });
+  }, [queryClient]);
 
-              return oldSuites.map((suite) => {
-                if (suite.id !== wsSuiteId) return suite;
-
-                return {
-                  ...suite,
-                  cases: suite.cases.map((testCase) => {
-                    if (testCase.id !== wsCaseId) return testCase;
-                    return { ...testCase, steps: [...testCase.steps, step] };
-                  }),
-                };
-              });
-            });
-
-            if (message.data.type === "API") {
-              queryClient.invalidateQueries({ queryKey: queryKeys.endpoints });
-              queryClient.invalidateQueries({ queryKey: queryKeys.headers });
-              queryClient.invalidateQueries({ queryKey: queryKeys.bodies });
-            }
-          }
-        } else if (message.event === "recorder-state-changed") {
-          const { state } = message.data;
-          if (state.action === "STOP") {
-            setIsRecording(false);
-            queryClient.invalidateQueries({ queryKey: queryKeys.suites });
-          } else if (state.action === "START") {
-            setIsRecording(true);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to parse WS message:", error);
-      }
-    };
-
-    ws.onerror = (error) => console.error("WS error:", error);
-
-    return () => {
-      ws.close();
-    };
-  }, [currentProjectId, queryClient]);
+  useRecordingSocket(currentProjectId, onStepRecorded, onWsRecordingStart, onWsRecordingStop);
 
   useEffect(() => {
     const fetchServerInfo = async () => {
@@ -177,14 +201,12 @@ export function useTestCaseRecording({
           ) {
             return `${info.baseUrl}/aut/login`;
           }
-
           return currentUrl;
         });
-      } catch (error) {
-        console.warn("Failed to fetch server info for default URL:", error);
+      } catch {
+        // server-info not available
       }
     };
-
     fetchServerInfo();
   }, [defaultRecordingUrl]);
 

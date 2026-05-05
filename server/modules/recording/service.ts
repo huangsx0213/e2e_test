@@ -139,6 +139,7 @@ export function handleElementRecorded(data: ElementRecordedEvent['data']) {
 export function handleApiRecorded(data: ApiRecordedEvent['data']) {
   const { projectId, environment, apiInfo, caseId, suiteId } = data || {};
   const { url, method, headers, postData, status } = apiInfo;
+  console.log(`[ApiRecorded] ${method} ${url} -> ${status} (project=${projectId}, case=${caseId})`);
 
   let urlObj: URL;
   try { urlObj = new URL(url); } catch(e) { return; }

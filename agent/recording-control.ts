@@ -4,6 +4,9 @@ import {
   ELEMENT_RECORDED_EVENT,
   API_RECORDED_EVENT,
 } from 'shared/recording/protocol';
+import type { StepInfo, ApiRecordedInfo } from 'shared/recording/protocol';
+import type { UIElement } from 'shared/contracts';
+import type { RecorderState } from './recorder/protocol.ts';
 import {
   startRecording as recorderV2StartRecording,
   stopRecording as recorderV2StopRecording,
@@ -37,16 +40,16 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
         targetUrl,
         projectId,
         apiFilter,
-        (element: any) => {
+        (element: UIElement) => {
           deps.emitRecordingEvent(ELEMENT_RECORDED_EVENT, { projectId, element, caseId, suiteId });
         },
-        (stepInfo: { action: string; element: any; dataValue: any }) => {
+        (stepInfo: StepInfo) => {
           deps.emitRecordingEvent(STEP_RECORDED_EVENT, { projectId, stepInfo, type: 'UI', caseId, suiteId });
         },
-        (apiInfo: any) => {
+        (apiInfo: ApiRecordedInfo) => {
           deps.emitRecordingEvent(API_RECORDED_EVENT, { projectId, environment, apiInfo, caseId, suiteId });
         },
-        (state) => {
+        (state: RecorderState) => {
           deps.emitRecordingEvent(RECORDER_STATE_CHANGED_EVENT, { state, caseId, suiteId });
           if (state.action === 'STOP') {
             deps.resetAfterStop();
