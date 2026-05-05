@@ -5,7 +5,8 @@ import { translateAction } from './translator.ts';
 import type { ActionInContext, RecorderStepPayload, RecorderMode, RecorderState, LocatorRef } from './protocol.ts';
 import { locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
-import type { StepInfo, ApiRecordedInfo } from '../../shared/recording/protocol.ts';
+import type { StepInfo, ApiRecordedInfo, ApiFilterConfig } from '../../shared/recording/protocol.ts';
+import { matchApiFilter, legacyFilterToConfig } from '../../shared/recording/protocol.ts';
 
 type OnElementRecorded = (element: UIElement) => void;
 type OnStepRecorded = (stepInfo: StepInfo) => void;
@@ -34,7 +35,7 @@ class RecordingManager {
   async start(
     targetUrl: string,
     projectId: string,
-    apiFilter: string | undefined,
+    apiFilter: string | ApiFilterConfig | undefined,
     onElementRecorded: OnElementRecorded,
     onStepRecorded?: OnStepRecorded,
     onApiRecorded?: OnApiRecorded,
@@ -91,7 +92,7 @@ class RecordingManager {
   private async doStart(
     targetUrl: string,
     projectId: string,
-    apiFilter: string | undefined,
+    apiFilter: string | ApiFilterConfig | undefined,
     onElementRecorded: OnElementRecorded,
     onStepRecorded: OnStepRecorded | undefined,
     onApiRecorded: OnApiRecorded | undefined,
@@ -185,6 +186,11 @@ try { this.session.adapter.stop(); } catch {}
     page.on('pageerror', (error) => console.warn('[RecorderV2] Page error:', error));
 
     if (mode === 'api' || mode === 'all') {
+      const filterConfig: ApiFilterConfig | undefined =
+        typeof apiFilter === 'string'
+          ? (apiFilter.trim() ? legacyFilterToConfig(apiFilter) : undefined)
+          : apiFilter;
+
       page.on('requestfinished', async (req) => {
         if (!this.session) return;
         try {
@@ -198,18 +204,17 @@ try { this.session.adapter.stop(); } catch {}
             pageOrigin = new URL(req.frame()?.url() || page.url()).origin;
           } catch {}
 
-          if (targetOrigin && pageOrigin && targetOrigin !== pageOrigin && !apiFilter) return;
-
-          if (apiFilter) {
-            const trimmed = apiFilter.trim();
-            const regexStr = trimmed.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-            const regex = new RegExp(regexStr, 'i');
-            if (!regex.test(req.url())) return;
-          }
-
           const response = await req.response();
           const status = response ? response.status() : 0;
           if (status === 0) return;
+
+          const reqInfo = { url: req.url(), method: req.method(), status };
+
+          if (filterConfig && filterConfig.rules.length > 0) {
+            if (!matchApiFilter(reqInfo, filterConfig)) return;
+          } else {
+            if (targetOrigin && pageOrigin && targetOrigin !== pageOrigin) return;
+          }
 
           const headers = await req.allHeaders();
           const postData = req.postData();
@@ -305,7 +310,7 @@ const manager = new RecordingManager();
 export async function startRecording(
   targetUrl: string,
   projectId: string,
-  apiFilter: string | undefined,
+  apiFilter: string | ApiFilterConfig | undefined,
   onElementRecorded: OnElementRecorded,
   onStepRecorded?: OnStepRecorded,
   onApiRecorded?: OnApiRecorded,

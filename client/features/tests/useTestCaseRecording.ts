@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/hooks/queryKeys";
 import type { TestSuite } from "@/shared/types";
+import type { ApiFilterConfig } from "../../../shared/recording/protocol";
 
 export type RecordingMode = "ui" | "api" | "all";
 export type RecordingTargetStatus =
@@ -88,7 +89,8 @@ export function useTestCaseRecording({
 
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState(defaultRecordingUrl);
-  const [apiFilter, setApiFilter] = useState("*api*");
+  const [apiFilter, setApiFilter] = useState("");
+  const [apiFilterConfig, setApiFilterConfig] = useState<ApiFilterConfig | undefined>(undefined);
   const [recordingMode, setRecordingMode] = useState<RecordingMode>("ui");
   const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
   const [recordingTargetStatus, setRecordingTargetStatus] = useState<RecordingTargetStatus>(null);
@@ -114,7 +116,8 @@ export function useTestCaseRecording({
           targetUrl: urlToUse,
           projectId: currentProjectId,
           environment: currentEnvironment,
-          apiFilter,
+          apiFilter: apiFilterConfig ? '' : apiFilter,
+          apiFilterConfig,
           mode: recordingMode,
           agentId: recordingTargetId,
           caseId: activeCaseId,
@@ -212,6 +215,7 @@ export function useTestCaseRecording({
 
   return {
     apiFilter,
+    apiFilterConfig,
     closeRecordingModal: () => setIsRecordingModalOpen(false),
     isRecording,
     isRecordingModalOpen,
@@ -221,6 +225,7 @@ export function useTestCaseRecording({
     recordingTargetStatus,
     recordingUrl,
     setApiFilter,
+    setApiFilterConfig,
     setRecordingMode,
     setRecordingTargetId,
     setRecordingTargetStatus,

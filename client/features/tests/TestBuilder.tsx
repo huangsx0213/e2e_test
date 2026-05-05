@@ -371,8 +371,9 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
 
   return (
     <div className="h-full flex overflow-hidden bg-gray-50 relative">
-      <TestCaseRecordingModal
+<TestCaseRecordingModal
         apiFilter={recording.apiFilter}
+        apiFilterConfig={recording.apiFilterConfig}
         isOpen={recording.isRecordingModalOpen}
         onClose={recording.closeRecordingModal}
         onStartRecording={recording.startRecording}
@@ -381,6 +382,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
         recordingTargetStatus={recording.recordingTargetStatus}
         recordingUrl={recording.recordingUrl}
         setApiFilter={recording.setApiFilter}
+        setApiFilterConfig={recording.setApiFilterConfig}
         setRecordingMode={recording.setRecordingMode}
         setRecordingTargetId={recording.setRecordingTargetId}
         setRecordingTargetStatus={recording.setRecordingTargetStatus}

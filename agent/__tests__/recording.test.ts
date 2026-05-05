@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleRecordingControlMessage } from '../recording-control.ts';
+import type { ApiFilterConfig } from '../../shared/recording/protocol.ts';
 
 vi.mock('../recorder/index.ts', () => ({
   startRecording: vi.fn(async (
     _targetUrl: string,
     _projectId: string,
-    _apiFilter: string | undefined,
+    _apiFilter: string | ApiFilterConfig | undefined,
     onElementRecorded: (element: any) => Promise<void>,
     onStepRecorded: (stepInfo: any) => Promise<void>,
     onApiRecorded: (apiInfo: any) => Promise<void>,

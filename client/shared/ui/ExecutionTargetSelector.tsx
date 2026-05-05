@@ -30,6 +30,11 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
   // Extract all unique labels
   const allLabels = Array.from(new Set(agents.flatMap(a => a.labels || [])));
 
+  const sortedAgents = [...agents].sort((a, b) => {
+    const order: Record<string, number> = { idle: 0, busy: 1, offline: 2, disabled: 3 };
+    return (order[a.status] ?? 99) - (order[b.status] ?? 99);
+  });
+
   const fetchAgents = async () => {
     try {
       setLoading(true);
@@ -87,13 +92,13 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
           </div>
         )}
 
-        <div className="p-2 space-y-1 max-h-56 overflow-y-auto">
+        <div className="p-2 space-y-1 max-h-[120px] overflow-y-auto">
           {agents.length === 0 ? (
             <div className="px-3 py-3 text-center text-[11px] text-slate-500 italic border border-dashed border-slate-200 rounded-md bg-slate-50">
               No remote agents connected. Start an agent to begin recording.
             </div>
           ) : (
-            agents.map(agent => {
+            sortedAgents.map(agent => {
               const nonIdle = agent.status !== 'idle';
               return (
                 <button
@@ -154,21 +159,21 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
 
       {isOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-30" 
+          <div
+            className="fixed inset-0 z-30"
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute top-full left-0 mt-1 w-64 bg-slate-800 border border-slate-700 rounded shadow-xl z-40 overflow-hidden animate-in fade-in slide-in-from-top-1">
             <div className="px-3 py-2 border-b border-slate-700 flex justify-between items-center bg-slate-900/50">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Available Targets</span>
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); fetchAgents(); }}
                 className={`text-slate-500 hover:text-white transition-colors ${loading ? 'animate-spin' : ''}`}
               >
                 <RefreshCw size={12} />
               </button>
             </div>
-            
+
             <div className="max-h-60 overflow-y-auto">
               {/* Option: Local Server */}
               <button
@@ -187,7 +192,7 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
               </button>
 
               <div className="h-px bg-slate-700/50 my-1" />
-              
+
               {mode === 'execution' && (
                 <>
                   {/* Option: Queue (Any) */}
@@ -205,7 +210,7 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
                     </div>
                     {isAnyQueue && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
                   </button>
-                  
+
                   {/* Option: Tags */}
                   {allLabels.length > 0 && (
                     <>
@@ -237,7 +242,7 @@ export const ExecutionTargetSelector: React.FC<ExecutionTargetSelectorProps> = (
                   <p className="text-[10px] text-slate-500 italic">No remote agents connected.</p>
                 </div>
               ) : (
-                agents.map(agent => (
+                sortedAgents.map(agent => (
                   <button
                     key={agent.id}
                     type="button"

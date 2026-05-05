@@ -4,7 +4,7 @@ import {
   ELEMENT_RECORDED_EVENT,
   API_RECORDED_EVENT,
 } from 'shared/recording/protocol';
-import type { StepInfo, ApiRecordedInfo } from 'shared/recording/protocol';
+import type { StepInfo, ApiRecordedInfo, ApiFilterConfig } from 'shared/recording/protocol';
 import type { UIElement } from 'shared/contracts';
 import type { RecorderState } from './recorder/protocol.ts';
 import {
@@ -27,7 +27,7 @@ interface RecordingControlDeps {
 
 export async function handleRecordingControlMessage(parsed: any, deps: RecordingControlDeps): Promise<boolean> {
   if (parsed.event === 'RECORDING_START') {
-    const { targetUrl, projectId, apiFilter, environment, caseId, suiteId, mode } = parsed.data || {};
+    const { targetUrl, projectId, apiFilter, apiFilterConfig, environment, caseId, suiteId, mode } = parsed.data || {};
     deps.logger.info(`[AGENT] Received Recording Start: ${projectId} case=${caseId}`);
 
     try {
@@ -39,7 +39,7 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
       await recorderV2StartRecording(
         targetUrl,
         projectId,
-        apiFilter,
+        apiFilterConfig || apiFilter,
         (element: UIElement) => {
           deps.emitRecordingEvent(ELEMENT_RECORDED_EVENT, { projectId, element, caseId, suiteId });
         },

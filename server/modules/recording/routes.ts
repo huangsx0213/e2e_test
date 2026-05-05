@@ -4,7 +4,7 @@ import { agentRegistry } from '../agent/registry.ts';
 const router = Router();
 
 router.post('/start', async (req, res) => {
-  const { targetUrl, projectId, apiFilter, environment, agentId, caseId, suiteId, mode } = req.body;
+  const { targetUrl, projectId, apiFilter, apiFilterConfig, environment, agentId, caseId, suiteId, mode } = req.body;
 
   if (!targetUrl || !projectId) {
     return res.status(400).json({ error: 'targetUrl and projectId are required' });
@@ -30,6 +30,7 @@ router.post('/start', async (req, res) => {
         targetUrl,
         projectId,
         apiFilter: apiFilter?.trim(),
+        apiFilterConfig,
         environment,
         caseId,
         suiteId,

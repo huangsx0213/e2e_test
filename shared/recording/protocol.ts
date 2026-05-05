@@ -110,6 +110,70 @@ export type RecordingEvent =
 /**
  * 录制事件名称常量
  */
+export type ApiFilterField = 'url' | 'method' | 'status';
+export type ApiFilterOperator = 'contains' | 'equals' | 'regex' | 'startsWith' | 'endsWith' | 'notEquals';
+
+export interface ApiFilterRule {
+  field: ApiFilterField;
+  operator: ApiFilterOperator;
+  value: string;
+}
+
+export interface ApiFilterConfig {
+  mode: 'include' | 'exclude';
+  conditions: 'all' | 'any';
+  rules: ApiFilterRule[];
+}
+
+export function matchApiFilter(
+  req: { url: string; method: string; status: number },
+  config: ApiFilterConfig,
+): boolean {
+  const results = config.rules.map(rule => {
+    const actual: string =
+      rule.field === 'url'    ? req.url
+      : rule.field === 'method' ? req.method
+      : String(req.status);
+
+    switch (rule.operator) {
+      case 'contains':
+        return actual.toLowerCase().includes(rule.value.toLowerCase());
+      case 'equals':
+        return actual === rule.value;
+      case 'notEquals':
+        return actual !== rule.value;
+      case 'regex':
+        try { return new RegExp(rule.value, 'i').test(actual); } catch { return false; }
+      case 'startsWith':
+        return actual.toLowerCase().startsWith(rule.value.toLowerCase());
+      case 'endsWith':
+        return actual.toLowerCase().endsWith(rule.value.toLowerCase());
+      default:
+        return false;
+    }
+  });
+
+  const matched = config.conditions === 'all'
+    ? results.every(Boolean)
+    : results.some(Boolean);
+
+  return config.mode === 'include' ? matched : !matched;
+}
+
+/**
+ * 将旧的 glob apiFilter 字符串转为 ApiFilterConfig，保持向后兼容
+ */
+export function legacyFilterToConfig(apiFilter?: string): ApiFilterConfig {
+  if (!apiFilter || !apiFilter.trim()) {
+    return { mode: 'include', conditions: 'any', rules: [] };
+  }
+  return {
+    mode: 'include',
+    conditions: 'all',
+    rules: [{ field: 'url', operator: 'contains', value: apiFilter.trim() }],
+  };
+}
+
 export const RECORDING_EVENT = 'RECORDING_EVENT';
 export const STEP_RECORDED_EVENT = 'step-recorded';
 export const ELEMENT_RECORDED_EVENT = 'element-recorded';
