@@ -10,7 +10,8 @@
     "build": "vite build && npm run build:agent && esbuild server/index.ts --bundle --platform=node --target=node20 --outfile=dist/server.js --format=esm --external:better-sqlite3 --external:express --external:cors --external:vite --external:playwright --external:playwright-core --external:dotenv --banner:js=\"import { createRequire as __q_cr } from 'module'; import { fileURLToPath as __q_fup } from 'url'; import { dirname as __q_dn } from 'path'; const require = __q_cr(import.meta.url); const __filename = __q_fup(import.meta.url); const __dirname = __q_dn(__filename);\"",
     "start-agent": "tsx agent/index.ts",
     "test": "vitest run",
-    "test:recording": "tsx scripts/recording-smoke.ts",
+    "seed": "tsx server/seed.ts",
+    "migrate": "tsx server/migrate.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },

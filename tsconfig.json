@@ -21,6 +21,9 @@
     "paths": {
       "@/*": [
         "./client/*"
+      ],
+      "shared/*": [
+        "./shared/*"
       ]
     },
     "allowImportingTsExtensions": true,

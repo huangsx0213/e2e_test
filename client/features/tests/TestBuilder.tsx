@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MutationActions } from "@/shared/hooks/useQueryHooks";
 import { queryKeys } from "@/shared/hooks/queryKeys";
@@ -28,16 +28,15 @@ import {
   Layers,
   Variable,
   Table2,
-  Globe,
   Video,
   Square,
   RefreshCw,
-  Filter,
 } from "lucide-react";
 import { StepList } from "@/shared/testing/StepList";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
-import { ExecutionTargetSelector } from "@/shared/ui/ExecutionTargetSelector";
+import { TestCaseRecordingModal } from "./TestCaseRecordingModal";
+import { useTestCaseRecording } from "./useTestCaseRecording";
 
 interface TestBuilderProps {
   suites: TestSuite[];
@@ -75,17 +74,6 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const [activeCaseId, setActiveCaseId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Recording States
-  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
-  const [recordingUrl, setRecordingUrl] = useState(`${window.location.origin}/aut/login`);
-  const [apiFilter, setApiFilter] = useState("*api*");
-  const [recordingMode, setRecordingMode] = useState<'ui' | 'api' | 'all'>('ui');
-  const [recordingTargetId, setRecordingTargetId] = useState<string | null>(null);
-  const [recordingTargetStatus, setRecordingTargetStatus] = useState<'idle' | 'busy' | 'offline' | 'disabled' | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-
-
-
   // Suite Editing State
   const [editingSuiteId, setEditingSuiteId] = useState<string | null>(null);
   const [editSuiteName, setEditSuiteName] = useState("");
@@ -104,6 +92,13 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
   const activeCase = activeSuite?.cases.find((c) => c.id === activeCaseId);
 
   const activeProject = projects.find((p) => p.id === currentProjectId);
+
+  const recording = useTestCaseRecording({
+    activeCaseId,
+    activeSuiteId,
+    currentEnvironment,
+    currentProjectId,
+  });
 
 
   // Filter Logic
@@ -374,249 +369,23 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     (teardownSteps) => updateSuite(activeSuiteId, { teardownSteps }),
   );
 
-  const startRecording = async () => {
-    if (!recordingTargetId) {
-      alert('Please select an agent to record on.');
-      return;
-    }
-    const urlToUse = recordingUrl.trim() || `${window.location.origin}/aut/login`;
-    if (!activeSuiteId || !currentProjectId || !activeCaseId) return;
-    setIsRecording(true);
-    setIsRecordingModalOpen(false);
-
-    try {
-      const response = await fetch('/api/recording/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            targetUrl: urlToUse,
-            projectId: currentProjectId,
-            environment: currentEnvironment,
-            apiFilter: apiFilter,
-            mode: recordingMode,
-            agentId: recordingTargetId,
-            caseId: activeCaseId,
-            suiteId: activeSuiteId,
-          }),
-      });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null);
-      throw new Error(payload?.error || response.statusText);
-    }
-  } catch (error) {
-    console.error('Failed to start recording:', error);
-    setIsRecording(false);
-  }
-};
-
-const stopRecording = async () => {
-  try {
-    const response = await fetch('/api/recording/stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId: recordingTargetId }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || response.statusText);
-      }
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-    } finally {
-      setIsRecording(false);
-    }
-};
-
-  // Real-time updates via WebSocket during recording
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      if (currentProjectId) {
-        ws.send(JSON.stringify({ event: 'SUBSCRIBE_PROJECT', data: { projectId: currentProjectId } }));
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.event === 'step-recorded' && message.data.projectId === currentProjectId) {
-          const step = message.data.step;
-          const wsCaseId = message.data.caseId;
-          const wsSuiteId = message.data.suiteId;
-          if (step && wsCaseId) {
-            console.log('Optimistic update: step recorded', step.action, '-> case', wsCaseId);
-            queryClient.setQueryData<TestSuite[]>(queryKeys.suites, (oldSuites) => {
-              if (!oldSuites) return oldSuites;
-              return oldSuites.map(s => {
-                if (s.id !== wsSuiteId) return s;
-                return {
-                  ...s,
-                  cases: s.cases.map(c => {
-                    if (c.id !== wsCaseId) return c;
-                    return { ...c, steps: [...c.steps, step] };
-                  }),
-                };
-              });
-            });
-
-            if (message.data.type === 'API') {
-              queryClient.invalidateQueries({ queryKey: queryKeys.endpoints });
-              queryClient.invalidateQueries({ queryKey: queryKeys.headers });
-              queryClient.invalidateQueries({ queryKey: queryKeys.bodies });
-            }
-          }
-        } else if (message.event === 'recorder-state-changed') {
-          const { state } = message.data;
-          if (state.action === 'STOP') {
-            console.log('Recording stopped from toolbar');
-            setIsRecording(false);
-            queryClient.invalidateQueries({ queryKey: queryKeys.suites });
-          } else if (state.action === 'PAUSE') {
-            console.log('Recording paused from toolbar');
-            setIsRecording(true);
-          } else if (state.action === 'START') {
-            setIsRecording(true);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to parse WS message:', error);
-      }
-    };
-
-    ws.onerror = (e) => console.error('WS error:', e);
-
-    return () => {
-      ws.close();
-    };
-  }, [activeSuiteId, currentProjectId]);
-
-  // Fetch server info to set default recording URL (use intranet IP in dev)
-  useEffect(() => {
-    const fetchServerInfo = async () => {
-      try {
-        const response = await fetch('/api/agents/server-info');
-        if (response.ok) {
-          const info = await response.json();
-          // Only update if it's currently the default (to avoid overwriting user edits)
-          if (recordingUrl === `${window.location.origin}/aut/login` || recordingUrl === "http://localhost:3000/aut/login") {
-            setRecordingUrl(`${info.baseUrl}/aut/login`);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to fetch server info for default URL:', err);
-      }
-    };
-    fetchServerInfo();
-  }, []);
-
-
   return (
     <div className="h-full flex overflow-hidden bg-gray-50 relative">
-      {/* Recording Modal */}
-      {isRecordingModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-xl w-[480px] max-w-full overflow-hidden flex flex-col scale-100">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                  <Video size={16} className="fill-current" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Start Recording Action Steps</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Enter the starting URL to begin tracking UI & API intents.</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsRecordingModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-              <div>
-                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Target App URL</label>
-                <div className="relative">
-                  <Globe size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="url"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
-                    placeholder={`${window.location.origin}/aut/login`}
-                    value={recordingUrl}
-                    onChange={(e) => setRecordingUrl(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">Recording Mode</label>
-                <select
-                  value={recordingMode}
-                  onChange={(e) => setRecordingMode(e.target.value as 'all' | 'ui' | 'api')}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                >
-                  <option value="ui">UI Steps Only</option>
-                  <option value="api">API Requests Only</option>
-                  <option value="all">All Events</option>
-                </select>
-                <p className="text-[11px] text-gray-400 mt-1.5">No in-page toolbar. Recording is controlled from this dialog.</p>
-              </div>
-
-              <div>
-            <ExecutionTargetSelector
-              selectedAgentId={recordingTargetId}
-              onSelect={setRecordingTargetId}
-              onSelectedStatusChange={setRecordingTargetStatus}
-            mode="recording"
-          />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold tracking-wide text-gray-500 uppercase mb-2">
-                  API Record Filter <span className="text-gray-400 font-normal normal-case">(optional)</span>
-                </label>
-                <div className="relative">
-                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input 
-                    type="text"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
-                    placeholder="e.g. *api.mydomain.com*"
-                    value={apiFilter}
-                    onChange={(e) => setApiFilter(e.target.value)}
-                  />
-                </div>
-                <p className="text-[11px] text-gray-400 mt-1.5 flex items-start gap-1">
-                  💡 Use glob patterns to filter the recorded background network requests.
-                </p>
-              </div>
-
-
-            </div>
-            
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
-              <button 
-                onClick={() => setIsRecordingModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={startRecording}
-                disabled={recordingTargetStatus !== 'idle'}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <Play size={14} className="fill-current" /> Start Recording
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TestCaseRecordingModal
+        apiFilter={recording.apiFilter}
+        isOpen={recording.isRecordingModalOpen}
+        onClose={recording.closeRecordingModal}
+        onStartRecording={recording.startRecording}
+        recordingMode={recording.recordingMode}
+        recordingTargetId={recording.recordingTargetId}
+        recordingTargetStatus={recording.recordingTargetStatus}
+        recordingUrl={recording.recordingUrl}
+        setApiFilter={recording.setApiFilter}
+        setRecordingMode={recording.setRecordingMode}
+        setRecordingTargetId={recording.setRecordingTargetId}
+        setRecordingTargetStatus={recording.setRecordingTargetStatus}
+        setRecordingUrl={recording.setRecordingUrl}
+      />
       <ConfirmModal
         isOpen={!!deleteConfirm}
         title={
@@ -935,22 +704,22 @@ const stopRecording = async () => {
                 />
               </div>
               <div className="flex items-center gap-3 ml-4">
-                {isRecording ? (
+                {recording.isRecording ? (
                   <button
-                    onClick={stopRecording}
+                    onClick={recording.stopRecording}
                     className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md flex items-center gap-2 transition-colors animate-pulse"
                   >
                     <Square size={14} className="fill-current" /> Stop Recording
                   </button>
                 ) : (
-        <button
-          onClick={() => setIsRecordingModalOpen(true)}
-          disabled={!activeCaseId}
-          className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={!activeCaseId ? 'Select a test case first' : 'Record steps into this case'}
-        >
-          <Video size={14} /> Record Steps
-        </button>
+                  <button
+                    onClick={recording.openRecordingModal}
+                    disabled={!activeCaseId}
+                    className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!activeCaseId ? "Select a test case first" : "Record steps into this case"}
+                  >
+                    <Video size={14} /> Record Steps
+                  </button>
                 )}
                 <button
                   onClick={() => onRunCase(activeSuite.id, activeCase.id)}

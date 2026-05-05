@@ -1,4 +1,4 @@
-import type { TestCase, TestSuite } from '../../shared/contracts/index.ts';
+import type { TestCase, TestStep, TestSuite } from '../../shared/contracts/index.ts';
 import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type {
@@ -271,3 +271,29 @@ export const suiteRepository = {
   save: _repo.save.bind(_repo),
   remove: _repo.remove.bind(_repo),
 };
+
+export function addStepToCase(caseId: string, step: TestStep, stepGroup: string = 'main'): void {
+  const maxPos = db.prepare(
+    'SELECT COALESCE(MAX(position), -1) AS pos FROM case_steps WHERE case_id = ? AND step_group = ?'
+  ).get(caseId, stepGroup) as { pos: number } | undefined;
+  const nextPos = (maxPos?.pos ?? -1) + 1;
+
+  db.prepare(
+    `INSERT INTO case_steps (
+      id, case_id, step_group, action, target, data, description,
+      header_profile_id, body_template_id, endpoint_id, screenshot, enabled, metadata,
+      extractors, assertions, wait_for_network, network_mocks, position
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    step.id, caseId, stepGroup,
+    step.action, step.target, step.data, step.description || '',
+    nullableText(step.headerProfileId), nullableText(step.bodyTemplateId), nullableText(step.endpointId),
+    step.screenshot ? 1 : null, step.enabled === false ? 0 : 1,
+    step.metadata ? JSON.stringify(step.metadata) : null,
+    step.extractors ? JSON.stringify(step.extractors) : null,
+    step.assertions ? JSON.stringify(step.assertions) : null,
+    step.waitForNetwork ? JSON.stringify(step.waitForNetwork) : null,
+    step.networkMocks ? JSON.stringify(step.networkMocks) : null,
+    nextPos,
+  );
+}

@@ -26,6 +26,7 @@ type RecordingSession = {
 };
 
 let session: RecordingSession | null = null;
+let startingPromise: Promise<void> | null = null;
 let consolidator = new StepConsolidator();
 
 export async function startRecording(
@@ -38,13 +39,19 @@ export async function startRecording(
   onRecorderStateChanged?: OnRecorderStateChanged,
   mode: RecorderMode = 'all',
 ) {
-  if (session) {
-    await stopRecording();
+  if (startingPromise) {
+    await startingPromise;
+    return;
   }
 
   // Reset consolidator for the new session
   consolidator.reset();
 
+  startingPromise = (async () => {
+  try {
+  if (session) {
+    await stopRecording();
+  }
 
   const headless = process.env.HEADLESS === 'true';
   const browser = await chromium.launch({
@@ -179,6 +186,14 @@ export async function startRecording(
 
   const startedState: RecorderState = { isPaused: false, started: true, mode, action: 'START' };
   if (onRecorderStateChanged) onRecorderStateChanged(startedState);
+} catch (e) {
+    session = null;
+    throw e;
+  }
+})();
+
+  await startingPromise;
+  startingPromise = null;
 }
 
 export async function stopRecording() {

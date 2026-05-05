@@ -76,7 +76,7 @@ For detailed guides, please refer to our documentation suite:
 
 - `npm run dev`: Full-stack development environment.
 - `npm run seed`: Reset and seed the database to the default state.
-- `npx tsx server/seed.ts`: Manually trigger the seeding process (Full command).
+- `npm run migrate`: Run database migrations standalone.
 - `npm run build`: Production build (bundles frontend with Vite and backend with esbuild).
 - `npm run start`: Start the production server.
 - `FORCE_SEED=true npm run dev`: Start dev mode and clean-reset the database simultaneously.

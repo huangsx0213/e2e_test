@@ -7,7 +7,7 @@ import { getActiveRunLogger } from '../execution/run-registry.ts';
 export const agentDispatcherEvents = new EventEmitter();
 
 export function checkQueue() {
-  const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;
+  const activeConn = agentRegistry.getActiveConnections();
   if (!activeConn) return;
 
   for (const agent of activeConn.values()) {
@@ -108,7 +108,7 @@ export function abortRemoteRun(reportId: string): boolean {
   }
 
   // 2. Otherwise find agent currently running this report
-  const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;
+  const activeConn = agentRegistry.getActiveConnections();
   if (!activeConn) return false;
 
   for (const agent of activeConn.values()) {

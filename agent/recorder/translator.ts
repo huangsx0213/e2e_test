@@ -1,10 +1,5 @@
 import type { ActionInContext, PlaywrightAction, RecorderStepPayload, LocatorRef } from './protocol.ts';
 
-// Escape helper to prepare URLs for CSS-like selectors
-function escapeDoubleQuotes(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
 /**
  * Translate a Playwright ActionInContext into the RecorderStepPayload shape.
  * Returns null for actions that should not be recorded (openPage/closePage).

@@ -101,6 +101,10 @@ class AgentRegistry {
       }
   }
   
+  getActiveConnections(): ReadonlyMap<string, RemoteAgent> {
+    return this.activeConnections;
+  }
+
   markIdle(id: string) {
       const active = this.activeConnections.get(id);
       if (active) {

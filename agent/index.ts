@@ -5,7 +5,7 @@ import { executeSingleCase, executeSuite, executeScenario, executePlan, type Exe
 import { UIExecutor } from '../server/modules/execution/ui-executor.ts';
 import { ExecutionContext } from '../server/modules/execution/context.ts';
 import { executeApiStep } from '../server/modules/execution/api-executor.ts';
-import { startRecording as startRecordingSession, stopRecording as stopRecordingSession } from './recording.ts';
+import { handleRecordingControlMessage } from './recording-control.ts';
 import type { TaskPayload } from '../shared/contracts/index.ts';
 import { CURRENT_AGENT_VERSION } from '../shared/constants/agent.ts';
 
@@ -43,7 +43,6 @@ let agentStatus: 'idle' | 'busy' = 'idle';
 let localTaskQueue: TaskPayload[] = [];
 let isProcessing = false;
 let isRecordingActive = false;
-let recordingStarted = false;
 
 // ─── System Logger: Explicitly forward agent output to server ───
 function formatArgs(args: any[]): string {
@@ -130,73 +129,31 @@ function connect() {
       if (parsed.event === 'TASK_DISPATCH') {
         const payload: TaskPayload = parsed.data.payload;
         sysLogger.info(`[AGENT] Received Task Dispatch: ${payload.request.type} (${payload.runId}) - Adding to local queue`);
-        
+
         localTaskQueue.push(payload);
         processQueue(); // Start processing if not already
-        
+
       } else if (parsed.event === 'TASK_ABORT') {
         const { reportId } = parsed.data;
         sysLogger.info(`[AGENT] Received Remote Abort Request for report: ${reportId}`);
         if (currentAbortController) {
           currentAbortController.abort();
         }
-} else if (parsed.event === 'RECORDING_START') {
-  const { targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, mode } = parsed.data || {};
-  sysLogger.info(`[AGENT] Received Recording Start: ${projectId} case=${caseId}`);
-  try {
-    isRecordingActive = true;
-    recordingStarted = false;
-    agentStatus = 'busy';
-    sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'busy' });
-    emitRecordingEvent('recording-status', { status: 'RECEIVED', caseId, suiteId, mode });
-    await startRecordingSession(targetUrl, projectId, apiFilter, environment, pageId, caseId, suiteId, mode, emitRecordingEvent);
-        } catch (error) {
-          sysLogger.error('[AGENT] Failed to start recording:', error);
+      } else if (await handleRecordingControlMessage(parsed, {
+        agentId: AGENT_ID,
+        logger: sysLogger,
+        sendMsg,
+        emitRecordingEvent,
+        resetAfterStop: () => {
           isRecordingActive = false;
-          recordingStarted = false;
           agentStatus = 'idle';
           sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
-          emitRecordingEvent('recording-status', { status: 'FAILED', message: error instanceof Error ? error.message : String(error), mode });
-        }
-      } else if (parsed.event === 'recorder-state-changed') {
-        const { state } = parsed.data || {};
-        if (!state || !isRecordingActive) return;
-
-        if (state.action === 'STOP') {
-          sysLogger.info('[AGENT] Recorder stop requested');
-          try {
-            await stopRecordingSession();
-          } finally {
-            isRecordingActive = false;
-            recordingStarted = false;
-            agentStatus = 'idle';
-            sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
-            emitRecordingEvent('recording-status', { status: 'STOPPED' });
-            processQueue();
-          }
-          return;
-        }
-
-        if (!state.isPaused) {
-          recordingStarted = true;
-          emitRecordingEvent('recording-status', { status: 'STARTED' });
-          return;
-        }
-
-        if (recordingStarted) {
-          sysLogger.info('[AGENT] Recorder paused');
-          emitRecordingEvent('recording-status', { status: 'PAUSED' });
-        }
-      } else if (parsed.event === 'RECORDING_STOP') {
-        sysLogger.info('[AGENT] Received Recording Stop');
-        try {
-          await stopRecordingSession();
-        } finally {
-          isRecordingActive = false;
-          recordingStarted = false;
-          agentStatus = 'idle';
-          sendMsg('AGENT_HEARTBEAT', { agentId: AGENT_ID, status: 'idle' });
-          emitRecordingEvent('recording-status', { status: 'STOPPED' });
+          emitRecordingEvent(RECORDER_STATE_CHANGED_EVENT, { status: 'STOPPED' });
+        },
+        setAgentStatus: (status) => { agentStatus = status; },
+        setIsRecordingActive: (value) => { isRecordingActive = value; },
+      })) {
+        if (parsed.event === 'RECORDING_STOP') {
           processQueue();
         }
       }
@@ -223,8 +180,13 @@ function sendMsg(event: string, data: any) {
   }
 }
 
+import {
+  RECORDING_EVENT,
+  RECORDER_STATE_CHANGED_EVENT,
+} from 'shared/recording/protocol';
+
 function emitRecordingEvent(event: string, data: any) {
-  sendMsg('RECORDING_EVENT', {
+  sendMsg(RECORDING_EVENT, {
     event,
     data: { ...data, agentId: AGENT_ID },
   });
@@ -265,14 +227,14 @@ async function handleExecution(payload: TaskPayload) {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown agent error';
     logger.log({ stepId: 'agent-error', status: 'FAIL', message: `❌ Agent Exception: ${msg}` });
-    logger.complete({ 
-      reportId: payload.reportId, 
-      status: 'FAILED', 
+    logger.complete({
+      reportId: payload.reportId,
+      status: 'FAILED',
       passRate: 0,
-       totalCases: 0,
-       passedCases: 0,
-       failedCases: 1,
-       durationMs: 0
+      totalCases: 0,
+      passedCases: 0,
+      failedCases: 1,
+      durationMs: 0
     });
   } finally {
     await uiExecutor.cleanup();
