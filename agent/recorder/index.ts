@@ -183,7 +183,7 @@ try { this.session.adapter.stop(); } catch {}
     context.on('close', () => { void handleTerminalClose('context_closed'); });
     browser.on('disconnected', () => { void handleTerminalClose('browser_disconnected'); });
     page.on('crash', () => { void handleTerminalClose('page_crashed'); });
-    page.on('pageerror', (error) => console.warn('[RecorderV2] Page error:', error));
+    page.on('pageerror', (error) => console.warn('[Recorder] Page error:', error));
 
     if (mode === 'api' || mode === 'all') {
       const filterConfig: ApiFilterConfig | undefined =
@@ -218,7 +218,7 @@ try { this.session.adapter.stop(); } catch {}
 
           const headers = await req.allHeaders();
           const postData = req.postData();
-          console.log(`[RecorderV2] API captured: ${req.method()} ${new URL(req.url()).pathname} -> ${status}`);
+          console.log(`[Recorder] API captured: ${req.method()} ${new URL(req.url()).pathname} -> ${status}`);
           if (onApiRecorded) {
             onApiRecorded({
               url: req.url(),
@@ -230,7 +230,7 @@ try { this.session.adapter.stop(); } catch {}
             });
           }
         } catch (error) {
-          console.warn('[RecorderV2] API capture failed:', error);
+          console.warn('[Recorder] API capture failed:', error);
         }
       });
     }

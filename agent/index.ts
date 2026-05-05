@@ -12,6 +12,27 @@ import { CURRENT_AGENT_VERSION } from '../shared/constants/agent.ts';
 import fs from 'fs';
 import path from 'path';
 
+const LOG_DIR = process.env.LOG_DIR || path.join(process.cwd(), 'logs');
+
+let _logDirReady = '';
+function ensureLogDir(): string {
+  if (!_logDirReady) {
+    _logDirReady = path.join(LOG_DIR, AGENT_ID);
+    try { fs.mkdirSync(_logDirReady, { recursive: true }); } catch {}
+  }
+  return _logDirReady;
+}
+
+function appendFileLog(level: string, message: string) {
+  try {
+    const dir = ensureLogDir();
+    const date = new Date().toISOString().slice(0, 10);
+    const file = path.join(dir, `${date}.log`);
+    const time = new Date().toISOString().slice(11, 23);
+    fs.appendFileSync(file, `[${time}] [${level}] ${message}\n`);
+  } catch {}
+}
+
 const args = process.argv.slice(2);
 function getArg(name: string) {
   const i = args.indexOf(name);
@@ -34,6 +55,13 @@ const AGENT_ID = getArg('--name') || process.env.AGENT_ID || config.agentName ||
 
 const AGENT_SECRET = process.env.AGENT_SECRET || config.agentSecret || '';
 const AGENT_VERSION = CURRENT_AGENT_VERSION;
+
+const _origConsoleLog = console.log.bind(console);
+const _origConsoleWarn = console.warn.bind(console);
+const _origConsoleError = console.error.bind(console);
+console.log = (...args: any[]) => { _origConsoleLog(...args); appendFileLog('LOG', formatArgs(args)); };
+console.warn = (...args: any[]) => { _origConsoleWarn(...args); appendFileLog('WARN', formatArgs(args)); };
+console.error = (...args: any[]) => { _origConsoleError(...args); appendFileLog('ERROR', formatArgs(args)); };
 
 let ws: WebSocket;
 let isReconnect = false;
@@ -60,18 +88,9 @@ function emitAgentLog(level: 'info' | 'warn' | 'error', args: any[]) {
 }
 
 const sysLogger = {
-  info: (...args: any[]) => {
-    console.log(...args);
-    emitAgentLog('info', args);
-  },
-  warn: (...args: any[]) => {
-    console.warn(...args);
-    emitAgentLog('warn', args);
-  },
-  error: (...args: any[]) => {
-    console.error(...args);
-    emitAgentLog('error', args);
-  }
+  info: (...args: any[]) => { console.log(...args); emitAgentLog('info', args); },
+  warn: (...args: any[]) => { console.warn(...args); emitAgentLog('warn', args); },
+  error: (...args: any[]) => { console.error(...args); emitAgentLog('error', args); },
 };
 
 sysLogger.info(`[AGENT] Version: ${AGENT_VERSION}`);

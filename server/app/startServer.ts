@@ -1,3 +1,5 @@
+import '../shared/services/fileLogger.ts';
+
 import express from 'express';
 import path from 'path';
 import { createApp } from './createApp.ts';

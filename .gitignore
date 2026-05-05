@@ -4,6 +4,7 @@ dist/
 .vite/
 temp/
 videos/
+logs/
 scratch/
 database.sqlite
 database.sqlite-journal
