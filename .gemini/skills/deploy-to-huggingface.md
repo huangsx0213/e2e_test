@@ -28,14 +28,15 @@ git commit -m "pre-deploy: save latest changes"
 ```
 
 ### Step 3: Verify the Build Locally
-Run the full production build to catch any errors before publishing:
+Run the full production build and database setup to catch any errors before publishing:
 ```bash
-npm run build
+npm run build && npm run migrate && npm run seed
 ```
 This generates:
 - `dist/index.html` + `dist/assets/` — the frontend
 - `dist/agent.bundle.js` — the pre-bundled Agent (required for download feature)
 - `dist/server.cjs` — the backend server
+- Initialized database with seed data
 
 If the build **fails**, **do not proceed**. Fix the error and retry from Step 1.
 
@@ -50,6 +51,8 @@ git checkout --orphan hf-deploy-tmp
 git add .
 git commit -m "Production Build: $(date)"
 ```
+
+Include the database file (`server/db.sqlite`) in the deployment to ensure data persistence across restarts.
 
 ### Step 6: Force Push to Hugging Face
 ```bash
