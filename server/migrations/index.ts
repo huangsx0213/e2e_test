@@ -61,9 +61,35 @@ export function runMigrations(): void {
     transaction();
   }
 
-  // Auto-seed if database is empty OR if FORCE_SEED is enabled
   const projectCount = (db.prepare('SELECT COUNT(*) as count FROM projects').get() as any).count;
-  if (projectCount === 0 || process.env.FORCE_SEED === 'true') {
+
+  if (process.env.FORCE_SEED === 'true') {
+    clearAllData();
     runSeed();
+    console.log('✅ FORCE_SEED: Database reset and re-seeded.');
+  } else if (projectCount === 0) {
+    runSeed();
+    console.log('✅ Empty database: Auto-seeded.');
   }
+}
+
+function clearAllData(): void {
+  const tables = [
+    'report_logs', 'reports', 'settings',
+    'endpoint_parameters', 'endpoint_base_urls', 'endpoints',
+    'body_default_values', 'bodies',
+    'header_items', 'headers',
+    'case_steps', 'suite_steps', 'suite_cases',
+    'suite_data_row_values', 'suite_data_rows', 'suite_variables',
+    'scenario_suite_variable_overrides', 'scenario_suites', 'scenarios',
+    'test_plan_scenarios', 'test_plans',
+    'module_steps', 'module_params', 'project_modules',
+    'project_elements', 'project_pages',
+    'suites', 'projects', 'environments',
+  ];
+  db.transaction(() => {
+    for (const table of tables) {
+      try { db.exec(`DELETE FROM ${table}`); } catch {}
+    }
+  })();
 }
