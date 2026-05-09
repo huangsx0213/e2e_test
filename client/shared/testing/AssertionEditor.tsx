@@ -1,5 +1,5 @@
-import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { StepAssertion, AssertionSource, AssertionOperator } from '@/shared/types';
 import { generateId } from '../utils';
 
@@ -9,11 +9,104 @@ interface AssertionEditorProps {
   isApiStep: boolean;
 }
 
+const API_SOURCES: { value: AssertionSource; label: string }[] = [
+  { value: 'API_BODY_JSON', label: 'JSON Body' },
+  { value: 'API_BODY_XML', label: 'XML Body' },
+  { value: 'API_STATUS', label: 'Status Code' },
+  { value: 'API_HEADER', label: 'Header' },
+  { value: 'API_DURATION', label: 'Duration (ms)' },
+];
+
+const UI_SOURCES: { value: AssertionSource; label: string }[] = [
+  { value: 'UI_TEXT', label: 'Element Text' },
+  { value: 'UI_VALUE', label: 'Input Value' },
+  { value: 'UI_ATTRIBUTE', label: 'Attribute' },
+  { value: 'UI_PAGE_URL', label: 'Page URL' },
+  { value: 'UI_PAGE_TITLE', label: 'Page Title' },
+  { value: 'UI_ELEMENT_COUNT', label: 'Element Count' },
+  { value: 'UI_ELEMENT_STATE', label: 'Element State' },
+];
+
+type SourceGroup = 'api' | 'ui';
+
+const OPERATORS_BY_SOURCE: Record<SourceGroup, { value: AssertionOperator; label: string }[]> = {
+  api: [
+    { value: 'EQUALS', label: 'Equals' },
+    { value: 'NOT_EQUALS', label: 'Not Equals' },
+    { value: 'CONTAINS', label: 'Contains' },
+    { value: 'NOT_CONTAINS', label: 'Not Contains' },
+    { value: 'EXISTS', label: 'Exists' },
+    { value: 'NOT_EXISTS', label: 'Not Exists' },
+    { value: 'MATCHES_REGEX', label: 'Matches Regex' },
+    { value: 'GREATER_THAN', label: 'Greater Than' },
+    { value: 'LESS_THAN', label: 'Less Than' },
+    { value: 'GREATER_THAN_OR_EQUAL', label: '≥ (Greater/Equal)' },
+    { value: 'LESS_THAN_OR_EQUAL', label: '≤ (Less/Equal)' },
+    { value: 'IS_TYPE', label: 'Is Type' },
+    { value: 'HAS_LENGTH', label: 'Has Length' },
+    { value: 'CONTAINS_KEY', label: 'Contains Key' },
+    { value: 'MATCHES_JSON_SCHEMA', label: 'JSON Schema' },
+    { value: 'LESS_THAN_DURATION', label: '< Duration (ms)' },
+  ],
+  ui: [
+    { value: 'EQUALS', label: 'Equals' },
+    { value: 'NOT_EQUALS', label: 'Not Equals' },
+    { value: 'CONTAINS', label: 'Contains' },
+    { value: 'NOT_CONTAINS', label: 'Not Contains' },
+    { value: 'EXISTS', label: 'Exists' },
+    { value: 'NOT_EXISTS', label: 'Not Exists' },
+    { value: 'MATCHES_REGEX', label: 'Matches Regex' },
+    { value: 'GREATER_THAN', label: 'Greater Than' },
+    { value: 'LESS_THAN', label: 'Less Than' },
+    { value: 'GREATER_THAN_OR_EQUAL', label: '≥ (Greater/Equal)' },
+    { value: 'LESS_THAN_OR_EQUAL', label: '≤ (Less/Equal)' },
+    { value: 'IS_TYPE', label: 'Is Type' },
+    { value: 'HAS_LENGTH', label: 'Has Length' },
+  ],
+};
+
+function getSourceGroup(source: AssertionSource): SourceGroup {
+  return source.startsWith('API_') ? 'api' : 'ui';
+}
+
+const NO_EXPECTED_OPERATORS = new Set<AssertionOperator>(['EXISTS', 'NOT_EXISTS']);
+
+function needsExpression(source: AssertionSource): boolean {
+  return !['API_STATUS', 'API_DURATION', 'UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE', 'UI_ELEMENT_COUNT', 'UI_ELEMENT_STATE'].includes(source);
+}
+
+function expressionPlaceholder(source: AssertionSource): string {
+  switch (source) {
+    case 'API_BODY_JSON': return "$.data.id";
+    case 'API_BODY_XML': return "$.root.user.name";
+    case 'API_HEADER': return 'Content-Type';
+    case 'UI_ATTRIBUTE': return 'href, src, class…';
+    default: return 'Expression';
+  }
+}
+
+function expectedPlaceholder(operator: AssertionOperator): string {
+  switch (operator) {
+    case 'IS_TYPE': return 'string, number, array, object…';
+    case 'HAS_LENGTH': return '3';
+    case 'CONTAINS_KEY': return 'keyName';
+    case 'MATCHES_JSON_SCHEMA': return '{"type":"object","required":["id"]}';
+    case 'LESS_THAN_DURATION': return '500';
+    case 'MATCHES_REGEX': return '^\\d+$';
+    default: return 'Expected Value';
+  }
+}
+
 export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEditorProps) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  const allSources = isApiStep ? API_SOURCES : UI_SOURCES;
+
   const handleAdd = () => {
+    const defaultSource: AssertionSource = isApiStep ? 'API_BODY_JSON' : 'UI_TEXT';
     const newAssertion: StepAssertion = {
       id: generateId(),
-      source: 'API_BODY_JSON',
+      source: defaultSource,
       operator: 'EQUALS',
       expectedValue: '',
       expression: '',
@@ -23,7 +116,18 @@ export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEd
 
   const handleUpdate = (index: number, updates: Partial<StepAssertion>) => {
     const newAssertions = [...assertions];
-    newAssertions[index] = { ...newAssertions[index], ...updates };
+    const current = newAssertions[index];
+    const updated = { ...current, ...updates };
+
+    if (updates.source && updates.source !== current.source) {
+      const newGroup = getSourceGroup(updates.source);
+      const availableOps = OPERATORS_BY_SOURCE[newGroup].map(o => o.value);
+      if (!availableOps.includes(updated.operator)) {
+        updated.operator = 'EQUALS';
+      }
+    }
+
+    newAssertions[index] = updated;
     onChange(newAssertions);
   };
 
@@ -37,77 +141,110 @@ export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEd
     <div className="w-full">
       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <span>API Assertions</span>
+          <span>{isApiStep ? 'API' : 'UI'} Assertions</span>
         </div>
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleAdd();
-          }}
+          onClick={(e) => { e.stopPropagation(); handleAdd(); }}
           className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
         >
           <Plus size={10} /> Add Assertion
         </button>
       </div>
-      
+
       {assertions.length > 0 && (
         <div className="space-y-2">
-          {assertions.map((assertion, idx) => (
-            <div key={assertion.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
-              <select
-                className="w-36 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                value={assertion.source}
-                onChange={(e) => handleUpdate(idx, { source: e.target.value as AssertionSource })}
-              >
-                <option value="API_BODY_JSON">JSON Body</option>
-                <option value="API_BODY_XML">XML Body</option>
-                <option value="API_STATUS">Status Code</option>
-                <option value="API_HEADER">Header</option>
-              </select>
-              
-              {assertion.source !== 'API_STATUS' && (
-                <input
-                  className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                  placeholder={(assertion.source === 'API_BODY_JSON' || assertion.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : assertion.source === 'API_HEADER' ? 'Content-Type' : 'Expression'}
-                  value={assertion.expression || ''}
-                  onChange={(e) => handleUpdate(idx, { expression: e.target.value })}
-                />
-              )}
+          {assertions.map((assertion, idx) => {
+            const group = getSourceGroup(assertion.source);
+            const availableOperators = OPERATORS_BY_SOURCE[group];
+            const showExpression = needsExpression(assertion.source);
+            const showExpected = !NO_EXPECTED_OPERATORS.has(assertion.operator);
+            const isExpanded = expandedIndex === idx;
 
-              <select
-                className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                value={assertion.operator}
-                onChange={(e) => handleUpdate(idx, { operator: e.target.value as AssertionOperator })}
-              >
-                <option value="EQUALS">Equals</option>
-                <option value="NOT_EQUALS">Not Equals</option>
-                <option value="CONTAINS">Contains</option>
-                <option value="NOT_CONTAINS">Not Contains</option>
-                <option value="EXISTS">Exists</option>
-                <option value="NOT_EXISTS">Not Exists</option>
-                <option value="MATCHES_REGEX">Matches Regex</option>
-              </select>
-              
-              {!['EXISTS', 'NOT_EXISTS'].includes(assertion.operator) && (
-                <input
-                  className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
-                  placeholder="Expected Value"
-                  value={assertion.expectedValue || ''}
-                  onChange={(e) => handleUpdate(idx, { expectedValue: e.target.value })}
-                />
-              )}
-              
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRemove(idx);
-                }}
-                className="text-gray-400 hover:text-red-500 p-1"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
+            return (
+        <div key={assertion.id} className="bg-gray-50 p-1.5 rounded border border-gray-200">
+        <div className="flex items-center gap-2 flex-nowrap">
+          <select
+            className="shrink-0 w-28 text-xs border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-blue-500 bg-white"
+            value={assertion.source}
+            onChange={(e) => handleUpdate(idx, { source: e.target.value as AssertionSource })}
+          >
+            {allSources.map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+
+          {showExpression && (
+            <input
+              className="flex-1 min-w-[60px] text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+              placeholder={expressionPlaceholder(assertion.source)}
+              value={assertion.expression || ''}
+              onChange={(e) => handleUpdate(idx, { expression: e.target.value })}
+            />
+          )}
+
+          <select
+            className="shrink-0 w-28 text-xs border border-gray-200 rounded px-1.5 py-1 outline-none focus:border-blue-500 bg-white"
+            value={assertion.operator}
+            onChange={(e) => handleUpdate(idx, { operator: e.target.value as AssertionOperator })}
+          >
+            {availableOperators.map(op => (
+              <option key={op.value} value={op.value}>{op.label}</option>
+            ))}
+          </select>
+
+          {showExpected && (
+            <input
+              className="flex-1 min-w-[60px] text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+              placeholder={expectedPlaceholder(assertion.operator)}
+              value={assertion.expectedValue || ''}
+              onChange={(e) => handleUpdate(idx, { expectedValue: e.target.value })}
+            />
+          )}
+
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpandedIndex(isExpanded ? null : idx); }}
+            className="shrink-0 text-gray-400 hover:text-gray-600 p-1"
+            title="Advanced options"
+          >
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+
+          <button
+            onClick={(e) => { e.stopPropagation(); handleRemove(idx); }}
+            className="shrink-0 text-gray-400 hover:text-red-500 p-1"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+
+                {isExpanded && (
+                  <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-200">
+                    <input
+                      className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                      placeholder="Custom message (optional)"
+                      value={assertion.message || ''}
+                      onChange={(e) => handleUpdate(idx, { message: e.target.value })}
+                    />
+                    <input
+                      className="w-20 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
+                      placeholder="Flags (e.g. i)"
+                      value={assertion.flags || ''}
+                      onChange={(e) => handleUpdate(idx, { flags: e.target.value })}
+                    />
+                    <label className="flex items-center gap-1 text-[10px] text-gray-500 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={assertion.continueOnFailure || false}
+                        onChange={(e) => handleUpdate(idx, { continueOnFailure: e.target.checked })}
+                        className="rounded border-gray-300"
+                      />
+                      Continue
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

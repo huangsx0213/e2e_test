@@ -664,7 +664,7 @@ async function executeSteps(
           throw new Error(`API request failed: ${result.status} ${result.statusText}`);
         }
 
-        if (anyAssertionFailed) {
+        if (anyAssertionFailed && step.failureStrategy !== 'soft') {
           // Find the first failure message and throw it
           const failureLog = result.assertionLogs.find(log => log.status === 'FAIL');
           const err = new Error(failureLog?.message.trim().replace(/^❌\s*/, '') || 'Assertion Failed');
@@ -675,9 +675,10 @@ async function executeSteps(
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
 
-        // If it's an API request failure or Assertion failure, we've already logged the details
-        // We just need to throw to stop execution
-        if (error instanceof Error && (msg.startsWith('API request failed:') || (error as any).isAssertionFailure)) {
+        // In soft mode, swallow assertion failures (already logged) and continue
+        if (error instanceof Error && (error as any).isAssertionFailure && step.failureStrategy === 'soft') {
+          // Already logged by api-executor; don't throw — step continues
+        } else if (error instanceof Error && (msg.startsWith('API request failed:') || (error as any).isAssertionFailure)) {
           throw error;
         }
 
@@ -749,20 +750,21 @@ async function executeSteps(
       }
 
       const anySmartWaitFailed = uiResult.logs?.some((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
-      if (anySmartWaitFailed) {
-        const failure = uiResult.logs.find((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
-        const err = new Error(failure?.message.trim().replace(/^❌\s*/, '') || 'Smart Wait Assertion Failed');
-        (err as any).isAssertionFailure = true;
-        throw err;
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
+        if (anySmartWaitFailed && step.failureStrategy !== 'soft') {
+          const failure = uiResult.logs.find((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
+          const err = new Error(failure?.message.trim().replace(/^❌\s*/, '') || 'Smart Wait Assertion Failed');
+          (err as any).isAssertionFailure = true;
+          throw err;
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
 
-      // If it's an assertion failure, we've already logged the details (Smart Wait etc.)
-      // We just need to throw to stop execution
-      if (error instanceof Error && (error as any).isAssertionFailure) {
-        throw error;
-      }
+        // In soft mode, swallow assertion failures (already logged) and continue
+        if (error instanceof Error && (error as any).isAssertionFailure && step.failureStrategy === 'soft') {
+          // Already logged by ui-executor; don't throw — step continues
+        } else if (error instanceof Error && (error as any).isAssertionFailure) {
+          throw error;
+        }
 
       // Try to capture error state screenshot
       const failScreenshot = await uiExecutor.captureStateScreenshot();

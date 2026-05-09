@@ -12,20 +12,37 @@ export type ExtractorSource =
   | 'UI_PAGE_URL'
   | 'UI_PAGE_TITLE';
 
-export type AssertionSource = 
+export type AssertionSource =
   | 'API_BODY_JSON'
   | 'API_BODY_XML'
   | 'API_STATUS'
-  | 'API_HEADER';
+  | 'API_HEADER'
+  | 'API_DURATION'
+  | 'UI_TEXT'
+  | 'UI_VALUE'
+  | 'UI_ATTRIBUTE'
+  | 'UI_PAGE_URL'
+  | 'UI_PAGE_TITLE'
+  | 'UI_ELEMENT_COUNT'
+  | 'UI_ELEMENT_STATE';
 
-export type AssertionOperator = 
+export type AssertionOperator =
   | 'EQUALS'
   | 'CONTAINS'
   | 'NOT_EQUALS'
   | 'NOT_CONTAINS'
   | 'EXISTS'
   | 'NOT_EXISTS'
-  | 'MATCHES_REGEX';
+  | 'MATCHES_REGEX'
+  | 'GREATER_THAN'
+  | 'LESS_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN_OR_EQUAL'
+  | 'IS_TYPE'
+  | 'HAS_LENGTH'
+  | 'CONTAINS_KEY'
+  | 'MATCHES_JSON_SCHEMA'
+  | 'LESS_THAN_DURATION';
 
 export interface StepAssertion {
   id: string;
@@ -33,6 +50,9 @@ export interface StepAssertion {
   expression?: string;
   operator: AssertionOperator;
   expectedValue?: string;
+  flags?: string;
+  message?: string;
+  continueOnFailure?: boolean;
 }
 
 export interface VariableExtractor {
@@ -108,6 +128,7 @@ export interface TestStep {
   assertions?: StepAssertion[];
   isVerified?: boolean;
   metadata?: any;
+  failureStrategy?: 'fail-fast' | 'soft';
 }
 
 export interface TestModule {

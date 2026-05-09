@@ -4,7 +4,8 @@ import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
-import { evaluateAssertions } from './assertions.ts';
+import { evaluateAssertions, buildUiAssertionContext, buildApiAssertionContext, hasFailedAssertions } from './assertions.ts';
+import type { AssertionContext } from './assertions.ts';
 
 export interface UIExecutionResult {
   durationMs: number;
@@ -784,11 +785,12 @@ export class UIExecutor {
           for (const [key, value] of Object.entries(apiResponse.headers())) {
             headers[key] = value;
           }
-          const results = evaluateAssertions({
-            body: responseText || '',
-            headers,
-            status: apiResponse.status(),
-          }, step.waitForNetwork.assertions);
+            const results = evaluateAssertions({
+              body: responseText || '',
+              headers,
+              status: apiResponse.status(),
+              durationMs: 0,
+            }, step.waitForNetwork.assertions);
 
           results.forEach(res => {
             const { assertion, actualValue, passed, message } = res;
@@ -956,6 +958,46 @@ export class UIExecutor {
             level: 'warn',
             message: `  ⚠️ Extractor error for ${extractor.name}: ${err instanceof Error ? err.message : String(err)}`
           });
+        }
+      }
+    }
+
+    // ─── Process Step-Level Assertions ───
+    if (step.assertions && step.assertions.length > 0) {
+      const uiCtx = await buildUiAssertionContext(this.page, resolvedSelector ? await getSmartLocator({ skipActionabilityCheck: true }) : null, step.assertions.find(a => a.source === 'UI_ATTRIBUTE')?.expression);
+      const context: AssertionContext = {
+        body: '',
+        headers: {},
+        status: 0,
+        ui: uiCtx,
+      };
+      const results = evaluateAssertions(context, step.assertions, step.failureStrategy || 'fail-fast');
+      for (const res of results) {
+        const { assertion, actualValue, passed, message } = res;
+        const source = assertion.source;
+        const expr = assertion.expression ? ` ${assertion.expression}` : '';
+        const op = assertion.operator;
+        const expectedStr = assertion.expectedValue !== undefined ? `Expected: '${assertion.expectedValue}'` : '';
+        const actualStr = actualValue !== undefined ? `Actual: '${typeof actualValue === 'object' ? JSON.stringify(actualValue) : actualValue}'` : '';
+        const detailParts = [expectedStr, actualStr].filter(Boolean);
+        const logSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
+
+        if (passed) {
+          logs.push({ status: 'PASS', level: 'success', message: ` ✅ Assertion Passed: [${source}]${expr} ${op}${logSuffix}` });
+        } else {
+          const isMismatch = message.includes('Expected') && message.includes('but got');
+          const errorDetail = isMismatch ? '' : ` — ${message}`;
+          logs.push({ status: 'FAIL', level: 'error', message: ` ❌ Assertion Failed: [${source}]${expr} ${op}${logSuffix}${errorDetail}` });
+        }
+      }
+
+      const anyFailed = hasFailedAssertions(results);
+      if (anyFailed) {
+        const failure = results.find(r => !r.passed);
+        const err = new Error(failure?.message || 'UI Assertion Failed');
+        (err as any).isAssertionFailure = true;
+        if (step.failureStrategy !== 'soft') {
+          throw err;
         }
       }
     }

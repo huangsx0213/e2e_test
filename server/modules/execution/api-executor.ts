@@ -2,7 +2,7 @@ import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint, LogLevel } fro
 import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
 import { JSONPath } from 'jsonpath-plus';
-import { evaluateAssertions } from './assertions.ts';
+import { evaluateAssertions, buildApiAssertionContext, hasFailedAssertions } from './assertions.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -156,11 +156,12 @@ export async function executeApiStep(
 
   // ─── 4.5. Process Assertions ───
   if (step.assertions && step.assertions.length > 0) {
-    const results = evaluateAssertions({
-      body: responseBody,
-      headers: responseHeaders,
-      status: response.status,
-    }, step.assertions);
+    const results = evaluateAssertions(buildApiAssertionContext(
+      responseBody,
+      responseHeaders,
+      response.status,
+      durationMs,
+    ), step.assertions, step.failureStrategy || 'fail-fast');
     
     results.forEach(res => {
       const { assertion, actualValue, passed, message } = res;

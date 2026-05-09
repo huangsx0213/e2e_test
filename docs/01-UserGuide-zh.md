@@ -112,6 +112,7 @@ API Assets（API 资产，跨项目复用）
 | `screenshot` | 否 | 步骤执行后截屏 |
 | `extractors` | 否 | 步骤执行后运行的变量提取器 |
 | `assertions` | 否 | 步骤执行后评估的断言 |
+| `failureStrategy` | 否 | 断言失败模式：`soft`（默认）或 `fail-fast` |
 | `waitForNetwork` | 否 | 等待特定网络响应 |
 | `networkMocks` | 否 | 拦截/模拟网络请求 |
 
@@ -373,50 +374,96 @@ API 步骤可引用可复用资产：
 
 ## 6. 断言
 
-断言在步骤执行后验证结果。支持 API 步骤和配置了 `waitForNetwork` 的步骤。
+断言在步骤执行后验证结果。支持**所有步骤类型**（API 步骤和 UI 步骤），以及配置了 `waitForNetwork` 的步骤。
 
-### 断言字段
+### 6.1 断言字段
 
 | 字段 | 类型 | 必填 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `source` | enum | 是 | 读取值的来源 |
-| `expression` | string | 视情况 | JSONPath、XPath、请求头名或正则 |
+| `source` | enum | 是 | 读取值的来源（API 上下文或 UI 上下文） |
+| `expression` | string | 视情况 | JSONPath、XPath、请求头名、属性名或正则 |
 | `operator` | enum | 是 | 比较运算符 |
 | `expectedValue` | string | 视情况 | 期望值 |
+| `flags` | string | 否 | 正则标志（如 `i` 表示忽略大小写），配合 `MATCHES_REGEX` 使用 |
+| `message` | string | 否 | 自定义失败消息（会附加在默认消息前） |
+| `continueOnFailure` | boolean | 否 | 为 `true` 时，即使该断言失败也继续评估后续断言（覆盖步骤级策略） |
 
-### 断言来源
+### 6.2 断言来源
+
+#### API 来源（API 步骤可用）
 
 | 来源 | 表达式 | 说明 |
 | :--- | :--- | :--- |
 | `API_STATUS` | — | HTTP 响应状态码 |
-| `API_HEADER` | 请求头名称 | 响应头值 |
-| `API_BODY_JSON` | JSONPath | 通过 JSONPath 获取 JSON 体的值 |
-| `API_BODY_XML` | XPath | 通过 XPath 获取 XML 体的值 |
+| `API_HEADER` | 请求头名称 | 响应头值（大小写不敏感查找） |
+| `API_BODY_JSON` | JSONPath | 通过 JSONPath 获取 JSON 体的值（如 `$.data.id`） |
+| `API_BODY_XML` | 点分路径 | XML 体自动转为 JSON；属性前缀为 `@_` |
+| `API_DURATION` | — | 请求耗时（毫秒） |
 
-### 断言运算符
+#### UI 来源（UI 步骤可用）
 
-| 运算符 | 需要期望值 | 说明 |
+| 来源 | 表达式 | 说明 |
 | :--- | :--- | :--- |
-| `EQUALS` | 是 | 精确字符串相等 |
-| `NOT_EQUALS` | 是 | 字符串不相等 |
-| `CONTAINS` | 是 | 包含子串 |
-| `NOT_CONTAINS` | 是 | 不包含子串 |
-| `EXISTS` | 否 | 值存在（非 null/undefined） |
-| `NOT_EXISTS` | 否 | 值不存在 |
-| `MATCHES_REGEX` | 是（正则模式） | 值匹配正则表达式 |
+| `UI_TEXT` | — | 元素文本内容 |
+| `UI_VALUE` | — | 输入框的值 |
+| `UI_ATTRIBUTE` | 属性名 | HTML 属性值（如 `href`、`src`、`class`） |
+| `UI_PAGE_URL` | — | 当前页面 URL |
+| `UI_PAGE_TITLE` | — | 当前页面标题 |
+| `UI_ELEMENT_COUNT` | — | 匹配元素的数量 |
+| `UI_ELEMENT_STATE` | — | 元素状态：`visible`、`hidden`、`enabled`、`disabled` |
 
-### 断言示例
+### 6.3 断言运算符
 
-一个 `API_GET` 步骤后，添加断言：
-- **来源**：`API_STATUS`
-- **运算符**：`EQUALS`
-- **期望值**：`200`
+| 运算符 | 需要期望值 | 适用来源 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `EQUALS` | 是 | 所有 | 精确字符串相等 |
+| `NOT_EQUALS` | 是 | 所有 | 字符串不相等 |
+| `CONTAINS` | 是 | 所有 | 包含子串 |
+| `NOT_CONTAINS` | 是 | 所有 | 不包含子串 |
+| `EXISTS` | 否 | 所有 | 值存在（非 null/undefined） |
+| `NOT_EXISTS` | 否 | 所有 | 值不存在 |
+| `MATCHES_REGEX` | 是（正则模式） | 所有 | 值匹配正则表达式；用 `flags` 字段设置修饰符 |
+| `GREATER_THAN` | 是（数字） | 数值型 | 严格大于 |
+| `LESS_THAN` | 是（数字） | 数值型 | 严格小于 |
+| `GREATER_THAN_OR_EQUAL` | 是（数字） | 数值型 | 大于或等于 |
+| `LESS_THAN_OR_EQUAL` | 是（数字） | 数值型 | 小于或等于 |
+| `IS_TYPE` | 是（类型名） | 所有 | 类型检查：`string`、`number`、`boolean`、`array`、`object`、`null` |
+| `HAS_LENGTH` | 是（数字） | 字符串/数组/对象 | 长度检查（字符串长度、数组长度或对象键数） |
+| `CONTAINS_KEY` | 是（键名） | 对象 | 对象包含指定键 |
+| `MATCHES_JSON_SCHEMA` | 是（JSON Schema） | 对象/任意 | 按 JSON Schema（Draft-07，基于 Ajv）校验值 |
+| `LESS_THAN_DURATION` | 是（毫秒） | `API_DURATION` | 响应耗时小于阈值 |
 
-再添加一个：
-- **来源**：`API_BODY_JSON`
-- **表达式**：`$.user.name`
-- **运算符**：`CONTAINS`
-- **期望值**：`Admin`
+### 6.4 失败策略
+
+每个包含断言的步骤可选择**失败策略**：
+
+| 策略 | 行为 |
+| :--- | :--- |
+| **Soft**（默认） | 评估所有断言；失败被收集并记录，步骤**不会**抛出异常，后续步骤继续执行 |
+| **Fail Fast** | 第一个断言失败（且未设置 `continueOnFailure`）时立即停止评估并抛出异常，中止当前用例 |
+
+在步骤的高级设置面板中设置策略。单条断言的 `continueOnFailure: true` 可覆盖步骤级策略，使该断言始终继续评估。
+
+### 6.5 断言示例
+
+**API 步骤 — 状态码和体检查：**
+- **来源**：`API_STATUS` → **运算符**：`EQUALS` → **期望值**：`200`
+- **来源**：`API_BODY_JSON` → **表达式**：`$.user.name` → **运算符**：`CONTAINS` → **期望值**：`Admin`
+
+**API 步骤 — 耗时和 Schema 校验：**
+- **来源**：`API_DURATION` → **运算符**：`LESS_THAN_DURATION` → **期望值**：`500`
+- **来源**：`API_BODY_JSON` → **表达式**：`$.data` → **运算符**：`MATCHES_JSON_SCHEMA` → **期望值**：`{"type":"object","required":["id","name"]}`
+
+**UI 步骤 — 元素文本和状态：**
+- **来源**：`UI_TEXT` → **运算符**：`CONTAINS` → **期望值**：`Welcome`
+- **来源**：`UI_ELEMENT_STATE` → **运算符**：`EQUALS` → **期望值**：`visible`
+
+**UI 步骤 — 属性检查 + 软模式：**
+- **来源**：`UI_ATTRIBUTE` → **表达式**：`href` → **运算符**：`CONTAINS` → **期望值**：`/dashboard` → **continueOnFailure**：`true`
+
+### 6.6 传统 UI 断言动作
+
+七个快捷断言动作（`assertVisible`、`assertHidden`、`assertDisabled`、`assertText`、`assertValue`、`assertUrl`、`assertTitle`）继续正常工作。它们**没有被**新的断言系统取代 — 两者共存。快捷动作适用于简单检查；新的 `step.assertions` 数组提供多断言、多来源、软模式等高级能力。
 
 ---
 

@@ -4,7 +4,7 @@ export const optionalNonEmptyString = z.string().min(1).optional();
 
 export const extractorSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1),
+  name: z.string(),
   source: z.enum([
     'API_BODY_JSON',
     'API_BODY_XML',
@@ -17,12 +17,25 @@ export const extractorSchema = z.object({
     'UI_PAGE_TITLE'
   ]),
   expression: z.string().optional(),
-  scope: z.enum(['CASE', 'SUITE', 'ENVIRONMENT']),
+  scope: z.enum(['CASE', 'SUITE', 'SCENARIO', 'ENVIRONMENT']),
 });
 
 export const assertionSchema = z.object({
   id: z.string().min(1),
-  source: z.enum(['API_BODY_JSON', 'API_BODY_XML', 'API_STATUS', 'API_HEADER']),
+  source: z.enum([
+    'API_BODY_JSON',
+    'API_BODY_XML',
+    'API_STATUS',
+    'API_HEADER',
+    'API_DURATION',
+    'UI_TEXT',
+    'UI_VALUE',
+    'UI_ATTRIBUTE',
+    'UI_PAGE_URL',
+    'UI_PAGE_TITLE',
+    'UI_ELEMENT_COUNT',
+    'UI_ELEMENT_STATE'
+  ]),
   expression: z.string().optional(),
   operator: z.enum([
     'EQUALS',
@@ -31,9 +44,21 @@ export const assertionSchema = z.object({
     'NOT_CONTAINS',
     'EXISTS',
     'NOT_EXISTS',
-    'MATCHES_REGEX'
+    'MATCHES_REGEX',
+    'GREATER_THAN',
+    'LESS_THAN',
+    'GREATER_THAN_OR_EQUAL',
+    'LESS_THAN_OR_EQUAL',
+    'IS_TYPE',
+    'HAS_LENGTH',
+    'CONTAINS_KEY',
+    'MATCHES_JSON_SCHEMA',
+    'LESS_THAN_DURATION'
   ]),
   expectedValue: z.string().optional(),
+  flags: z.string().optional(),
+  message: z.string().optional(),
+  continueOnFailure: z.boolean().optional(),
 });
 
 export const networkWaitSchema = z.object({
@@ -71,6 +96,7 @@ export const stepSchema = z.object({
   waitForNetwork: networkWaitSchema.optional(),
   networkMocks: z.array(networkMockSchema).optional(),
   assertions: z.array(assertionSchema).optional(),
+  failureStrategy: z.enum(['fail-fast', 'soft']).optional(),
 });
 
 export const dynamicVariableSchema = z.object({

@@ -453,25 +453,58 @@ The `api-executor.ts` handles HTTP API test steps:
 
 ### 5.7 Assertion Engine
 
-Supported assertion sources and operators:
+The assertion engine supports both API and UI step types. Each step may carry an `assertions` array evaluated after execution, with a configurable `failureStrategy` (`soft` or `fail-fast`).
+
+**API Assertion Sources:**
 
 | Source | Description |
 | :--- | :--- |
 | `API_STATUS` | HTTP response status code |
-| `API_HEADER` | Response header value |
+| `API_HEADER` | Response header value (case-insensitive lookup) |
 | `API_BODY_JSON` | JSON body via JSONPath |
-| `API_BODY_XML` | XML body via XPath |
+| `API_BODY_XML` | XML body via dot-path (auto-converted to JSON, `@_` attribute prefix) |
+| `API_DURATION` | Request duration in milliseconds |
+
+**UI Assertion Sources:**
+
+| Source | Description |
+| :--- | :--- |
+| `UI_TEXT` | Element text content |
+| `UI_VALUE` | Input element value |
+| `UI_ATTRIBUTE` | HTML attribute value (expression = attribute name) |
+| `UI_PAGE_URL` | Current page URL |
+| `UI_PAGE_TITLE` | Current page title |
+| `UI_ELEMENT_COUNT` | Number of matching elements |
+| `UI_ELEMENT_STATE` | Element state (`visible` / `hidden` / `enabled` / `disabled`) |
+
+**Operators:**
 
 | Operator | Description |
 | :--- | :--- |
-| `EQUALS` / `NOT_EQUALS` | Exact match |
+| `EQUALS` / `NOT_EQUALS` | Exact string match |
 | `CONTAINS` / `NOT_CONTAINS` | Substring match |
 | `EXISTS` / `NOT_EXISTS` | Presence check |
-| `MATCHES_REGEX` | Regular expression match |
+| `MATCHES_REGEX` | Regular expression match (supports `flags` field) |
+| `GREATER_THAN` / `LESS_THAN` / `GREATER_THAN_OR_EQUAL` / `LESS_THAN_OR_EQUAL` | Numeric comparison |
+| `IS_TYPE` | Type check (`string`, `number`, `array`, `object`, `null`, etc.) |
+| `HAS_LENGTH` | Length check (string, array, or object keys) |
+| `CONTAINS_KEY` | Object key presence |
+| `MATCHES_JSON_SCHEMA` | JSON Schema (Draft-07) validation via Ajv |
+| `LESS_THAN_DURATION` | Duration threshold check |
+
+**Failure Strategy:**
+
+| Strategy | Behavior |
+| :--- | :--- |
+| `soft` (default) | All assertions evaluated; failures collected and logged; step does not throw |
+| `fail-fast` | First failure (without `continueOnFailure`) stops and throws |
+
+Per-assertion `continueOnFailure: true` overrides the step-level strategy.
 
 ### 5.8 Error Handling & Abort
 
-- **Per-case fail-fast**: Any step failure throws and stops the current case
+- **Per-step failure strategy**: `soft` mode collects assertion failures without throwing; `fail-fast` throws on first failure
+- **Per-case fail-fast**: Any step failure (non-assertion, or assertion in fail-fast mode) throws and stops the current case
 - **Per-suite continue**: Case failures are caught; the next case proceeds
 - **Always-run teardown**: Suite/case teardown steps execute in `finally` blocks
 - **Abort signal**: Checked at every loop boundary; throws `'Execution aborted'` on `signal.aborted`

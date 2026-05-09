@@ -112,6 +112,7 @@ Each step has the following fields:
 | `screenshot` | No | Capture screenshot after step |
 | `extractors` | No | Variable extractors to run after step |
 | `assertions` | No | Assertions to evaluate after step |
+| `failureStrategy` | No | Assertion failure mode: `soft` (default) or `fail-fast` |
 | `waitForNetwork` | No | Wait for a specific network response |
 | `networkMocks` | No | Mock/intercept network requests |
 
@@ -373,50 +374,96 @@ The variable `{{userId}}` is then available at `SCENARIO` priority for the rest 
 
 ## 6. Assertions
 
-Assertions validate step results after execution. They are supported on API steps and on steps with `waitForNetwork` configurations.
+Assertions validate step results after execution. They are supported on **all step types** (API steps and UI steps), as well as on steps with `waitForNetwork` configurations.
 
-### Assertion Fields
+### 6.1 Assertion Fields
 
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `source` | enum | Yes | Where to read the value from |
-| `expression` | string | Varies | JSONPath, XPath, header name, or regex |
+| `source` | enum | Yes | Where to read the value from (API or UI context) |
+| `expression` | string | Varies | JSONPath, XPath, header name, attribute name, or regex |
 | `operator` | enum | Yes | Comparison operator |
 | `expectedValue` | string | Varies | Expected value for comparison |
+| `flags` | string | No | Regex flags (e.g. `i` for case-insensitive), used with `MATCHES_REGEX` |
+| `message` | string | No | Custom failure message (prepended to default message) |
+| `continueOnFailure` | boolean | No | If `true`, continue evaluating remaining assertions even if this one fails (overrides step-level strategy) |
 
-### Assertion Sources
+### 6.2 Assertion Sources
+
+#### API Sources (available on API steps)
 
 | Source | Expression | Description |
 | :--- | :--- | :--- |
 | `API_STATUS` | — | HTTP response status code |
-| `API_HEADER` | Header name | Response header value |
-| `API_BODY_JSON` | JSONPath | JSON body value via JSONPath |
-| `API_BODY_XML` | XPath | XML body value via XPath |
+| `API_HEADER` | Header name | Response header value (case-insensitive lookup) |
+| `API_BODY_JSON` | JSONPath | JSON body value via JSONPath (e.g. `$.data.id`) |
+| `API_BODY_XML` | Dot-path | XML body (auto-converted to JSON; attributes prefixed `@_`) |
+| `API_DURATION` | — | Request duration in milliseconds |
 
-### Assertion Operators
+#### UI Sources (available on UI steps)
 
-| Operator | Expected Value | Description |
+| Source | Expression | Description |
 | :--- | :--- | :--- |
-| `EQUALS` | Yes | Exact string equality |
-| `NOT_EQUALS` | Yes | String not equal |
-| `CONTAINS` | Yes | String contains substring |
-| `NOT_CONTAINS` | Yes | String does not contain substring |
-| `EXISTS` | No | Value is present (not null/undefined) |
-| `NOT_EXISTS` | No | Value is absent |
-| `MATCHES_REGEX` | Yes (regex pattern) | Value matches the regex |
+| `UI_TEXT` | — | Element text content |
+| `UI_VALUE` | — | Input element value |
+| `UI_ATTRIBUTE` | Attribute name | HTML attribute value (e.g. `href`, `src`, `class`) |
+| `UI_PAGE_URL` | — | Current page URL |
+| `UI_PAGE_TITLE` | — | Current page title |
+| `UI_ELEMENT_COUNT` | — | Number of matching elements |
+| `UI_ELEMENT_STATE` | — | Element state: `visible`, `hidden`, `enabled`, `disabled` |
 
-### Assertion Example
+### 6.3 Assertion Operators
 
-After an `API_GET` step, add an assertion:
-- **Source**: `API_STATUS`
-- **Operator**: `EQUALS`
-- **Expected Value**: `200`
+| Operator | Expected Value | Applicable Sources | Description |
+| :--- | :--- | :--- | :--- |
+| `EQUALS` | Yes | All | Exact string equality |
+| `NOT_EQUALS` | Yes | All | String not equal |
+| `CONTAINS` | Yes | All | String contains substring |
+| `NOT_CONTAINS` | Yes | All | String does not contain substring |
+| `EXISTS` | No | All | Value is present (not null/undefined) |
+| `NOT_EXISTS` | No | All | Value is absent |
+| `MATCHES_REGEX` | Yes (regex) | All | Value matches regex pattern; use `flags` field for modifiers |
+| `GREATER_THAN` | Yes (number) | Numeric | Strictly greater than |
+| `LESS_THAN` | Yes (number) | Numeric | Strictly less than |
+| `GREATER_THAN_OR_EQUAL` | Yes (number) | Numeric | Greater than or equal |
+| `LESS_THAN_OR_EQUAL` | Yes (number) | Numeric | Less than or equal |
+| `IS_TYPE` | Yes (type name) | All | Type check: `string`, `number`, `boolean`, `array`, `object`, `null` |
+| `HAS_LENGTH` | Yes (number) | String/Array/Object | Length check (string length, array length, or object key count) |
+| `CONTAINS_KEY` | Yes (key name) | Object | Object contains the specified key |
+| `MATCHES_JSON_SCHEMA` | Yes (JSON Schema) | Object/Any | Validates value against a JSON Schema (Draft-07, powered by Ajv) |
+| `LESS_THAN_DURATION` | Yes (ms) | `API_DURATION` | Response duration is less than threshold |
 
-Add another:
-- **Source**: `API_BODY_JSON`
-- **Expression**: `$.user.name`
-- **Operator**: `CONTAINS`
-- **Expected Value**: `Admin`
+### 6.4 Failure Strategy
+
+Each step with assertions can choose a **failure strategy**:
+
+| Strategy | Behavior |
+| :--- | :--- |
+| **Soft** (default) | All assertions are evaluated; failures are collected and logged, but the step does **not** throw. Subsequent steps continue. |
+| **Fail Fast** | The first assertion failure (without `continueOnFailure`) stops evaluation immediately and throws, halting the current case. |
+
+Set the strategy in the step's Advanced Settings panel. Per-assertion `continueOnFailure: true` overrides the step-level strategy, allowing a single assertion to always continue regardless.
+
+### 6.5 Assertion Examples
+
+**API step — status and body check:**
+- **Source**: `API_STATUS` → **Operator**: `EQUALS` → **Expected**: `200`
+- **Source**: `API_BODY_JSON` → **Expression**: `$.user.name` → **Operator**: `CONTAINS` → **Expected**: `Admin`
+
+**API step — duration and schema validation:**
+- **Source**: `API_DURATION` → **Operator**: `LESS_THAN_DURATION` → **Expected**: `500`
+- **Source**: `API_BODY_JSON` → **Expression**: `$.data` → **Operator**: `MATCHES_JSON_SCHEMA` → **Expected**: `{"type":"object","required":["id","name"]}`
+
+**UI step — element text and state:**
+- **Source**: `UI_TEXT` → **Operator**: `CONTAINS` → **Expected**: `Welcome`
+- **Source**: `UI_ELEMENT_STATE` → **Operator**: `EQUALS` → **Expected**: `visible`
+
+**UI step — attribute check with soft mode:**
+- **Source**: `UI_ATTRIBUTE` → **Expression**: `href` → **Operator**: `CONTAINS` → **Expected**: `/dashboard` → **continueOnFailure**: `true`
+
+### 6.6 Legacy UI Assertion Actions
+
+The seven shortcut assertion actions (`assertVisible`, `assertHidden`, `assertDisabled`, `assertText`, `assertValue`, `assertUrl`, `assertTitle`) continue to work as before. They are **not** replaced by the new assertion system — both coexist. The shortcut actions are convenient for simple checks; the new `step.assertions` array provides advanced multi-assertion, multi-source, soft-mode capabilities.
 
 ---
 

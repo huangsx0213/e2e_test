@@ -2130,18 +2130,31 @@ export const StepList: React.FC<StepListProps> = ({
                           </div>
                         )}
 
-                      {/* API Assertions Section */}
-                      {step.action.startsWith("API_") && (
-                        <div className="pl-8 py-2">
-                          <AssertionEditor
-                            isApiStep={true}
-                            assertions={step.assertions || []}
-                            onChange={(assertions) => {
-                              onUpdateStep(step.id, { assertions });
-                            }}
-                          />
-                        </div>
-                      )}
+{/* Assertions Section */}
+<div className="pl-8 py-2">
+  <AssertionEditor
+    isApiStep={step.action.startsWith("api")}
+    assertions={step.assertions || []}
+    onChange={(assertions) => {
+      onUpdateStep(step.id, { assertions });
+    }}
+  />
+  {(step.assertions || []).length > 0 && (
+    <div className="flex items-center gap-2 mt-2">
+      <label className="text-[10px] font-medium text-gray-500">On failure:</label>
+      <select
+        className="text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
+        value={step.failureStrategy || 'soft'}
+        onChange={(e) => {
+          onUpdateStep(step.id, { failureStrategy: e.target.value as 'fail-fast' | 'soft' });
+        }}
+      >
+        <option value="fail-fast">Fail Fast (stop step)</option>
+        <option value="soft">Soft (collect all, continue)</option>
+      </select>
+    </div>
+  )}
+</div>
 
                       {/* Extractors Section */}
                       <div className="pl-8 py-2">
@@ -2150,7 +2163,7 @@ export const StepList: React.FC<StepListProps> = ({
                             <span>Variable Extractors</span>
                             <HelpTooltip content={
                               <div className="w-64">
-                                {step.action.startsWith('API_') ? (
+                                {step.action.startsWith('api') ? (
                                   <>
                                     <p className="mb-1 font-semibold">JSON / XML Extraction</p>
                                     <p className="mb-1 text-gray-300">Use JSONPath syntax (e.g., <code className="text-blue-300">$.data.id</code>).</p>
@@ -2181,7 +2194,7 @@ export const StepList: React.FC<StepListProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              const newExtractors = [...(step.extractors || []), { id: Date.now().toString(), name: '', source: (step.action.startsWith('API_') ? 'API_BODY_JSON' : 'UI_TEXT') as any, scope: 'SUITE' as any }];
+                              const newExtractors = [...(step.extractors || []), { id: generateId(), name: '', source: (step.action.startsWith('api') ? 'API_BODY_JSON' : 'UI_TEXT') as any, scope: 'SUITE' as any }];
                               onUpdateStep(step.id, { extractors: newExtractors });
                             }}
                             className="text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -2212,7 +2225,7 @@ export const StepList: React.FC<StepListProps> = ({
                                     onUpdateStep(step.id, { extractors: newExts });
                                   }}
                                 >
-                                  {step.action.startsWith('API_') ? (
+{step.action.startsWith('api') ? (
                                     <>
                                       <option value="API_BODY_JSON">JSON Body</option>
                                       <option value="API_BODY_XML">XML Body</option>
