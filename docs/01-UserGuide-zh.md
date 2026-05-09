@@ -704,19 +704,30 @@ Agent 是独立的 Node.js 进程，通过 WebSocket 连接到 QuantumQA 服务�
 
 ### 设置 Agent
 
-#### 方式 1：下载预打包 Agent
+#### 方式 1：下载预打包 Agent（推荐）
 
 1. 在 QuantumQA UI 中进入 **Agent** 页面
 2. 点击 **下载 Agent** — 获取 `quantum-qa-agent.zip`
 3. 解压 ZIP
 4. 编辑 `.env`，设置 `AGENT_SECRET`（必须与服务器的密钥一致）
-5. 运行：
-   - **Windows**：`start-agent.bat`
-   - **Linux/Mac**：`chmod +x start-agent.sh && ./start-agent.sh`
+5. 根据操作系统运行：
+
+   **Windows** — 双击 `start-agent.bat` 或在终端中运行：
+   ```bat
+   start-agent.bat
+   ```
+
+   **Linux / macOS** — 在终端中运行：
+   ```bash
+   chmod +x start-agent.sh
+   ./start-agent.sh
+   ```
 
 启动脚本会自动安装依赖和 Playwright Chromium，然后连接到服务器。
 
-#### 方式 2：从源码运行
+#### 方式 2：从源码运行（仅限调试/开发）
+
+> 仅在本地测试或调试 Agent 行为时使用此方式。生产环境请始终使用上方的 **下载预打包 Agent**。
 
 ```bash
 # 在项目目录中

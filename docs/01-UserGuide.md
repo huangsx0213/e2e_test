@@ -704,19 +704,30 @@ Agents are separate Node.js processes that connect to the QuantumQA server via W
 
 ### Setting Up an Agent
 
-#### Option 1: Download Pre-Packaged Agent
+#### Option 1: Download Pre-Packaged Agent (Recommended)
 
 1. In the QuantumQA UI, go to **Agents**
 2. Click **Download Agent** — get `quantum-qa-agent.zip`
 3. Extract the ZIP
 4. Edit `.env` to set `AGENT_SECRET` (must match the server's secret)
-5. Run:
-   - **Windows**: `start-agent.bat`
-   - **Linux/Mac**: `chmod +x start-agent.sh && ./start-agent.sh`
+5. Run based on your OS:
+
+   **Windows** — double-click `start-agent.bat` or run in terminal:
+   ```bat
+   start-agent.bat
+   ```
+
+   **Linux / macOS** — run in terminal:
+   ```bash
+   chmod +x start-agent.sh
+   ./start-agent.sh
+   ```
 
 The startup script automatically installs dependencies and Playwright Chromium, then connects to the server.
 
-#### Option 2: From Source
+#### Option 2: From Source (Debug / Development Only)
+
+> Only use this approach when testing locally or debugging agent behavior. For production, always use the **Download Pre-Packaged Agent** above.
 
 ```bash
 # In the project directory

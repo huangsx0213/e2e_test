@@ -283,13 +283,33 @@ export function AgentManagement() {
                   </button>
                 </div>
 
-                <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto select-all border border-slate-800 mx-auto max-w-2xl">
-                  <p className="text-slate-500">{"# Or manual setup (requires Node.js):"}</p>
-                  <p className="text-blue-400">npm install</p>
-                  <p className="text-slate-500 mt-3">{"# Start the agent pointing to this workspace:"}</p>
-                  <p className="text-green-400">
-                    {`npm run start-agent -- --url ${window.location.origin.replace('http', 'ws')}`}
-                  </p>
+                <div className="space-y-3 max-w-2xl mx-auto">
+                  <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto border border-slate-800">
+                    <p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-3">{"[Downloaded Agent] Windows"}</p>
+                    <p className="text-slate-500">{"# Extract quantum-qa-agent.zip, then double-click or run:"}</p>
+                    <p className="text-green-400">start-agent.bat</p>
+                    <p className="text-slate-500 mt-3">{"# Or edit .env first to set AGENT_SECRET, then run:"}</p>
+                    <p className="text-blue-400">notepad .env</p>
+                    <p className="text-blue-400">start-agent.bat</p>
+                  </div>
+                  <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto border border-slate-800">
+                    <p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-3">{"[Downloaded Agent] Linux / macOS"}</p>
+                    <p className="text-slate-500">{"# Extract quantum-qa-agent.zip, then:"}</p>
+                    <p className="text-blue-400">chmod +x start-agent.sh</p>
+                    <p className="text-blue-400">./start-agent.sh</p>
+                    <p className="text-slate-500 mt-3">{"# Or edit .env first to set AGENT_SECRET:"}</p>
+                    <p className="text-blue-400">nano .env</p>
+                    <p className="text-blue-400">chmod +x start-agent.sh {"&&"} ./start-agent.sh</p>
+                  </div>
+                  <div className="bg-slate-900 text-slate-300 rounded-lg p-5 text-left font-mono text-sm overflow-x-auto border border-slate-800">
+                    <p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-3">{"[Debug / Development Only] From Source"}</p>
+                    <p className="text-slate-500">{"# Requires Node.js installed:"}</p>
+                    <p className="text-blue-400">npm install</p>
+                    <p className="text-blue-400">npx playwright install chromium</p>
+                    <p className="text-green-400 mt-2">
+                      {`npm run start-agent -- --url ${window.location.origin.replace('http', 'ws')}`}
+                    </p>
+                  </div>
                 </div>
               </div>
             ) : (
