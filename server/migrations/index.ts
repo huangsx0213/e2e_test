@@ -8,12 +8,14 @@ import { migration006StepAssertions } from './006_step_assertions.ts';
 import { migration007SettingsRecordVideo } from './007_settings_record_video.ts';
 import type { Migration } from './types.ts';
 
-import { runSeed } from './seed.ts';
-
 import { migration008AgentsQueues } from './008_agents_queues.ts';
 import { migration009AgentsVersion } from './009_agents_version.ts';
 import { migration010ProjectElementMetadata } from './010_project_element_metadata.ts';
 import { migration011StepMetadata } from './011_step_metadata.ts';
+
+import { seedDefaults } from '../seed.ts';
+
+export { seedDefaults };
 
 export const migrations: Migration[] = [
   migration001InitialSchema,
@@ -63,33 +65,12 @@ export function runMigrations(): void {
 
   const projectCount = (db.prepare('SELECT COUNT(*) as count FROM projects').get() as any).count;
 
-  if (process.env.FORCE_SEED === 'true') {
-    clearAllData();
-    runSeed();
-    console.log('✅ FORCE_SEED: Database reset and re-seeded.');
-  } else if (projectCount === 0) {
-    runSeed();
-    console.log('✅ Empty database: Auto-seeded.');
-  }
-}
-
-function clearAllData(): void {
-  const tables = [
-    'report_logs', 'reports', 'settings',
-    'endpoint_parameters', 'endpoint_base_urls', 'endpoints',
-    'body_default_values', 'bodies',
-    'header_items', 'headers',
-    'case_steps', 'suite_steps', 'suite_cases',
-    'suite_data_row_values', 'suite_data_rows', 'suite_variables',
-    'scenario_suite_variable_overrides', 'scenario_suites', 'scenarios',
-    'test_plan_scenarios', 'test_plans',
-    'module_steps', 'module_params', 'project_modules',
-    'project_elements', 'project_pages',
-    'suites', 'projects', 'environments',
-  ];
-  db.transaction(() => {
-    for (const table of tables) {
-      try { db.exec(`DELETE FROM ${table}`); } catch {}
+  if (process.env.FORCE_SEED === 'true' || projectCount === 0) {
+    if (process.env.FORCE_SEED === 'true') {
+      console.log('🔄 FORCE_SEED=true: Resetting database...');
+    } else {
+      console.log('🌱 Empty database: Auto-seeding...');
     }
-  })();
+    seedDefaults();
+  }
 }

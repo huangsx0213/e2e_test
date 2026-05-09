@@ -1,5 +1,4 @@
 import { db } from './shared/db/client.ts';
-import { runMigrations } from './migrations/index.ts';
 import { createEnvironment } from './modules/environments/repository.ts';
 import { saveBodyTemplate } from './modules/bodies/repository.ts';
 import { saveApiEndpoint } from './modules/endpoints/repository.ts';
@@ -494,15 +493,19 @@ function seedSettings(): void {
   });
 }
 
-function seedDefaults(): void {
-  runMigrations();
+export function seedDefaults(): void {
   clearAllData();
   seedProjects();
   seedSuites();
   seedApiAssets();
   seedReports();
   seedSettings();
+  console.log('✅ Database reset and seed data applied!');
 }
 
-seedDefaults();
-console.log('✅ Final Database reset and unified Sauce Demo data seeded!');
+if (process.argv[1]?.endsWith('seed.ts')) {
+  import('./migrations/index.ts').then(({ runMigrations }) => {
+    runMigrations();
+    seedDefaults();
+  });
+}
