@@ -1914,7 +1914,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             value={ext.name}
                                             onChange={(e) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx].name = e.target.value;
+                                              newExts[idx] = { ...newExts[idx], name: e.target.value };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           />
@@ -1923,7 +1923,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             value={ext.source}
                                             onChange={(e) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx].source = e.target.value as any;
+                                              newExts[idx] = { ...newExts[idx], source: e.target.value as any };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           >
@@ -1938,7 +1938,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             value={ext.expression || ""}
                                             onChange={(e) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx].expression = e.target.value;
+                                              newExts[idx] = { ...newExts[idx], expression: e.target.value };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           />
@@ -1947,7 +1947,7 @@ export const StepList: React.FC<StepListProps> = ({
                                             value={ext.scope || 'CASE'}
                                             onChange={(e) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx].scope = e.target.value as any;
+                                              newExts[idx] = { ...newExts[idx], scope: e.target.value as any };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           >
@@ -1970,25 +1970,9 @@ export const StepList: React.FC<StepListProps> = ({
                                       ))}
                                     </div>
                                   )}
-                                </div>
-
-                                {/* API Assertions inside Smart Wait */}
-                                <div className="pt-2 border-t border-gray-200 mt-2">
-                                  <AssertionEditor
-                                    isApiStep={false}
-                                    assertions={step.waitForNetwork.assertions || []}
-                                    onChange={(assertions) => {
-                                      onUpdateStep(step.id, {
-                                        waitForNetwork: {
-                                          ...step.waitForNetwork!,
-                                          assertions,
-                                        }
-                                      });
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            )}
+</div>
+</div>
+)}
                           </div>
                         )}
 
@@ -2144,7 +2128,7 @@ export const StepList: React.FC<StepListProps> = ({
       <label className="text-[10px] font-medium text-gray-500">On failure:</label>
       <select
         className="text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white"
-        value={step.failureStrategy || 'soft'}
+        value={step.failureStrategy || 'fail-fast'}
         onChange={(e) => {
           onUpdateStep(step.id, { failureStrategy: e.target.value as 'fail-fast' | 'soft' });
         }}

@@ -68,7 +68,6 @@ export const networkWaitSchema = z.object({
   expectedStatus: z.number().optional(),
   timeoutMs: z.number().optional(),
   extractors: z.array(extractorSchema).optional(),
-  assertions: z.array(assertionSchema).optional(),
 });
 
 export const networkMockSchema = z.object({

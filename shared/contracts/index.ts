@@ -97,7 +97,6 @@ export interface NetworkWaitConfig {
   expectedStatus?: number;
   timeoutMs?: number;
   extractors?: VariableExtractor[];
-  assertions?: StepAssertion[];
 }
 
 export interface NetworkMockConfig {

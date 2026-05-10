@@ -4,7 +4,7 @@ import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
-import { evaluateAssertions, buildUiAssertionContext, buildApiAssertionContext, hasFailedAssertions } from './assertions.ts';
+import { evaluateAssertions, buildUiAssertionContext, hasFailedAssertions } from './assertions.ts';
 import type { AssertionContext } from './assertions.ts';
 
 export interface UIExecutionResult {
@@ -776,52 +776,10 @@ export class UIExecutor {
       try {
         const [apiResponse] = await Promise.all([waitPromise, actionPromise]);
 
-        let responseText: string | undefined;
-        try { responseText = await apiResponse.text(); } catch (e) { /* ignore */ }
+      let responseText: string | undefined;
+      try { responseText = await apiResponse.text(); } catch (e) { /* ignore */ }
 
-        // Process Assertions if any
-        if (step.waitForNetwork?.assertions && step.waitForNetwork.assertions.length > 0) {
-          const headers: Record<string, string> = {};
-          for (const [key, value] of Object.entries(apiResponse.headers())) {
-            headers[key] = value;
-          }
-            const results = evaluateAssertions({
-              body: responseText || '',
-              headers,
-              status: apiResponse.status(),
-              durationMs: 0,
-            }, step.waitForNetwork.assertions);
-
-          results.forEach(res => {
-            const { assertion, actualValue, passed, message } = res;
-            const source = assertion.source;
-            const expr = assertion.expression ? ` ${assertion.expression}` : '';
-            const op = assertion.operator;
-
-            const expectedStr = assertion.expectedValue !== undefined ? `Expected: '${assertion.expectedValue}'` : '';
-            const actualStr = actualValue !== undefined ? `Actual: '${typeof actualValue === 'object' ? JSON.stringify(actualValue) : actualValue}'` : '';
-            const detailParts = [expectedStr, actualStr].filter(Boolean);
-            const logSuffix = detailParts.length > 0 ? ` (${detailParts.join(', ')})` : '';
-
-            if (passed) {
-              logs.push({
-                status: 'PASS',
-                level: 'success',
-                message: `    ✅ Smart Wait Assertion Passed: [${source}]${expr} ${op}${logSuffix}`
-              });
-            } else {
-              const isMismatch = message.includes('Expected') && message.includes('but got');
-              const errorDetail = isMismatch ? '' : ` — ${message}`;
-              logs.push({
-                status: 'FAIL',
-                level: 'error',
-                message: `    ❌ Smart Wait Assertion Failed: [${source}]${expr} ${op}${logSuffix}${errorDetail}`
-              });
-            }
-          });
-        }
-
-        // Process API Extractors if any
+      // Process API Extractors if any
         if (step.waitForNetwork?.extractors && step.waitForNetwork.extractors.length > 0) {
           let responseBody: any;
           let jsonParsed = false;
@@ -971,7 +929,7 @@ export class UIExecutor {
         status: 0,
         ui: uiCtx,
       };
-      const results = evaluateAssertions(context, step.assertions, step.failureStrategy || 'fail-fast');
+const results = evaluateAssertions(context, step.assertions, step.failureStrategy || 'fail-fast');
       for (const res of results) {
         const { assertion, actualValue, passed, message } = res;
         const source = assertion.source;
@@ -991,7 +949,7 @@ export class UIExecutor {
         }
       }
 
-      const anyFailed = hasFailedAssertions(results);
+const anyFailed = hasFailedAssertions(results);
       if (anyFailed) {
         const failure = results.find(r => !r.passed);
         const err = new Error(failure?.message || 'UI Assertion Failed');

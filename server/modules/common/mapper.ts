@@ -18,6 +18,11 @@ export function normalizeStep(input: Partial<TestStep>): TestStep {
     assertions: Array.isArray(input.assertions) ? input.assertions : undefined,
     waitForNetwork: input.waitForNetwork,
     networkMocks: Array.isArray(input.networkMocks) ? input.networkMocks : undefined,
+    failureStrategy: input.failureStrategy,
+    metadata: {
+      ...(typeof input.metadata === 'object' && input.metadata !== null ? input.metadata : {}),
+      ...(input.failureStrategy != null ? { failureStrategy: input.failureStrategy } : {}),
+    },
   };
 }
 
@@ -38,7 +43,7 @@ export function deserializeStep(row: DbStepRow): TestStep {
     console.error('Failed to parse step JSON fields', e);
   }
 
-  return {
+return {
     id: row.id,
     action: row.action as TestStep['action'],
     target: row.target,
@@ -54,5 +59,6 @@ export function deserializeStep(row: DbStepRow): TestStep {
     waitForNetwork,
     networkMocks,
     metadata,
+    failureStrategy: (metadata as any)?.failureStrategy ?? undefined,
   };
 }

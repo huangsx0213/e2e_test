@@ -230,6 +230,8 @@ async function runSuiteWithContext(
     // Inject shared dynamic caches (e.g. ONCE_PER_SCENARIO)
     context.setDynamicVariableCaches(sharedDynamicCaches);
 
+    let suiteAborted = false;
+
     try {
       if (signal.aborted) throw new Error('Execution aborted');
 
@@ -251,6 +253,7 @@ async function runSuiteWithContext(
         });
 
         let casePassed = true;
+        let caseErr: any = null;
         try {
           if (testCase.setupSteps && testCase.setupSteps.length > 0) {
             await executeSteps(testCase.setupSteps, context, payload, logger, signal, uiExecutor, deps, 1);
@@ -258,6 +261,7 @@ async function runSuiteWithContext(
           await executeSteps(testCase.steps, context, payload, logger, signal, uiExecutor, deps, 1);
         } catch (error) {
           casePassed = false;
+          caseErr = error;
           const msg = error instanceof Error ? error.message : String(error);
           logger.log({
             stepId: `case-${testCase.id}-fail`,
@@ -282,6 +286,21 @@ async function runSuiteWithContext(
         if (casePassed) passedCases++;
         else failedCases++;
 
+        // If the case failed due to an assertion failure (which only throws in fail-fast mode),
+        // stop the entire suite — do not run subsequent cases
+        if (caseErr && (caseErr as any).isAssertionFailure) {
+          const remaining = suite.cases.length - completedCases - 1;
+          suiteAborted = true;
+          if (remaining > 0) {
+            logger.log({
+              stepId: `suite-${suite.id}-abort`,
+              status: 'FAIL',
+              message: ` ⏹️ Stopping suite: ${remaining} remaining case(s) skipped (fail-fast)`,
+            });
+          }
+          break;
+        }
+
         completedCases++;
         logger.progress({
           completed: completedCases,
@@ -289,15 +308,18 @@ async function runSuiteWithContext(
           percent: Math.round((completedCases / totalCases) * 100),
         });
       }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.log({
-        stepId: `suite-${suite.id}-fail`,
-        status: 'FAIL',
-        message: `❌ Suite Failed: ${msg}`,
-      });
-      failedCases += suite.cases.length - completedCases;
-    } finally {
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.log({
+      stepId: `suite-${suite.id}-fail`,
+      status: 'FAIL',
+      message: `❌ Suite Failed: ${msg}`,
+    });
+    failedCases += suite.cases.length - completedCases;
+    if ((error as any).isAssertionFailure) {
+      suiteAborted = true;
+    }
+  } finally {
       try {
         if (suite.teardownSteps && suite.teardownSteps.length > 0) {
           logger.log({ stepId: 'suite-teardown', status: 'INFO', message: '🧹 Running Suite Teardown Steps' });
@@ -315,6 +337,13 @@ async function runSuiteWithContext(
       Object.assign(sharedDynamicCaches, context.getDynamicVariableCaches());
       // Clear suite-scoped caches
       context.clearSuiteVars();
+    }
+
+    // Re-throw if suite was aborted by fail-fast assertion, so plan/scenario layers also stop
+    if (suiteAborted) {
+      const err = new Error(`Suite aborted by fail-fast assertion: ${suite.name}`);
+      (err as any).isAssertionFailure = true;
+      throw err;
     }
   }
 
@@ -408,18 +437,36 @@ export async function executePlan(
           continue;
         }
 
-        const suiteResult = await runSuiteWithContext(
-          suite,
-          scenario.name,
-          scenarioVariables,
-          scenarioRow,
-          scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, deps, sharedRuntimeVars, sharedDynamicCaches,
-          onEnvVarExtracted
-        );
+        try {
+          const suiteResult = await runSuiteWithContext(
+            suite,
+            scenario.name,
+            scenarioVariables,
+            scenarioRow,
+            scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, deps, sharedRuntimeVars, sharedDynamicCaches,
+            onEnvVarExtracted
+          );
 
-        totalCases += suiteResult.totalCases;
-        passedCases += suiteResult.passedCases;
-        failedCases += suiteResult.failedCases;
+          totalCases += suiteResult.totalCases;
+          passedCases += suiteResult.passedCases;
+          failedCases += suiteResult.failedCases;
+    } catch (suiteError) {
+      if ((suiteError as any).isAssertionFailure) {
+        logger.log({
+          stepId: `plan-${planScenario.id}-abort`,
+          status: 'FAIL',
+          message: `⏹️ Stopping plan: suite aborted by fail-fast assertion`,
+        });
+        throw suiteError;
+      }
+      logger.log({
+        stepId: `ss-${scenarioSuite.id}`,
+        status: 'FAIL',
+        message: `❌ Suite ${suite.name} failed: ${suiteError instanceof Error ? suiteError.message : String(suiteError)}`,
+      });
+      failedCases += suite.cases.length;
+      totalCases += suite.cases.length;
+    }
       }
     }
   }
@@ -490,31 +537,49 @@ export async function executeScenario(
     const sharedRuntimeVars: Record<string, string> = {};
     const sharedDynamicCaches: Record<string, string> = {};
 
-    for (const scenarioSuite of scenario.suites || []) {
-      if (signal.aborted) throw new Error('Execution aborted');
+for (const scenarioSuite of scenario.suites || []) {
+        if (signal.aborted) throw new Error('Execution aborted');
 
-      const suite = payload.suite || payload.suites?.find(s => s.id === scenarioSuite.suiteId);
-      if (!suite) {
-        logger.log({
-          stepId: `ss-${scenarioSuite.id}`,
-          status: 'FAIL',
-          message: `❌ Suite ${scenarioSuite.suiteId} not found`,
-        });
-        continue;
-      }
+        const suite = payload.suite || payload.suites?.find(s => s.id === scenarioSuite.suiteId);
+        if (!suite) {
+          logger.log({
+            stepId: `ss-${scenarioSuite.id}`,
+            status: 'FAIL',
+            message: `❌ Suite ${scenarioSuite.suiteId} not found`,
+          });
+          continue;
+        }
 
-      const suiteResult = await runSuiteWithContext(
-        suite,
-        scenario.name,
-        scenarioVariables,
-        scenarioRow,
-        scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, deps, sharedRuntimeVars, sharedDynamicCaches,
-        onEnvVarExtracted
-      );
+        try {
+          const suiteResult = await runSuiteWithContext(
+            suite,
+            scenario.name,
+            scenarioVariables,
+            scenarioRow,
+            scenarioSuite.variableOverrides || {}, scenarioSuite.dataSource || 'SCENARIO', payload, logger, signal, uiExecutor, deps, sharedRuntimeVars, sharedDynamicCaches,
+            onEnvVarExtracted
+          );
 
-      totalCases += suiteResult.totalCases;
-      passedCases += suiteResult.passedCases;
-      failedCases += suiteResult.failedCases;
+          totalCases += suiteResult.totalCases;
+          passedCases += suiteResult.passedCases;
+          failedCases += suiteResult.failedCases;
+  } catch (suiteError) {
+    if ((suiteError as any).isAssertionFailure) {
+      logger.log({
+        stepId: `scenario-${scenario.id}-abort`,
+        status: 'FAIL',
+        message: `⏹️ Stopping scenario: suite aborted by fail-fast assertion`,
+      });
+      throw suiteError;
+    }
+    logger.log({
+      stepId: `ss-${scenarioSuite.id}`,
+      status: 'FAIL',
+      message: `❌ Suite ${suite.name} failed: ${suiteError instanceof Error ? suiteError.message : String(suiteError)}`,
+    });
+    failedCases += suite.cases.length;
+    totalCases += suite.cases.length;
+  }
     }
   }
 
@@ -744,19 +809,10 @@ async function executeSteps(
         }
       });
 
-      // Log UI logs (Smart Wait assertions, etc.) after the main UI log
       if (logger && uiResult.logs) {
         uiResult.logs.forEach(log => logger.log({ ...log, stepId: step.id }));
       }
-
-      const anySmartWaitFailed = uiResult.logs?.some((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
-        if (anySmartWaitFailed && step.failureStrategy !== 'soft') {
-          const failure = uiResult.logs.find((l: any) => l.status === 'FAIL' && l.message.includes('Smart Wait Assertion Failed'));
-          const err = new Error(failure?.message.trim().replace(/^❌\s*/, '') || 'Smart Wait Assertion Failed');
-          (err as any).isAssertionFailure = true;
-          throw err;
-        }
-      } catch (error) {
+    } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
 
         // In soft mode, swallow assertion failures (already logged) and continue
