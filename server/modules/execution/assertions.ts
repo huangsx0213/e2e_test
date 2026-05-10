@@ -19,6 +19,7 @@ export interface UiAssertionContext {
   elementCount?: number;
   elementVisible?: boolean;
   elementEnabled?: boolean;
+  elementChecked?: boolean;
 }
 
 export type AssertionContext = ApiAssertionContext & { ui?: UiAssertionContext };
@@ -50,11 +51,12 @@ function resolveApiSource(source: string, context: ApiAssertionContext, expressi
         throw new Error(`Could not parse response body as JSON. ${e}`);
       }
     case 'API_BODY_XML':
-      if (!expression) throw new Error(`Expression (XPath-like) is required for API_BODY_XML source.`);
+      if (!expression) throw new Error(`Expression (JSONPath) is required for API_BODY_XML source.`);
       try {
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
         const parsedXml = parser.parse(context.body);
-        return expression.split('.').reduce((obj: any, key: string) => (obj && obj[key] !== undefined) ? obj[key] : undefined, parsedXml);
+        const jsonPathResults = JSONPath({ path: expression, json: parsedXml });
+        return jsonPathResults.length > 0 ? jsonPathResults[0] : undefined;
       } catch (e) {
         throw new Error(`Could not parse response body as XML. ${e}`);
       }
@@ -84,6 +86,8 @@ function resolveUiSource(source: string, ui: UiAssertionContext | undefined, exp
       return ui.elementVisible;
     case 'UI_ELEMENT_ENABLED':
       return ui.elementEnabled;
+    case 'UI_ELEMENT_CHECKED':
+      return ui.elementChecked;
     default:
       return undefined;
   }
@@ -282,6 +286,7 @@ export async function buildUiAssertionContext(
     try { ctx.elementCount = await locator.count(); } catch {}
     try { ctx.elementVisible = await locator.isVisible().catch(() => false); } catch {}
     try { ctx.elementEnabled = await locator.isEnabled().catch(() => true); } catch {}
+    try { ctx.elementChecked = await locator.isChecked().catch(() => false); } catch {}
   }
   return ctx;
 }

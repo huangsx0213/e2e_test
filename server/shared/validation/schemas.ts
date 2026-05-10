@@ -35,7 +35,8 @@ export const assertionSchema = z.object({
     'UI_PAGE_TITLE',
     'UI_ELEMENT_COUNT',
     'UI_ELEMENT_VISIBLE',
-    'UI_ELEMENT_ENABLED'
+    'UI_ELEMENT_ENABLED',
+    'UI_ELEMENT_CHECKED'
   ]),
   expression: z.string().optional(),
   operator: z.enum([

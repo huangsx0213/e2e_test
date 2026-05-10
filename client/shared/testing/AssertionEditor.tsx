@@ -24,8 +24,9 @@ const UI_SOURCES: { value: AssertionSource; label: string }[] = [
   { value: 'UI_PAGE_URL', label: 'Page URL' },
   { value: 'UI_PAGE_TITLE', label: 'Page Title' },
   { value: 'UI_ELEMENT_COUNT', label: 'Element Count' },
-  { value: 'UI_ELEMENT_VISIBLE', label: 'Visible' },
-  { value: 'UI_ELEMENT_ENABLED', label: 'Enabled' },
+  { value: 'UI_ELEMENT_VISIBLE', label: 'Is Visible' },
+  { value: 'UI_ELEMENT_ENABLED', label: 'Is Enabled' },
+  { value: 'UI_ELEMENT_CHECKED', label: 'Is Checked' },
 ];
 
 type SourceGroup = 'api' | 'ui';
@@ -73,7 +74,7 @@ function getSourceGroup(source: AssertionSource): SourceGroup {
 const NO_EXPECTED_OPERATORS = new Set<AssertionOperator>(['EXISTS', 'NOT_EXISTS']);
 
 function needsExpression(source: AssertionSource): boolean {
-  return !['API_STATUS', 'API_DURATION', 'UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE', 'UI_ELEMENT_COUNT', 'UI_ELEMENT_VISIBLE', 'UI_ELEMENT_ENABLED'].includes(source);
+  return !['API_STATUS', 'API_DURATION', 'UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE', 'UI_ELEMENT_COUNT', 'UI_ELEMENT_VISIBLE', 'UI_ELEMENT_ENABLED', 'UI_ELEMENT_CHECKED'].includes(source);
 }
 
 function expressionPlaceholder(source: AssertionSource): string {
