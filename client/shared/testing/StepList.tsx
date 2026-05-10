@@ -343,8 +343,11 @@ export const StepList: React.FC<StepListProps> = ({
                           <option value="assertValue">assertValue</option>
                           <option value="assertUrl">assertUrl</option>
                           <option value="assertTitle">assertTitle</option>
-                          <option value="assertDisabled">assertDisabled</option>
-                        </optgroup>
+<option value="assertDisabled">assertDisabled</option>
+          <option value="assertEnabled">assertEnabled</option>
+          <option value="assertChecked">assertChecked</option>
+          <option value="assertUnchecked">assertUnchecked</option>
+        </optgroup>
                         <optgroup label="Browser & Alert Actions">
                           <option value="switchToWindow">switchToWindow</option>
                           <option value="switchToFrame">switchToFrame</option>
@@ -1598,9 +1601,14 @@ export const StepList: React.FC<StepListProps> = ({
                                                 ? "Expected URL..."
                                                 : step.action === "assertTitle"
                                                   ? "Expected title..."
-                                                  : step.action ===
-                                                    "assertDisabled"
-                                                    ? "Element selector..."
+: step.action === "assertDisabled"
+        ? "Element selector..."
+        : step.action === "assertEnabled"
+        ? "Element selector..."
+        : step.action === "assertChecked"
+        ? "Element selector..."
+        : step.action === "assertUnchecked"
+        ? "Element selector..."
                                                     : step.action ===
                                                       "selectOption"
                                                       ? "Option value..."
@@ -1617,10 +1625,13 @@ export const StepList: React.FC<StepListProps> = ({
                                                               "switchToFrame"
                                                               ? "Frame selector..."
                                                               : [
-                                                                "click",
-                                                                "assertVisible",
-                                                                "assertHidden",
-                                                                "hover",
+"click",
+          "assertVisible",
+          "assertHidden",
+          "assertEnabled",
+          "assertChecked",
+          "assertUnchecked",
+          "hover",
                                                                 "highlight",
                                                                 "dblclick",
                                                                 "rightClick",
@@ -1638,15 +1649,18 @@ export const StepList: React.FC<StepListProps> = ({
                             disabled={
                               step.enabled === false ||
                               [
-                                "click",
-                                "hover",
-                                "highlight",
-                                "scrollIntoView",
-                                "check",
-                                "uncheck",
-                                "assertVisible",
-                                "assertHidden",
-                                "dblclick",
+"click",
+          "hover",
+          "highlight",
+          "scrollIntoView",
+          "check",
+          "uncheck",
+          "assertVisible",
+          "assertHidden",
+          "assertEnabled",
+          "assertChecked",
+          "assertUnchecked",
+          "dblclick",
                                 "rightClick",
                                 "switchToWindow",
                                 "switchToFrame",

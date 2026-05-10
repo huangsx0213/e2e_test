@@ -726,7 +726,13 @@ async function executeSteps(
         const anyAssertionFailed = result.assertionLogs.some(log => log.status === 'FAIL');
 
         if (!isSuccess) {
-          throw new Error(`API request failed: ${result.status} ${result.statusText}`);
+          if (step.failureStrategy !== 'soft') {
+            throw new Error(`API request failed: ${result.status} ${result.statusText}`);
+          }
+          // In soft mode, log the non-2xx status as a failed assertion and continue
+          const err = new Error(`API request failed: ${result.status} ${result.statusText}`);
+          (err as any).isAssertionFailure = true;
+          throw err;
         }
 
         if (anyAssertionFailed && step.failureStrategy !== 'soft') {

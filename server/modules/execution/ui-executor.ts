@@ -584,31 +584,67 @@ export class UIExecutor {
           break;
         }
 
-        case 'assertDisabled': {
-          const locator = await getSmartLocator();
-          const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
-          assertionDetails = { expected: 'DISABLED', actual: isDisabled ? 'DISABLED' : 'ENABLED', target: resolvedSelector };
-          if (!isDisabled) {
-            const err = new Error(`Assertion failed: Expected element to be DISABLED, but it is ENABLED`);
-            (err as any).assertionDetails = assertionDetails;
-            throw err;
-          }
-          break;
+case 'assertDisabled': {
+            const locator = await getSmartLocator();
+            const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
+            assertionDetails = { expected: 'DISABLED', actual: isDisabled ? 'DISABLED' : 'ENABLED', target: resolvedSelector };
+            if (!isDisabled) {
+                const err = new Error(`Assertion failed: Expected element to be DISABLED, but it is ENABLED`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
+            }
+            break;
         }
 
-        case 'assertText':
-          if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
-          {
+        case 'assertEnabled': {
             const locator = await getSmartLocator();
-            const text = await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || '';
-            assertionDetails = { expected: `CONTAINS '${data}'`, actual: text, target: resolvedSelector };
-            if (!text.includes(data)) {
-              const err = new Error(`Assertion failed: Expected text to CONTAINS '${data}', but got '${text}'`);
-              (err as any).assertionDetails = assertionDetails;
-              throw err;
+            const isEnabled = await locator.isEnabled({ timeout: DEFAULT_TIMEOUT });
+            assertionDetails = { expected: 'ENABLED', actual: isEnabled ? 'ENABLED' : 'DISABLED', target: resolvedSelector };
+            if (!isEnabled) {
+                const err = new Error(`Assertion failed: Expected element to be ENABLED, but it is DISABLED`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
             }
-          }
-          break;
+            break;
+        }
+
+        case 'assertChecked': {
+            const locator = await getSmartLocator();
+            const isChecked = await locator.isChecked({ timeout: DEFAULT_TIMEOUT });
+            assertionDetails = { expected: 'CHECKED', actual: isChecked ? 'CHECKED' : 'UNCHECKED', target: resolvedSelector };
+            if (!isChecked) {
+                const err = new Error(`Assertion failed: Expected element to be CHECKED, but it is UNCHECKED`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
+            }
+            break;
+        }
+
+        case 'assertUnchecked': {
+            const locator = await getSmartLocator();
+            const isChecked = await locator.isChecked({ timeout: DEFAULT_TIMEOUT });
+            assertionDetails = { expected: 'UNCHECKED', actual: isChecked ? 'CHECKED' : 'UNCHECKED', target: resolvedSelector };
+            if (isChecked) {
+                const err = new Error(`Assertion failed: Expected element to be UNCHECKED, but it is CHECKED`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
+            }
+            break;
+        }
+
+case 'assertText':
+        if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
+        {
+            const locator = await getSmartLocator();
+            const text = (await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || '').trim();
+            assertionDetails = { expected: `EQUALS '${data}'`, actual: text, target: resolvedSelector };
+            if (text !== data) {
+                const err = new Error(`Assertion failed: Expected text to EQUAL '${data}', but got '${text}'`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
+            }
+        }
+        break;
 
         case 'assertValue':
           if (data === undefined) throw new Error('Data is required for ASSERT_VALUE step');
@@ -624,31 +660,31 @@ export class UIExecutor {
           }
           break;
 
-        case 'assertUrl':
-          if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
-          {
+case 'assertUrl':
+        if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
+        {
             const currentUrl = this.page.url();
-            assertionDetails = { expected: `CONTAINS '${data}'`, actual: currentUrl };
-            if (!currentUrl.includes(data) && currentUrl !== data) {
-              const err = new Error(`Assertion failed: Expected URL to CONTAINS '${data}', but got '${currentUrl}'`);
-              (err as any).assertionDetails = assertionDetails;
-              throw err;
+            assertionDetails = { expected: `EQUALS '${data}'`, actual: currentUrl };
+            if (currentUrl !== data) {
+                const err = new Error(`Assertion failed: Expected URL to EQUAL '${data}', but got '${currentUrl}'`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
             }
-          }
-          break;
+        }
+        break;
 
         case 'assertTitle':
-          if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
-          {
+        if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
+        {
             const title = await this.page.title();
-            assertionDetails = { expected: `CONTAINS '${data}'`, actual: title };
-            if (!title.includes(data)) {
-              const err = new Error(`Assertion failed: Expected title to CONTAINS '${data}', but got '${title}'`);
-              (err as any).assertionDetails = assertionDetails;
-              throw err;
+            assertionDetails = { expected: `EQUALS '${data}'`, actual: title };
+            if (title !== data) {
+                const err = new Error(`Assertion failed: Expected title to EQUAL '${data}', but got '${title}'`);
+                (err as any).assertionDetails = assertionDetails;
+                throw err;
             }
-          }
-          break;
+        }
+        break;
 
         case 'extractVar':
           if (!data) throw new Error('Data (variable key) is required for EXTRACT_VAR step');

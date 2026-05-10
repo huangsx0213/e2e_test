@@ -24,7 +24,8 @@ export type AssertionSource =
   | 'UI_PAGE_URL'
   | 'UI_PAGE_TITLE'
   | 'UI_ELEMENT_COUNT'
-  | 'UI_ELEMENT_STATE';
+  | 'UI_ELEMENT_VISIBLE'
+  | 'UI_ELEMENT_ENABLED';
 
 export type AssertionOperator =
   | 'EQUALS'

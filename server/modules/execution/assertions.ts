@@ -17,7 +17,8 @@ export interface UiAssertionContext {
   elementValue?: string;
   elementAttribute?: string;
   elementCount?: number;
-  elementState?: string;
+  elementVisible?: boolean;
+  elementEnabled?: boolean;
 }
 
 export type AssertionContext = ApiAssertionContext & { ui?: UiAssertionContext };
@@ -79,18 +80,26 @@ function resolveUiSource(source: string, ui: UiAssertionContext | undefined, exp
       return ui.pageTitle;
     case 'UI_ELEMENT_COUNT':
       return ui.elementCount;
-    case 'UI_ELEMENT_STATE':
-      return ui.elementState;
+    case 'UI_ELEMENT_VISIBLE':
+      return ui.elementVisible;
+    case 'UI_ELEMENT_ENABLED':
+      return ui.elementEnabled;
     default:
       return undefined;
   }
 }
 
 function resolveActualValue(source: string, context: AssertionContext, expression?: string): any {
-  const apiValue = resolveApiSource(source, context, expression);
-  if (apiValue !== undefined) return apiValue;
-  const uiValue = resolveUiSource(source, context.ui, expression);
-  if (uiValue !== undefined) return uiValue;
+  if (source.startsWith('API_')) {
+    const value = resolveApiSource(source, context, expression);
+    if (value !== undefined) return value;
+    throw new Error(`No value found for API source '${source}' with expression '${expression || ''}'`);
+  }
+  if (source.startsWith('UI_')) {
+    const value = resolveUiSource(source, context.ui, expression);
+    if (value !== undefined) return value;
+    throw new Error(`No value found for UI source '${source}' with expression '${expression || ''}'`);
+  }
   throw new Error(`Unknown source: ${source}`);
 }
 
@@ -271,15 +280,8 @@ export async function buildUiAssertionContext(
       try { ctx.elementAttribute = await locator.getAttribute(expression, { timeout: 3000 }) || undefined; } catch {}
     }
     try { ctx.elementCount = await locator.count(); } catch {}
-    try {
-      const isVisible = await locator.isVisible().catch(() => false);
-      const isDisabled = await locator.isDisabled().catch(() => false);
-      const isEnabled = await locator.isEnabled().catch(() => true);
-      if (isVisible) ctx.elementState = 'visible';
-      else if (isDisabled) ctx.elementState = 'disabled';
-      else if (isEnabled) ctx.elementState = 'enabled';
-      else ctx.elementState = 'hidden';
-    } catch {}
+    try { ctx.elementVisible = await locator.isVisible().catch(() => false); } catch {}
+    try { ctx.elementEnabled = await locator.isEnabled().catch(() => true); } catch {}
   }
   return ctx;
 }
