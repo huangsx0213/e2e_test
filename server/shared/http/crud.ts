@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import type { ZodType } from 'zod';
 
 import type { WithId } from '../utils/index.ts';
 import { withErrorHandling } from './async-handler.ts';
 import { ConflictError, NotFoundError } from './errors.ts';
+import { validateWithSchema } from '../validation/validate.ts';
 
-function getParam(value: string | string[] | undefined): string {
+export function getParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
@@ -117,4 +119,36 @@ export function createCrudRouter(controller: CrudController) {
   });
 
   return router;
+}
+
+interface CrudModuleOptions<T extends WithId> {
+  basePath: string;
+  repository: CrudRepository<T>;
+  normalize: (payload: Partial<T>) => T;
+  createSchema?: ZodType<unknown>;
+  patchSchema?: ZodType<unknown>;
+}
+
+export function createCrudModule<T extends WithId>(
+  options: CrudModuleOptions<T>,
+): { basePath: string; router: Router } {
+  const baseService = createCrudService({ repository: options.repository, normalize: options.normalize });
+
+  let service: CrudService<T> = baseService;
+  if (options.createSchema || options.patchSchema) {
+    service = {
+      ...baseService,
+      ...(options.createSchema ? {
+        create: (payload: unknown) => baseService.create(validateWithSchema(options.createSchema!, payload)),
+      } : {}),
+      ...(options.patchSchema ? {
+        update: (id: string, payload: unknown) => baseService.update(id, validateWithSchema(options.patchSchema!, payload)),
+      } : {}),
+    };
+  }
+
+  const controller = createCrudController(service);
+  const router = createCrudRouter(controller);
+
+  return { basePath: options.basePath, router };
 }

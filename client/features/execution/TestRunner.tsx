@@ -1176,25 +1176,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             plan={planToRun}
             suites={suites}
             project={currentProject}
-            headers={headers}
-            bodies={bodies}
-            endpoints={endpoints}
             environments={environments}
             initialEnvironment={initialEnvironment}
-            reportsApi={reportsApi}
             onClose={() => setActiveTab("PLANS")}
           />
         ) : scenarioToRun ? (
           <ScenarioExecutionRunner
             scenario={scenarioToRun}
-            suites={suites}
             project={currentProject}
-            headers={headers}
-            bodies={bodies}
-            endpoints={endpoints}
             environments={environments}
             initialEnvironment={initialEnvironment}
-            reportsApi={reportsApi}
             onClose={() => setActiveTab("SCENARIOS")}
           />
         ) : (

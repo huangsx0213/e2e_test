@@ -1,8 +1,10 @@
 import type { WebSocket } from 'ws';
-import { globalEventBus, type WsEventHandler } from '../../shared/services/eventBus.ts';
+import { globalEventBus, type WsEventName, type WsEventHandler } from '../../shared/services/eventBus.ts';
 import { agentRegistry } from './registry.ts';
 import { agentDispatcherEvents, checkQueue } from './dispatcher.ts';
+import { abortRemoteRun } from './dispatcher.ts';
 import { agentLogBuffer } from './log-buffer.ts';
+import { setRemoteAbortHandler } from '../execution/run-registry.ts';
 
 function handleAgentRegister(data: any, ws: WebSocket) {
   const { agentId, platform, version } = data;
@@ -43,7 +45,7 @@ function handleWsDisconnected(_data: any, ws: WebSocket) {
 }
 
 export function registerAgentWsHandlers() {
-  const handlers: Record<string, WsEventHandler> = {
+  const handlers: Partial<Record<WsEventName, WsEventHandler>> = {
     AGENT_REGISTER: handleAgentRegister,
     AGENT_HEARTBEAT: handleAgentHeartbeat,
     EXECUTION_COMPLETE: handleExecutionComplete,
@@ -53,6 +55,8 @@ export function registerAgentWsHandlers() {
   };
 
   for (const [event, handler] of Object.entries(handlers)) {
-    globalEventBus.on(event, handler);
+    globalEventBus.on(event as WsEventName, handler);
   }
+
+  setRemoteAbortHandler(abortRemoteRun);
 }

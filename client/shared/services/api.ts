@@ -94,7 +94,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
     update: (id: string, data: Partial<DynamicVariable>) => apiFetch<DynamicVariable>(`dynamic-variables/${id}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
     delete: (id: string) => apiFetch<void>(`dynamic-variables/${id}`, {

@@ -105,14 +105,10 @@ function resolveUiSource(source: string, ui: UiAssertionContext | undefined, exp
 
 function resolveActualValue(source: string, context: AssertionContext, expression?: string): any {
   if (source.startsWith('API_')) {
-    const value = resolveApiSource(source, context, expression);
-    if (value !== undefined) return value;
-    throw new Error(`No value found for API source '${source}' with expression '${expression || ''}'`);
+    return resolveApiSource(source, context, expression);
   }
   if (source.startsWith('UI_')) {
-    const value = resolveUiSource(source, context.ui, expression);
-    if (value !== undefined) return value;
-    throw new Error(`No value found for UI source '${source}' with expression '${expression || ''}'`);
+    return resolveUiSource(source, context.ui, expression);
   }
   throw new Error(`Unknown source: ${source}`);
 }

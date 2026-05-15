@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import { globalEventBus, type WsEventHandler } from '../../shared/services/eventBus.ts';
+import { globalEventBus, type WsEventName, type WsEventHandler } from '../../shared/services/eventBus.ts';
 import { getActiveRunLogger } from './run-registry.ts';
 
 function handleLogStream(data: any, ws: WebSocket) {
@@ -17,12 +17,12 @@ function handleProgressStream(data: any, ws: WebSocket) {
 }
 
 export function registerExecutionWsHandlers() {
-  const handlers: Record<string, WsEventHandler> = {
+  const handlers: Partial<Record<WsEventName, WsEventHandler>> = {
     LOG_STREAM: handleLogStream,
     PROGRESS_STREAM: handleProgressStream,
   };
 
   for (const [event, handler] of Object.entries(handlers)) {
-    globalEventBus.on(event, handler);
+    globalEventBus.on(event as WsEventName, handler);
   }
 }

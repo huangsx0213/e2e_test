@@ -30,18 +30,23 @@ export function unregisterRun(runId: string): void {
   activeRuns.delete(runId);
 }
 
+let remoteAbortHandler: ((reportId: string) => boolean) | null = null;
+
+export function setRemoteAbortHandler(handler: (reportId: string) => boolean): void {
+  remoteAbortHandler = handler;
+}
+
 export function abortActiveRun(reportId?: string): boolean {
   let aborted = false;
-  if (reportId) {
-    for (const run of activeRuns.values()) {
-      run.abortController.abort();
-      aborted = true;
-    }
-  } else {
-    for (const run of activeRuns.values()) {
-      run.abortController.abort();
-      aborted = true;
-    }
+  for (const run of activeRuns.values()) {
+    run.abortController.abort();
+    aborted = true;
   }
   return aborted;
+}
+
+export function abortRun(reportId: string): boolean {
+  const localAborted = abortActiveRun(reportId);
+  const remoteAborted = remoteAbortHandler ? remoteAbortHandler(reportId) : false;
+  return localAborted || remoteAborted;
 }

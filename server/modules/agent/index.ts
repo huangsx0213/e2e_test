@@ -54,10 +54,7 @@ router.put('/:id/status', (req, res) => {
   const updated = saveAgent({ ...agent, status, lastSeen: Date.now() });
 
   // Update active connection if present
-  const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;
-  if (activeConn.has(req.params.id)) {
-      activeConn.get(req.params.id).status = status;
-  }
+  agentRegistry.updateStatus(req.params.id, status as 'idle' | 'busy' | 'offline' | 'disabled');
 
   res.json(updated);
 });
@@ -78,10 +75,7 @@ router.put('/:id/labels', (req, res) => {
   const updated = saveAgent({ ...agent, labels, lastSeen: Date.now() });
 
   // Update active connection if present
-  const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;
-  if (activeConn.has(req.params.id)) {
-      activeConn.get(req.params.id).labels = labels;
-  }
+  agentRegistry.updateLabels(req.params.id, labels);
 
   res.json(updated);
 });
@@ -138,12 +132,7 @@ router.delete('/:id', (req, res) => {
   agentLogBuffer.clear(req.params.id);
   
   // also terminate WS if present
-  const activeConn = (agentRegistry as any).activeConnections as Map<string, any>;
-  if (activeConn.has(req.params.id)) {
-      const agent = activeConn.get(req.params.id);
-      if (agent.ws) agent.ws.close();
-      activeConn.delete(req.params.id);
-  }
+  agentRegistry.removeById(req.params.id);
 
   res.json({ success: true });
 });

@@ -10,7 +10,7 @@ export interface QueuedTask {
   createdAt: number;
 }
 
-class TaskQueue extends EventEmitter {
+export class TaskQueue extends EventEmitter {
   private queue: QueuedTask[] = [];
 
   enqueue(task: QueuedTask) {

@@ -115,6 +115,28 @@ class AgentRegistry {
           }
       }
   }
+
+  updateStatus(id: string, status: 'idle' | 'busy' | 'offline' | 'disabled'): boolean {
+    const active = this.activeConnections.get(id);
+    if (!active) return false;
+    active.status = status;
+    return true;
+  }
+
+  updateLabels(id: string, labels: string[]): boolean {
+    const active = this.activeConnections.get(id);
+    if (!active) return false;
+    active.labels = labels;
+    return true;
+  }
+
+  removeById(id: string): boolean {
+    const active = this.activeConnections.get(id);
+    if (!active) return false;
+    active.ws?.close();
+    this.activeConnections.delete(id);
+    return true;
+  }
 }
 
 export const agentRegistry = new AgentRegistry();

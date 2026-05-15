@@ -1,27 +1,12 @@
-import { createCrudController, createCrudRouter, createCrudService } from '../../shared/http/crud.ts';
-import { validateWithSchema } from '../../shared/validation/validate.ts';
+import { createCrudModule } from '../../shared/http/crud.ts';
 import { normalizeProject } from './mapper.ts';
 import { projectRepository } from './repository.ts';
 import { projectPatchSchema, projectPayloadSchema } from './schema.ts';
 
-const baseService = createCrudService({
+export const projectsModule = createCrudModule({
+  basePath: '/api/projects',
   repository: projectRepository,
   normalize: normalizeProject,
+  createSchema: projectPayloadSchema,
+  patchSchema: projectPatchSchema,
 });
-
-const projectService = {
-  ...baseService,
-  create: (payload: unknown) =>
-    baseService.create(validateWithSchema(projectPayloadSchema, payload)),
-  update: (id: string, payload: unknown) =>
-    baseService.update(id, validateWithSchema(projectPatchSchema, payload)),
-};
-
-const projectController = createCrudController(projectService);
-
-const projectRoutes = createCrudRouter(projectController);
-
-export const projectsModule = {
-  basePath: '/api/projects',
-  router: projectRoutes,
-};

@@ -35,6 +35,7 @@ function assignTaskToAgent(agent: any, task: any) {
     // Note: We no longer mark agent as idle here. 
     // We wait for the Agent to send a heartbeat confirming it is ready for more work.
     agentDispatcherEvents.removeListener(`COMPLETE_${task.payload.reportId}`, onComplete);
+    agentDispatcherEvents.removeListener(`REJECTED_${task.payload.reportId}`, onRejected);
     task.resolve(res);
   };
 

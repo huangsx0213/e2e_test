@@ -1,6 +1,6 @@
 import { dynamicVariableRouter } from './router';
 
 export const dynamicVariablesModule = {
-  basePath: '/api',
+  basePath: '',
   router: dynamicVariableRouter,
 };

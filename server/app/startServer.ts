@@ -3,20 +3,16 @@ import '../shared/services/fileLogger.ts';
 import express from 'express';
 import path from 'path';
 import { createApp } from './createApp.ts';
-import { initializeWebSocket } from '../shared/services/websocketService.ts';
+import { wsService } from '../shared/services/websocketService.ts';
 import { registerAgentWsHandlers } from '../modules/agent/ws-handlers.ts';
 import { registerExecutionWsHandlers } from '../modules/execution/ws-handlers.ts';
 import { registerRecordingWsHandlers } from '../modules/recording/ws-handlers.ts';
-import { runMigrations } from '../migrations/index.ts';
 
 import { getInternalIp } from '../modules/agent/index.ts';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 export async function startServer() {
-  // Ensure database is initialized before starting
-  runMigrations();
-
   const app = createApp();
 
   if (process.env.NODE_ENV !== 'production') {
@@ -67,7 +63,7 @@ export async function startServer() {
     console.log(`  - Network: http://${internalIp}:${PORT}`);
   });
 
-  initializeWebSocket(server);
+  wsService.initialize(server);
 
   registerAgentWsHandlers();
   registerExecutionWsHandlers();

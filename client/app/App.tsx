@@ -87,12 +87,8 @@ function AppShell() {
               suite={activeSuite}
               testCase={activeCase}
               project={currentProject!}
-              headers={headers}
-              bodies={bodies}
-              endpoints={endpoints}
               environments={environments}
               initialEnvironment={currentEnvironment}
-              reportsApi={reportsApi}
               onClose={() => setExecutionState(null)}
             />
           </div>
@@ -103,12 +99,8 @@ function AppShell() {
           <SuiteExecutionRunner
             suite={activeSuite}
             project={currentProject!}
-            headers={headers}
-            bodies={bodies}
-            endpoints={endpoints}
             environments={environments}
             initialEnvironment={currentEnvironment}
-            reportsApi={reportsApi}
             onClose={() => setExecutionState(null)}
           />
         </div>

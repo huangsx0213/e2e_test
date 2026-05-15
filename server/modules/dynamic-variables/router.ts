@@ -2,68 +2,44 @@ import { Router } from 'express';
 import { dynamicVariableRepository } from './repository';
 import { dynamicVariableSchema } from '../../shared/validation/schemas';
 import { interpolate } from '../../shared/utils/interpolate';
+import { withErrorHandling } from '../../shared/http/async-handler.ts';
+import { ValidationError } from '../../shared/http/errors.ts';
+import { getParam } from '../../shared/http/crud.ts';
 
 const router = Router();
 
-// Get all dynamic variables for a project
-router.get('/projects/:projectId/dynamic-variables', async (req, res) => {
-  try {
-    const variables = await dynamicVariableRepository.findByProjectId(req.params.projectId);
-    res.json(variables);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch dynamic variables' });
-  }
-});
+router.get('/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
+  const variables = dynamicVariableRepository.findByProjectId(getParam(req.params.projectId));
+  res.json(variables);
+}));
 
-// Create a new dynamic variable
-router.post('/projects/:projectId/dynamic-variables', async (req, res) => {
-  try {
-    const data = dynamicVariableSchema.parse(req.body);
-    const variable = await dynamicVariableRepository.create(req.params.projectId, data);
-    res.status(201).json(variable);
-  } catch (error) {
-    res.status(400).json({ error: 'Invalid data' });
-  }
-});
+router.post('/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
+  const data = dynamicVariableSchema.parse(req.body);
+  const variable = dynamicVariableRepository.create(getParam(req.params.projectId), data);
+  res.status(201).json(variable);
+}));
 
-// Update a dynamic variable
-router.put('/dynamic-variables/:id', async (req, res) => {
-  try {
-    const data = dynamicVariableSchema.partial().parse(req.body);
-    const variable = await dynamicVariableRepository.update(req.params.id, data);
-    res.json(variable);
-  } catch (error) {
-    res.status(400).json({ error: 'Invalid data' });
-  }
-});
+router.patch('/dynamic-variables/:id', withErrorHandling(async (req, res) => {
+  const data = dynamicVariableSchema.partial().parse(req.body);
+  const variable = dynamicVariableRepository.update(getParam(req.params.id), data);
+  res.json(variable);
+}));
 
-// Delete a dynamic variable
-router.delete('/dynamic-variables/:id', async (req, res) => {
-  try {
-    await dynamicVariableRepository.delete(req.params.id);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete dynamic variable' });
-  }
-});
+router.delete('/dynamic-variables/:id', withErrorHandling(async (req, res) => {
+  dynamicVariableRepository.delete(getParam(req.params.id));
+  res.status(204).send();
+}));
 
-// Preview dynamic variable expression
-router.post('/dynamic-variables/preview', (req, res) => {
-  try {
-    const { expression } = req.body;
-    if (!expression) {
-      return res.status(400).json({ error: 'Expression is required' });
-    }
-    
-    const samples = [];
-    for (let i = 0; i < 3; i++) {
-      samples.push(interpolate(expression, {}));
-    }
-    
-    res.json({ samples });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to generate preview' });
+router.post('/dynamic-variables/preview', withErrorHandling((req, res) => {
+  const { expression } = req.body;
+  if (!expression) throw new ValidationError('Expression is required');
+
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    samples.push(interpolate(expression, {}));
   }
-});
+
+  res.json({ samples });
+}));
 
 export const dynamicVariableRouter = router;

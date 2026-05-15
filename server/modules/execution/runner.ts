@@ -1,36 +1,21 @@
 import type {
-  TestStep,
   TestSuite,
-  TestCase,
-  TestScenario,
-  Project,
-  HeaderProfile,
-  BodyTemplate,
-  ApiEndpoint,
   ExecutionRequest,
-  ExecutionRunStatus,
   DynamicVariable,
   RunResult,
 } from '../../shared/contracts/index.ts';
-import { projectRepository } from '../projects/repository.ts';
-import { suiteRepository } from '../suites/repository.ts';
-import { headerRepository } from '../headers/repository.ts';
-import { bodyRepository } from '../bodies/repository.ts';
-import { endpointRepository } from '../endpoints/repository.ts';
-import { reportRepository } from '../reports/repository.ts';
-import { environmentRepository } from '../environments/repository.ts';
-import { dynamicVariableRepository } from '../dynamic-variables/repository.ts';
 import { ExecutionContext } from './context.ts';
 import { interpolate } from '../../shared/utils/interpolate.ts';
-import { executeApiStep, type ApiAssets } from './api-executor.ts';
+import { executeApiStep } from './api-executor.ts';
 import { ExecutionLogger } from './logger.ts';
 import { db } from '../../shared/db/client.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { UIExecutor } from './ui-executor.ts';
 import { executeSingleCase, executeSuite, executeScenario, executePlan, type ExecutorDeps } from '../../shared/core/executor.ts';
 import type { TaskPayload, IVariableContext } from '../../shared/contracts/index.ts';
-import { settingsRepository } from '../settings/repository.ts';
-import { getActiveRunLogger, setActiveRunLogger, removeActiveRunLogger, isRunActive, registerRun, unregisterRun, abortActiveRun } from './run-registry.ts';
+import { getActiveRunLogger, setActiveRunLogger, removeActiveRunLogger, isRunActive, registerRun, unregisterRun } from './run-registry.ts';
+import type { ExecutionDataLoader } from './data-loader.ts';
+import { defaultDataLoader } from './default-data-loader.ts';
 
 // ─── Main Entry Point ───
 
@@ -88,88 +73,9 @@ async function executeRunAsync(
   let displayName = `Execution: ${request.type}`;
   const uiExecutor = new UIExecutor();
 
-    const deps: ExecutorDeps = {
-      createContext: (options) => ExecutionContext.create(options) as IVariableContext,
-      executeApiStep: (step, context, assets, environment, logger, indent, onEnvVarExtracted) =>
-        executeApiStep(step, context as ExecutionContext, assets, environment, logger, indent, onEnvVarExtracted),
-    };
-
   try {
-    // Load all required data from DB
-    const project = projectRepository.get(request.projectId);
-    if (!project) throw new Error(`Project ${request.projectId} not found`);
-
-    const assets: ApiAssets = {
-      headers: headerRepository.list().filter(h => h.projectId === request.projectId),
-      bodies: bodyRepository.list().filter(b => b.projectId === request.projectId),
-      endpoints: endpointRepository.list().filter(e => e.projectId === request.projectId),
-    };
-
-    const environmentVariables = environmentRepository.getVariables(request.environment);
-
-    const dynamicVarsList = await dynamicVariableRepository.findByProjectId(request.projectId);
-    const dynamicVariables: Record<string, string> = {};
-    const dynamicVariableConfigs: Record<string, DynamicVariable> = {};
-    for (const v of dynamicVarsList) {
-      dynamicVariableConfigs[v.name] = v;
-      if (v.evaluationStrategy === 'ONCE_PER_RUN') {
-        dynamicVariables[v.name] = interpolate(v.expression, dynamicVariables);
-      } else {
-        dynamicVariables[v.name] = v.expression;
-      }
-    }
-
-    // Hydrate settings
-    const settingsList = settingsRepository.list();
-    const settings = settingsList.find(s => s.currentProjectId === project.id) || settingsList[0];
-
-    // Precise Suite Loading: only send what is actually needed for this run
-    let suites = [];
-    if (request.type === 'plan') {
-      const plan = project.plans?.find(p => p.id === request.planId);
-      const requiredSuiteIds = new Set<string>();
-      plan?.scenarios?.forEach(ps => {
-        const scenario = project.scenarios?.find(s => s.id === ps.scenarioId);
-        scenario?.suites?.forEach(ss => requiredSuiteIds.add(ss.suiteId));
-      });
-      suites = suiteRepository.list().filter(s => requiredSuiteIds.has(s.id));
-    } else if (request.type === 'scenario') {
-      const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
-      const requiredSuiteIds = new Set((scenario?.suites || []).map(ss => ss.suiteId));
-      suites = suiteRepository.list().filter(s => requiredSuiteIds.has(s.id));
-    }
-
-    // ─── Resolve Name & Prepare Payload ───
-    if (request.type === 'case') {
-      const suite = suiteRepository.get(request.suiteId!);
-      const testCase = suite?.cases.find(c => c.id === request.caseId);
-      displayName = testCase ? testCase.name : `Case: ${request.caseId}`;
-    } else if (request.type === 'suite') {
-      const suite = suiteRepository.get(request.suiteId!);
-      displayName = suite ? suite.name : `Suite: ${request.suiteId}`;
-    } else if (request.type === 'scenario') {
-      const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
-      displayName = scenario ? scenario.name : `Scenario: ${request.scenarioId}`;
-    } else if (request.type === 'plan') {
-      const plan = project.plans?.find(p => p.id === request.planId);
-      displayName = plan ? plan.name : `Plan: ${request.planId}`;
-    }
-
-    const targetSuite = request.suiteId ? suiteRepository.get(request.suiteId) : undefined;
-
-    const payload: TaskPayload = {
-      runId,
-      reportId,
-      request,
-      project,
-      suite: targetSuite || undefined,
-      suites: suites,
-      assets,
-      environmentVariables,
-      dynamicVariables,
-      dynamicVariableConfigs,
-      settings: settings as any
-    };
+    const built = await buildPayload(request, runId, reportId);
+    displayName = built.displayName;
 
     logger.log({
       stepId: 'init',
@@ -177,32 +83,7 @@ async function executeRunAsync(
       message: `🚀 Starting execution: ${displayName} in environment: ${request.environment}`,
     });
 
-    // ─── Execute (Remote or Local) ───
-    if (request.agentId) {
-      console.log(`[EXEC] Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
-      const { dispatchToAgent } = await import('../agent/dispatcher.ts');
-      result = await dispatchToAgent(request.agentId, payload) as any;
-    } else {
-      const onEnvVarExtracted = (name: string, value: string) => {
-        const currentVars = environmentRepository.getVariables(request.environment);
-        currentVars[name] = value;
-        environmentRepository.updateVariables(request.environment, currentVars);
-      };
-
-      if (request.type === 'case') {
-        console.log(`[EXEC] Starting case execution for: ${displayName}`);
-        result = await executeSingleCase(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
-      } else if (request.type === 'suite') {
-        console.log(`[EXEC] Starting suite execution for: ${displayName}`);
-        result = await executeSuite(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
-      } else if (request.type === 'scenario') {
-        console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
-        result = await executeScenario(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
-      } else {
-        console.log(`[EXEC] Starting plan execution for: ${displayName}`);
-        result = await executePlan(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
-      }
-    }
+    result = await dispatchExecution(request, built.payload, logger, signal, uiExecutor, runId, displayName);
 
     result.reportId = reportId;
     result.durationMs = Date.now() - startTime;
@@ -229,12 +110,150 @@ async function executeRunAsync(
     };
   }
 
-  // ─── Finalize ───
   const endTime = Date.now();
   await uiExecutor.cleanup();
+  await finalizeRun(request, runId, reportId, logger, result, displayName, startTime, endTime);
+}
 
-  // Persist report
-  reportRepository.save({
+async function buildPayload(
+  request: ExecutionRequest,
+  runId: string,
+  reportId: string,
+  loader: ExecutionDataLoader = defaultDataLoader,
+): Promise<{ payload: TaskPayload; displayName: string }> {
+  const project = loader.getProject(request.projectId);
+  if (!project) throw new Error(`Project ${request.projectId} not found`);
+
+  const assets = {
+    headers: loader.listHeaders().filter(h => h.projectId === request.projectId),
+    bodies: loader.listBodies().filter(b => b.projectId === request.projectId),
+    endpoints: loader.listEndpoints().filter(e => e.projectId === request.projectId),
+  };
+
+  const environmentVariables = loader.getEnvironmentVariables(request.environment);
+
+  const dynamicVarsList = loader.findDynamicVariables(request.projectId);
+  const dynamicVariables: Record<string, string> = {};
+  const dynamicVariableConfigs: Record<string, DynamicVariable> = {};
+  for (const v of dynamicVarsList) {
+    dynamicVariableConfigs[v.name] = v;
+    if (v.evaluationStrategy === 'ONCE_PER_RUN') {
+      dynamicVariables[v.name] = interpolate(v.expression, dynamicVariables);
+    } else {
+      dynamicVariables[v.name] = v.expression;
+    }
+  }
+
+  const settingsList = loader.listSettings();
+  const settings = settingsList.find(s => s.currentProjectId === project.id) || settingsList[0];
+
+  let suites: TestSuite[] = [];
+  if (request.type === 'plan') {
+    const plan = project.plans?.find(p => p.id === request.planId);
+    const requiredSuiteIds = new Set<string>();
+    plan?.scenarios?.forEach(ps => {
+      const scenario = project.scenarios?.find(s => s.id === ps.scenarioId);
+      scenario?.suites?.forEach(ss => requiredSuiteIds.add(ss.suiteId));
+    });
+    suites = loader.listSuites().filter(s => requiredSuiteIds.has(s.id));
+  } else if (request.type === 'scenario') {
+    const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
+    const requiredSuiteIds = new Set((scenario?.suites || []).map(ss => ss.suiteId));
+    suites = loader.listSuites().filter(s => requiredSuiteIds.has(s.id));
+  }
+
+  let displayName = `Execution: ${request.type}`;
+  if (request.type === 'case') {
+    const suite = loader.getSuite(request.suiteId!);
+    const testCase = suite?.cases.find(c => c.id === request.caseId);
+    displayName = testCase ? testCase.name : `Case: ${request.caseId}`;
+  } else if (request.type === 'suite') {
+    const suite = loader.getSuite(request.suiteId!);
+    displayName = suite ? suite.name : `Suite: ${request.suiteId}`;
+  } else if (request.type === 'scenario') {
+    const scenario = project.scenarios?.find(s => s.id === request.scenarioId);
+    displayName = scenario ? scenario.name : `Scenario: ${request.scenarioId}`;
+  } else if (request.type === 'plan') {
+    const plan = project.plans?.find(p => p.id === request.planId);
+    displayName = plan ? plan.name : `Plan: ${request.planId}`;
+  }
+
+  const targetSuite = request.suiteId ? loader.getSuite(request.suiteId) : undefined;
+
+  const payload: TaskPayload = {
+    runId,
+    reportId,
+    request,
+    project,
+    suite: targetSuite || undefined,
+    suites,
+    assets,
+    environmentVariables,
+    dynamicVariables,
+    dynamicVariableConfigs,
+    settings: settings as any
+  };
+
+  return { payload, displayName };
+}
+
+async function dispatchExecution(
+  request: ExecutionRequest,
+  payload: TaskPayload,
+  logger: ExecutionLogger,
+  signal: AbortSignal,
+  uiExecutor: UIExecutor,
+  runId: string,
+  displayName: string,
+  loader: ExecutionDataLoader = defaultDataLoader,
+): Promise<RunResult> {
+  const deps: ExecutorDeps = {
+    createContext: (options) => ExecutionContext.create(options) as IVariableContext,
+    executeApiStep: (step, context, assets, environment, logger, indent, onEnvVarExtracted) =>
+      executeApiStep(step, context as ExecutionContext, assets, environment, logger, indent, onEnvVarExtracted),
+  };
+
+  if (request.agentId) {
+    console.log(`[EXEC] Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
+    const { dispatchToAgent } = await import('../agent/dispatcher.ts');
+    return await dispatchToAgent(request.agentId, payload) as any;
+  }
+
+  const onEnvVarExtracted = (name: string, value: string) => {
+    const currentVars = loader.getEnvironmentVariables(request.environment);
+    currentVars[name] = value;
+    loader.updateEnvironmentVariables(request.environment, currentVars);
+  };
+
+  if (request.type === 'case') {
+    console.log(`[EXEC] Starting case execution for: ${displayName}`);
+    return executeSingleCase(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
+  }
+  if (request.type === 'suite') {
+    console.log(`[EXEC] Starting suite execution for: ${displayName}`);
+    return executeSuite(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
+  }
+  if (request.type === 'scenario') {
+    console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
+    return executeScenario(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
+  }
+  console.log(`[EXEC] Starting plan execution for: ${displayName}`);
+  return executePlan(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
+}
+
+async function finalizeRun(
+  request: ExecutionRequest,
+  runId: string,
+  reportId: string,
+  logger: ExecutionLogger,
+  result: RunResult,
+  displayName: string,
+  startTime: number,
+  endTime: number,
+  loader: ExecutionDataLoader = defaultDataLoader,
+): Promise<void> {
+
+  loader.saveReport({
     id: reportId,
     suiteId: request.suiteId || request.scenarioId || request.planId || request.projectId,
     suiteName: displayName,
@@ -258,23 +277,14 @@ async function executeRunAsync(
   });
   console.log(`[EXEC] Report saved successfully: ${reportId}`);
 
-  // Update execution_run record
   db.prepare(`
     UPDATE execution_runs SET status = ?, finished_at = ?, error_message = ?
     WHERE id = ?
-  `).run(
-    result.status,
-    endTime,
-    result.status === 'FAILED' ? 'See report logs' : null,
-    runId,
-  );
+  `).run(result.status, endTime, result.status === 'FAILED' ? 'See report logs' : null, runId);
 
-  // Push final SSE event
   logger.complete(result);
-
   console.log(`[EXEC] Task Finished: ${displayName} (${runId}) - Status: ${result.status} | Pass Rate: ${result.passRate}% | Cases: ${result.passedCases}/${result.totalCases}`);
 
-  // Cleanup
   removeActiveRunLogger(reportId);
   unregisterRun(runId);
 }

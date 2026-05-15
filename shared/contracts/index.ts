@@ -77,7 +77,7 @@ export interface UIElement {
   pageUrl?: string;
   locators?: { selectorType: SelectorType; value: string }[];
   isVerified?: boolean;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Page {
@@ -130,7 +130,7 @@ export interface TestStep {
   networkMocks?: NetworkMockConfig[];
   assertions?: StepAssertion[];
   isVerified?: boolean;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
   failureStrategy?: 'fail-fast' | 'soft';
 }
 
@@ -258,7 +258,7 @@ export interface ExecutionLog {
   level?: LogLevel;
   message: string;
   screenshot?: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ExecutionReport {
@@ -309,7 +309,7 @@ export interface ExecutionLogEvent {
   level?: LogLevel;
   message: string;
   screenshot?: string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RunResult {
@@ -358,6 +358,7 @@ export interface IVariableContext {
   setCurrentStep(stepId: string): void;
   setCurrentContext(scenarioName: string | null, suiteName: string | null, caseName: string | null): void;
   onVariableSet(callback: (key: string, value: string, scope: string) => void): void;
+  removeOnVariableSet(): void;
   createChildContext(moduleDefaults: Record<string, string>, callerOverrides: Record<string, string>): IVariableContext;
   mergeChildExtractedVars(childContext: IVariableContext, namespace?: string): void;
   clearCaseVars(): void;
@@ -388,7 +389,7 @@ export type IUiExecutor = {
     screenshot?: string;
     extractedValue?: string;
     assertionDetails?: { expected: string; actual: string; target?: string };
-    logs?: { status: string; level: string; message: string }[];
+    logs?: { status: string; level: LogLevel; message: string }[];
   }>;
   captureStateScreenshot(): Promise<string | undefined>;
   cleanup(): Promise<void>;
@@ -414,8 +415,8 @@ export interface ApiExecutionResult {
   resolvedMethod: string;
   resolvedHeaders: Record<string, string>;
   resolvedBody: string;
-  assertionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: any }[];
-  extractionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: any }[];
+  assertionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: Record<string, unknown> }[];
+  extractionLogs: { stepId?: string; status: string; level: LogLevel; message: string; metadata?: Record<string, unknown> }[];
 }
 
 export interface TaskPayload {

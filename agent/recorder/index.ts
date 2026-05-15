@@ -235,7 +235,7 @@ try { this.session.adapter.stop(); } catch {}
       });
     }
 
-    await page.goto(targetUrl);
+    await page.goto(targetUrl, { timeout: 60000 });
     await page.bringToFront();
 
     const startedState: RecorderState = { isPaused: false, started: true, mode, action: 'START' };

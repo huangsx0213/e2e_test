@@ -1,20 +1,5 @@
 import { interpolate } from './interpolator.ts';
-import type { DynamicVariable } from '../../shared/contracts/index.ts';
-
-export type LayerName =
-  | 'DYNAMIC'
-  | 'ENVIRONMENT'
-  | 'RUNTIME_ENVIRONMENT'
-  | 'SUITE'
-  | 'SUITE_DATA'
-  | 'RUNTIME_SUITE'
-  | 'MODULE_DEFAULT'
-  | 'SCENARIO'
-  | 'SCENARIO_DATA'
-  | 'RUNTIME_SCENARIO'
-  | 'OVERRIDE'
-  | 'CALLER_OVERRIDE'
-  | 'CASE';
+import type { DynamicVariable, LayerName } from '../../shared/contracts/index.ts';
 
 export const LAYER_PRIORITY: LayerName[] = [
   'DYNAMIC',
@@ -77,6 +62,10 @@ export class ExecutionContext {
    */
   onVariableSet(callback: (key: string, value: string, scope: string) => void): void {
     this.onVariableSetCallback = callback;
+  }
+
+  removeOnVariableSet(): void {
+    this.onVariableSetCallback = undefined;
   }
 
   /**
