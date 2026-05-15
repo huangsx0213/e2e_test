@@ -12,6 +12,7 @@ interface AssertionEditorProps {
 const API_SOURCES: { value: AssertionSource; label: string }[] = [
   { value: 'API_BODY_JSON', label: 'JSON Body' },
   { value: 'API_BODY_XML', label: 'XML Body' },
+  { value: 'API_BODY_REGEX', label: 'Body Regex' },
   { value: 'API_STATUS', label: 'Status Code' },
   { value: 'API_HEADER', label: 'Header' },
   { value: 'API_DURATION', label: 'Duration (ms)' },
@@ -49,6 +50,7 @@ const OPERATORS_BY_SOURCE: Record<SourceGroup, { value: AssertionOperator; label
     { value: 'CONTAINS_KEY', label: 'Contains Key' },
     { value: 'MATCHES_JSON_SCHEMA', label: 'JSON Schema' },
     { value: 'LESS_THAN_DURATION', label: '< Duration (ms)' },
+    { value: 'GREATER_THAN_DURATION', label: '> Duration (ms)' },
   ],
   ui: [
     { value: 'EQUALS', label: 'Equals' },
@@ -81,6 +83,7 @@ function expressionPlaceholder(source: AssertionSource): string {
   switch (source) {
     case 'API_BODY_JSON': return "$.data.id";
     case 'API_BODY_XML': return "$.root.user.name";
+    case 'API_BODY_REGEX': return "(?<=status: )\\d+";
     case 'API_HEADER': return 'Content-Type';
     case 'UI_ATTRIBUTE': return 'href, src, class…';
     default: return 'Expression';
@@ -94,6 +97,7 @@ function expectedPlaceholder(operator: AssertionOperator): string {
     case 'CONTAINS_KEY': return 'keyName';
     case 'MATCHES_JSON_SCHEMA': return '{"type":"object","required":["id"]}';
     case 'LESS_THAN_DURATION': return '500';
+    case 'GREATER_THAN_DURATION': return '100';
     case 'MATCHES_REGEX': return '^\\d+$';
     default: return 'Expected Value';
   }

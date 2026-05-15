@@ -1,11 +1,51 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import { JSONPath } from 'jsonpath-plus';
-import type { TestStep, LogLevel } from '../../shared/contracts/index.ts';
+import type { TestStep, LogLevel, StepAssertion } from '../../shared/contracts/index.ts';
 import type { ExecutionContext } from './context.ts';
 import type { UIElement } from '../../shared/contracts/index.ts';
 import type { IExecutionLogger } from '../../shared/contracts/index.ts';
 import { evaluateAssertions, buildUiAssertionContext, hasFailedAssertions } from './assertions.ts';
 import type { AssertionContext } from './assertions.ts';
+import { randomUUID } from 'crypto';
+
+const BUILTIN_ASSERTION_ACTIONS = new Set([
+  'assertVisible', 'assertHidden',
+  'assertEnabled', 'assertDisabled',
+  'assertChecked', 'assertUnchecked',
+  'assertText', 'assertValue',
+  'assertUrl', 'assertTitle',
+]);
+
+function builtinActionToAssertion(action: string, data: string | undefined, target: string): StepAssertion | null {
+  switch (action) {
+    case 'assertVisible':
+      return { id: randomUUID(), source: 'UI_ELEMENT_VISIBLE', operator: 'EQUALS', expectedValue: 'true' };
+    case 'assertHidden':
+      return { id: randomUUID(), source: 'UI_ELEMENT_VISIBLE', operator: 'EQUALS', expectedValue: 'false' };
+    case 'assertEnabled':
+      return { id: randomUUID(), source: 'UI_ELEMENT_ENABLED', operator: 'EQUALS', expectedValue: 'true' };
+    case 'assertDisabled':
+      return { id: randomUUID(), source: 'UI_ELEMENT_ENABLED', operator: 'EQUALS', expectedValue: 'false' };
+    case 'assertChecked':
+      return { id: randomUUID(), source: 'UI_ELEMENT_CHECKED', operator: 'EQUALS', expectedValue: 'true' };
+    case 'assertUnchecked':
+      return { id: randomUUID(), source: 'UI_ELEMENT_CHECKED', operator: 'EQUALS', expectedValue: 'false' };
+    case 'assertText':
+      if (data === undefined) return null;
+      return { id: randomUUID(), source: 'UI_TEXT', operator: 'EQUALS', expectedValue: data };
+    case 'assertValue':
+      if (data === undefined) return null;
+      return { id: randomUUID(), source: 'UI_VALUE', operator: 'EQUALS', expectedValue: data };
+    case 'assertUrl':
+      if (data === undefined) return null;
+      return { id: randomUUID(), source: 'UI_PAGE_URL', operator: 'EQUALS', expectedValue: data };
+    case 'assertTitle':
+      if (data === undefined) return null;
+      return { id: randomUUID(), source: 'UI_PAGE_TITLE', operator: 'EQUALS', expectedValue: data };
+    default:
+      return null;
+  }
+}
 
 export interface UIExecutionResult {
   durationMs: number;
@@ -392,6 +432,14 @@ export class UIExecutor {
 
     const resolvedSelector = step.target ? executionContext.interpolate(step.target) : '';
 
+    // Convert built-in assertion actions to step-level assertions for unified handling
+    if (BUILTIN_ASSERTION_ACTIONS.has(step.action)) {
+      const assertion = builtinActionToAssertion(step.action, data, resolvedSelector);
+      if (assertion) {
+        step.assertions = [assertion, ...(step.assertions || [])];
+      }
+    }
+
     const actionPromise = (async () => {
       switch (step.action) {
         case 'goto':
@@ -556,135 +604,7 @@ export class UIExecutor {
           } else {
             throw new Error('Either data (key name) or target (element) is required for PRESS_KEY step');
           }
-          break;
-
-        case 'assertVisible': {
-          const locator = await getSmartLocator();
-          assertionDetails = { expected: 'VISIBLE', actual: 'VISIBLE', target: resolvedSelector };
-          try {
-            await locator.waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
-          } catch (e: any) {
-            assertionDetails.actual = 'HIDDEN/MISSING';
-            e.assertionDetails = assertionDetails;
-            throw e;
-          }
-          break;
-        }
-
-        case 'assertHidden': {
-          const locator = await getSmartLocator();
-          assertionDetails = { expected: 'HIDDEN', actual: 'HIDDEN', target: resolvedSelector };
-          try {
-            await locator.waitFor({ state: 'hidden', timeout: DEFAULT_TIMEOUT });
-          } catch (e: any) {
-            assertionDetails.actual = 'VISIBLE';
-            e.assertionDetails = assertionDetails;
-            throw e;
-          }
-          break;
-        }
-
-case 'assertDisabled': {
-            const locator = await getSmartLocator();
-            const isDisabled = await locator.isDisabled({ timeout: DEFAULT_TIMEOUT });
-            assertionDetails = { expected: 'DISABLED', actual: isDisabled ? 'DISABLED' : 'ENABLED', target: resolvedSelector };
-            if (!isDisabled) {
-                const err = new Error(`Assertion failed: Expected element to be DISABLED, but it is ENABLED`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-            break;
-        }
-
-        case 'assertEnabled': {
-            const locator = await getSmartLocator();
-            const isEnabled = await locator.isEnabled({ timeout: DEFAULT_TIMEOUT });
-            assertionDetails = { expected: 'ENABLED', actual: isEnabled ? 'ENABLED' : 'DISABLED', target: resolvedSelector };
-            if (!isEnabled) {
-                const err = new Error(`Assertion failed: Expected element to be ENABLED, but it is DISABLED`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-            break;
-        }
-
-        case 'assertChecked': {
-            const locator = await getSmartLocator();
-            const isChecked = await locator.isChecked({ timeout: DEFAULT_TIMEOUT });
-            assertionDetails = { expected: 'CHECKED', actual: isChecked ? 'CHECKED' : 'UNCHECKED', target: resolvedSelector };
-            if (!isChecked) {
-                const err = new Error(`Assertion failed: Expected element to be CHECKED, but it is UNCHECKED`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-            break;
-        }
-
-        case 'assertUnchecked': {
-            const locator = await getSmartLocator();
-            const isChecked = await locator.isChecked({ timeout: DEFAULT_TIMEOUT });
-            assertionDetails = { expected: 'UNCHECKED', actual: isChecked ? 'CHECKED' : 'UNCHECKED', target: resolvedSelector };
-            if (isChecked) {
-                const err = new Error(`Assertion failed: Expected element to be UNCHECKED, but it is CHECKED`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-            break;
-        }
-
-case 'assertText':
-        if (data === undefined) throw new Error('Data is required for ASSERT_TEXT step');
-        {
-            const locator = await getSmartLocator();
-            const text = (await locator.textContent({ timeout: DEFAULT_TIMEOUT }) || '').trim();
-            assertionDetails = { expected: `EQUALS '${data}'`, actual: text, target: resolvedSelector };
-            if (text !== data) {
-                const err = new Error(`Assertion failed: Expected text to EQUAL '${data}', but got '${text}'`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-        }
-        break;
-
-        case 'assertValue':
-          if (data === undefined) throw new Error('Data is required for ASSERT_VALUE step');
-          {
-            const locator = await getSmartLocator();
-            const val = await locator.inputValue({ timeout: DEFAULT_TIMEOUT });
-            assertionDetails = { expected: `EQUALS '${data}'`, actual: val, target: resolvedSelector };
-            if (val !== data) {
-              const err = new Error(`Assertion failed: Expected value EQUALS '${data}', but got '${val}'`);
-              (err as any).assertionDetails = assertionDetails;
-              throw err;
-            }
-          }
-          break;
-
-case 'assertUrl':
-        if (data === undefined) throw new Error('Data (expected URL) is required for ASSERT_URL step');
-        {
-            const currentUrl = this.page.url();
-            assertionDetails = { expected: `EQUALS '${data}'`, actual: currentUrl };
-            if (currentUrl !== data) {
-                const err = new Error(`Assertion failed: Expected URL to EQUAL '${data}', but got '${currentUrl}'`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-        }
-        break;
-
-        case 'assertTitle':
-        if (data === undefined) throw new Error('Data (expected title) is required for ASSERT_TITLE step');
-        {
-            const title = await this.page.title();
-            assertionDetails = { expected: `EQUALS '${data}'`, actual: title };
-            if (title !== data) {
-                const err = new Error(`Assertion failed: Expected title to EQUAL '${data}', but got '${title}'`);
-                (err as any).assertionDetails = assertionDetails;
-                throw err;
-            }
-        }
-        break;
+break;
 
         case 'extractVar':
           if (!data) throw new Error('Data (variable key) is required for EXTRACT_VAR step');
@@ -801,6 +721,18 @@ case 'assertUrl':
           if (resolvedSelector) {
             await getSmartLocator({ skipActionabilityCheck: true });
           }
+          break;
+
+        case 'assertVisible':
+        case 'assertHidden':
+        case 'assertEnabled':
+        case 'assertDisabled':
+        case 'assertChecked':
+        case 'assertUnchecked':
+        case 'assertText':
+        case 'assertValue':
+        case 'assertUrl':
+        case 'assertTitle':
           break;
 
         default:
@@ -958,7 +890,10 @@ case 'assertUrl':
 
     // ─── Process Step-Level Assertions ───
     if (step.assertions && step.assertions.length > 0) {
-      const uiCtx = await buildUiAssertionContext(this.page, resolvedSelector ? await getSmartLocator({ skipActionabilityCheck: true }) : null, step.assertions.find(a => a.source === 'UI_ATTRIBUTE')?.expression);
+      const attributeNames = step.assertions
+        .filter(a => a.source === 'UI_ATTRIBUTE' && a.expression)
+        .map(a => a.expression!);
+      const uiCtx = await buildUiAssertionContext(this.page, resolvedSelector ? await getSmartLocator({ skipActionabilityCheck: true }) : null, attributeNames);
       const context: AssertionContext = {
         body: '',
         headers: {},

@@ -15,7 +15,7 @@ export interface UiAssertionContext {
   pageTitle?: string;
   elementText?: string;
   elementValue?: string;
-  elementAttribute?: string;
+  elementAttributes?: Record<string, string>;
   elementCount?: number;
   elementVisible?: boolean;
   elementEnabled?: boolean;
@@ -60,6 +60,15 @@ function resolveApiSource(source: string, context: ApiAssertionContext, expressi
       } catch (e) {
         throw new Error(`Could not parse response body as XML. ${e}`);
       }
+    case 'API_BODY_REGEX':
+      if (!expression) throw new Error(`Expression (regex pattern) is required for API_BODY_REGEX source.`);
+      try {
+        const regex = new RegExp(expression);
+        const match = context.body.match(regex);
+        return match ? (match[1] !== undefined ? match[1] : match[0]) : undefined;
+      } catch (e) {
+        throw new Error(`Invalid regex pattern '${expression}': ${e}`);
+      }
     case 'API_DURATION':
       return context.durationMs;
     default:
@@ -75,7 +84,8 @@ function resolveUiSource(source: string, ui: UiAssertionContext | undefined, exp
     case 'UI_VALUE':
       return ui.elementValue;
     case 'UI_ATTRIBUTE':
-      return ui.elementAttribute;
+      if (!expression) return undefined;
+      return ui.elementAttributes?.[expression];
     case 'UI_PAGE_URL':
       return ui.pageUrl;
     case 'UI_PAGE_TITLE':
@@ -213,7 +223,7 @@ function evaluateOperator(operator: AssertionOperator, actualValue: any, asserti
         throw new Error(`Expected value is not valid JSON Schema: ${expected}`);
       }
       const validate = ajv.compile(schema);
-      const valueToValidate = (typeof actualValue === 'object') ? actualValue : actualValue;
+      const valueToValidate = typeof actualValue === 'string' ? JSON.parse(actualValue) : actualValue;
       if (!validate(valueToValidate)) {
         const errors = validate.errors?.map(e => `${e.instancePath || '/'} ${e.message}`).join('; ') || 'Schema validation failed';
         fail(`JSON Schema validation failed: ${errors}`);
@@ -227,6 +237,15 @@ function evaluateOperator(operator: AssertionOperator, actualValue: any, asserti
       const actualMs = Number(actualValue);
       if (isNaN(actualMs)) throw new Error(`Actual duration '${actualValue}' is not a number.`);
       if (actualMs >= maxMs) fail(`Expected duration < ${maxMs}ms, but took ${actualMs}ms`);
+      break;
+    }
+    case 'GREATER_THAN_DURATION': {
+      if (!expected) throw new Error(`Expected value (duration in ms) is required for GREATER_THAN_DURATION.`);
+      const minMs = Number(expected);
+      if (isNaN(minMs)) throw new Error(`Expected duration '${expected}' is not a valid number.`);
+      const actualMs = Number(actualValue);
+      if (isNaN(actualMs)) throw new Error(`Actual duration '${actualValue}' is not a number.`);
+      if (actualMs <= minMs) fail(`Expected duration > ${minMs}ms, but took ${actualMs}ms`);
       break;
     }
     default:
@@ -272,7 +291,7 @@ export function buildApiAssertionContext(
 export async function buildUiAssertionContext(
   page: any,
   locator: any | null,
-  expression?: string,
+  attributeNames: string[] = [],
 ): Promise<UiAssertionContext> {
   const ctx: UiAssertionContext = {};
   try { ctx.pageUrl = page.url(); } catch {}
@@ -280,8 +299,15 @@ export async function buildUiAssertionContext(
   if (locator) {
     try { ctx.elementText = await locator.textContent({ timeout: 3000 }) || undefined; } catch {}
     try { ctx.elementValue = await locator.inputValue({ timeout: 3000 }).catch(() => undefined); } catch {}
-    if (expression) {
-      try { ctx.elementAttribute = await locator.getAttribute(expression, { timeout: 3000 }) || undefined; } catch {}
+    if (attributeNames.length > 0) {
+      const attrs: Record<string, string> = {};
+      for (const name of attributeNames) {
+        try {
+          const val = await locator.getAttribute(name, { timeout: 3000 });
+          if (val !== null) attrs[name] = val;
+        } catch {}
+      }
+      if (Object.keys(attrs).length > 0) ctx.elementAttributes = attrs;
     }
     try { ctx.elementCount = await locator.count(); } catch {}
     try { ctx.elementVisible = await locator.isVisible().catch(() => false); } catch {}

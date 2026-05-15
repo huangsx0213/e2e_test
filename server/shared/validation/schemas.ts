@@ -25,6 +25,7 @@ export const assertionSchema = z.object({
   source: z.enum([
     'API_BODY_JSON',
     'API_BODY_XML',
+    'API_BODY_REGEX',
     'API_STATUS',
     'API_HEADER',
     'API_DURATION',
@@ -55,7 +56,8 @@ export const assertionSchema = z.object({
     'HAS_LENGTH',
     'CONTAINS_KEY',
     'MATCHES_JSON_SCHEMA',
-    'LESS_THAN_DURATION'
+    'LESS_THAN_DURATION',
+    'GREATER_THAN_DURATION'
   ]),
   expectedValue: z.string().optional(),
   flags: z.string().optional(),
