@@ -13,6 +13,7 @@ import { migration009AgentsVersion } from './009_agents_version.ts';
 import { migration010ProjectElementMetadata } from './010_project_element_metadata.ts';
 import { migration011StepMetadata } from './011_step_metadata.ts';
 import { migration012RequirementsSchema } from './012_requirements_schema.ts';
+import { migration013AiPipelineSchema } from './013_ai_pipeline_schema.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -31,6 +32,7 @@ export const migrations: Migration[] = [
   migration010ProjectElementMetadata,
   migration011StepMetadata,
   migration012RequirementsSchema,
+  migration013AiPipelineSchema,
 ];
 
 function appliedMigrationIds(): Set<string> {
