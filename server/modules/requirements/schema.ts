@@ -1,0 +1,16 @@
+import { z } from 'zod';
+
+export const requirementPayloadSchema = z.object({
+  projectId: z.string(),
+  parentId: z.string().nullable().optional(),
+  title: z.string().min(1),
+  description: z.string().optional().default(''),
+  priority: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).optional().default('MEDIUM'),
+  riskLevel: z.enum(['HIGH', 'MEDIUM', 'LOW']).optional().default('MEDIUM'),
+  type: z.enum(['functional', 'performance', 'security', 'usability', 'reliability']).optional().default('functional'),
+  status: z.enum(['DRAFT', 'APPROVED', 'IN_PROGRESS', 'DEPRECATED']).optional().default('DRAFT'),
+  position: z.number().optional().default(0),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const requirementPatchSchema = requirementPayloadSchema.partial();

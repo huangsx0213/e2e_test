@@ -13,6 +13,7 @@ import { recordingModule } from '../modules/recording/index.ts';
 import { dynamicVariablesModule } from '../modules/dynamic-variables/index.ts';
 
 import { agentsModule } from '../modules/agent/index.ts';
+import { requirementsModule } from '../modules/requirements/index.ts';
 import { autRouter } from '../../aut/server/routes';
 
 export function registerRoutes(app: Express) {
@@ -29,6 +30,7 @@ export function registerRoutes(app: Express) {
     recordingModule,
     dynamicVariablesModule,
     agentsModule,
+    requirementsModule,
   ];
 
   for (const module of modules) {

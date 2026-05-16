@@ -185,3 +185,17 @@ export type DbSettingsRow = {
   viewport_width: number;
   viewport_height: number;
 };
+
+export type DbRequirementRow = {
+  id: string;
+  project_id: string;
+  parent_id: string | null;
+  title: string;
+  description: string;
+  priority: string;
+  risk_level: string;
+  type: string;
+  status: string;
+  position: number;
+  metadata: string;
+};
