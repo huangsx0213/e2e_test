@@ -436,3 +436,120 @@ export interface TaskPayload {
   dynamicVariableConfigs: Record<string, DynamicVariable>;
   settings: Settings;
 }
+
+// ─── Requirement Management Types ───
+
+export interface Requirement {
+  id: string;
+  projectId: string;
+  parentId?: string | null;
+  title: string;
+  description: string;
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
+  type: 'functional' | 'performance' | 'security' | 'usability' | 'reliability';
+  status: 'DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'DEPRECATED';
+  position: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface TestCondition {
+  id: string;
+  requirementId: string;
+  requirementLevel: 'epic' | 'feature' | 'story' | 'ac';
+  condition: string;
+  category: 'happy-path' | 'alternate' | 'error' | 'boundary';
+  riskLevel: 'high' | 'medium' | 'low';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  dataRequirements?: string;
+  dependencies?: string[];
+  primaryTechnique: 'equivalence-partitioning' | 'boundary-value-analysis' | 'decision-table' | 'state-transition' | 'use-case';
+  secondaryTechniques: string[];
+  techniqueRationale: string;
+  coverageDimensions: { dimension: string; variants: string[] }[];
+}
+
+export interface NlTestCaseStep {
+  sequence: number;
+  action: string;
+  expected: string;
+}
+
+export interface NlTestCaseTestData {
+  key: string;
+  value: string;
+  description: string;
+}
+
+export interface SelfReviewIssue {
+  severity: 'blocker' | 'major' | 'minor';
+  category: 'atomicity' | 'testability' | 'coverage' | 'repeatability' | 'clarity' | 'data-completeness';
+  description: string;
+  suggestion: string;
+}
+
+export interface SelfReview {
+  score: number;
+  issues: SelfReviewIssue[];
+  pass: boolean;
+}
+
+export interface NlTestCaseChangeLog {
+  source: 'agent-self-review' | 'human-review' | 'final-review';
+  changes: string;
+}
+
+export interface NlTestCase {
+  id: string;
+  projectId: string;
+  title: string;
+  requirementId?: string;
+  conditionId?: string;
+  techniqueApplied?: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  category?: string;
+  preconditions: string[];
+  testData: NlTestCaseTestData[];
+  steps: NlTestCaseStep[];
+  postconditions: string[];
+  tags: string[];
+  selfReview?: SelfReview;
+  reviewSummary?: string;
+  changeLog: NlTestCaseChangeLog[];
+  status: 'DRAFT' | 'APPROVED' | 'FINAL';
+  generatedSuiteId?: string;
+}
+
+export interface CoverageRow {
+  requirementId: string;
+  requirementTitle: string;
+  level: string;
+  totalConditions: number;
+  testCaseCount: number;
+  techniqueBreakdown: Record<string, number>;
+  categoryBreakdown: Record<string, number>;
+  coveragePercentage: number;
+  uncoveredRisks: string[];
+}
+
+export interface CoverageMatrix {
+  rows: CoverageRow[];
+}
+
+export interface PipelineState {
+  projectId: string;
+  requirementIds: string[];
+  requirementAnalysis?: {
+    overallApproach: string;
+    riskAssessmentSummary: string;
+  };
+  testConditions?: TestCondition[];
+  approvedConditions?: TestCondition[];
+  draftTestCases?: NlTestCase[];
+  approvedDraftCases?: NlTestCase[];
+  humanReviewFeedback?: string;
+  finalTestCases?: NlTestCase[];
+  coverageMatrix?: CoverageMatrix;
+  phase: 'init' | 'analysis' | 'review-conditions' | 'design' | 'review-draft' | 'quality' | 'final-review' | 'complete';
+  errors: { phase: string; agent: string; step: string; message: string; rawResponse?: string; timestamp: number }[];
+}
