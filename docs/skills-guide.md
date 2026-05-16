@@ -1,6 +1,6 @@
 # OpenCode Skills 使用指南
 
-> 当前共 29 个 skills，分类整理
+> 当前共 24 个 skills，分类整理
 
 ---
 
@@ -99,7 +99,7 @@
 
 ---
 
-## 📋 预装工具类（12 个）
+## 📋 预装工具类（7 个）
 
 ### arch-analyze
 - **触发时机**：分析项目架构时
@@ -110,10 +110,6 @@
 - **触发时机**：审查代码质量
 - **功能**：正确性检查、安全漏洞、性能评估、编码规范、技术债发现
 - **严重级别**：Critical（必须改）→ High（应尽快改）→ Medium → Low
-
-### diagnose
-- **触发时机**：调试难复现的 bug、性能回归
-- **流程**：复现 → 最小化 → 假设 → 检测 → 修复 → 回归测试
 
 ### doc-generator
 - **触发时机**：生成/更新文档
@@ -129,25 +125,11 @@
 - **功能**：识别浅模块 → 提出"深化"机会 → 提升可测试性和 AI 可导航性
 - **术语**：Module、Interface、Depth、Seam、Adapter、Leverage
 
-### customize-opencode
-- **触发时机**：编辑 opencode 配置文件
-- **范围**：opencode.json/.jsonc、.opencode/ 目录、~/.config/opencode/
-
-### setup-matt-pocock-skills
-- **触发时机**：首次配置技能体系时
-- **功能**：在 AGENTS.md 中设置 issue tracker、triage 标签、领域文档布局
-
-### tdd
-- **触发时机**：实现任何功能或 bug 修复前
-- **流程**：RED（写失败测试）→ GREEN（最简代码通过）→ REFACTOR（重构）
-
-### to-issues
-- **触发时机**：将计划/PRD 分解为任务时
-- **功能**：将需求拆分为独立的、可领取的 issues（垂直切片）
-
-### zoom-out
-- **触发时机**：需要更广的代码上下文理解
-- **功能**：从更高层面解释代码的整体结构和工作流程
+### to-prd
+- **触发时机**：用户想将当前对话转化为 PRD 并发布到 issue tracker
+- **核心作用**：不访谈用户，直接基于已有对话上下文合成 PRD
+- **流程**：探索代码库 → 设计模块 → 写 PRD（问题/方案/User Stories/模块设计）→ 发布到 GitHub Issue → 打 `ready-for-agent` 标签
+- **模板**：包含 Problem Statement、Solution、User Stories、Deep Modules、Test Requirements
 
 ---
 
@@ -155,6 +137,8 @@
 
 ```
 需求提出
+  ↓
+to-prd（可选：将对话转化为 PRD → GitHub Issue）
   ↓
 brainstorming → 写设计文档到 docs/superpowers/specs/
   ↓
