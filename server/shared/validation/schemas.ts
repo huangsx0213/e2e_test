@@ -106,4 +106,5 @@ export const dynamicVariableSchema = z.object({
   name: z.string().min(1),
   expression: z.string().min(1),
   description: z.string().optional(),
+  evaluationStrategy: z.enum(['ONCE_PER_RUN', 'EVERY_TIME', 'ONCE_PER_CASE', 'ONCE_PER_SUITE', 'ONCE_PER_SCENARIO']).optional(),
 });

@@ -30,6 +30,18 @@ router.delete('/dynamic-variables/:id', withErrorHandling(async (req, res) => {
   res.status(204).send();
 }));
 
+router.post('/api/dynamic-variables/preview', withErrorHandling((req, res) => {
+  const { expression } = req.body;
+  if (!expression) throw new ValidationError('Expression is required');
+
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    samples.push(interpolate(expression, {}));
+  }
+
+  res.json({ samples });
+}));
+
 router.post('/dynamic-variables/preview', withErrorHandling((req, res) => {
   const { expression } = req.body;
   if (!expression) throw new ValidationError('Expression is required');

@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 export class DynamicVariableRepository {
   static findByProjectId(projectId: string): DynamicVariable[] {
     const rows = db.prepare(`
-      SELECT id, project_id as projectId, name, expression, description, created_at as createdAt, updated_at as updatedAt
+      SELECT id, project_id as projectId, name, expression, description, evaluation_strategy as evaluationStrategy, created_at as createdAt, updated_at as updatedAt
       FROM dynamic_variables
       WHERE project_id = ?
       ORDER BY created_at DESC
@@ -20,7 +20,7 @@ export class DynamicVariableRepository {
 
   static findById(id: string): DynamicVariable | undefined {
     const row = db.prepare(`
-      SELECT id, project_id as projectId, name, expression, description, created_at as createdAt, updated_at as updatedAt
+      SELECT id, project_id as projectId, name, expression, description, evaluation_strategy as evaluationStrategy, created_at as createdAt, updated_at as updatedAt
       FROM dynamic_variables
       WHERE id = ?
     `).get(id) as any;
@@ -39,14 +39,15 @@ export class DynamicVariableRepository {
     const now = Date.now();
     
     db.prepare(`
-      INSERT INTO dynamic_variables (id, project_id, name, expression, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO dynamic_variables (id, project_id, name, expression, description, evaluation_strategy, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       projectId,
       data.name,
       data.expression,
       data.description || '',
+      data.evaluationStrategy || 'EVERY_TIME',
       now,
       now
     );
@@ -59,12 +60,13 @@ export class DynamicVariableRepository {
     
     db.prepare(`
       UPDATE dynamic_variables
-      SET name = ?, expression = ?, description = ?, updated_at = ?
+      SET name = ?, expression = ?, description = ?, evaluation_strategy = ?, updated_at = ?
       WHERE id = ?
     `).run(
       data.name,
       data.expression,
       data.description || '',
+      data.evaluationStrategy || 'EVERY_TIME',
       now,
       id
     );
