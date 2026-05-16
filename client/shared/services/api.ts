@@ -1,4 +1,5 @@
 import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest, DynamicVariable } from '@/shared/types';
+import type { Requirement } from '../../../shared/contracts/index';
 
 export interface CrudService<T extends { id: string }> {
   list: () => Promise<T[]>;
@@ -116,6 +117,7 @@ export const api = {
   queue: {
     list: () => apiFetch<any[]>('runners/queue'),
   },
+  requirements: createCrudService<Requirement>('requirements'),
 };
 
 // --- Execution API ---

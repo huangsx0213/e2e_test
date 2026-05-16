@@ -38,6 +38,7 @@ function AppShell() {
     DOCUMENTATION: [],
     DYNAMIC_VARIABLES: [],
     AGENTS: queryKeys.agents,
+    REQUIREMENTS: queryKeys.requirements,
   };
 
   const handleTabChange = useCallback(

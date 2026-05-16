@@ -12,6 +12,7 @@ import {
   Workflow,
   BookOpen,
   Server,
+  ClipboardList,
   type LucideIcon,
 } from 'lucide-react';
 import { AppTab } from '@/app/types';
@@ -43,6 +44,7 @@ export const navigationSections: NavigationSection[] = [
   {
     title: 'Infrastructure',
     items: [
+      { tab: 'REQUIREMENTS', label: 'Requirements', icon: ClipboardList },
       { tab: 'AGENTS', label: 'Remote Agents', icon: Server },
     ],
   },

@@ -11,6 +11,7 @@ import { TestBuilder } from "@/features/tests/TestBuilder";
 import { DynamicVariables } from "@/features/dynamic-variables/DynamicVariables";
 import { Documentation } from "@/features/documentation/Documentation";
 import { AgentManagement } from "@/features/agents/AgentManagement";
+import { RequirementsPage } from "@/features/requirements/RequirementsPage";
 import type { Dispatch, SetStateAction } from "react";
 import { AppTab } from "@/app/types";
 import { useWorkspaceContext } from "@/app/contexts/WorkspaceContext";
@@ -151,6 +152,8 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
       return <DynamicVariables currentProjectId={currentProjectId} />;
     case "AGENTS":
       return <AgentManagement />;
+    case "REQUIREMENTS":
+      return <RequirementsPage />;
     default:
       return null;
   }

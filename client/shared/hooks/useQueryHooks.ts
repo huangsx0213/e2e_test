@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/services/api';
 import { queryKeys } from './queryKeys';
 import type { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, Settings, ExecutionReport, DynamicVariable } from '@/shared/types';
+import type { Requirement } from '../../../shared/contracts/index';
 
 export function useProjects() {
   return useQuery({
@@ -300,5 +301,33 @@ export function useAgentMutations() {
     updateStatus: (id: string, status: string) => updateStatus.mutateAsync({ id, status }),
     updateLabels: (id: string, labels: string[]) => updateLabels.mutateAsync({ id, labels }),
     remove: (id: string) => remove.mutateAsync(id),
+  };
+}
+
+export function useRequirements() {
+  return useQuery({
+    queryKey: queryKeys.requirements,
+    queryFn: () => api.requirements.list(),
+  });
+}
+
+export function useRequirementMutations(): MutationActions<Requirement> {
+  const qc = useQueryClient();
+  const create = useMutation({
+    mutationFn: (item: Omit<Requirement, 'id'> | Requirement) => api.requirements.create(item),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.requirements }),
+  });
+  const update = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Requirement> }) => api.requirements.update(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.requirements }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.requirements.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.requirements }),
+  });
+  return {
+    create: (item) => create.mutateAsync(item),
+    update: (id, data) => update.mutateAsync({ id, data }),
+    remove: (id) => remove.mutateAsync(id),
   };
 }
