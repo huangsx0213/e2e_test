@@ -56,17 +56,24 @@ export class DynamicVariableRepository {
   }
 
   static update(id: string, data: Partial<DynamicVariable>): DynamicVariable {
+    const existing = this.findById(id);
+    if (!existing) throw new Error(`DynamicVariable not found: ${id}`);
+
     const now = Date.now();
-    
+    const name = data.name !== undefined ? data.name : existing.name;
+    const expression = data.expression !== undefined ? data.expression : existing.expression;
+    const description = data.description !== undefined ? data.description : existing.description;
+    const evaluationStrategy = data.evaluationStrategy !== undefined ? data.evaluationStrategy : existing.evaluationStrategy;
+
     db.prepare(`
       UPDATE dynamic_variables
       SET name = ?, expression = ?, description = ?, evaluation_strategy = ?, updated_at = ?
       WHERE id = ?
     `).run(
-      data.name,
-      data.expression,
-      data.description || '',
-      data.evaluationStrategy || 'EVERY_TIME',
+      name,
+      expression,
+      description || '',
+      evaluationStrategy || 'EVERY_TIME',
       now,
       id
     );

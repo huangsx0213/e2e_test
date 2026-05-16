@@ -8,49 +8,42 @@ import { getParam } from '../../shared/http/crud.ts';
 
 const router = Router();
 
-router.get('/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
+// All routes use /api/ prefix to match apiFetch() client convention
+
+// GET list
+router.get('/api/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
   const variables = dynamicVariableRepository.findByProjectId(getParam(req.params.projectId));
   res.json(variables);
 }));
 
-router.post('/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
+// POST create
+router.post('/api/projects/:projectId/dynamic-variables', withErrorHandling(async (req, res) => {
   const data = dynamicVariableSchema.parse(req.body);
   const variable = dynamicVariableRepository.create(getParam(req.params.projectId), data);
   res.status(201).json(variable);
 }));
 
-router.patch('/dynamic-variables/:id', withErrorHandling(async (req, res) => {
+// PATCH update
+router.patch('/api/dynamic-variables/:id', withErrorHandling(async (req, res) => {
   const data = dynamicVariableSchema.partial().parse(req.body);
   const variable = dynamicVariableRepository.update(getParam(req.params.id), data);
   res.json(variable);
 }));
 
-router.delete('/dynamic-variables/:id', withErrorHandling(async (req, res) => {
+// DELETE
+router.delete('/api/dynamic-variables/:id', withErrorHandling(async (req, res) => {
   dynamicVariableRepository.delete(getParam(req.params.id));
   res.status(204).send();
 }));
 
+// preview (via apiFetch)
 router.post('/api/dynamic-variables/preview', withErrorHandling((req, res) => {
   const { expression } = req.body;
   if (!expression) throw new ValidationError('Expression is required');
-
   const samples = [];
   for (let i = 0; i < 3; i++) {
     samples.push(interpolate(expression, {}));
   }
-
-  res.json({ samples });
-}));
-
-router.post('/dynamic-variables/preview', withErrorHandling((req, res) => {
-  const { expression } = req.body;
-  if (!expression) throw new ValidationError('Expression is required');
-
-  const samples = [];
-  for (let i = 0; i < 3; i++) {
-    samples.push(interpolate(expression, {}));
-  }
-
   res.json({ samples });
 }));
 
