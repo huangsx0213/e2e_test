@@ -29,6 +29,7 @@ export const suitePayloadSchema = z.object({
   dataRows: z.array(dataRowSchema),
   setupSteps: z.array(stepSchema).optional(),
   teardownSteps: z.array(stepSchema).optional(),
+  position: z.number().int().optional(),
 });
 
 export const suitePatchSchema = suitePayloadSchema.partial().refine(

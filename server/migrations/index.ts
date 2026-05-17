@@ -15,6 +15,9 @@ import { migration011StepMetadata } from './011_step_metadata.ts';
 import { migration012RequirementsSchema } from './012_requirements_schema.ts';
 import { migration013AiPipelineSchema } from './013_ai_pipeline_schema.ts';
 import { migration014DynamicVariableEvaluationStrategy } from './014_dynamic_variable_evaluation_strategy.ts';
+import { migration015RequirementLevel } from './015_requirement_level.ts';
+import { migration016RequirementTags } from './016_requirement_tags.ts';
+import { migration017SuitePosition } from './017_suite_position.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -35,6 +38,9 @@ export const migrations: Migration[] = [
   migration012RequirementsSchema,
   migration013AiPipelineSchema,
   migration014DynamicVariableEvaluationStrategy,
+  migration015RequirementLevel,
+  migration016RequirementTags,
+  migration017SuitePosition,
 ];
 
 function appliedMigrationIds(): Set<string> {

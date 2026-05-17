@@ -16,6 +16,7 @@ import { agentsModule } from '../modules/agent/index.ts';
 import { requirementsModule } from '../modules/requirements/index.ts';
 import { testConditionsModule } from '../modules/test-conditions/index.ts';
 import { nlCasesModule } from '../modules/nl-cases/index.ts';
+import { aiPipelineModule } from '../modules/ai-pipeline/index.ts';
 import { autRouter } from '../../aut/server/routes';
 
 export function registerRoutes(app: Express) {
@@ -35,6 +36,7 @@ export function registerRoutes(app: Express) {
     requirementsModule,
     testConditionsModule,
     nlCasesModule,
+    aiPipelineModule,
   ];
 
   for (const module of modules) {

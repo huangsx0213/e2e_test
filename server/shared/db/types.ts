@@ -9,6 +9,7 @@ export type DbBaseSuiteRow = {
   project_id: string | null;
   name: string;
   description: string;
+  position: number;
 };
 
 export type DbPageRow = {
@@ -192,10 +193,10 @@ export type DbRequirementRow = {
   parent_id: string | null;
   title: string;
   description: string;
+  level: string;
   priority: string;
-  risk_level: string;
-  type: string;
   status: string;
+  tags: string;
   position: number;
   metadata: string;
 };

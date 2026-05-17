@@ -27,6 +27,7 @@ import {
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { AssertionEditor } from "./AssertionEditor";
+import { AutosaveTextField } from "./AutosaveTextField";
 
 import { generateId } from "../utils";
 
@@ -338,7 +339,9 @@ export const StepList: React.FC<StepListProps> = ({
                         </optgroup>
                         <optgroup label="Assertions">
                           <option value="assertVisible">assertVisible</option>
-                          <option value="assertHidden">assertHidden</option>
+                          <option value="assertInvisible">assertInvisible</option>
+                          <option value="assertNotExist">assertNotExist</option>
+                          <option value="assertAttribute">assertAttribute</option>
                           <option value="assertText">assertText</option>
                           <option value="assertValue">assertValue</option>
                           <option value="assertUrl">assertUrl</option>
@@ -500,12 +503,10 @@ export const StepList: React.FC<StepListProps> = ({
                         </select>
                       ) : (
                         <div className="relative flex items-center">
-                          <input
+                          <AutosaveTextField
                             className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-14 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                             value={step.target}
-                            onChange={(e) =>
-                              onUpdateStep(step.id, { target: e.target.value })
-                            }
+                            onSave={(next) => onUpdateStep(step.id, { target: next })}
                             placeholder={
                               [
                                 "goto",
@@ -657,14 +658,12 @@ export const StepList: React.FC<StepListProps> = ({
                             <label className="text-[10px] font-mono font-medium text-blue-700 w-20 truncate text-right shrink-0" title="Namespace">
                               Namespace
                             </label>
-                            <input
+                            <AutosaveTextField
                               className="flex-1 bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                               placeholder="Optional export alias (e.g., buyer)"
                               value={step.namespace || ""}
-                              onChange={(e) =>
-                                onUpdateStep(step.id, {
-                                  namespace: e.target.value,
-                                })
+                              onSave={(next) =>
+                                onUpdateStep(step.id, { namespace: next })
                               }
                               disabled={step.enabled === false}
                             />
@@ -702,16 +701,16 @@ export const StepList: React.FC<StepListProps> = ({
                                   {param.name}
                                 </label>
                                 <div className="relative flex-1">
-                                  <input
+                                  <AutosaveTextField
                                     className="w-full bg-white border border-blue-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     placeholder={param.defaultValue || "Value"}
                                     value={currentData[param.name] || ""}
-                                    onChange={(e) =>
+                                    onSave={(next) =>
                                       updateModuleParam(
                                         step.id,
                                         step.data,
                                         param.name,
-                                        e.target.value,
+                                        next,
                                       )
                                     }
                                     disabled={step.enabled === false}
@@ -1160,16 +1159,14 @@ export const StepList: React.FC<StepListProps> = ({
                                             {varName}
                                           </label>
                                           <div className="relative flex-1">
-                                            <input
+                                            <AutosaveTextField
                                               className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                               placeholder="Value"
-                                              value={
-                                                currentValues[varName] || ""
-                                              }
-                                              onChange={(e) => {
+                                              value={currentValues[varName] || ""}
+                                              onSave={(next) => {
                                                 const newData = {
                                                   ...currentValues,
-                                                  [varName]: e.target.value,
+                                                  [varName]: next,
                                                 };
                                                 onUpdateStep(step.id, {
                                                   data: JSON.stringify(newData),
@@ -1293,16 +1290,14 @@ export const StepList: React.FC<StepListProps> = ({
                                             {varName}
                                           </label>
                                           <div className="relative flex-1">
-                                            <input
+                                            <AutosaveTextField
                                               className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                               placeholder="Value"
-                                              value={
-                                                currentValues[varName] || ""
-                                              }
-                                              onChange={(e) => {
+                                              value={currentValues[varName] || ""}
+                                              onSave={(next) => {
                                                 const newData = {
                                                   ...currentValues,
-                                                  [varName]: e.target.value,
+                                                  [varName]: next,
                                                 };
                                                 onUpdateStep(step.id, {
                                                   data: JSON.stringify(newData),
@@ -1422,20 +1417,18 @@ export const StepList: React.FC<StepListProps> = ({
                                             {varName}
                                           </label>
                                           <div className="relative flex-1">
-                                            <input
+                                            <AutosaveTextField
                                               className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                               placeholder={
                                                 template.defaultValues?.[
                                                 varName
                                                 ] || "Value"
                                               }
-                                              value={
-                                                currentValues[varName] || ""
-                                              }
-                                              onChange={(e) => {
+                                              value={currentValues[varName] || ""}
+                                              onSave={(next) => {
                                                 const newData = {
                                                   ...currentValues,
-                                                  [varName]: e.target.value,
+                                                  [varName]: next,
                                                 };
                                                 onUpdateStep(step.id, {
                                                   data: JSON.stringify(newData),
@@ -1516,13 +1509,12 @@ export const StepList: React.FC<StepListProps> = ({
                             </div>
                           ) : (
                             <div className="relative">
-                              <textarea
+                              <AutosaveTextField
+                                multiline
                                 className="w-full bg-white text-xs text-gray-700 rounded-md border border-gray-200 px-3 py-2 font-mono focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 min-h-[60px] resize-y disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                                value={step.data}
-                                onChange={(e) =>
-                                  onUpdateStep(step.id, {
-                                    data: e.target.value,
-                                  })
+                                value={step.data || ""}
+                                onSave={(next) =>
+                                  onUpdateStep(step.id, { data: next })
                                 }
                                 placeholder="Request Body (JSON)"
                                 disabled={step.enabled === false}
@@ -1574,12 +1566,10 @@ export const StepList: React.FC<StepListProps> = ({
                         </div>
                       ) : (
                         <div className="relative">
-                          <input
+                          <AutosaveTextField
                             className="w-full bg-gray-50 text-gray-700 rounded-md border border-gray-200 pl-3 pr-8 py-2 text-xs font-mono focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder-gray-400 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            value={step.data}
-                            onChange={(e) =>
-                              onUpdateStep(step.id, { data: e.target.value })
-                            }
+                            value={step.data || ""}
+                            onSave={(next) => onUpdateStep(step.id, { data: next })}
                             placeholder={
                               step.action === "goto"
                                 ? "URL (e.g., https://google.com)"
@@ -1621,26 +1611,29 @@ export const StepList: React.FC<StepListProps> = ({
                                                           : step.action ===
                                                             "switchToWindow"
                                                             ? "URL or title to match..."
-                                                            : step.action ===
-                                                              "switchToFrame"
-                                                              ? "Frame selector..."
-                                                              : [
+                                                               : step.action ===
+                                                               "switchToFrame"
+                                                               ? "Frame selector..."
+                                                               : step.action.startsWith("assertAttribute")
+                                                                 ? "attr=expected value..."
+                                                                 : [
 "click",
           "assertVisible",
-          "assertHidden",
+          "assertInvisible",
+          "assertNotExist",
           "assertEnabled",
           "assertChecked",
           "assertUnchecked",
           "hover",
-                                                                "highlight",
-                                                                "dblclick",
-                                                                "rightClick",
-                                                                "scrollIntoView",
-                                                                "check",
-                                                                "uncheck",
-                                                                "acceptDialog",
-                                                                "dismissDialog",
-                                                              ].includes(
+          "highlight",
+          "dblclick",
+          "rightClick",
+          "scrollIntoView",
+          "check",
+          "uncheck",
+          "acceptDialog",
+          "dismissDialog",
+        ].includes(
                                                                 step.action,
                                                               )
                                                                 ? "Not required"
@@ -1656,28 +1649,30 @@ export const StepList: React.FC<StepListProps> = ({
           "check",
           "uncheck",
           "assertVisible",
-          "assertHidden",
+          "assertInvisible",
+          "assertNotExist",
           "assertEnabled",
           "assertChecked",
           "assertUnchecked",
           "dblclick",
-                                "rightClick",
-                                "switchToWindow",
-                                "switchToFrame",
-                                "acceptDialog",
-                                "dismissDialog",
-                              ].includes(step.action)
-                            }
-                          />
-                          {![
-                            "click",
-                            "hover",
-                            "highlight",
-                            "scrollIntoView",
-                            "check",
-                            "uncheck",
-                            "assertVisible",
-                            "assertHidden",
+          "rightClick",
+          "switchToWindow",
+          "switchToFrame",
+          "acceptDialog",
+          "dismissDialog",
+        ].includes(step.action)
+      }
+    />
+    {![
+      "click",
+      "hover",
+      "highlight",
+      "scrollIntoView",
+      "check",
+      "uncheck",
+      "assertVisible",
+      "assertInvisible",
+      "assertNotExist",
                             "dblclick",
                             "rightClick",
                             "switchToWindow",
@@ -1853,11 +1848,11 @@ export const StepList: React.FC<StepListProps> = ({
                                 <div className="grid grid-cols-5 gap-2">
                                   <div className="col-span-2">
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern / Keyword</label>
-                                    <input
+                                    <AutosaveTextField
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="/api/v1/orders"
                                       value={step.waitForNetwork.urlPattern || ""}
-                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: e.target.value } })}
+                                      onSave={(next) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, urlPattern: next } })}
                                     />
                                   </div>
                                   <div>
@@ -1876,22 +1871,22 @@ export const StepList: React.FC<StepListProps> = ({
                                   </div>
                                   <div>
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Expected Status</label>
-                                    <input
+                                    <AutosaveTextField
                                       type="number"
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="200"
-                                      value={step.waitForNetwork.expectedStatus || ""}
-                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(e.target.value) || undefined } })}
+                                      value={step.waitForNetwork.expectedStatus?.toString() || ""}
+                                      onSave={(next) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, expectedStatus: parseInt(next) || undefined } })}
                                     />
                                   </div>
                                   <div>
                                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Timeout (ms)</label>
-                                    <input
+                                    <AutosaveTextField
                                       type="number"
                                       className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                       placeholder="10000"
-                                      value={step.waitForNetwork.timeoutMs || ""}
-                                      onChange={(e) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(e.target.value) || undefined } })}
+                                      value={step.waitForNetwork.timeoutMs?.toString() || ""}
+                                      onSave={(next) => onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, timeoutMs: parseInt(next) || undefined } })}
                                     />
                                   </div>
                                 </div>
@@ -1922,13 +1917,13 @@ export const StepList: React.FC<StepListProps> = ({
                                     <div className="space-y-2">
                                       {(step.waitForNetwork.extractors || []).map((ext, idx) => (
                                         <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
-                                          <input
+                                          <AutosaveTextField
                                             className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                                             placeholder="Variable Name"
                                             value={ext.name}
-                                            onChange={(e) => {
+                                            onSave={(next) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx] = { ...newExts[idx], name: e.target.value };
+                                              newExts[idx] = { ...newExts[idx], name: next };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           />
@@ -1946,13 +1941,13 @@ export const StepList: React.FC<StepListProps> = ({
                                             <option value="API_BODY_REGEX">Regex</option>
                                             <option value="API_HEADER">Header</option>
                                           </select>
-                                          <input
+                                          <AutosaveTextField
                                             className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                                             placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? "Authorization" : "Expression"}
                                             value={ext.expression || ""}
-                                            onChange={(e) => {
+                                            onSave={(next) => {
                                               const newExts = [...step.waitForNetwork!.extractors!];
-                                              newExts[idx] = { ...newExts[idx], expression: e.target.value };
+                                              newExts[idx] = { ...newExts[idx], expression: next };
                                               onUpdateStep(step.id, { waitForNetwork: { ...step.waitForNetwork!, extractors: newExts } });
                                             }}
                                           />
@@ -2050,13 +2045,13 @@ export const StepList: React.FC<StepListProps> = ({
                                     <div className="grid grid-cols-6 gap-2 mb-2">
                                       <div className="col-span-3">
                                         <label className="block text-[10px] font-medium text-gray-500 mb-0.5">URL Pattern (Regex)</label>
-                                        <input
+                                        <AutosaveTextField
                                           className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                           placeholder=".*\/api\/payment.*"
                                           value={mock.urlPattern}
-                                          onChange={(e) => {
+                                          onSave={(next) => {
                                             const newMocks = [...step.networkMocks!];
-                                            newMocks[idx].urlPattern = e.target.value;
+                                            newMocks[idx].urlPattern = next;
                                             onUpdateStep(step.id, { networkMocks: newMocks });
                                           }}
                                         />
@@ -2081,28 +2076,28 @@ export const StepList: React.FC<StepListProps> = ({
                                       </div>
                                       <div className="col-span-1">
                                         <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Status</label>
-                                        <input
+                                        <AutosaveTextField
                                           type="number"
                                           className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                           placeholder="200"
-                                          value={mock.status}
-                                          onChange={(e) => {
+                                          value={mock.status.toString()}
+                                          onSave={(next) => {
                                             const newMocks = [...step.networkMocks!];
-                                            newMocks[idx].status = parseInt(e.target.value) || 200;
+                                            newMocks[idx].status = parseInt(next) || 200;
                                             onUpdateStep(step.id, { networkMocks: newMocks });
                                           }}
                                         />
                                       </div>
                                       <div className="col-span-1">
                                         <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Delay (ms)</label>
-                                        <input
+                                        <AutosaveTextField
                                           type="number"
                                           className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
                                           placeholder="0"
-                                          value={mock.delayMs || ""}
-                                          onChange={(e) => {
+                                          value={mock.delayMs?.toString() || ""}
+                                          onSave={(next) => {
                                             const newMocks = [...step.networkMocks!];
-                                            newMocks[idx].delayMs = parseInt(e.target.value) || undefined;
+                                            newMocks[idx].delayMs = parseInt(next) || undefined;
                                             onUpdateStep(step.id, { networkMocks: newMocks });
                                           }}
                                         />
@@ -2110,13 +2105,14 @@ export const StepList: React.FC<StepListProps> = ({
                                     </div>
                                     <div>
                                       <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Response Body (JSON)</label>
-                                      <textarea
+                                      <AutosaveTextField
+                                        multiline
                                         className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs font-mono outline-none focus:border-blue-500 min-h-[60px] resize-y"
                                         placeholder='{"success": true}'
                                         value={mock.body}
-                                        onChange={(e) => {
+                                        onSave={(next) => {
                                           const newMocks = [...step.networkMocks!];
-                                          newMocks[idx].body = e.target.value;
+                                          newMocks[idx].body = next;
                                           onUpdateStep(step.id, { networkMocks: newMocks });
                                         }}
                                       />
@@ -2204,13 +2200,13 @@ export const StepList: React.FC<StepListProps> = ({
                           <div className="space-y-2">
                             {step.extractors.map((ext, extIndex) => (
                               <div key={ext.id} className="flex items-center gap-2 bg-gray-50 p-1.5 rounded border border-gray-200">
-                                <input
+                                <AutosaveTextField
                                   className="w-32 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                                   placeholder="Variable Name"
                                   value={ext.name}
-                                  onChange={(e) => {
+                                  onSave={(next) => {
                                     const newExts = [...step.extractors!];
-                                    newExts[extIndex] = { ...ext, name: e.target.value };
+                                    newExts[extIndex] = { ...ext, name: next };
                                     onUpdateStep(step.id, { extractors: newExts });
                                   }}
                                 />
@@ -2241,13 +2237,13 @@ export const StepList: React.FC<StepListProps> = ({
                                   )}
                                 </select>
                                 {!['UI_TEXT', 'UI_VALUE', 'UI_PAGE_URL', 'UI_PAGE_TITLE'].includes(ext.source) && (
-                                  <input
+                                  <AutosaveTextField
                                     className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                                     placeholder={(ext.source === 'API_BODY_JSON' || ext.source === 'API_BODY_XML') ? '$.data.id (or $.user[\'@_id\'])' : ext.source === 'API_HEADER' ? 'Authorization' : ext.source === 'UI_ATTRIBUTE' ? 'href' : 'Expression'}
                                     value={ext.expression || ''}
-                                    onChange={(e) => {
+                                    onSave={(next) => {
                                       const newExts = [...step.extractors!];
-                                      newExts[extIndex] = { ...ext, expression: e.target.value };
+                                      newExts[extIndex] = { ...ext, expression: next };
                                       onUpdateStep(step.id, { extractors: newExts });
                                     }}
                                   />

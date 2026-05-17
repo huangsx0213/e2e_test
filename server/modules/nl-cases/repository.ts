@@ -27,6 +27,15 @@ type DbNlCaseRow = {
 class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
   protected table = 'natural_language_test_cases';
 
+  list(): NlTestCase[] {
+    const rows = db.prepare('SELECT id FROM natural_language_test_cases ORDER BY rowid').all() as Array<{ id: string }>;
+    return rows.map(r => this.get(r.id)).filter(Boolean) as NlTestCase[];
+  }
+
+  remove(id: string): void {
+    db.prepare('DELETE FROM natural_language_test_cases WHERE id = ?').run(id);
+  }
+
   get(id: string): NlTestCase | undefined {
     const row = db.prepare('SELECT * FROM natural_language_test_cases WHERE id = ?').get(id) as DbNlCaseRow | undefined;
     if (!row) return undefined;
@@ -79,7 +88,7 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
     return this.get(id)!;
   }
 
-  private rowToCase(row: DbNlCaseRow): NlTestCase {
+  rowToCase(row: DbNlCaseRow): NlTestCase {
     return {
       id: row.id,
       projectId: row.project_id,

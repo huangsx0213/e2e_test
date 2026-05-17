@@ -7,6 +7,7 @@ import { saveProject } from './modules/projects/repository.ts';
 import { saveExecutionReport } from './modules/reports/repository.ts';
 import { saveSettings } from './modules/settings/repository.ts';
 import { saveSuite } from './modules/suites/repository.ts';
+import { seedRequirements } from './modules/requirements/seed-data.ts';
 
 function clearAllData(): void {
   db.exec(`
@@ -263,6 +264,16 @@ function seedProjects(): void {
     modules: [],
     scenarios: [],
   });
+
+  // ─── AUT Demo Project ───
+  saveProject({
+    id: 'p-aut-demo',
+    name: 'AUT Demo Application',
+    description: 'A demo Application Under Test (AUT) with authentication, user management CRUD, dashboard, and reports for integration testing.',
+    pages: [],
+    modules: [],
+    scenarios: [],
+  });
 }
 
 function seedSuites(): void {
@@ -500,6 +511,7 @@ export function seedDefaults(): void {
   seedApiAssets();
   seedReports();
   seedSettings();
+  seedRequirements();
   console.log('✅ Database reset and seed data applied!');
 }
 

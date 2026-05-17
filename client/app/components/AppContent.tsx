@@ -153,7 +153,7 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
     case "AGENTS":
       return <AgentManagement />;
     case "REQUIREMENTS":
-      return <RequirementsPage />;
+      return <RequirementsPage currentProjectId={currentProjectId} />;
     default:
       return null;
   }

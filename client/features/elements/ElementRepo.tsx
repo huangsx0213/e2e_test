@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { AutosaveTextField } from "@/shared/testing/AutosaveTextField";
 
 interface ElementRepoProps {
   projects: Project[];
@@ -536,10 +537,10 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                   <ChevronRight size={12} className="text-gray-300" />
                   <span>Edit Element</span>
                 </div>
-                <input
+                <AutosaveTextField
                   className="text-lg font-semibold text-gray-900 border-none p-0 focus:ring-0 bg-transparent placeholder-gray-400 w-full max-w-lg"
                   value={activeElement.name}
-                  onChange={(e) => updateElement(activePage.id, activeElement.id, { name: e.target.value })}
+                  onSave={(next) => updateElement(activePage.id, activeElement.id, { name: next })}
                   placeholder="Untitled Element"
                 />
               </div>
@@ -552,12 +553,12 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Element Name
                   </label>
-                  <input
+                  <AutosaveTextField
                     className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
                     value={activeElement.name}
-                    onChange={(e) =>
+                    onSave={(next) =>
                       updateElement(activePage.id, activeElement.id, {
-                        name: e.target.value,
+                        name: next,
                       })
                     }
                   />
@@ -567,12 +568,13 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Description
                   </label>
-                  <textarea
+                  <AutosaveTextField
+                    multiline
                     className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400 resize-none h-20"
                     value={activeElement.description || ""}
-                    onChange={(e) =>
+                    onSave={(next) =>
                       updateElement(activePage.id, activeElement.id, {
-                        description: e.target.value,
+                        description: next,
                       })
                     }
                     placeholder="Describe the element's purpose..."
@@ -658,13 +660,11 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
             </div>
 
             <div className="px-6 pt-4 pb-0 bg-gray-50 shrink-0">
-              <input
+              <AutosaveTextField
                 className="w-full bg-white border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none placeholder-gray-400"
                 placeholder="Page Description (optional)"
                 value={activePage.description || ""}
-                onChange={(e) =>
-                  updatePage(activePage.id, { description: e.target.value })
-                }
+                onSave={(next) => updatePage(activePage.id, { description: next })}
               />
             </div>
 
@@ -684,22 +684,22 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                       className="grid grid-cols-12 gap-6 items-center px-6 py-3 hover:bg-gray-50/50 transition-colors group"
                     >
                       <div className="col-span-3">
-                        <input
+                        <AutosaveTextField
                           className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-md px-2 py-1.5 text-sm text-gray-900 transition-all font-medium placeholder-gray-400"
                           value={el.name}
-                          onChange={(e) =>
+                          onSave={(next) =>
                             updateElement(activePage.id, el.id, {
-                              name: e.target.value,
+                              name: next,
                             })
                           }
                           placeholder="Element Name"
                         />
-                        <input
+                        <AutosaveTextField
                           className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 rounded-md px-2 py-1 text-xs text-gray-500 transition-all placeholder-gray-300 mt-1"
                           value={el.description || ""}
-                          onChange={(e) =>
+                          onSave={(next) =>
                             updateElement(activePage.id, el.id, {
-                              description: e.target.value,
+                              description: next,
                             })
                           }
                           placeholder="Description..."
@@ -728,12 +728,12 @@ export const ElementRepo: React.FC<ElementRepoProps> = ({
                       </div>
                       <div className="col-span-6">
                         <div className="relative">
-                          <input
+                          <AutosaveTextField
                             className="w-full bg-gray-50/50 text-xs font-mono text-gray-600 rounded-md border border-gray-200 px-3 py-1.5 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all placeholder-gray-400"
                             value={el.value}
-                            onChange={(e) =>
+                            onSave={(next) =>
                               updateElement(activePage.id, el.id, {
-                                value: e.target.value,
+                                value: next,
                               })
                             }
                             placeholder="Selector value"

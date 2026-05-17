@@ -26,6 +26,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { StepList } from "@/shared/testing/StepList";
+import { AutosaveTextField } from "@/shared/testing/AutosaveTextField";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
@@ -388,12 +389,10 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
               <div className="flex flex-col min-h-full">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <div className="mb-0">
-                    <input
+                    <AutosaveTextField
                       className="w-full px-0 py-1 bg-transparent border-none text-sm text-gray-500 focus:ring-0 placeholder-gray-300 transition-all"
                       value={activeModule.description || ""}
-                      onChange={(e) =>
-                        updateModule({ description: e.target.value })
-                      }
+                      onSave={(next) => updateModule({ description: next })}
                       placeholder="Add a description for this module..."
                     />
                   </div>
@@ -430,24 +429,24 @@ export const ModuleBuilder: React.FC<ModuleBuilderProps> = ({
                         >
                           <div className="flex-1 grid grid-cols-12 gap-2">
                             <div className="col-span-5">
-                              <input
+                              <AutosaveTextField
                                 className="w-full bg-blue-50 border border-blue-100 rounded px-2 py-1.5 text-xs font-mono font-medium text-blue-900 placeholder-blue-300 focus:border-blue-500 outline-none"
                                 value={param.name}
-                                onChange={(e) =>
+                                onSave={(next) =>
                                   updateParam(param.id, {
-                                    name: e.target.value,
+                                    name: next,
                                   })
                                 }
                                 placeholder="PARAM_NAME"
                               />
                             </div>
                             <div className="col-span-7">
-                              <input
+                              <AutosaveTextField
                                 className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 outline-none placeholder-gray-300"
                                 value={param.defaultValue || ""}
-                                onChange={(e) =>
+                                onSave={(next) =>
                                   updateParam(param.id, {
-                                    defaultValue: e.target.value,
+                                    defaultValue: next,
                                   })
                                 }
                                 placeholder="Default Value"

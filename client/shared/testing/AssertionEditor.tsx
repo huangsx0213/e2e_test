@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { StepAssertion, AssertionSource, AssertionOperator } from '@/shared/types';
 import { generateId } from '../utils';
+import { AutosaveTextField } from './AutosaveTextField';
 
 interface AssertionEditorProps {
   assertions: StepAssertion[];
@@ -180,11 +181,11 @@ export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEd
           </select>
 
           {showExpression && (
-            <input
+            <AutosaveTextField
               className="flex-1 min-w-[60px] text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
               placeholder={expressionPlaceholder(assertion.source)}
               value={assertion.expression || ''}
-              onChange={(e) => handleUpdate(idx, { expression: e.target.value })}
+              onSave={(next) => handleUpdate(idx, { expression: next })}
             />
           )}
 
@@ -199,11 +200,11 @@ export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEd
           </select>
 
           {showExpected && (
-            <input
+            <AutosaveTextField
               className="flex-1 min-w-[60px] text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
               placeholder={expectedPlaceholder(assertion.operator)}
               value={assertion.expectedValue || ''}
-              onChange={(e) => handleUpdate(idx, { expectedValue: e.target.value })}
+              onSave={(next) => handleUpdate(idx, { expectedValue: next })}
             />
           )}
 
@@ -225,17 +226,17 @@ export function AssertionEditor({ assertions, onChange, isApiStep }: AssertionEd
 
                 {isExpanded && (
                   <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-200">
-                    <input
+                    <AutosaveTextField
                       className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                       placeholder="Custom message (optional)"
                       value={assertion.message || ''}
-                      onChange={(e) => handleUpdate(idx, { message: e.target.value })}
+                      onSave={(next) => handleUpdate(idx, { message: next })}
                     />
-                    <input
+                    <AutosaveTextField
                       className="w-20 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-blue-500"
                       placeholder="Flags (e.g. i)"
                       value={assertion.flags || ''}
-                      onChange={(e) => handleUpdate(idx, { flags: e.target.value })}
+                      onSave={(next) => handleUpdate(idx, { flags: next })}
                     />
                     <label className="flex items-center gap-1 text-[10px] text-gray-500 whitespace-nowrap">
                       <input

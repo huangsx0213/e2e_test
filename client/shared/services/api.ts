@@ -117,7 +117,10 @@ export const api = {
   queue: {
     list: () => apiFetch<any[]>('runners/queue'),
   },
-  requirements: createCrudService<Requirement>('requirements'),
+  requirements: {
+    ...createCrudService<Requirement>('requirements'),
+    listByProject: (projectId: string) => apiFetch<Requirement[]>(`requirements/by-project/${projectId}`),
+  },
 };
 
 // --- Execution API ---

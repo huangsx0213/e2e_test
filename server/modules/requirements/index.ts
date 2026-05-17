@@ -16,6 +16,11 @@ const baseModule = createCrudModule({
 
 const router = baseModule.router as Router;
 
+router.get('/by-project/:projectId', withErrorHandling(async (req, res) => {
+  const projectId = getParam(req.params.projectId);
+  res.json(requirementRepo.listByProject(projectId));
+}));
+
 router.post('/:projectId/import', withErrorHandling(async (req, res) => {
   const projectId = getParam(req.params.projectId);
   const { content, format } = req.body;

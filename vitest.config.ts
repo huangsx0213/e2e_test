@@ -4,13 +4,13 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
+      '@': path.resolve(__dirname, 'client'),
       'shared': path.resolve(__dirname, 'shared'),
     },
   },
   test: {
-    // Use Node-like environment for these tests
-    environment: 'node',
-    // Allow TypeScript test files
+    environment: 'jsdom',
     testTimeout: 30000,
+    setupFiles: ['./vitest.setup.ts'],
   },
 });

@@ -9,7 +9,7 @@ import type { AssertionContext } from './assertions.ts';
 import { randomUUID } from 'crypto';
 
 const BUILTIN_ASSERTION_ACTIONS = new Set([
-  'assertVisible', 'assertHidden',
+  'assertVisible', 'assertHidden', 'assertInvisible', 'assertAttribute',
   'assertEnabled', 'assertDisabled',
   'assertChecked', 'assertUnchecked',
   'assertText', 'assertValue',
@@ -21,6 +21,7 @@ function builtinActionToAssertion(action: string, data: string | undefined, targ
     case 'assertVisible':
       return { id: randomUUID(), source: 'UI_ELEMENT_VISIBLE', operator: 'EQUALS', expectedValue: 'true' };
     case 'assertHidden':
+    case 'assertInvisible':
       return { id: randomUUID(), source: 'UI_ELEMENT_VISIBLE', operator: 'EQUALS', expectedValue: 'false' };
     case 'assertEnabled':
       return { id: randomUUID(), source: 'UI_ELEMENT_ENABLED', operator: 'EQUALS', expectedValue: 'true' };
@@ -42,6 +43,14 @@ function builtinActionToAssertion(action: string, data: string | undefined, targ
     case 'assertTitle':
       if (data === undefined) return null;
       return { id: randomUUID(), source: 'UI_PAGE_TITLE', operator: 'EQUALS', expectedValue: data };
+    case 'assertAttribute': {
+      if (!data || !data.includes('=')) return null;
+      const eqIdx = data.indexOf('=');
+      const attrName = data.slice(0, eqIdx).trim();
+      const expectedValue = data.slice(eqIdx + 1).trim();
+      if (!attrName) return null;
+      return { id: randomUUID(), source: 'UI_ATTRIBUTE', expression: attrName, operator: 'EQUALS', expectedValue };
+    }
     default:
       return null;
   }
@@ -725,6 +734,7 @@ break;
 
         case 'assertVisible':
         case 'assertHidden':
+        case 'assertInvisible':
         case 'assertEnabled':
         case 'assertDisabled':
         case 'assertChecked':
@@ -733,9 +743,26 @@ break;
         case 'assertValue':
         case 'assertUrl':
         case 'assertTitle':
+        case 'assertAttribute':
           break;
 
+        case 'assertNotExist': {
+          if (!resolvedSelector) break;
+          let found = false;
+          try {
+            await getSmartLocator({ skipActionabilityCheck: true });
+            found = true;
+          } catch {
+            found = false;
+          }
+          if (found) {
+            throw new Error(`Element exists but was expected to not exist: ${resolvedSelector}`);
+          }
+          break;
+        }
+
         default:
+          if (step.action.startsWith('assert')) break;
           throw new Error(`Unsupported UI action: ${step.action}`);
       }
     })();

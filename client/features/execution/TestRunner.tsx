@@ -37,6 +37,7 @@ import {
   ApiEndpoint,
 } from "@/shared/types";
 import { MutationActions, useReports, useReportMutations } from "@/shared/hooks/useQueryHooks";
+import { AutosaveTextField } from "@/shared/testing/AutosaveTextField";
 import { ScenarioExecutionRunner } from "@/features/execution/ScenarioExecutionRunner";
 import { TestPlanBuilder } from "@/features/execution/TestPlanBuilder";
 import { TestPlanExecutionRunner } from "@/features/execution/TestPlanExecutionRunner";
@@ -678,28 +679,26 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                                     key={v.id}
                                     className="flex items-center gap-2"
                                   >
-                                    <input
-                                      type="text"
+                                    <AutosaveTextField
                                       value={v.key}
-                                      onChange={(e) =>
+                                      onSave={(next) =>
                                         handleUpdateVariable(
                                           v.id,
                                           "key",
-                                          e.target.value,
+                                          next,
                                         )
                                       }
                                       placeholder="Variable Key"
                                       className="w-1/3 text-sm font-mono px-3 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:border-blue-400"
                                     />
                                     <span className="text-slate-400">=</span>
-                                    <input
-                                      type="text"
+                                    <AutosaveTextField
                                       value={v.value}
-                                      onChange={(e) =>
+                                      onSave={(next) =>
                                         handleUpdateVariable(
                                           v.id,
                                           "value",
-                                          e.target.value,
+                                          next,
                                         )
                                       }
                                       placeholder="Default Value"
@@ -794,15 +793,14 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                                                 key={v.id}
                                                 className="px-3 py-1"
                                               >
-                                                <input
-                                                  type="text"
+                                                <AutosaveTextField
                                                   className="w-full bg-transparent border-none focus:ring-0 text-xs text-slate-700 placeholder-slate-300 py-1"
                                                   value={row[v.key] || ""}
-                                                  onChange={(e) =>
+                                                  onSave={(next) =>
                                                     handleUpdateDataRow(
                                                       rowIndex,
                                                       v.key,
-                                                      e.target.value,
+                                                      next,
                                                     )
                                                   }
                                                   placeholder="(default)"

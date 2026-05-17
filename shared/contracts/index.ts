@@ -217,6 +217,7 @@ export interface TestSuite {
   dataRows?: Record<string, string>[];
   setupSteps?: TestStep[];
   teardownSteps?: TestStep[];
+  position?: number;
 }
 
 export interface HeaderProfile {
@@ -445,10 +446,10 @@ export interface Requirement {
   parentId?: string | null;
   title: string;
   description: string;
+  level: 'epic' | 'feature' | 'story' | 'ac';
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW';
-  type: 'functional' | 'performance' | 'security' | 'usability' | 'reliability';
   status: 'DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'DEPRECATED';
+  tags: string[];
   position: number;
   metadata: Record<string, unknown>;
 }

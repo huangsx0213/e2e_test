@@ -27,6 +27,7 @@ export function normalizeSuite(input: Partial<TestSuite>): TestSuite {
     projectId: asOptionalText(input.projectId),
     name: asText(input.name, 'New Test Suite'),
     description: asText(input.description),
+    position: input.position ?? 0,
     cases: asArray<TestCase>(input.cases).map((testCase) => normalizeCase(testCase)),
     variables: asArray<SuiteVariable>(input.variables).map((variable) => normalizeSuiteVariable(variable)),
     dataRows: asArray<Record<string, unknown>>(input.dataRows).map((row) => normalizeStringRecord(row)),

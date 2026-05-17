@@ -14,9 +14,16 @@ import { normalizeSuite } from './mapper.ts';
 class SuiteRepository extends BaseCrudRepository<TestSuite> {
   protected table = 'suites';
 
+  list(): TestSuite[] {
+    const rows = db.prepare(`SELECT id FROM ${this.table} ORDER BY position, rowid`).all() as Array<{ id: string }>;
+    return rows
+      .map((row) => this.get(row.id))
+      .filter((record): record is TestSuite => Boolean(record));
+  }
+
   get(suiteId: string): TestSuite | undefined {
     const base = db
-      .prepare('SELECT id, project_id, name, description FROM suites WHERE id = ?')
+      .prepare('SELECT id, project_id, name, description, position FROM suites WHERE id = ?')
       .get(suiteId) as DbBaseSuiteRow | undefined;
     if (!base) return undefined;
 
@@ -85,6 +92,7 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
       projectId: textFromDb(base.project_id),
       name: base.name,
       description: base.description,
+      position: base.position,
       cases: suiteCases,
       variables: variables.map((variable) => ({
         id: variable.id,
@@ -102,12 +110,13 @@ class SuiteRepository extends BaseCrudRepository<TestSuite> {
 
     const transaction = db.transaction(() => {
       db.prepare(
-        `INSERT INTO suites (id, project_id, name, description) VALUES (?, ?, ?, ?)
+        `INSERT INTO suites (id, project_id, name, description, position) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         name = excluded.name,
-        description = excluded.description`,
-      ).run(suite.id, nullableText(suite.projectId), suite.name, suite.description || '');
+        description = excluded.description,
+        position = excluded.position`,
+      ).run(suite.id, nullableText(suite.projectId), suite.name, suite.description || '', suite.position ?? 0);
 
       const existingCaseIds = new Set(
         (db.prepare('SELECT id FROM suite_cases WHERE suite_id = ?').all(suite.id) as Array<{ id: string }>).map(r => r.id),

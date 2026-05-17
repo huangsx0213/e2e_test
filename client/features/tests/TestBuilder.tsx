@@ -31,8 +31,13 @@ import {
   Video,
   Square,
   RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  ClipboardPaste,
 } from "lucide-react";
 import { StepList } from "@/shared/testing/StepList";
+import { AutosaveTextField } from "@/shared/testing/AutosaveTextField";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 import { TestCaseRecordingModal } from "./TestCaseRecordingModal";
@@ -88,6 +93,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     suiteId?: string;
   } | null>(null);
 
+  const [clipboard, setClipboard] = useState<{
+    type: "case";
+    data: TestCase;
+  } | null>(null);
+
   const activeSuite = suites.find((s) => s.id === activeSuiteId);
   const activeCase = activeSuite?.cases.find((c) => c.id === activeCaseId);
 
@@ -126,6 +136,7 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       cases: [],
       variables: [],
       dataRows: [],
+      position: suites.length,
     };
     await suitesApi.create(newSuite);
     setActiveSuiteId(newSuite.id);
@@ -290,6 +301,19 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
     }
   };
 
+  const moveCase = (suiteId: string, caseId: string, direction: -1 | 1) => {
+    const suite = suites.find((s) => s.id === suiteId);
+    if (!suite) return;
+    const caseIndex = suite.cases.findIndex((c) => c.id === caseId);
+    if (caseIndex === -1) return;
+    const newIndex = caseIndex + direction;
+    if (newIndex < 0 || newIndex >= suite.cases.length) return;
+    const newCases = [...suite.cases];
+    newCases[caseIndex] = newCases[newIndex];
+    newCases[newIndex] = suite.cases[caseIndex];
+    updateSuite(suiteId, { cases: newCases });
+  };
+
   const deleteCase = (suiteId: string, caseId: string) => {
     const suite = suites.find((s) => s.id === suiteId);
     if (suite) {
@@ -297,6 +321,115 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
       updateSuite(suiteId, { cases: newCases });
       if (activeCaseId === caseId) setActiveCaseId("");
     }
+  };
+
+  const cloneSteps = (steps?: TestStep[], offset = 0): TestStep[] =>
+    (steps || []).map((s, i) => ({
+      ...s,
+      id: `step-${Date.now()}-${offset + i}`,
+      extractors: s.extractors ? JSON.parse(JSON.stringify(s.extractors)) : undefined,
+      assertions: s.assertions ? JSON.parse(JSON.stringify(s.assertions)) : undefined,
+      waitForNetwork: s.waitForNetwork ? JSON.parse(JSON.stringify(s.waitForNetwork)) : undefined,
+      networkMocks: s.networkMocks ? JSON.parse(JSON.stringify(s.networkMocks)) : undefined,
+      metadata: s.metadata ? JSON.parse(JSON.stringify(s.metadata)) : undefined,
+    }));
+
+  const duplicateCase = (suiteId: string, caseId: string) => {
+    const suite = suites.find((s) => s.id === suiteId);
+    if (!suite) return;
+    const caseIndex = suite.cases.findIndex((c) => c.id === caseId);
+    if (caseIndex === -1) return;
+    const original = suite.cases[caseIndex];
+    const cloned: TestCase = {
+      ...original,
+      id: `case-${Date.now()}`,
+      name: `${original.name} (Copy)`,
+      steps: cloneSteps(original.steps),
+      setupSteps: cloneSteps(original.setupSteps, original.steps?.length || 0),
+      teardownSteps: cloneSteps(original.teardownSteps, (original.steps?.length || 0) + (original.setupSteps?.length || 0)),
+    };
+    const newCases = [...suite.cases];
+    newCases.splice(caseIndex + 1, 0, cloned);
+    updateSuite(suiteId, { cases: newCases });
+    setActiveCaseId(cloned.id);
+    setEditingCaseId(cloned.id);
+    setEditCaseName(cloned.name);
+  };
+
+  const duplicateSuite = async (suiteId: string) => {
+    const suite = suites.find((s) => s.id === suiteId);
+    if (!suite) return;
+    const cloneCase = (tc: TestCase, offset: number) => ({
+      ...tc,
+      id: `case-${Date.now()}-${offset}`,
+      name: `${tc.name}`,
+      steps: cloneSteps(tc.steps, 0),
+      setupSteps: cloneSteps(tc.setupSteps, tc.steps?.length || 0),
+      teardownSteps: cloneSteps(tc.teardownSteps, (tc.steps?.length || 0) + (tc.setupSteps?.length || 0)),
+    });
+    const newSuite: TestSuite = {
+      ...suite,
+      id: `suite-${Date.now()}`,
+      name: `${suite.name} (Copy)`,
+      cases: suite.cases.map((tc, i) => cloneCase(tc, i)),
+      variables: (suite.variables || []).map((v) => ({
+        ...v,
+        id: `var-${Date.now()}-${v.id}`,
+      })),
+      dataRows: suite.dataRows ? JSON.parse(JSON.stringify(suite.dataRows)) : [],
+      setupSteps: cloneSteps(suite.setupSteps),
+      teardownSteps: cloneSteps(suite.teardownSteps, suite.setupSteps?.length || 0),
+    };
+    await suitesApi.create(newSuite);
+    setActiveSuiteId(newSuite.id);
+    setActiveCaseId("");
+  };
+
+  const copyCase = (caseId: string) => {
+    const tc = suites.flatMap((s) => s.cases).find((c) => c.id === caseId);
+    if (!tc) return;
+    setClipboard({
+      type: "case",
+      data: {
+        ...tc,
+        steps: tc.steps ? JSON.parse(JSON.stringify(tc.steps)) : [],
+        setupSteps: tc.setupSteps ? JSON.parse(JSON.stringify(tc.setupSteps)) : [],
+        teardownSteps: tc.teardownSteps ? JSON.parse(JSON.stringify(tc.teardownSteps)) : [],
+      },
+    });
+  };
+
+  const pasteCase = (targetSuiteId: string) => {
+    if (!clipboard || clipboard.type !== "case") return;
+    const suite = suites.find((s) => s.id === targetSuiteId);
+    if (!suite) return;
+    const tc = clipboard.data;
+    const cloned: TestCase = {
+      ...tc,
+      id: `case-${Date.now()}`,
+      name: `${tc.name} (Copy)`,
+      steps: cloneSteps(tc.steps),
+      setupSteps: cloneSteps(tc.setupSteps, tc.steps?.length || 0),
+      teardownSteps: cloneSteps(tc.teardownSteps, (tc.steps?.length || 0) + (tc.setupSteps?.length || 0)),
+    };
+    updateSuite(targetSuiteId, { cases: [...suite.cases, cloned] });
+    setActiveCaseId(cloned.id);
+    setEditingCaseId(cloned.id);
+    setEditCaseName(cloned.name);
+  };
+
+  const moveSuite = async (suiteId: string, direction: -1 | 1) => {
+    const index = suites.findIndex((s) => s.id === suiteId);
+    if (index === -1) return;
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= suites.length) return;
+
+    const target = suites[newIndex];
+    const current = suites[index];
+    await Promise.all([
+      suitesApi.update(current.id, { position: target.position ?? newIndex }),
+      suitesApi.update(target.id, { position: current.position ?? index }),
+    ]);
   };
 
   const createStepHandler = (
@@ -546,12 +679,22 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            addCase(suite.id);
+                            moveSuite(suite.id, -1);
                           }}
-                          className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
-                          title="Add Test Case"
+                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Move Suite Up"
                         >
-                          <Plus size={12} />
+                          <ArrowUp size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            moveSuite(suite.id, 1);
+                          }}
+                          className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                          title="Move Suite Down"
+                        >
+                          <ArrowDown size={12} />
                         </button>
                         <button
                           onClick={(e) => {
@@ -573,6 +716,18 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                         >
                           <Trash2 size={12} />
                         </button>
+                        {clipboard && clipboard.type === "case" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              pasteCase(suite.id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded"
+                            title="Paste Case"
+                          >
+                            <ClipboardPaste size={12} />
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -627,6 +782,36 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                             </button>
                           ) : (
                             <div className="flex gap-0.5 relative z-20">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveCase(suite.id, tc.id, -1);
+                                }}
+                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                title="Move Up"
+                              >
+                                <ArrowUp size={12} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveCase(suite.id, tc.id, 1);
+                                }}
+                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                title="Move Down"
+                              >
+                                <ArrowDown size={12} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyCase(tc.id);
+                                }}
+                                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                title="Copy Case"
+                              >
+                                <Copy size={12} />
+                              </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -698,12 +883,12 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                   <ChevronRight size={12} className="text-gray-300" />
                   <span>Edit Case</span>
                 </div>
-                <input
-                  className="text-lg font-semibold text-gray-900 border-none p-0 focus:ring-0 bg-transparent placeholder-gray-400 w-full max-w-lg"
-                  value={activeCase.name}
-                  onChange={(e) => updateCase({ name: e.target.value })}
-                  placeholder="Untitled Test Case"
-                />
+                  <AutosaveTextField
+                    className="text-lg font-semibold text-gray-900 border-none p-0 focus:ring-0 bg-transparent placeholder-gray-400 w-full max-w-lg"
+                    value={activeCase.name}
+                    onSave={(next) => updateCase({ name: next })}
+                    placeholder="Untitled Test Case"
+                  />
               </div>
               <div className="flex items-center gap-3 ml-4">
                 {recording.isRecording ? (
@@ -736,12 +921,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
               <div className="flex flex-col min-h-full">
                 {/* Top Controls: Description */}
                 <div className="px-6 py-6 pb-2">
-                    <input
+                    <AutosaveTextField
                       className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-gray-400 shadow-sm transition-all"
-                      value={activeCase.description}
-                      onChange={(e) =>
-                        updateCase({ description: e.target.value })
-                      }
+                      value={activeCase.description || ""}
+                      onSave={(next) => updateCase({ description: next })}
                       placeholder="Add a description for this test case..."
                     />
                 </div>
@@ -849,12 +1032,10 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                         Suite Name
                       </label>
-                      <input
+                      <AutosaveTextField
                         className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
                         value={activeSuite.name}
-                        onChange={(e) =>
-                          updateSuite(activeSuite.id, { name: e.target.value })
-                        }
+                        onSave={(next) => updateSuite(activeSuite.id, { name: next })}
                       />
                     </div>
                   </div>
@@ -938,28 +1119,22 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                         className="flex items-center gap-3 group"
                       >
                         <div className="flex-1 relative">
-                          <input
+                          <AutosaveTextField
                             className="w-full bg-gray-50 border border-gray-200 rounded px-2 py-1.5 text-xs font-mono font-medium text-blue-700 focus:bg-white focus:border-blue-500 outline-none"
                             value={variable.key}
-                            onChange={(e) =>
-                              updateSuiteVariableKey(
-                                variable.id,
-                                e.target.value,
-                              )
+                            onSave={(next) =>
+                              updateSuiteVariableKey(variable.id, next)
                             }
                             placeholder="VAR_NAME"
                           />
                         </div>
                         <span className="text-gray-300 font-mono">=</span>
                         <div className="flex-[2] relative">
-                          <input
+                          <AutosaveTextField
                             className="w-full bg-white border border-gray-200 rounded px-2 py-1.5 text-xs text-gray-700 focus:border-blue-500 outline-none"
-                            value={variable.value}
-                            onChange={(e) =>
-                              updateSuiteVariableValue(
-                                variable.id,
-                                e.target.value,
-                              )
+                            value={variable.value || ""}
+                            onSave={(next) =>
+                              updateSuiteVariableValue(variable.id, next)
                             }
                             placeholder="Default Value"
                           />
@@ -1033,15 +1208,11 @@ export const TestBuilder: React.FC<TestBuilderProps> = ({
                                   key={v.id}
                                   className="px-2 py-1 border-l border-gray-100"
                                 >
-                                  <input
+                                  <AutosaveTextField
                                     className="w-full bg-transparent border-none focus:ring-0 text-xs text-gray-800 placeholder-gray-300 py-1"
                                     value={row[v.key] || ""}
-                                    onChange={(e) =>
-                                      updateDataRow(
-                                        rowIndex,
-                                        v.key,
-                                        e.target.value,
-                                      )
+                                    onSave={(next) =>
+                                      updateDataRow(rowIndex, v.key, next)
                                     }
                                     placeholder="(default)"
                                   />

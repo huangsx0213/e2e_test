@@ -23,6 +23,15 @@ type DbTestConditionRow = {
 class TestConditionRepository extends BaseCrudRepository<TestCondition> {
   protected table = 'test_conditions';
 
+  list(): TestCondition[] {
+    const rows = db.prepare('SELECT id FROM test_conditions ORDER BY rowid').all() as Array<{ id: string }>;
+    return rows.map(r => this.get(r.id)).filter(Boolean) as TestCondition[];
+  }
+
+  remove(id: string): void {
+    db.prepare('DELETE FROM test_conditions WHERE id = ?').run(id);
+  }
+
   get(id: string): TestCondition | undefined {
     const row = db.prepare('SELECT * FROM test_conditions WHERE id = ?').get(id) as DbTestConditionRow | undefined;
     if (!row) return undefined;
@@ -66,7 +75,7 @@ class TestConditionRepository extends BaseCrudRepository<TestCondition> {
     return this.get(id)!;
   }
 
-  private rowToCondition(row: DbTestConditionRow): TestCondition {
+  rowToCondition(row: DbTestConditionRow): TestCondition {
     return {
       id: row.id,
       requirementId: row.requirement_id,
