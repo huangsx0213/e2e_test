@@ -96,7 +96,19 @@ router.get('/stream/:reportId', (req, res) => {
   const logger = getActiveRunLogger(reportId);
 
   if (!logger) {
-    // Execution might have already finished — send a done event
+    // Execution already finished — replay persisted logs from DB, then send done
+    const logs = db.prepare(
+      'SELECT step_id, timestamp, status, level, message, screenshot, metadata FROM report_logs WHERE report_id = ? ORDER BY position'
+    ).all(reportId) as {
+      step_id: string;
+      timestamp: number;
+      status: string;
+      level: string;
+      message: string;
+      screenshot: string | null;
+      metadata: string | null;
+    }[];
+
     const run = db.prepare(
       'SELECT status FROM execution_runs WHERE report_id = ?'
     ).get(reportId) as { status: string } | undefined;
@@ -107,10 +119,22 @@ router.get('/stream/:reportId', (req, res) => {
       Connection: 'keep-alive',
     });
 
+    for (const log of logs) {
+      res.write(`event: log\ndata: ${JSON.stringify({
+        stepId: log.step_id,
+        timestamp: log.timestamp,
+        status: log.status,
+        level: log.level,
+        message: log.message,
+        screenshot: log.screenshot || undefined,
+        metadata: log.metadata ? JSON.parse(log.metadata) : undefined,
+      })}\n\n`);
+    }
+
     if (run) {
-      res.write(`event: done\ndata: ${JSON.stringify({ reportId, status: run.status, passRate: 0 })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ reportId, status: run.status })}\n\n`);
     } else {
-      res.write(`event: done\ndata: ${JSON.stringify({ reportId, status: 'NOT_FOUND', passRate: 0 })}\n\n`);
+      res.write(`event: done\ndata: ${JSON.stringify({ reportId, status: 'NOT_FOUND' })}\n\n`);
     }
     res.end();
     return;

@@ -76,6 +76,7 @@ For detailed guides, please refer to our documentation suite:
 
 - `npm run dev`: Full-stack development environment.
 - `npm run seed`: Reset and seed the database to the default state.
+- `npm run export:seed`: Export current database as a seed snapshot to `server/seed-data/business-config.ts`. Run this after making changes to the database that you want to preserve as the new default state.
 - `npm run migrate`: Run database migrations standalone.
 - `npm run build`: Production build (bundles frontend with Vite and backend with esbuild).
 - `npm run start`: Start the production server.

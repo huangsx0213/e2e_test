@@ -11,6 +11,7 @@
     "start-agent": "tsx agent/index.ts",
     "test": "vitest run",
     "seed": "tsx server/seed.ts",
+    "export:seed": "tsx server/export-seed.ts",
     "migrate": "tsx server/migrate.ts",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
