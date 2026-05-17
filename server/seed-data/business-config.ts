@@ -1433,14 +1433,36 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "id": "req-aut-auth",
       "projectId": "p-aut-demo",
       "title": "Authentication System",
-      "description": "Secure login and session management for the AUT application.",
+      "description": "",
       "level": "epic",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "authentication"
-      ],
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
       "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard",
+      "projectId": "p-aut-demo",
+      "title": "Dashboard",
+      "description": "",
+      "level": "epic",
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt",
+      "projectId": "p-aut-demo",
+      "title": "User Management",
+      "description": "",
+      "level": "epic",
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
+      "position": 2,
       "metadata": {}
     },
     {
@@ -1454,6 +1476,38 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "status": "APPROVED",
       "tags": [
         "authentication",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt",
+      "title": "User List View",
+      "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
+      "level": "feature",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard",
+      "title": "Dashboard Home Page",
+      "description": "The dashboard landing page displays key metrics and navigation to other sections.",
+      "level": "feature",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
         "ui"
       ],
       "position": 0,
@@ -1476,33 +1530,93 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-auth-login-ui-form-display",
+      "id": "req-aut-user-mgmt-list-table",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-ui-form",
-      "title": "Display login form with username and password fields",
-      "description": "The login form must render username input with user icon, password input with lock icon, and submit button.",
-      "level": "ac",
-      "priority": "HIGH",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Table Display & Sorting",
+      "description": "The user table must display data with sortable columns for easy browsing.",
+      "level": "story",
+      "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
-        "authentication",
+        "user-management",
         "ui"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-dashboard",
+      "id": "req-aut-dashboard-home-ui-welcome",
       "projectId": "p-aut-demo",
-      "title": "Dashboard",
-      "description": "The home dashboard provides an overview of system status, user statistics, and quick navigation links.",
-      "level": "epic",
-      "priority": "HIGH",
+      "parentId": "req-aut-dashboard-home-ui",
+      "title": "Welcome & Navigation",
+      "description": "The dashboard must greet the user and provide quick links to major sections.",
+      "level": "story",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "dashboard"
+        "dashboard",
+        "ui"
       ],
-      "position": 1,
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-auth-login-ui-form-loading",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-auth-login-ui-form",
+      "title": "Disable submit button and show loading state during authentication",
+      "description": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
+      "level": "story",
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-auth-login-ui-form-display",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-auth-login-ui-form",
+      "title": "Display login form with username and password fields",
+      "description": "The login form must render username input with user icon, password input with lock icon, and submit button.",
+      "level": "story",
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-table-display",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-table",
+      "title": "Display user table with Name, Email, Role, Status, and date columns",
+      "description": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
+      "level": "ac",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-welcome-greeting",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui-welcome",
+      "title": "Display welcome message for authenticated user",
+      "description": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "position": 0,
       "metadata": {}
     },
     {
@@ -1538,6 +1652,22 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
+      "id": "req-aut-user-mgmt-quick-add",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt",
+      "title": "Quick Add User",
+      "description": "A simple modal form for quickly creating a new user with basic fields.",
+      "level": "feature",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
       "id": "req-aut-auth-login-api-errors",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-auth-login-api",
@@ -1564,6 +1694,38 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "status": "APPROVED",
       "tags": [
         "authentication",
+        "ui"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-filter",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Filtering",
+      "description": "Users must be filterable by text search and dropdown selections.",
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-stats",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui",
+      "title": "Statistics Display",
+      "description": "The dashboard must display real-time system metrics in stat cards.",
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
         "ui"
       ],
       "position": 1,
@@ -1602,33 +1764,35 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-auth-login-ui-form-loading",
+      "id": "req-aut-user-mgmt-list-table-sort",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-ui-form",
-      "title": "Disable submit button and show loading state during authentication",
-      "description": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
+      "parentId": "req-aut-user-mgmt-list-table",
+      "title": "Sort users by clicking column headers",
+      "description": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "authentication",
+        "user-management",
         "ui"
       ],
       "position": 1,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt",
+      "id": "req-aut-dashboard-home-ui-welcome-nav",
       "projectId": "p-aut-demo",
-      "title": "User Management",
-      "description": "Comprehensive user management with CRUD operations, batch actions, advanced form controls, and filtering capabilities.",
-      "level": "epic",
-      "priority": "CRITICAL",
+      "parentId": "req-aut-dashboard-home-ui-welcome",
+      "title": "Provide navigation links to Users and Reports pages",
+      "description": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
+      "level": "ac",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "user-management"
+        "dashboard",
+        "ui"
       ],
-      "position": 2,
+      "position": 1,
       "metadata": {}
     },
     {
@@ -1664,6 +1828,22 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
+      "id": "req-aut-user-mgmt-list-pagination",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Pagination & Loading",
+      "description": "The table must paginate results and show appropriate loading states.",
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 2,
+      "metadata": {}
+    },
+    {
       "id": "req-aut-user-mgmt-advanced-form-security-avatar",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-user-mgmt-advanced-form-security",
@@ -1690,6 +1870,22 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "status": "APPROVED",
       "tags": [
         "authentication",
+        "ui"
+      ],
+      "position": 2,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination-empty",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Display empty state when no users match filters",
+      "description": "When no users are found, the table must display \"No users found\" message spanning all columns.",
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
         "ui"
       ],
       "position": 2,
@@ -1852,38 +2048,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt",
-      "title": "User List View",
-      "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
-      "level": "feature",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard",
-      "title": "Dashboard Home Page",
-      "description": "The dashboard landing page displays key metrics and navigation to other sections.",
-      "level": "feature",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-fault-timeout-delay",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-fault-timeout",
@@ -2027,22 +2191,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-table",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Table Display & Sorting",
-      "description": "The user table must display data with sortable columns for easy browsing.",
-      "level": "story",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-dashboard-home-api-fetch",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-dashboard-home-api",
@@ -2059,22 +2207,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-dashboard-home-ui-welcome",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui",
-      "title": "Welcome & Navigation",
-      "description": "The dashboard must greet the user and provide quick links to major sections.",
-      "level": "story",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-auth-login-api-success",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-auth-login-api",
@@ -2086,6 +2218,22 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "authentication",
         "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-quick-add-form",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-quick-add",
+      "title": "Simple Creation Form",
+      "description": "The Quick Add modal provides a minimal form for rapid user creation.",
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
       ],
       "position": 0,
       "metadata": {}
@@ -2251,22 +2399,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-table-display",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-table",
-      "title": "Display user table with Name, Email, Role, Status, and date columns",
-      "description": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
-      "level": "ac",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-dashboard-home-api-fetch-stats",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-dashboard-home-api-fetch",
@@ -2278,22 +2410,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "dashboard",
         "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-welcome-greeting",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-welcome",
-      "title": "Display welcome message for authenticated user",
-      "description": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
       ],
       "position": 0,
       "metadata": {}
@@ -2347,6 +2463,70 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
+      "id": "req-aut-user-mgmt-quick-add-form-modal",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-quick-add-form",
+      "title": "Open modal form with name, email, role, and status fields",
+      "description": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination-nav",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Support pagination with page number buttons and navigation",
+      "description": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-filter-inputs",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-filter",
+      "title": "Filter users by name search, role dropdown, and status dropdown",
+      "description": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-stats-cards",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui-stats",
+      "title": "Show stat cards for Total Users, Active Sessions, and System Status",
+      "description": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
       "id": "req-aut-fault-error",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-fault",
@@ -2374,22 +2554,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "reports",
         "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-quick-add",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt",
-      "title": "Quick Add User",
-      "description": "A simple modal form for quickly creating a new user with basic fields.",
-      "level": "feature",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
       ],
       "position": 1,
       "metadata": {}
@@ -2452,38 +2616,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "status": "APPROVED",
       "tags": [
         "user-management",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-filter",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Filtering",
-      "description": "Users must be filterable by text search and dropdown selections.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-stats",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui",
-      "title": "Statistics Display",
-      "description": "The dashboard must display real-time system metrics in stat cards.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
         "ui"
       ],
       "position": 1,
@@ -2600,38 +2732,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-table-sort",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-table",
-      "title": "Sort users by clicking column headers",
-      "description": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-welcome-nav",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-welcome",
-      "title": "Provide navigation links to Users and Reports pages",
-      "description": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-auth-login-api-success-token",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-auth-login-api-success",
@@ -2643,6 +2743,22 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "authentication",
         "api"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination-loading",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Show loading skeleton and syncing overlay",
+      "description": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
       ],
       "position": 1,
       "metadata": {}
@@ -2696,43 +2812,11 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-pagination",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Pagination & Loading",
-      "description": "The table must paginate results and show appropriate loading states.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 2,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-user-mgmt-batch-actions-mixed",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-user-mgmt-batch-actions",
       "title": "Handle mixed status selection gracefully",
       "description": "When selected users have mixed active/inactive statuses, show warning badge and disable batch status update buttons.",
-      "level": "ac",
-      "priority": "LOW",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 2,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-pagination-empty",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Display empty state when no users match filters",
-      "description": "When no users are found, the table must display \"No users found\" message spanning all columns.",
       "level": "ac",
       "priority": "LOW",
       "status": "APPROVED",
@@ -2803,22 +2887,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "reports",
         "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-quick-add-form",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-quick-add",
-      "title": "Simple Creation Form",
-      "description": "The Quick Add modal provides a minimal form for rapid user creation.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
       ],
       "position": 0,
       "metadata": {}
@@ -2968,70 +3036,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-quick-add-form-modal",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-quick-add-form",
-      "title": "Open modal form with name, email, role, and status fields",
-      "description": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-pagination-nav",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Support pagination with page number buttons and navigation",
-      "description": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-filter-inputs",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-filter",
-      "title": "Filter users by name search, role dropdown, and status dropdown",
-      "description": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-stats-cards",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-stats",
-      "title": "Show stat cards for Total Users, Active Sessions, and System Status",
-      "description": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-user-mgmt-api-batch-update",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-user-mgmt-api-batch",
@@ -3043,22 +3047,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "tags": [
         "user-management",
         "api"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-pagination-loading",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Show loading skeleton and syncing overlay",
-      "description": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
       ],
       "position": 1,
       "metadata": {}

@@ -31,6 +31,7 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
 
   save(record: Partial<Requirement>): Requirement {
     const id = record.id || randomId('req');
+    const existing = record.id ? this.get(record.id) : null;
 
     db.prepare(`
       INSERT INTO requirements (id, project_id, parent_id, title, description, level, priority, status, tags, position, metadata)
@@ -49,16 +50,16 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
         updated_at = datetime('now')
     `).run(
       id,
-      record.projectId || '',
-      record.parentId || null,
-      record.title || '',
-      record.description || '',
-      record.level || 'story',
-      record.priority || 'MEDIUM',
-      record.status || 'DRAFT',
-      JSON.stringify(record.tags || []),
-      record.position ?? 0,
-      JSON.stringify(record.metadata || {}),
+      record.projectId || existing?.projectId || '',
+      record.parentId !== undefined ? (record.parentId || null) : (existing?.parentId || null),
+      record.title || existing?.title || '',
+      record.description ?? existing?.description ?? '',
+      record.level || existing?.level || 'story',
+      record.priority || existing?.priority || 'MEDIUM',
+      record.status || existing?.status || 'DRAFT',
+      JSON.stringify(record.tags ?? existing?.tags ?? []),
+      record.position ?? existing?.position ?? 0,
+      JSON.stringify(record.metadata ?? existing?.metadata ?? {}),
     );
 
     return this.get(id)!;

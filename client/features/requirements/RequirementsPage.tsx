@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RequirementTree } from "./RequirementTree";
 import { RequirementEditor } from "./RequirementEditor";
@@ -12,6 +12,7 @@ import {
   ListTree,
   RefreshCw,
   Search,
+  ClipboardPaste,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 
@@ -35,8 +36,89 @@ export function RequirementsPage({ currentProjectId }: Props) {
   const [showImport, setShowImport] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [leftWidth, setLeftWidth] = useState(320);
+  const [clipboard, setClipboard] = useState<Requirement | null>(null);
+  const isDragging = useRef(false);
+  const minWidth = 80;
+  const maxWidth = 600;
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isDragging.current = true;
+      const startX = e.clientX;
+      const startWidth = leftWidth;
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        if (!isDragging.current) return;
+        const delta = moveEvent.clientX - startX;
+        const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + delta));
+        setLeftWidth(newWidth);
+      };
+
+      const onMouseUp = () => {
+        isDragging.current = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [leftWidth]
+  );
 
   const selected = items.find((r) => r.id === selectedId) || null;
+
+  const siblings = (parentId: string | null) =>
+    items.filter((r) => (r.parentId || null) === parentId).sort((a, b) => a.position - b.position);
+
+  const moveRequirement = async (id: string, direction: -1 | 1) => {
+    const req = items.find((r) => r.id === id);
+    if (!req) return;
+    const sibs = siblings(req.parentId ?? null);
+    const index = sibs.findIndex((s) => s.id === id);
+    if (index === -1) return;
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= sibs.length) return;
+    const target = sibs[newIndex];
+    const current = sibs[index];
+    await Promise.all([
+      _update(current.id, { position: target.position }),
+      _update(target.id, { position: current.position }),
+    ]);
+    refresh();
+  };
+
+  const copyRequirement = (id: string) => {
+    const req = items.find((r) => r.id === id);
+    if (!req) return;
+    setClipboard(JSON.parse(JSON.stringify(req)));
+  };
+
+  const pasteRequirement = async (parentId: string | null) => {
+    if (!clipboard) return;
+    const sibs = siblings(parentId);
+    const nextPosition = sibs.length > 0 ? Math.max(...sibs.map((s) => s.position)) + 1 : 0;
+    const pasteLevel = parentId
+      ? levelProgression[items.find((r) => r.id === parentId)?.level ?? "story"]
+      : "epic";
+    await _create({
+      ...clipboard,
+      id: `req-${Date.now()}`,
+      projectId,
+      title: `${clipboard.title} (Copy)`,
+      parentId,
+      position: nextPosition,
+      level: pasteLevel,
+    });
+    setClipboard(null);
+    refresh();
+  };
 
   const filteredItems = searchTerm
     ? items.filter(
@@ -81,7 +163,10 @@ export function RequirementsPage({ currentProjectId }: Props) {
 
   return (
     <div className="h-full flex bg-slate-50 overflow-hidden">
-      <div className="w-80 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0">
+      <div
+        className="border-r border-slate-200 bg-slate-50 flex flex-col shrink-0 overflow-hidden"
+        style={{ width: leftWidth }}
+      >
         <div className="p-3 border-b border-slate-100 space-y-3 bg-slate-50/50">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -119,6 +204,18 @@ export function RequirementsPage({ currentProjectId }: Props) {
                 title="Import Requirements"
               >
                 <Upload size={14} />
+              </button>
+              <button
+                onClick={() => pasteRequirement(null)}
+                disabled={!clipboard}
+                className={`p-1 rounded-md transition-colors ${
+                  clipboard
+                    ? "text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                    : "text-slate-300 cursor-not-allowed"
+                }`}
+                title="Paste as Root Requirement"
+              >
+                <ClipboardPaste size={14} />
               </button>
             </div>
           </div>
@@ -163,6 +260,10 @@ export function RequirementsPage({ currentProjectId }: Props) {
             onAddChild={handleAddChild}
             projectId={projectId}
             onRefresh={refresh}
+            onMove={moveRequirement}
+            onCopy={copyRequirement}
+            onPaste={pasteRequirement}
+            clipboardExists={!!clipboard}
           />
         </div>
 
@@ -173,12 +274,20 @@ export function RequirementsPage({ currentProjectId }: Props) {
         </div>
       </div>
 
+      <div
+        className="w-1.5 cursor-col-resize shrink-0 relative -ml-0.5 z-10 group"
+        onMouseDown={handleMouseDown}
+      >
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px rounded-full group-hover:w-[2px] group-hover:bg-blue-400 transition-all" />
+      </div>
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <RequirementEditor
           item={selected}
           projectId={projectId}
           parentId={newChildParentId}
           suggestedLevel={suggestedLevel}
+          parentLevel={newChildParentId ? (items.find((r) => r.id === newChildParentId)?.level ?? null) : null}
           onSaved={() => {
             refresh();
             setNewChildParentId(null);

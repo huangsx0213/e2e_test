@@ -9,6 +9,10 @@ import {
   Check,
   Trash2,
   Plus,
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  ClipboardPaste,
 } from "lucide-react";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
@@ -21,6 +25,10 @@ interface Props {
   parentId?: string | null;
   depth?: number;
   onRefresh: () => void;
+  onMove?: (id: string, direction: -1 | 1) => void;
+  onCopy?: (id: string) => void;
+  onPaste?: (parentId: string | null) => void;
+  clipboardExists?: boolean;
 }
 
 const priorityColors: Record<Requirement["priority"], string> = {
@@ -53,6 +61,10 @@ export function RequirementTree({
   parentId = null,
   depth = 0,
   onRefresh,
+  onMove,
+  onCopy,
+  onPaste,
+  clipboardExists = false,
 }: Props) {
   const { remove, update } = useRequirementMutations(projectId);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -95,19 +107,23 @@ export function RequirementTree({
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         onClose={() => setDeleteConfirm(null)}
       />
-      {children.map((r) => {
+      {(() => {
+        const sortedChildren = [...children].sort((a, b) => a.position - b.position);
+        return sortedChildren.map((r, idx) => {
         const hasChildren = items.some((i) => i.parentId === r.id);
         const expanded = isExpanded(r.id);
         const isSelected = selectedId === r.id;
         const count = childCount(r.id);
+        const isFirst = idx === 0;
+        const isLast = idx === sortedChildren.length - 1;
 
         return (
           <div key={r.id}>
             <div
               className={`group flex items-center py-1 px-1.5 cursor-pointer rounded-md text-sm transition-all duration-150 ${
                 isSelected
-                  ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200"
-                  : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                  ? "bg-blue-100 text-blue-800 shadow-sm ring-1 ring-blue-300"
+                  : "text-slate-700 hover:bg-slate-200 hover:text-slate-900 hover:shadow-sm"
               }`}
               style={{ paddingLeft: `${depth * 16 + 4}px` }}
               onClick={() => onSelect(r.id)}
@@ -165,6 +181,42 @@ export function RequirementTree({
                 )}
               </div>
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+{onMove && !isFirst && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(r.id, -1); }}
+                      className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Move Up"
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                  )}
+                  {onMove && !isLast && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onMove(r.id, 1); }}
+                      className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Move Down"
+                    >
+                      <ArrowDown size={12} />
+                    </button>
+                  )}
+                {onCopy && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onCopy(r.id); }}
+                    className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Copy"
+                  >
+                    <Copy size={12} />
+                  </button>
+                )}
+                {onPaste && clipboardExists && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onPaste(r.id); }}
+                    className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Paste as Child"
+                  >
+                    <ClipboardPaste size={12} />
+                  </button>
+                )}
                 {onAddChild && (
                   <button
                     onClick={(e) => {
@@ -219,11 +271,16 @@ export function RequirementTree({
                 parentId={r.id}
                 depth={depth + 1}
                 onRefresh={onRefresh}
+                onMove={onMove}
+                onCopy={onCopy}
+                onPaste={onPaste}
+                clipboardExists={clipboardExists}
               />
             )}
           </div>
         );
-      })}
+      });
+      })()}
     </div>
   );
 }

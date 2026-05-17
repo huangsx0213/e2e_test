@@ -11,6 +11,7 @@ interface Props {
   parentId?: string | null;
   suggestedLevel?: Requirement["level"] | null;
   onSaved: () => void;
+  parentLevel?: Requirement["level"] | null;
 }
 
 const tagStyle = { bg: "bg-slate-100 border-slate-200", text: "text-slate-600", dot: "bg-slate-400" };
@@ -21,6 +22,7 @@ export function RequirementEditor({
   parentId,
   suggestedLevel,
   onSaved,
+  parentLevel,
 }: Props) {
   const { create, update } = useRequirementMutations(projectId);
   const [title, setTitle] = useState("");
@@ -34,6 +36,18 @@ export function RequirementEditor({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const tagInputRef = useRef<HTMLInputElement>(null);
 
+  const levelProgression: Record<Requirement["level"], Requirement["level"]> = {
+    epic: "feature",
+    feature: "story",
+    story: "ac",
+    ac: "ac",
+  };
+
+  const resolveDefaultLevel = (): Requirement["level"] => {
+    if (parentId) return parentLevel ? levelProgression[parentLevel] : "story";
+    return "epic";
+  };
+
   useEffect(() => {
     if (item) {
       setTitle(item.title);
@@ -45,12 +59,12 @@ export function RequirementEditor({
     } else {
       setTitle("");
       setDescription("");
-      setLevel(suggestedLevel || "story");
+      setLevel(suggestedLevel || resolveDefaultLevel());
       setPriority("MEDIUM");
       setStatus("DRAFT");
       setTags([]);
     }
-  }, [item, suggestedLevel]);
+  }, [item, suggestedLevel, parentId]);
 
   const handleSave = async () => {
     if (!title.trim() || saveStatus === "saving") return;
@@ -66,6 +80,8 @@ export function RequirementEditor({
           tags,
         });
       } else {
+        const sibs = allItems.filter((r) => (r.parentId || null) === (parentId ?? null));
+        const nextPosition = sibs.length > 0 ? Math.max(...sibs.map((s) => s.position)) + 1 : 0;
         await create({
           projectId,
           parentId: parentId ?? null,
@@ -75,7 +91,7 @@ export function RequirementEditor({
           priority,
           status,
           tags,
-          position: 0,
+          position: nextPosition,
           metadata: {},
         } as any);
       }

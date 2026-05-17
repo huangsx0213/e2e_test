@@ -73,7 +73,7 @@ describe('RequirementTree', () => {
         )
       );
       const row = screen.getByText('Selected Feature').closest('[class*="group flex"]');
-      expect(row?.className).toMatch(/bg-blue-50/);
+      expect(row?.className).toMatch(/bg-blue-100/);
     });
 
     it('calls onSelect when a requirement is clicked', () => {

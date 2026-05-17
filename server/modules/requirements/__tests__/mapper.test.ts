@@ -34,4 +34,11 @@ describe('normalizeRequirement', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test', parentId: 'req-parent' });
     expect(result.parentId).toBe('req-parent');
   });
+  it('preserves existing level when updating position only', () => {
+    const existing = { id: 'req-1', projectId: 'proj-1', title: 'Test', level: 'epic', priority: 'HIGH', status: 'APPROVED' };
+    const merged = normalizeRequirement({ ...existing, position: 3, id: existing.id });
+    expect(merged.level).toBe('epic');
+    expect(merged.priority).toBe('HIGH');
+    expect(merged.status).toBe('APPROVED');
+  });
 });
