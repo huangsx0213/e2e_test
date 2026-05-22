@@ -13,6 +13,8 @@ import { Documentation } from "@/features/documentation/Documentation";
 import { AgentManagement } from "@/features/agents/AgentManagement";
 import { RequirementsPage } from "@/features/requirements/RequirementsPage";
 import { BusinessFlowsPage } from "@/features/business-flows/BusinessFlowsPage";
+import { NlCasesPage } from "@/features/nl-cases/NlCasesPage";
+import { AiPipelinePage } from "@/features/nl-pipeline/AiPipelinePage";
 import type { Dispatch, SetStateAction } from "react";
 import { AppTab } from "@/app/types";
 import { useWorkspaceContext } from "@/app/contexts/WorkspaceContext";
@@ -155,8 +157,12 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
       return <AgentManagement />;
     case "REQUIREMENTS":
       return <RequirementsPage currentProjectId={currentProjectId} />;
-    case "BUSINESS_FLOWS":
+case "BUSINESS_FLOWS":
       return <BusinessFlowsPage currentProjectId={currentProjectId} />;
+    case "NL_CASES":
+      return <NlCasesPage currentProjectId={currentProjectId} />;
+    case "AI_PIPELINE":
+      return <AiPipelinePage currentProjectId={currentProjectId} />;
     default:
       return null;
   }

@@ -19,6 +19,7 @@ import { migration015RequirementLevel } from './015_requirement_level.ts';
 import { migration016RequirementTags } from './016_requirement_tags.ts';
 import { migration017SuitePosition } from './017_suite_position.ts';
 import { migration018RequirementDependenciesAndBusinessFlows } from './018_requirement_dependencies_and_business_flows.ts';
+import { migration019PipelineProduction } from './019_pipeline_production.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -42,7 +43,8 @@ export const migrations: Migration[] = [
   migration015RequirementLevel,
   migration016RequirementTags,
   migration017SuitePosition,
-  migration018RequirementDependenciesAndBusinessFlows,
+migration018RequirementDependenciesAndBusinessFlows,
+  migration019PipelineProduction,
 ];
 
 function appliedMigrationIds(): Set<string> {

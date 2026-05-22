@@ -4,6 +4,7 @@ import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type { DbRequirementRow } from '../../shared/db/types.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { validateRequirementDependencies } from './validation.ts';
+import { regenerateIndexFile } from './index-generator.ts';
 
 class RequirementRepository extends BaseCrudRepository<Requirement> {
   protected table = 'requirements';
@@ -21,7 +22,9 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
   }
 
   remove(id: string): void {
+    const existing = this.get(id);
     db.prepare('DELETE FROM requirements WHERE id = ?').run(id);
+    if (existing) { regenerateIndexFile(existing.projectId); }
   }
 
   get(id: string): Requirement | undefined {
@@ -74,7 +77,9 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       JSON.stringify(record.metadata ?? existing?.metadata ?? {}),
     );
 
-    return this.get(id)!;
+    const result = this.get(id)!;
+    regenerateIndexFile(result.projectId);
+    return result;
   }
 
   rowToRequirement(row: DbRequirementRow): Requirement {

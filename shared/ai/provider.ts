@@ -1,3 +1,5 @@
+import type { CircuitBreakerState, ProviderConfig as ExtendedProviderConfig } from './provider-types.ts';
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -31,6 +33,80 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
     case 'nvidia-nim': return createNvidiaProvider(config);
     case 'openrouter': return createOpenRouterProvider(config);
     case 'openai': return createOpenAIProvider(config);
+  }
+}
+
+// ─── Circuit Breaker ───
+
+const circuitBreakers = new Map<string, CircuitBreakerState>();
+
+function getOrCreateCB(name: string): CircuitBreakerState {
+  if (!circuitBreakers.has(name)) {
+    circuitBreakers.set(name, { failureCount: 0, lastFailureTime: null, isOpen: false, openSince: null });
+  }
+  return circuitBreakers.get(name)!;
+}
+
+export function createAIProviderWithFallback(config: ExtendedProviderConfig): AIProvider {
+  const primary = createAIProvider(config as ProviderConfig);
+  const cb = getOrCreateCB(`${config.type}:${config.endpoint || config.model || 'primary'}`);
+  const failureThreshold = config.circuitBreaker?.failureThreshold ?? 5;
+  const resetTimeoutMs = config.circuitBreaker?.resetTimeoutMs ?? 60_000;
+
+  const fallbacks = (config.fallbackConfigs ?? []).map(fc => createAIProvider(fc as ProviderConfig));
+
+  async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
+    return tryProvider(primary, fallbacks, 0, cb, failureThreshold, resetTimeoutMs,
+      (provider) => provider.chat(messages, options));
+  }
+
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
+    // streamChat does not support fallback (complex to re-stream)
+    yield* primary.streamChat(messages, options);
+  }
+
+  return { chat, streamChat };
+}
+
+async function tryProvider<T>(
+  primary: AIProvider, fallbacks: AIProvider[], currentIndex: number,
+  cb: CircuitBreakerState, failureThreshold: number, resetTimeoutMs: number,
+  fn: (provider: AIProvider) => Promise<T>,
+): Promise<T> {
+  // Check if circuit is open
+  if (cb.isOpen) {
+    const elapsed = Date.now() - (cb.openSince ?? Date.now());
+    if (elapsed < resetTimeoutMs) {
+      // Try next fallback if available
+      if (currentIndex < fallbacks.length) {
+        return tryProvider(primary, fallbacks, currentIndex + 1, cb, failureThreshold, resetTimeoutMs, fn);
+      }
+      throw new Error(`All providers unavailable. Circuit breaker open for ${Math.ceil((resetTimeoutMs - elapsed) / 1000)}s`);
+    }
+    // Half-open: allow one probe request
+    cb.isOpen = false;
+  }
+
+  const provider = currentIndex === 0 ? primary : fallbacks[currentIndex - 1];
+
+  try {
+    const result = await fn(provider);
+    // Success: reset circuit breaker
+    cb.failureCount = 0;
+    cb.lastFailureTime = null;
+    return result;
+  } catch (err: any) {
+    cb.failureCount++;
+    cb.lastFailureTime = Date.now();
+    if (cb.failureCount >= failureThreshold) {
+      cb.isOpen = true;
+      cb.openSince = Date.now();
+    }
+    // Try next provider
+    if (currentIndex < fallbacks.length) {
+      return tryProvider(primary, fallbacks, currentIndex + 1, cb, failureThreshold, resetTimeoutMs, fn);
+    }
+    throw err;
   }
 }
 
