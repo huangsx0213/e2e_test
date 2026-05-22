@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Requirement } from "../../../shared/contracts/index";
-import { useRequirementMutations } from "../../shared/hooks/useQueryHooks";
-import { Save, Eye, Edit3, X, FileText, Check } from "lucide-react";
+import { useBusinessFlows, useRequirementMutations, useRequirements } from "../../shared/hooks/useQueryHooks";
+import { orderRequirementsLikeTree } from "../../shared/requirements/order";
+import { buildRequirementPath } from "../../shared/requirements/path";
+import { Save, Eye, Edit3, X, FileText, Check, ChevronRight } from "lucide-react";
 
 interface Props {
   item: Requirement | null;
@@ -15,6 +17,7 @@ interface Props {
 }
 
 const tagStyle = { bg: "bg-slate-100 border-slate-200", text: "text-slate-600", dot: "bg-slate-400" };
+const levelLabels: Record<Requirement['level'], string> = { epic: "Epic", feature: "Feature", story: "Story", ac: "AC" };
 
 export function RequirementEditor({
   item,
@@ -24,14 +27,18 @@ export function RequirementEditor({
   onSaved,
   parentLevel,
 }: Props) {
+  const { data: allItems = [] } = useRequirements(projectId);
+  const { data: businessFlows = [] } = useBusinessFlows(projectId);
   const { create, update } = useRequirementMutations(projectId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [dependencies, setDependencies] = useState<string[]>([]);
   const [level, setLevel] = useState<Requirement["level"]>("story");
   const [priority, setPriority] = useState<Requirement["priority"]>("MEDIUM");
   const [status, setStatus] = useState<Requirement["status"]>("DRAFT");
   const [tags, setTags] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [showDependencyEditor, setShowDependencyEditor] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   const tagInputRef = useRef<HTMLInputElement>(null);
@@ -52,17 +59,21 @@ export function RequirementEditor({
     if (item) {
       setTitle(item.title);
       setDescription(item.description);
+      setDependencies(item.dependencies || []);
       setLevel(item.level || "story");
       setPriority(item.priority);
       setStatus(item.status);
       setTags(item.tags || []);
+      setShowDependencyEditor(false);
     } else {
       setTitle("");
       setDescription("");
+      setDependencies([]);
       setLevel(suggestedLevel || resolveDefaultLevel());
       setPriority("MEDIUM");
       setStatus("DRAFT");
       setTags([]);
+      setShowDependencyEditor(false);
     }
   }, [item, suggestedLevel, parentId]);
 
@@ -74,6 +85,7 @@ export function RequirementEditor({
         await update(item.id, {
           title,
           description,
+          dependencies,
           level,
           priority,
           status,
@@ -87,6 +99,7 @@ export function RequirementEditor({
           parentId: parentId ?? null,
           title,
           description,
+          dependencies,
           level,
           priority,
           status,
@@ -115,6 +128,20 @@ export function RequirementEditor({
     setTags(tags.filter((t) => t !== tag));
   };
 
+  const toggleDependency = (dependencyId: string) => {
+    setDependencies((current) => current.includes(dependencyId)
+      ? current.filter((id) => id !== dependencyId)
+      : [...current, dependencyId]);
+  };
+
+  const dependencyEditingEnabled = level === 'story';
+  const availableDependencies = orderRequirementsLikeTree(allItems)
+    .filter((requirement) => requirement.id !== item?.id && requirement.level === 'story');
+  const selectedDependencies = availableDependencies.filter((requirement) => dependencies.includes(requirement.id));
+  const referencedFlows = item
+    ? businessFlows.filter((flow) => flow.steps.some((step) => step.requirementIds.includes(item.id)))
+    : [];
+
   const handleTagKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
@@ -125,6 +152,20 @@ export function RequirementEditor({
       removeTag(tags[tags.length - 1]);
     }
   };
+
+  const breadcrumbAncestors = (() => {
+    if (!item) return [];
+    const ancestors: { id: string; title: string; level: Requirement['level'] }[] = [];
+    const itemMap = new Map(allItems.map((r) => [r.id, r]));
+    let current: Requirement | undefined = item;
+    let guard = 0;
+    while (current && guard < 10) {
+      ancestors.unshift({ id: current.id, title: current.title, level: current.level });
+      current = current.parentId ? itemMap.get(current.parentId) : undefined;
+      guard += 1;
+    }
+    return ancestors;
+  })();
 
   if (!item && !projectId) {
     return (
@@ -144,6 +185,25 @@ export function RequirementEditor({
 
   return (
     <div className="h-full flex flex-col bg-white">
+      {/* ── Breadcrumb ── */}
+      {item && breadcrumbAncestors.length > 1 && (
+        <div className="shrink-0 max-w-[1600px] mx-auto w-full px-8 pt-4 pb-0">
+          <nav className="flex items-center gap-1 text-xs text-slate-400 flex-wrap">
+            {breadcrumbAncestors.map((ancestor, idx) => (
+              <span key={ancestor.id} className="flex items-center gap-1">
+                {idx > 0 && <ChevronRight size={10} className="text-slate-300" />}
+                <span className="text-[10px] font-semibold uppercase text-slate-400 mr-0.5">
+                  {levelLabels[ancestor.level]}
+                </span>
+                <span className={idx === breadcrumbAncestors.length - 1 ? "text-slate-600 font-medium" : "text-slate-400"}>
+                  {ancestor.title}
+                </span>
+              </span>
+            ))}
+          </nav>
+        </div>
+      )}
+
       {/* ── Top bar: title + save button ── */}
       <div className="shrink-0 max-w-[1600px] mx-auto w-full px-8 pt-6 pb-3">
         <div className="flex items-center gap-4">
@@ -303,6 +363,84 @@ export function RequirementEditor({
             </select>
           </div>
         </div>
+
+        {dependencyEditingEnabled && (
+          <div className="shrink-0 mt-6">
+            <div className="flex items-center gap-3 mb-2.5">
+              <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                Dependencies
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowDependencyEditor((current) => !current)}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                {showDependencyEditor ? 'Hide Dependencies' : 'Edit Dependencies'}
+              </button>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
+              {selectedDependencies.length === 0 ? (
+                <p className="text-xs text-slate-400">No dependencies selected.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {selectedDependencies.map((requirement) => (
+                    <span
+                      key={requirement.id}
+                      className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                      title={buildRequirementPath(requirement.id, allItems)}
+                    >
+                      {requirement.title}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {showDependencyEditor && (
+                <div data-testid="dependency-candidate-list" className="space-y-2 border-t border-slate-200 pt-3 max-h-80 overflow-y-auto pr-1">
+                  {availableDependencies.length === 0 ? (
+                    <p className="text-xs text-slate-400">No other story requirements available in this project.</p>
+                  ) : (
+                    availableDependencies.map((requirement) => (
+                      <label key={requirement.id} className="flex items-start gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={dependencies.includes(requirement.id)}
+                          onChange={() => toggleDependency(requirement.id)}
+                          aria-label={requirement.title}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium">{requirement.title}</span>
+                          <span className="block text-xs text-slate-400">{buildRequirementPath(requirement.id, allItems)}</span>
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {item && (
+          <div className="shrink-0 mt-6">
+            <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2.5">
+              Used In Business Flows
+            </label>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+              {referencedFlows.length === 0 ? (
+                <p className="text-xs text-slate-400">This requirement is not referenced by any business flow yet.</p>
+              ) : (
+                referencedFlows.map((flow) => (
+                  <div key={flow.id} className="text-sm text-slate-700">
+                    <span className="font-medium">{flow.name}</span>
+                    <span className="ml-2 text-[10px] uppercase text-slate-400">{flow.type}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         <hr className="shrink-0 border-slate-100 mt-6" />
 

@@ -11,7 +11,21 @@ describe('parseMarkdownRequirements', () => {
     expect(epic?.parentId).toBeUndefined();
   });
   it('returns 0 for empty input', () => {
-    expect(parseMarkdownRequirements('', 'proj-1').imported).toBe(0);
+    const result = parseMarkdownRequirements('', 'proj-1');
+    expect(result.imported).toBe(0);
+    expect(result.warnings).toEqual([]);
+  });
+  it('warns when heading exceeds max depth', () => {
+    const md = '##### Deep heading';
+    const result = parseMarkdownRequirements(md, 'proj-1');
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain('exceeding max depth');
+  });
+  it('warns when a sub-heading has no parent', () => {
+    const md = '### Orphan story';
+    const result = parseMarkdownRequirements(md, 'proj-1');
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain('has no parent');
   });
 });
 
@@ -23,6 +37,14 @@ describe('parseCsvRequirements', () => {
     expect(result.requirements[0].priority).toBe('CRITICAL');
   });
   it('returns 0 for header-only CSV', () => {
-    expect(parseCsvRequirements('title,description,parent_title,priority', 'proj-1').imported).toBe(0);
+    const result = parseCsvRequirements('title,description,parent_title,priority', 'proj-1');
+    expect(result.imported).toBe(0);
+    expect(result.warnings).toEqual([]);
+  });
+  it('warns when parent_title is not found', () => {
+    const csv = 'title,parent_title\nChild,NonExistentParent';
+    const result = parseCsvRequirements(csv, 'proj-1');
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0]).toContain('NonExistentParent');
   });
 });

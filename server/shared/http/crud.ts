@@ -39,10 +39,13 @@ export function createCrudService<T extends WithId>(options: {
   normalize: (payload: Partial<T>) => T;
 }): CrudService<T> {
   const { repository, normalize } = options;
+  const list = repository.list.bind(repository);
+  const get = repository.get.bind(repository);
+  const remove = repository.remove.bind(repository);
 
   return {
-    list: repository.list,
-    get: repository.get,
+    list,
+    get,
     create: (payload) => {
       const record = normalize((payload || {}) as Partial<T>);
       if (repository.get(record.id)) {
@@ -64,7 +67,7 @@ export function createCrudService<T extends WithId>(options: {
 
       return repository.save(merged);
     },
-    remove: repository.remove,
+    remove,
   };
 }
 

@@ -12,7 +12,8 @@ export type AppTab =
   | 'DOCUMENTATION'
   | 'DYNAMIC_VARIABLES'
   | 'AGENTS'
-  | 'REQUIREMENTS';
+  | 'REQUIREMENTS'
+  | 'BUSINESS_FLOWS';
 
 export interface ExecutionState {
   suiteId: string;

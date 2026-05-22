@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { randomId } from '../../shared/utils/index.ts';
 import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { db } from '../../shared/db/client.ts';
+import { requirementRepo } from '../requirements/repository.ts';
+import { businessFlowRepo } from '../business-flows/repository.ts';
+import { buildBusinessFlowBlueprints } from './business-flow-blueprint.ts';
 
 const router = Router();
 
@@ -21,9 +24,15 @@ router.post('/:projectId/start', (req, res) => {
 
   (async () => {
     try {
+      const requirements = requirementRepo.listByProject(projectId);
+      const businessFlows = buildBusinessFlowBlueprints({
+        flows: businessFlowRepo.listByProject(projectId),
+        requirements,
+      });
+
       sendEvent('phase:start', { phase: 'analysis', agent: 'test-analyst', batch: '1/1' });
       sendEvent('agent:thought', { phase: 'analysis', chunk: 'Placeholder — full pipeline execution with LangGraph requires agent roles and provider configured via settings.' });
-      sendEvent('phase:complete', { phase: 'analysis', summary: 'Pipeline infrastructure ready.' });
+      sendEvent('phase:complete', { phase: 'analysis', summary: 'Pipeline infrastructure ready.', businessFlows });
       sendEvent('human_review:required', { phase: 'review-conditions' });
       sendEvent('pipeline:complete', { summary: 'Infrastructure verified.' });
     } catch (err) {

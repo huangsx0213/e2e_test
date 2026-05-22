@@ -217,7 +217,7 @@ export function RequirementTree({
                     <ClipboardPaste size={12} />
                   </button>
                 )}
-                {onAddChild && (
+                {onAddChild && r.level !== 'ac' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

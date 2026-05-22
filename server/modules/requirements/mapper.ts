@@ -8,6 +8,9 @@ export function normalizeRequirement(input: Partial<Requirement>): Requirement {
     parentId: nullableText(input.parentId) || undefined,
     title: asText(input.title, 'New Requirement'),
     description: asText(input.description),
+    dependencies: Array.isArray(input.dependencies)
+      ? input.dependencies.filter((value): value is string => typeof value === 'string')
+      : [],
     level: (input.level || 'story') as Requirement['level'],
     priority: (input.priority || 'MEDIUM') as Requirement['priority'],
     status: (input.status || 'DRAFT') as Requirement['status'],

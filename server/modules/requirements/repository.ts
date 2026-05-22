@@ -3,6 +3,7 @@ import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type { DbRequirementRow } from '../../shared/db/types.ts';
 import { randomId } from '../../shared/utils/index.ts';
+import { validateRequirementDependencies } from './validation.ts';
 
 class RequirementRepository extends BaseCrudRepository<Requirement> {
   protected table = 'requirements';
@@ -32,15 +33,25 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
   save(record: Partial<Requirement>): Requirement {
     const id = record.id || randomId('req');
     const existing = record.id ? this.get(record.id) : null;
+    const normalizedRecord = {
+      ...existing,
+      ...record,
+      id,
+      projectId: record.projectId || existing?.projectId || '',
+      dependencies: record.dependencies ?? existing?.dependencies ?? [],
+    } as Requirement;
+
+    validateRequirementDependencies(normalizedRecord, this.listByProject(normalizedRecord.projectId));
 
     db.prepare(`
-      INSERT INTO requirements (id, project_id, parent_id, title, description, level, priority, status, tags, position, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, priority, status, tags, position, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         parent_id = excluded.parent_id,
         title = excluded.title,
         description = excluded.description,
+        dependencies = excluded.dependencies,
         level = excluded.level,
         priority = excluded.priority,
         status = excluded.status,
@@ -54,6 +65,7 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       record.parentId !== undefined ? (record.parentId || null) : (existing?.parentId || null),
       record.title || existing?.title || '',
       record.description ?? existing?.description ?? '',
+      JSON.stringify(record.dependencies ?? existing?.dependencies ?? []),
       record.level || existing?.level || 'story',
       record.priority || existing?.priority || 'MEDIUM',
       record.status || existing?.status || 'DRAFT',
@@ -72,6 +84,7 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       parentId: row.parent_id || undefined,
       title: row.title,
       description: row.description,
+      dependencies: JSON.parse(row.dependencies || '[]'),
       level: (row.level || 'story') as Requirement['level'],
       priority: row.priority as Requirement['priority'],
       status: row.status as Requirement['status'],

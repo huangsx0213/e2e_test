@@ -14,6 +14,7 @@ import { dynamicVariablesModule } from '../modules/dynamic-variables/index.ts';
 
 import { agentsModule } from '../modules/agent/index.ts';
 import { requirementsModule } from '../modules/requirements/index.ts';
+import { businessFlowsModule } from '../modules/business-flows/index.ts';
 import { testConditionsModule } from '../modules/test-conditions/index.ts';
 import { nlCasesModule } from '../modules/nl-cases/index.ts';
 import { aiPipelineModule } from '../modules/ai-pipeline/index.ts';
@@ -34,6 +35,7 @@ export function registerRoutes(app: Express) {
     dynamicVariablesModule,
     agentsModule,
     requirementsModule,
+    businessFlowsModule,
     testConditionsModule,
     nlCasesModule,
     aiPipelineModule,

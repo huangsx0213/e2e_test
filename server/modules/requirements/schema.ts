@@ -7,6 +7,7 @@ export const requirementPayloadSchema = z.object({
   parentId: z.string().nullable().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
+  dependencies: z.array(z.string()).optional(),
   level: stringEnum(['epic', 'feature', 'story', 'ac'] as const).optional(),
   priority: stringEnum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).optional(),
   status: stringEnum(['DRAFT', 'APPROVED', 'IN_PROGRESS', 'DEPRECATED'] as const).optional(),

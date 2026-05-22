@@ -26,6 +26,14 @@ describe('normalizeRequirement', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test' });
     expect(result.status).toBe('DRAFT');
   });
+  it('preserves dependencies as an array of strings', () => {
+    const result = normalizeRequirement({
+      projectId: 'proj-1',
+      title: 'Test',
+      dependencies: ['req-1', 'req-2'],
+    });
+    expect(result.dependencies).toEqual(['req-1', 'req-2']);
+  });
   it('accepts null parentId', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test', parentId: null });
     expect(result.parentId).toBeUndefined();
@@ -35,7 +43,14 @@ describe('normalizeRequirement', () => {
     expect(result.parentId).toBe('req-parent');
   });
   it('preserves existing level when updating position only', () => {
-    const existing = { id: 'req-1', projectId: 'proj-1', title: 'Test', level: 'epic', priority: 'HIGH', status: 'APPROVED' };
+    const existing = {
+      id: 'req-1',
+      projectId: 'proj-1',
+      title: 'Test',
+      level: 'epic' as const,
+      priority: 'HIGH' as const,
+      status: 'APPROVED' as const,
+    };
     const merged = normalizeRequirement({ ...existing, position: 3, id: existing.id });
     expect(merged.level).toBe('epic');
     expect(merged.priority).toBe('HIGH');

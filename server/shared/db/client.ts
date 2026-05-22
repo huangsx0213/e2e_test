@@ -7,7 +7,7 @@ export const dbFile = path.join(process.cwd(), 'database.sqlite');
 
 function configureDatabase(database: Database.Database): void {
   database.pragma('foreign_keys = ON');
-  database.pragma('journal_mode = DELETE');
+  database.pragma('journal_mode = WAL');
 }
 
 function isSqliteCorruptionError(error: unknown): error is Error & { code: string } {

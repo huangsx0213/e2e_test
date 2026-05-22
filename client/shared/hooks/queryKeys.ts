@@ -10,5 +10,6 @@ export const queryKeys = {
   dynamicVariables: (projectId: string) => ['dynamic-variables', projectId] as const,
   agents: ['agents'] as const,
   requirements: ['requirements'] as const,
+  businessFlows: ['business-flows'] as const,
   queue: ['queue'] as const,
 };

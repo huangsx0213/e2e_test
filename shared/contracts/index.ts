@@ -446,12 +446,45 @@ export interface Requirement {
   parentId?: string | null;
   title: string;
   description: string;
+  dependencies?: string[];
   level: 'epic' | 'feature' | 'story' | 'ac';
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   status: 'DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'DEPRECATED';
   tags: string[];
   position: number;
   metadata: Record<string, unknown>;
+}
+
+export interface BusinessFlowStep {
+  sequence: number;
+  requirementIds: string[];
+  actionSummary: string;
+}
+
+export interface BusinessFlow {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  type: 'happy-path' | 'alternate' | 'exception';
+  status: 'DRAFT' | 'APPROVED';
+  steps: BusinessFlowStep[];
+}
+
+export interface PipelineBusinessFlowBlueprintStep {
+  sequence: number;
+  requirementId: string;
+  requirementTitle: string;
+  requirementLevel: Requirement['level'];
+  actionSummary: string;
+  acceptanceCriteria: string[];
+}
+
+export interface PipelineBusinessFlowBlueprint {
+  id: string;
+  name: string;
+  type: BusinessFlow['type'];
+  steps: PipelineBusinessFlowBlueprintStep[];
 }
 
 export interface TestCondition {

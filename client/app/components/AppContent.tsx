@@ -12,6 +12,7 @@ import { DynamicVariables } from "@/features/dynamic-variables/DynamicVariables"
 import { Documentation } from "@/features/documentation/Documentation";
 import { AgentManagement } from "@/features/agents/AgentManagement";
 import { RequirementsPage } from "@/features/requirements/RequirementsPage";
+import { BusinessFlowsPage } from "@/features/business-flows/BusinessFlowsPage";
 import type { Dispatch, SetStateAction } from "react";
 import { AppTab } from "@/app/types";
 import { useWorkspaceContext } from "@/app/contexts/WorkspaceContext";
@@ -154,6 +155,8 @@ export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
       return <AgentManagement />;
     case "REQUIREMENTS":
       return <RequirementsPage currentProjectId={currentProjectId} />;
+    case "BUSINESS_FLOWS":
+      return <BusinessFlowsPage currentProjectId={currentProjectId} />;
     default:
       return null;
   }

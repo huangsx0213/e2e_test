@@ -39,6 +39,7 @@ function AppShell() {
     DYNAMIC_VARIABLES: [],
     AGENTS: queryKeys.agents,
     REQUIREMENTS: queryKeys.requirements,
+    BUSINESS_FLOWS: queryKeys.businessFlows,
   };
 
   const handleTabChange = useCallback(

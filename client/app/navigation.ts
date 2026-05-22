@@ -13,6 +13,7 @@ import {
   BookOpen,
   Server,
   ClipboardList,
+  GitBranchPlus,
   type LucideIcon,
 } from 'lucide-react';
 import { AppTab } from '@/app/types';
@@ -45,6 +46,7 @@ export const navigationSections: NavigationSection[] = [
     title: 'Infrastructure',
     items: [
       { tab: 'REQUIREMENTS', label: 'Requirements', icon: ClipboardList },
+      { tab: 'BUSINESS_FLOWS', label: 'Business Flows', icon: GitBranchPlus },
       { tab: 'AGENTS', label: 'Remote Agents', icon: Server },
     ],
   },

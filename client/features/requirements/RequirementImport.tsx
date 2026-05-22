@@ -12,11 +12,14 @@ export function RequirementImport({ projectId, onClose, onImported }: Props) {
   const [format, setFormat] = useState<"markdown" | "csv">("markdown");
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[] | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number } | null>(null);
 
-  const handleImport = async () => {
+  const handleImport = async (force = false) => {
     if (!content.trim()) return;
     setImporting(true);
     setError(null);
+    setWarnings(null);
     try {
       const res = await fetch(`/api/requirements/${projectId}/import`, {
         method: "POST",
@@ -28,7 +31,11 @@ export function RequirementImport({ projectId, onClose, onImported }: Props) {
         throw new Error(err.error || "Import failed");
       }
       const data = await res.json();
-      alert(`Successfully imported ${data.imported} requirement(s).`);
+      if (!force && data.warnings && data.warnings.length > 0) {
+        setWarnings(data.warnings);
+        setImportResult({ imported: data.imported });
+        return;
+      }
       onImported();
       onClose();
     } catch (e: any) {
@@ -129,6 +136,22 @@ export function RequirementImport({ projectId, onClose, onImported }: Props) {
               {error}
             </div>
           )}
+
+          {warnings && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm font-semibold text-amber-800 mb-2">
+                Import completed with {warnings.length} warning(s)
+              </p>
+              <ul className="space-y-1">
+                {warnings.map((w, i) => (
+                  <li key={i} className="text-xs text-amber-700 list-disc ml-4">{w}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-600 mt-2">
+                {importResult?.imported} requirement(s) were imported despite warnings.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="px-6 py-4 bg-slate-50 flex items-center justify-end gap-3 border-t border-slate-100">
@@ -138,14 +161,24 @@ export function RequirementImport({ projectId, onClose, onImported }: Props) {
           >
             Cancel
           </button>
-          <button
-            onClick={handleImport}
-            disabled={!content.trim() || importing}
-            className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 shadow-blue-200 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            <Upload size={16} />
-            {importing ? "Importing..." : "Import"}
-          </button>
+          {warnings ? (
+            <button
+              onClick={() => handleImport(true)}
+              className="px-4 py-2 text-sm font-bold text-white bg-amber-600 rounded-lg shadow-sm hover:bg-amber-700 shadow-amber-200 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2"
+            >
+              <Upload size={16} />
+              Import Anyway
+            </button>
+          ) : (
+            <button
+              onClick={() => handleImport(false)}
+              disabled={!content.trim() || importing}
+              className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 shadow-blue-200 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <Upload size={16} />
+              {importing ? "Importing..." : "Import"}
+            </button>
+          )}
         </div>
       </div>
     </div>

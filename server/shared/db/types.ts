@@ -193,10 +193,21 @@ export type DbRequirementRow = {
   parent_id: string | null;
   title: string;
   description: string;
+  dependencies: string;
   level: string;
   priority: string;
   status: string;
   tags: string;
   position: number;
   metadata: string;
+};
+
+export type DbBusinessFlowRow = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  type: string;
+  status: string;
+  steps: string;
 };
