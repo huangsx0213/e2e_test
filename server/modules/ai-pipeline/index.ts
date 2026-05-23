@@ -434,6 +434,9 @@ router.post('/:projectId/start', (req, res) => {
         onThinking: (agentName, text) => {
           sendEvent('agent:thinking', { agentName, text, timestamp: Date.now() });
         },
+        onAgentComplete: (agentName, tokenUsage, latencyMs) => {
+          sendEvent('agent:complete', { agentName, tokenUsage: tokenUsage.input + tokenUsage.output + tokenUsage.reasoning, latencyMs, timestamp: Date.now() });
+        },
       });
 
       const requirements = requirementRepo.listByProject(projectId);
