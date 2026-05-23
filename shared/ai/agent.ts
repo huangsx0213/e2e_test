@@ -41,9 +41,11 @@ function delay(ms: number): Promise<void> {
 export interface AgentRunOptions {
   timeoutMs?: number;
   maxRetries?: number;
+  onStep?: (stepIndex: number, stepName: string) => void;
+  onThinking?: (text: string) => void;
 }
 
-export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<unknown> {
+export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<{ result: unknown; tokenUsage: { input: number; output: number; reasoning: number }; latencyMs: number }> {
   const { provider, role, skillContext, tokenTracker } = context;
   const maxRetries = options.maxRetries ?? RETRY_DELAYS.length;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
@@ -58,6 +60,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
   ];
 
   let lastError: Error | null = null;
+  const startTime = Date.now();
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const controller = new AbortController();
@@ -74,7 +77,16 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
         tokenTracker.add(response.usage);
       }
       const parsed = JSON.parse(response.content);
-      return role.outputSchema.parse(parsed);
+      const validated = role.outputSchema.parse(parsed);
+      return {
+        result: validated,
+        tokenUsage: {
+          input: response.usage?.promptTokens ?? 0,
+          output: response.usage?.completionTokens ?? 0,
+          reasoning: response.usage?.reasoningTokens ?? 0,
+        },
+        latencyMs: Date.now() - startTime,
+      };
     } catch (err: any) {
       lastError = err as Error;
 
@@ -96,7 +108,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
   throw new Error(`Agent ${role.name} failed after ${maxRetries} attempts: ${lastError?.message}`);
 }
 
-export async function* streamAgent(context: AgentContext, input: unknown): AsyncGenerator<{ type: 'chunk' | 'result'; content: unknown }> {
+export async function* streamAgent(context: AgentContext, input: unknown): AsyncGenerator<{ type: 'reasoning' | 'chunk' | 'result'; content: unknown }> {
   const { provider, role, skillContext } = context;
   const parsedInput = role.inputSchema.parse(input);
   const inputJson = JSON.stringify(parsedInput, null, 2);
@@ -108,8 +120,12 @@ export async function* streamAgent(context: AgentContext, input: unknown): Async
   ];
   let fullContent = '';
   for await (const chunk of provider.streamChat(messages, { ...role.options })) {
-    fullContent += chunk;
-    yield { type: 'chunk', content: chunk };
+    if (chunk.type === 'reasoning') {
+      yield { type: 'reasoning', content: chunk.content };
+    } else if (chunk.type === 'content') {
+      fullContent += chunk.content;
+      yield { type: 'chunk', content: chunk.content };
+    }
   }
   try {
     const parsed = JSON.parse(fullContent);

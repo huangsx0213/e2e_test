@@ -16,15 +16,15 @@ describe('runAgent', () => {
   it('calls provider and returns validated output', async () => {
     const provider = createMockProvider('{"result":"hello"}');
     const context = createAgentContext(provider, testRole);
-    const result = await runAgent(context, { text: 'test input' }) as { result: string };
-    expect(result.result).toBe('hello');
+    const result = await runAgent(context, { text: 'test input' });
+    expect(result.result).toEqual({ result: 'hello' });
   });
 
   it('retries once on validation failure', async () => {
     const provider = { chat: vi.fn().mockResolvedValueOnce({ content: '{"wrong":"field"}', usage: {} }).mockResolvedValueOnce({ content: '{"result":"corrected"}', usage: {} }), streamChat: vi.fn() } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
-    const result = await runAgent(context, { text: 'test input' }) as { result: string };
-    expect(result.result).toBe('corrected');
+    const result = await runAgent(context, { text: 'test input' });
+    expect(result.result).toEqual({ result: 'corrected' });
     expect(provider.chat).toHaveBeenCalledTimes(2);
   });
 

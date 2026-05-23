@@ -13,12 +13,24 @@ export interface ChatOptions {
 
 export interface ChatResponse {
   content: string;
-  usage?: { promptTokens: number; completionTokens: number };
+  reasoningContent?: string;
+  usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
+}
+
+export interface StreamChunk {
+  type: 'reasoning' | 'content' | 'done' | 'error';
+  content: string;
+  usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
 }
 
 export interface AIProvider {
   chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse>;
-  streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string>;
+  streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk>;
+}
+
+export interface ExtendedChatResponse extends ChatResponse {
+  reasoningContent?: string;
+  usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
 }
 
 export type ProviderConfig =
@@ -60,7 +72,7 @@ export function createAIProviderWithFallback(config: ExtendedProviderConfig): AI
       (provider) => provider.chat(messages, options));
   }
 
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     // streamChat does not support fallback (complex to re-stream)
     yield* primary.streamChat(messages, options);
   }
@@ -120,14 +132,25 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     });
     if (!response.ok) { const errorText = await response.text(); throw new Error(`Azure OpenAI error ${response.status}: ${errorText}`); }
     const data = await response.json() as any;
-    return { content: data.choices[0].message.content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0 } };
+    const msg = data.choices[0].message;
+    return {
+      content: msg.content,
+      reasoningContent: msg.reasoning_content || undefined,
+      usage: {
+        promptTokens: data.usage?.prompt_tokens ?? 0,
+        completionTokens: data.usage?.completion_tokens ?? 0,
+        reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
+      },
+    };
   }
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
-    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'api-key': config.apiKey }, body: JSON.stringify({ messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true }) });
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'api-key': config.apiKey }, body: JSON.stringify({ messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true, stream_options: { include_usage: true } }) });
     if (!response.ok) throw new Error(`Azure OpenAI stream error ${response.status}`);
     const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder(); let buffer = '';
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); const content = data.choices?.[0]?.delta?.content; if (content) yield content; } catch {} } } }
+    let usageData: any = null;
+    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); if (data.usage) { usageData = data.usage; } else { const delta = data.choices?.[0]?.delta; if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content }; if (delta?.content) yield { type: 'content', content: delta.content }; } } catch {} } } }
+    yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
   }
   return { chat, streamChat };
 }
@@ -137,14 +160,18 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
     const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096 }) });
     if (!response.ok) throw new Error(`Nvidia NIM error ${response.status}`);
-    const data = await response.json() as any; return { content: data.choices[0].message.content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0 } };
+    const data = await response.json() as any;
+    const msg = data.choices[0].message;
+    return { content: msg.content, reasoningContent: msg.reasoning_content || undefined, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? 0 } };
   }
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
-    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true }) });
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true, stream_options: { include_usage: true } }) });
     if (!response.ok) throw new Error(`Nvidia NIM stream error ${response.status}`);
     const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder(); let buffer = '';
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); const content = data.choices?.[0]?.delta?.content; if (content) yield content; } catch {} } } }
+    let usageData: any = null;
+    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); if (data.usage) { usageData = data.usage; } else { const delta = data.choices?.[0]?.delta; if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content }; if (delta?.content) yield { type: 'content', content: delta.content }; } } catch {} } } }
+    yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
   }
   return { chat, streamChat };
 }
@@ -154,14 +181,18 @@ function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' 
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
     const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096 }) });
     if (!response.ok) throw new Error(`OpenRouter error ${response.status}`);
-    const data = await response.json() as any; return { content: data.choices[0].message.content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0 } };
+    const data = await response.json() as any;
+    const msg = data.choices[0].message;
+    return { content: msg.content, reasoningContent: msg.reasoning_content || undefined, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? 0 } };
   }
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
-    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true }) });
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true, stream_options: { include_usage: true } }) });
     if (!response.ok) throw new Error(`OpenRouter stream error ${response.status}`);
     const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder(); let buffer = '';
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); const content = data.choices?.[0]?.delta?.content; if (content) yield content; } catch {} } } }
+    let usageData: any = null;
+    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); if (data.usage) { usageData = data.usage; } else { const delta = data.choices?.[0]?.delta; if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content }; if (delta?.content) yield { type: 'content', content: delta.content }; } } catch {} } } }
+    yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
   }
   return { chat, streamChat };
 }
@@ -171,14 +202,18 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
     const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined }) });
     if (!response.ok) throw new Error(`OpenAI error ${response.status}`);
-    const data = await response.json() as any; return { content: data.choices[0].message.content, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0 } };
+    const data = await response.json() as any;
+    const msg = data.choices[0].message;
+    return { content: msg.content, reasoningContent: msg.reasoning_content || undefined, usage: { promptTokens: data.usage?.prompt_tokens ?? 0, completionTokens: data.usage?.completion_tokens ?? 0, reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? 0 } };
   }
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<string> {
-    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true }) });
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const response = await fetch(baseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: options?.temperature ?? 0.3, max_tokens: options?.maxTokens ?? 4096, stream: true, stream_options: { include_usage: true } }) });
     if (!response.ok) throw new Error(`OpenAI stream error ${response.status}`);
     const reader = response.body?.getReader(); if (!reader) throw new Error('No response body');
     const decoder = new TextDecoder(); let buffer = '';
-    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); const content = data.choices?.[0]?.delta?.content; if (content) yield content; } catch {} } } }
+    let usageData: any = null;
+    while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n'); buffer = lines.pop() || ''; for (const line of lines) { if (line.startsWith('data: ') && line !== 'data: [DONE]') { try { const data = JSON.parse(line.slice(6)); if (data.usage) { usageData = data.usage; } else { const delta = data.choices?.[0]?.delta; if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content }; if (delta?.content) yield { type: 'content', content: delta.content }; } } catch {} } } }
+    yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
   }
   return { chat, streamChat };
 }

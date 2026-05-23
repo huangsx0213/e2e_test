@@ -325,15 +325,24 @@ async function runBatchInteractive(
       for (const [nodeName, logId] of Object.entries(nodeLogIds)) {
         db.prepare("UPDATE pipeline_agent_logs SET status = 'COMPLETED' WHERE id = ?").run(logId);
         const agentName = nodeName.replace('agent_', '');
-        const outputSummary = agentName === 'test_analyst'
-          ? `${lastState.testConditions?.length || 0} conditions`
-          : agentName === 'test_designer'
-            ? `${lastState.draftTestCases?.length || 0} draft cases`
-            : `${lastState.finalTestCases?.length || 0} final cases`;
+        let outputCount = 0;
+        let outputLabel = '';
+        if (agentName === 'test_analyst') {
+          outputCount = lastState.testConditions?.length || 0;
+          outputLabel = 'conditions';
+        } else if (agentName === 'test_designer') {
+          outputCount = lastState.draftTestCases?.length || 0;
+          outputLabel = 'draft cases';
+        } else {
+          outputCount = lastState.finalTestCases?.length || 0;
+          outputLabel = 'final cases';
+        }
         sendEvent('agent:complete', {
           agentName,
           phase: phaseMap[nodeName] || '',
-          outputSummary,
+          outputSummary: `${outputCount} ${outputLabel}`,
+          outputCount,
+          outputLabel,
           timestamp: Date.now(),
           batch: batchIndex,
         });
@@ -418,6 +427,13 @@ router.post('/:projectId/start', (req, res) => {
         testAnalyst: TestAnalystRole,
         testDesigner: TestDesignerRole,
         qualityManager: QualityManagerRole,
+      }, {
+        onStep: (agentName, stepIndex, stepName) => {
+          sendEvent('agent:step', { agentName, stepIndex, stepName, timestamp: Date.now() });
+        },
+        onThinking: (agentName, text) => {
+          sendEvent('agent:thinking', { agentName, text, timestamp: Date.now() });
+        },
       });
 
       const requirements = requirementRepo.listByProject(projectId);
