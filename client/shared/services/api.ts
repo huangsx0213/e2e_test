@@ -157,6 +157,8 @@ businessFlows: {
       apiFetch<{ success: boolean }>(`provider-configs/${id}/set-active`, { method: 'POST' }),
     copy: (id: string) =>
       apiFetch<any>(`provider-configs/${id}/copy`, { method: 'POST' }),
+    test: (id: string) =>
+      apiFetch<any>(`provider-configs/${id}/test`, { method: 'POST' }),
   },
 };
 

@@ -13,6 +13,8 @@ import {
   X,
   Eye,
   EyeOff,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { MutationActions, EnvironmentMutationActions, useProviderConfigs, useProviderConfigMutations } from "@/shared/hooks/useQueryHooks";
@@ -21,6 +23,7 @@ import { Project, Settings as SettingsType } from "@/shared/types";
 import type { ProviderConfig } from "../../../shared/contracts/index";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { api } from "@/shared/services/api";
 
 interface SettingsProps {
   environments: string[];
@@ -593,6 +596,8 @@ function ProviderConfigsTab() {
   const [form, setForm] = useState({ name: '', type: 'azure-openai' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; success: boolean; latencyMs?: number; error?: string; response?: string } | null>(null);
 
   const handleEdit = (c: any) => {
     setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '' });
@@ -666,51 +671,65 @@ function ProviderConfigsTab() {
         ) : (
           <div className="space-y-3">
             {configs.map((config: any) => (
-              <div key={config.id} className={`flex items-center justify-between p-4 border rounded-lg ${config.isActive ? 'border-blue-300 bg-blue-50/30' : 'border-slate-200'}`}>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700">{config.name}</span>
-                      {config.isActive && (
-                        <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">Active</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                      {typeLabels[config.type] || config.type} {config.model ? `· ${config.model}` : ''}
-                      {config.endpoint ? ` · ${config.endpoint}` : ''}
+              <div key={config.id} className={`p-4 border rounded-lg ${config.isActive ? 'border-blue-300 bg-blue-50/30' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-700">{config.name}</span>
+                        {config.isActive && (
+                          <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">Active</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        {typeLabels[config.type] || config.type} {config.model ? `· ${config.model}` : ''}
+                        {config.endpoint ? ` · ${config.endpoint}` : ''}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {!config.isActive && (
-                    <button
-                      onClick={() => setActive(config.id)}
-                      className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
-                      title="Set as active"
-                    >
-                      Activate
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!config.isActive && (
+                      <button onClick={() => setActive(config.id)} className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded" title="Set as active">
+                        Activate
+                      </button>
+                    )}
+                    <button onClick={() => handleEdit(config)} className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded">
+                      Edit
                     </button>
-                  )}
-                  <button
-                    onClick={() => handleEdit(config)}
-                    className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => copy(config.id)}
-                    className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
-                    title="Copy"
-                  >
-                    <Copy size={13} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(config.id)}
-                    className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                    <button onClick={() => copy(config.id)} className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded" title="Copy">
+                      <Copy size={13} />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setTestingId(config.id);
+                        setTestResult(null);
+                        try {
+                          const result = await api.providerConfigs.test(config.id);
+                          setTestResult({ id: config.id, ...result });
+                        } catch (err: any) {
+                          setTestResult({ id: config.id, success: false, error: err.message || 'Request failed' });
+                        }
+                        setTestingId(null);
+                      }}
+                      disabled={testingId !== null}
+                      className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded disabled:opacity-50"
+                      title="Test connection"
+                    >
+                      {testingId === config.id ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                    </button>
+                    <button onClick={() => setDeleteConfirmId(config.id)} className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
+                {testResult?.id === config.id && (
+                  <div className={`mt-2 text-xs px-2 py-1 rounded ${testResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {testResult.success
+                      ? `Connected · ${testResult.latencyMs}ms · ${testResult.response || 'OK'}`
+                      : `Failed · ${testResult.error}`
+                    }
+                  </div>
+                )}
               </div>
             ))}
           </div>
