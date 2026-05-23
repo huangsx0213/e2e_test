@@ -21,6 +21,7 @@ import { migration017SuitePosition } from './017_suite_position.ts';
 import { migration018RequirementDependenciesAndBusinessFlows } from './018_requirement_dependencies_and_business_flows.ts';
 import { migration019PipelineProduction } from './019_pipeline_production.ts';
 import { migration020 } from './020_pipeline_agent_logs.ts';
+import { migration021ProviderConfigFix } from './021_provider_config_fix.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -47,6 +48,7 @@ export const migrations: Migration[] = [
 migration018RequirementDependenciesAndBusinessFlows,
   migration019PipelineProduction,
   migration020,
+  migration021ProviderConfigFix,
 ];
 
 function appliedMigrationIds(): Set<string> {
