@@ -48,11 +48,11 @@ const agentIcons: Record<string, React.ReactNode> = {
 };
 
 function ArrowRight({ scale }: { scale: number }) {
-  const w = Math.round(28 * scale);
-  const h = Math.round(10 * scale);
-  const strokeW = Math.max(1, Math.round(1.5 * scale));
+  const w = Math.round(36 * scale);
+  const h = Math.round(12 * scale);
+  const strokeW = Math.max(1, Math.round(2 * scale));
   return (
-    <div className="flex items-center shrink-0" style={{ width: w, height: h }}>
+    <div className="flex items-center shrink-0" style={{ width: w, height: h, margin: `0 ${Math.round(4 * scale)}px` }}>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <line x1="0" y1={h / 2} x2={w - h * 0.3} y2={h / 2} stroke="#cbd5e1" strokeWidth={strokeW} />
         <polygon points={`${w},${h / 2} ${w - h * 0.5},0 ${w - h * 0.5},${h}`} fill="#cbd5e1" />
@@ -62,11 +62,11 @@ function ArrowRight({ scale }: { scale: number }) {
 }
 
 function ArrowDown({ scale }: { scale: number }) {
-  const w = Math.round(10 * scale);
-  const h = Math.round(20 * scale);
-  const strokeW = Math.max(1, Math.round(1.5 * scale));
+  const w = Math.round(12 * scale);
+  const h = Math.round(32 * scale);
+  const strokeW = Math.max(1, Math.round(2 * scale));
   return (
-    <div className="flex justify-center" style={{ height: h, width: w, margin: `2px 0` }}>
+    <div className="flex justify-center" style={{ height: h, width: w, margin: `${Math.round(3 * scale)}px 0` }}>
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <line x1={w / 2} y1="0" x2={w / 2} y2={h - h * 0.25} stroke="#cbd5e1" strokeWidth={strokeW} />
         <polygon points={`${w / 2},${h} 0,${h - h * 0.35} ${w},${h - h * 0.35}`} fill="#cbd5e1" />
@@ -82,17 +82,17 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
   onCheckpointAction?: (action: 'approve' | 'edit' | 'retry') => void;
   scale: number;
 }) {
-  const agentW = Math.round(240 * scale);
-  const checkpointW = Math.round(200 * scale);
+  const agentW = Math.round(280 * scale);
+  const checkpointW = Math.round(230 * scale);
   const width = node.type === 'checkpoint' ? checkpointW : agentW;
-  const padding = Math.round(2 * scale);
-  const gap = Math.round(1.5 * scale);
-  const fontSize = Math.max(0.55, Math.round(0.65 * scale * 10) / 10) + 'rem';
-  const headerFontSize = Math.max(0.7, Math.round(0.8 * scale * 10) / 10) + 'rem';
-  const iconSize = Math.max(10, Math.round(14 * scale));
-  const agentIconSize = Math.max(12, Math.round(16 * scale));
-  const showSubSteps = scale > 0.75;
-  const showCheckpointActions = scale > 0.65;
+  const padding = Math.round(3 * scale);
+  const gap = Math.round(2 * scale);
+  const fontSize = Math.max(0.6, Math.round(0.72 * scale * 10) / 10) + 'rem';
+  const headerFontSize = Math.max(0.75, Math.round(0.85 * scale * 10) / 10) + 'rem';
+  const iconSize = Math.max(12, Math.round(15 * scale));
+  const agentIconSize = Math.max(14, Math.round(18 * scale));
+  const showSubSteps = scale > 0.65;
+  const showCheckpointActions = scale > 0.55;
 
   return (
     <div
@@ -162,10 +162,10 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
   );
 }
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 1.3;
-const IDEAL_HEIGHT = 480;
-const IDEAL_WIDTH = 600;
+const MIN_SCALE = 0.65;
+const MAX_SCALE = 1.4;
+const IDEAL_HEIGHT = 520;
+const IDEAL_WIDTH = 680;
 
 export function PipelineFlowCanvas({
   nodes,
@@ -243,7 +243,7 @@ export function PipelineFlowCanvas({
 
             <ArrowDown scale={scale} />
 
-            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
               <NodeCard node={row1[0]} isSelected={row1[0].id === selectedNodeId} onClick={() => onNodeClick(row1[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
               <ArrowRight scale={scale} />
               <NodeCard node={row1[1]} isSelected={row1[1].id === selectedNodeId} onClick={() => onNodeClick(row1[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
@@ -251,7 +251,7 @@ export function PipelineFlowCanvas({
 
             <ArrowDown scale={scale} />
 
-            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
               <NodeCard node={row2[0]} isSelected={row2[0].id === selectedNodeId} onClick={() => onNodeClick(row2[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
               <ArrowRight scale={scale} />
               <NodeCard node={row2[1]} isSelected={row2[1].id === selectedNodeId} onClick={() => onNodeClick(row2[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
@@ -259,7 +259,7 @@ export function PipelineFlowCanvas({
 
             <ArrowDown scale={scale} />
 
-            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
               <NodeCard node={row3[0]} isSelected={row3[0].id === selectedNodeId} onClick={() => onNodeClick(row3[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
               <ArrowRight scale={scale} />
               <NodeCard node={row3[1]} isSelected={row3[1].id === selectedNodeId} onClick={() => onNodeClick(row3[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
