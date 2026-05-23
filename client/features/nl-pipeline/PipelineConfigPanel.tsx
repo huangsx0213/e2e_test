@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Search, ChevronRight, ChevronDown, Play } from 'lucide-react';
+import React, { useState, useMemo, useRef } from 'react';
+import { Search, ChevronRight, ChevronDown, Play, RefreshCw } from 'lucide-react';
 import type { Requirement, BusinessFlow } from '../../../shared/contracts/index';
+import { HelpTooltip } from '@/shared/ui/HelpTooltip';
+import { queryKeys } from '@/shared/hooks/queryKeys';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface PipelineConfigPanelProps {
   requirements: Requirement[];
@@ -66,6 +69,14 @@ function RequirementTreeNode({
   const allDescendantIds = hasChildren ? collectLeafIds(node) : [node.req.id];
   const allSelected = allDescendantIds.every(id => selectedIds.has(id));
   const someSelected = allDescendantIds.some(id => selectedIds.has(id));
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  const handleTitleMouseEnter = () => {
+    if (labelRef.current && labelRef.current.scrollWidth > labelRef.current.clientWidth) {
+      setShowTooltip(true);
+    }
+  };
 
   return (
     <div>
@@ -85,10 +96,17 @@ function RequirementTreeNode({
           checked={allSelected}
           ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
           onChange={() => onToggle(allDescendantIds)}
-          className="rounded"
+          className="rounded shrink-0"
         />
-        <span className="text-sm truncate">{node.req.title}</span>
-        <span className="text-xs text-slate-400 ml-auto shrink-0">{node.req.level}</span>
+        <span
+          ref={labelRef}
+          className="text-sm truncate flex-1 min-w-0"
+          title={showTooltip ? node.req.title : undefined}
+          onMouseEnter={handleTitleMouseEnter}
+        >
+          {node.req.title}
+        </span>
+        <span className="text-xs text-slate-400 shrink-0">{node.req.level}</span>
       </div>
       {expanded && hasChildren && (
         <div>
@@ -107,12 +125,14 @@ export function PipelineConfigPanel({
   onStart,
   disabled,
 }: PipelineConfigPanelProps) {
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [reqSearch, setReqSearch] = useState('');
   const [selectedReqs, setSelectedReqs] = useState<Set<string>>(new Set());
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<'auto' | 'interactive'>('auto');
   const [showApprovedOnly, setShowApprovedOnly] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
   const filteredTree = useMemo(() => {
@@ -147,6 +167,13 @@ export function PipelineConfigPanel({
     });
   };
 
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: queryKeys.requirements as any });
+    queryClient.invalidateQueries({ queryKey: queryKeys.businessFlows as any });
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
+
   const handleStart = () => {
     const now = new Date();
     const defaultName = name || `Pipeline_${now.toISOString().slice(0, 10)}_${now.toTimeString().slice(0, 5).replace(':', '-')}`;
@@ -163,15 +190,27 @@ export function PipelineConfigPanel({
 
   return (
     <div className="w-80 border-r border-slate-200 flex flex-col h-full bg-white shrink-0">
-      <div className="p-4 border-b border-slate-100">
-        <h3 className="font-medium text-sm text-slate-800 mb-3">Configuration</h3>
+      <div className="p-3 border-b border-slate-100">
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Pipeline Config</h3>
+          <HelpTooltip content="Select requirements and business flows as input for AI test case generation. Choose Auto mode to run all stages automatically, or Interactive mode to pause at each checkpoint for manual review." />
+          <div className="ml-auto">
+            <button
+              onClick={handleRefresh}
+              className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
         <label className="block text-xs text-slate-500 mb-1">Pipeline Name</label>
         <input
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="e.g. User Management Test"
-          className="w-full border border-slate-200 rounded px-2 py-1.5 text-sm mb-3 focus:outline-none focus:border-blue-400"
+          className="w-full border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
         />
       </div>
 
@@ -248,9 +287,9 @@ export function PipelineConfigPanel({
                       return next;
                     });
                   }}
-                  className="rounded"
+                  className="rounded shrink-0"
                 />
-                <span className="truncate">{flow.name}</span>
+                <span className="truncate" title={flow.name + ' (' + flow.type + ')'}>{flow.name}</span>
                 <span className="text-xs text-slate-400 ml-auto shrink-0">
                   {flow.type} {flow.status === 'APPROVED' ? '\u2713' : ''}
                 </span>
