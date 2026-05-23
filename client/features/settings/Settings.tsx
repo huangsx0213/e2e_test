@@ -8,6 +8,7 @@ import {
   FolderGit2,
   RefreshCw,
   Cpu,
+  Copy,
   Check,
   X,
   Eye,
@@ -585,7 +586,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
 function ProviderConfigsTab() {
   const { data: configs = [], isLoading } = useProviderConfigs();
-  const { create, update, remove, setActive } = useProviderConfigMutations();
+  const { create, update, remove, setActive, copy } = useProviderConfigMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -695,6 +696,13 @@ function ProviderConfigsTab() {
                     className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
                   >
                     Edit
+                  </button>
+                  <button
+                    onClick={() => copy(config.id)}
+                    className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
+                    title="Copy"
+                  >
+                    <Copy size={13} />
                   </button>
                   <button
                     onClick={() => setDeleteConfirmId(config.id)}

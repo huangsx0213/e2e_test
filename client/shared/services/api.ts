@@ -155,6 +155,8 @@ businessFlows: {
     ...createCrudService<any>('provider-configs'),
     setActive: (id: string) =>
       apiFetch<{ success: boolean }>(`provider-configs/${id}/set-active`, { method: 'POST' }),
+    copy: (id: string) =>
+      apiFetch<any>(`provider-configs/${id}/copy`, { method: 'POST' }),
   },
 };
 

@@ -400,11 +400,16 @@ export function useProviderConfigMutations() {
     mutationFn: (id: string) => api.providerConfigs.setActive(id),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
+  const copy = useMutation({
+    mutationFn: (id: string) => api.providerConfigs.copy(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
   return {
     create: (item: any) => create.mutateAsync(item),
     update: (id: string, data: any) => update.mutateAsync({ id, data }),
     remove: (id: string) => remove.mutateAsync(id),
     setActive: (id: string) => setActive.mutateAsync(id),
+    copy: (id: string) => copy.mutateAsync(id),
   };
 }
 

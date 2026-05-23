@@ -20,4 +20,17 @@ crudModule.router.post('/:id/set-active', withErrorHandling((req, res) => {
   res.json({ success: true });
 }));
 
+crudModule.router.post('/:id/copy', withErrorHandling((req, res) => {
+  const id = req.params.id as string;
+  const existing = providerConfigRepo.get(id);
+  if (!existing) { res.status(404).json({ error: 'Provider config not found' }); return; }
+  const copied = providerConfigRepo.save({
+    ...existing,
+    id: undefined,
+    name: `${existing.name} (copy)`,
+    isActive: false,
+  });
+  res.json(copied);
+}));
+
 export const providerConfigsModule = crudModule;
