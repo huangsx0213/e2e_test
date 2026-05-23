@@ -32,6 +32,13 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
     return rows.map(r => this.get(r.id)).filter(Boolean) as NlTestCase[];
   }
 
+  listByProject(projectId: string): NlTestCase[] {
+    const rows = db.prepare(
+      'SELECT id FROM natural_language_test_cases WHERE project_id = ? ORDER BY rowid'
+    ).all(projectId) as Array<{ id: string }>;
+    return rows.map(r => this.get(r.id)).filter(Boolean) as NlTestCase[];
+  }
+
   remove(id: string): void {
     db.prepare('DELETE FROM natural_language_test_cases WHERE id = ?').run(id);
   }
