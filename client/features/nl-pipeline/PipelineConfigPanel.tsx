@@ -59,12 +59,15 @@ function RequirementTreeNode({
   node,
   selectedIds,
   onToggle,
+  forceExpanded,
 }: {
   node: TreeNode;
   selectedIds: Set<string>;
   onToggle: (ids: string[]) => void;
+  forceExpanded: boolean;
 }) {
-  const [expanded, setExpanded] = useState(node.depth < 2);
+  const [selfExpanded, setSelfExpanded] = useState(false);
+  const expanded = forceExpanded || selfExpanded;
   const hasChildren = node.children.length > 0;
   const allDescendantIds = hasChildren ? collectLeafIds(node) : [node.req.id];
   const allSelected = allDescendantIds.every(id => selectedIds.has(id));
@@ -85,7 +88,7 @@ function RequirementTreeNode({
         style={{ paddingLeft: `${node.depth * 16 + 4}px` }}
       >
         {hasChildren ? (
-          <button onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }} className="p-0.5">
+          <button onClick={(e) => { e.stopPropagation(); setSelfExpanded(!selfExpanded); }} className="p-0.5">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         ) : (
@@ -111,7 +114,7 @@ function RequirementTreeNode({
       {expanded && hasChildren && (
         <div>
           {node.children.map(child => (
-            <RequirementTreeNode key={child.req.id} node={child} selectedIds={selectedIds} onToggle={onToggle} />
+            <RequirementTreeNode key={child.req.id} node={child} selectedIds={selectedIds} onToggle={onToggle} forceExpanded={forceExpanded} />
           ))}
         </div>
       )}
@@ -133,6 +136,7 @@ export function PipelineConfigPanel({
   const [mode, setMode] = useState<'auto' | 'interactive'>('auto');
   const [showApprovedOnly, setShowApprovedOnly] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandAll, setExpandAll] = useState(false);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
   const filteredTree = useMemo(() => {
@@ -220,15 +224,24 @@ export function PipelineConfigPanel({
             <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wide">Requirements</h4>
             <span className="text-xs text-blue-600">{selectedReqs.size} selected</span>
           </div>
-          <div className="relative mb-2">
-            <Search size={14} className="absolute left-2 top-2 text-slate-400" />
-            <input
-              type="text"
-              value={reqSearch}
-              onChange={e => setReqSearch(e.target.value)}
-              placeholder="Filter..."
-              className="w-full border border-slate-200 rounded pl-7 pr-2 py-1 text-xs focus:outline-none focus:border-blue-400"
-            />
+          <div className="flex items-center gap-2 mb-2">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-2 top-2 text-slate-400" />
+              <input
+                type="text"
+                value={reqSearch}
+                onChange={e => setReqSearch(e.target.value)}
+                placeholder="Filter..."
+                className="w-full border border-slate-200 rounded pl-7 pr-2 py-1 text-xs focus:outline-none focus:border-blue-400"
+              />
+            </div>
+            <button
+              onClick={() => setExpandAll(!expandAll)}
+              className="text-xs text-slate-400 hover:text-blue-600 whitespace-nowrap"
+              title={expandAll ? 'Collapse all' : 'Expand all'}
+            >
+              {expandAll ? 'Collapse' : 'Expand'}
+            </button>
           </div>
           <div className="max-h-64 overflow-y-auto">
             {filteredTree.map(node => (
@@ -237,6 +250,7 @@ export function PipelineConfigPanel({
                 node={node}
                 selectedIds={selectedReqs}
                 onToggle={handleReqToggle}
+                forceExpanded={expandAll}
               />
             ))}
           </div>

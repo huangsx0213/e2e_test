@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Activity, Brain, PenTool, Star, CheckCircle2, AlertCircle, Clock, Pause } from 'lucide-react';
 
 interface NodeState {
@@ -47,80 +47,125 @@ const agentIcons: Record<string, React.ReactNode> = {
   quality_manager: <Star size={16} />,
 };
 
-// Horizontal arrow between agent and its checkpoint
-function ArrowRight() {
+function ArrowRight({ scale }: { scale: number }) {
+  const w = Math.round(28 * scale);
+  const h = Math.round(10 * scale);
+  const strokeW = Math.max(1, Math.round(1.5 * scale));
   return (
-    <div className="flex items-center shrink-0">
-      <svg width="32" height="12" viewBox="0 0 32 12">
-        <line x1="0" y1="6" x2="26" y2="6" stroke="#cbd5e1" strokeWidth="2" />
-        <polygon points="32,6 24,0 24,12" fill="#cbd5e1" />
+    <div className="flex items-center shrink-0" style={{ width: w, height: h }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <line x1="0" y1={h / 2} x2={w - h * 0.3} y2={h / 2} stroke="#cbd5e1" strokeWidth={strokeW} />
+        <polygon points={`${w},${h / 2} ${w - h * 0.5},0 ${w - h * 0.5},${h}`} fill="#cbd5e1" />
       </svg>
     </div>
   );
 }
 
-// Vertical arrow between rows
-function ArrowDown() {
+function ArrowDown({ scale }: { scale: number }) {
+  const w = Math.round(10 * scale);
+  const h = Math.round(20 * scale);
+  const strokeW = Math.max(1, Math.round(1.5 * scale));
   return (
-    <div className="flex justify-center py-2">
-      <svg width="12" height="24" viewBox="0 0 12 24">
-        <line x1="6" y1="0" x2="6" y2="18" stroke="#cbd5e1" strokeWidth="2" />
-        <polygon points="6,24 0,16 12,16" fill="#cbd5e1" />
+    <div className="flex justify-center" style={{ height: h, width: w, margin: `2px 0` }}>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        <line x1={w / 2} y1="0" x2={w / 2} y2={h - h * 0.25} stroke="#cbd5e1" strokeWidth={strokeW} />
+        <polygon points={`${w / 2},${h} 0,${h - h * 0.35} ${w},${h - h * 0.35}`} fill="#cbd5e1" />
       </svg>
     </div>
   );
 }
 
-function NodeCard({ node, isSelected, onClick, onCheckpointAction, compact }: {
+function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
   node: NodeState;
   isSelected: boolean;
   onClick: () => void;
   onCheckpointAction?: (action: 'approve' | 'edit' | 'retry') => void;
-  compact?: boolean;
+  scale: number;
 }) {
-  const width = compact ? 'w-56' : 'w-64';
+  const agentW = Math.round(240 * scale);
+  const checkpointW = Math.round(200 * scale);
+  const width = node.type === 'checkpoint' ? checkpointW : agentW;
+  const padding = Math.round(2 * scale);
+  const gap = Math.round(1.5 * scale);
+  const fontSize = Math.max(0.55, Math.round(0.65 * scale * 10) / 10) + 'rem';
+  const headerFontSize = Math.max(0.7, Math.round(0.8 * scale * 10) / 10) + 'rem';
+  const iconSize = Math.max(10, Math.round(14 * scale));
+  const agentIconSize = Math.max(12, Math.round(16 * scale));
+  const showSubSteps = scale > 0.75;
+  const showCheckpointActions = scale > 0.65;
+
   return (
     <div
       onClick={onClick}
-      className={`${width} border-2 rounded-lg p-2.5 cursor-pointer transition-all shrink-0 ${statusColors[node.status]} ${isSelected ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+      className={`border-2 rounded-lg cursor-pointer transition-all shrink-0 ${statusColors[node.status]} ${isSelected ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+      style={{ width, padding }}
     >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {node.type === 'agent' && node.agentName && agentIcons[node.agentName]}
-          <span className="text-xs font-medium truncate">{node.label}</span>
+      <div className="flex items-center justify-between" style={{ gap, marginBottom: gap }}>
+        <div className="flex items-center min-w-0" style={{ gap }}>
+          {node.type === 'agent' && node.agentName && (
+            <span style={{ fontSize: agentIconSize }}>{agentIcons[node.agentName]}</span>
+          )}
+          <span className="font-medium truncate" style={{ fontSize: headerFontSize }}>{node.label}</span>
         </div>
-        <span className="shrink-0">{statusIcons[node.status]}</span>
+        <span className="shrink-0" style={{ fontSize: iconSize }}>{statusIcons[node.status]}</span>
       </div>
-      {node.type === 'agent' && node.subSteps && (
-        <div className="text-xs text-slate-500 space-y-0.5">
+
+      {node.type === 'agent' && node.subSteps && showSubSteps && (
+        <div className="text-slate-500" style={{ fontSize }}>
           {node.subSteps.map((step, i) => (
-            <div key={i} className="flex items-center gap-1">
+            <div key={i} className="flex items-center truncate" style={{ gap }}>
               <span>{step.done ? '\u2713' : '\u25CB'}</span>
-              <span className="truncate">{step.label}</span>
+              <span>{step.label}</span>
             </div>
           ))}
         </div>
       )}
-      {node.type === 'checkpoint' && node.status === 'waiting' && onCheckpointAction && (
-        <div className="flex gap-1 mt-1.5">
-          <button onClick={(e) => { e.stopPropagation(); onCheckpointAction('approve'); }} className="px-2 py-0.5 bg-green-500 text-white text-xs rounded hover:bg-green-600">Approve</button>
-          <button onClick={(e) => { e.stopPropagation(); onCheckpointAction('edit'); }} className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded hover:bg-blue-600">Edit</button>
-          <button onClick={(e) => { e.stopPropagation(); onCheckpointAction('retry'); }} className="px-2 py-0.5 bg-slate-500 text-white text-xs rounded hover:bg-slate-600">Retry</button>
+
+      {node.type === 'checkpoint' && node.status === 'waiting' && onCheckpointAction && showCheckpointActions && (
+        <div className="flex" style={{ gap, marginTop: gap }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onCheckpointAction('approve'); }}
+            className="bg-green-500 text-white rounded hover:bg-green-600"
+            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
+          >
+            Approve
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onCheckpointAction('edit'); }}
+            className="bg-blue-500 text-white rounded hover:bg-blue-600"
+            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
+          >
+            Edit
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onCheckpointAction('retry'); }}
+            className="bg-slate-500 text-white rounded hover:bg-slate-600"
+            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
+          >
+            Retry
+          </button>
         </div>
       )}
-      {node.meta && (
-        <div className="text-xs text-slate-400 mt-1">
+
+      {node.meta && scale > 0.7 && (
+        <div className="text-slate-400" style={{ fontSize, marginTop: gap }}>
           {node.meta.outputCount !== undefined && (
             <span>Output: {node.meta.outputCount} {node.meta.outputLabel || ''}</span>
           )}
         </div>
       )}
-      {node.status === 'auto-passed' && (
-        <span className="text-xs text-slate-400">Auto-passed</span>
+
+      {node.status === 'auto-passed' && scale > 0.7 && (
+        <span className="text-slate-400" style={{ fontSize }}>Auto-passed</span>
       )}
     </div>
   );
 }
+
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 1.3;
+const IDEAL_HEIGHT = 480;
+const IDEAL_WIDTH = 600;
 
 export function PipelineFlowCanvas({
   nodes,
@@ -133,15 +178,33 @@ export function PipelineFlowCanvas({
   isRunning,
   onCheckpointAction,
 }: PipelineFlowCanvasProps) {
-  const progressPercent = totalBatches > 0 ? Math.round((batch / totalBatches) * 100) : 0;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
 
-  // Group nodes into rows: [agent, checkpoint] pairs, with prep on top and complete at bottom
-  // Nodes array order: prep, agent1, cp1, agent2, cp2, agent3, cp3, complete
-  // Rows: prep (centered), [agent1 -> cp1], [agent2 -> cp2], [agent3 -> cp3], complete (centered)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        const wScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, width / IDEAL_WIDTH));
+        const hScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, height / IDEAL_HEIGHT));
+        setScale(Math.min(wScale, hScale));
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const progressPercent = totalBatches > 0 ? Math.round((batch / totalBatches) * 100) : 0;
+  const progressFontSize = Math.max(0.6, Math.round(0.7 * scale * 10) / 10) + 'rem';
+
   const prepNode = nodes[0];
-  const row1 = nodes.slice(1, 3);   // agent1, cp1
-  const row2 = nodes.slice(3, 5);   // agent2, cp2
-  const row3 = nodes.slice(5, 7);   // agent3, cp3
+  const row1 = nodes.slice(1, 3);
+  const row2 = nodes.slice(3, 5);
+  const row3 = nodes.slice(5, 7);
   const completeNode = nodes[7];
 
   return (
@@ -171,88 +234,42 @@ export function PipelineFlowCanvas({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="flex flex-col items-center py-4 px-6 gap-0">
-          {/* Row 0: Preparation (centered) */}
-          <div className="flex justify-center">
-            <NodeCard
-              node={prepNode}
-              isSelected={prepNode.id === selectedNodeId}
-              onClick={() => onNodeClick(prepNode.id)}
-              onCheckpointAction={onCheckpointAction}
-            />
-          </div>
+      <div ref={containerRef} className="flex-1 overflow-hidden">
+        <div className="h-full flex items-center justify-center">
+          <div className="flex flex-col items-center gap-0">
+            <div className="flex justify-center">
+              <NodeCard node={prepNode} isSelected={prepNode.id === selectedNodeId} onClick={() => onNodeClick(prepNode.id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+            </div>
 
-          <ArrowDown />
+            <ArrowDown scale={scale} />
 
-          {/* Row 1: Test Analyst → Checkpoint 1 */}
-          <div className="flex items-center justify-center gap-2">
-            <NodeCard
-              node={row1[0]}
-              isSelected={row1[0].id === selectedNodeId}
-              onClick={() => onNodeClick(row1[0].id)}
-              onCheckpointAction={onCheckpointAction}
-            />
-            <ArrowRight />
-            <NodeCard
-              node={row1[1]}
-              isSelected={row1[1].id === selectedNodeId}
-              onClick={() => onNodeClick(row1[1].id)}
-              onCheckpointAction={onCheckpointAction}
-              compact
-            />
-          </div>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+              <NodeCard node={row1[0]} isSelected={row1[0].id === selectedNodeId} onClick={() => onNodeClick(row1[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+              <ArrowRight scale={scale} />
+              <NodeCard node={row1[1]} isSelected={row1[1].id === selectedNodeId} onClick={() => onNodeClick(row1[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+            </div>
 
-          <ArrowDown />
+            <ArrowDown scale={scale} />
 
-          {/* Row 2: Test Designer → Checkpoint 2 */}
-          <div className="flex items-center justify-center gap-2">
-            <NodeCard
-              node={row2[0]}
-              isSelected={row2[0].id === selectedNodeId}
-              onClick={() => onNodeClick(row2[0].id)}
-              onCheckpointAction={onCheckpointAction}
-            />
-            <ArrowRight />
-            <NodeCard
-              node={row2[1]}
-              isSelected={row2[1].id === selectedNodeId}
-              onClick={() => onNodeClick(row2[1].id)}
-              onCheckpointAction={onCheckpointAction}
-              compact
-            />
-          </div>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+              <NodeCard node={row2[0]} isSelected={row2[0].id === selectedNodeId} onClick={() => onNodeClick(row2[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+              <ArrowRight scale={scale} />
+              <NodeCard node={row2[1]} isSelected={row2[1].id === selectedNodeId} onClick={() => onNodeClick(row2[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+            </div>
 
-          <ArrowDown />
+            <ArrowDown scale={scale} />
 
-          {/* Row 3: Quality Manager → Checkpoint 3 */}
-          <div className="flex items-center justify-center gap-2">
-            <NodeCard
-              node={row3[0]}
-              isSelected={row3[0].id === selectedNodeId}
-              onClick={() => onNodeClick(row3[0].id)}
-              onCheckpointAction={onCheckpointAction}
-            />
-            <ArrowRight />
-            <NodeCard
-              node={row3[1]}
-              isSelected={row3[1].id === selectedNodeId}
-              onClick={() => onNodeClick(row3[1].id)}
-              onCheckpointAction={onCheckpointAction}
-              compact
-            />
-          </div>
+            <div className="flex items-center justify-center" style={{ gap: Math.round(8 * scale) }}>
+              <NodeCard node={row3[0]} isSelected={row3[0].id === selectedNodeId} onClick={() => onNodeClick(row3[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+              <ArrowRight scale={scale} />
+              <NodeCard node={row3[1]} isSelected={row3[1].id === selectedNodeId} onClick={() => onNodeClick(row3[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+            </div>
 
-          <ArrowDown />
+            <ArrowDown scale={scale} />
 
-          {/* Row 4: Complete (centered) */}
-          <div className="flex justify-center">
-            <NodeCard
-              node={completeNode}
-              isSelected={completeNode.id === selectedNodeId}
-              onClick={() => onNodeClick(completeNode.id)}
-              onCheckpointAction={onCheckpointAction}
-            />
+            <div className="flex justify-center">
+              <NodeCard node={completeNode} isSelected={completeNode.id === selectedNodeId} onClick={() => onNodeClick(completeNode.id)} onCheckpointAction={onCheckpointAction} scale={scale} />
+            </div>
           </div>
         </div>
       </div>
@@ -260,9 +277,9 @@ export function PipelineFlowCanvas({
       <div className="border-t border-slate-200 bg-white px-4 py-3 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-slate-500">Progress</span>
-              <span className="text-xs text-slate-600 font-medium">Batch {batch}/{totalBatches}</span>
+            <div className="flex items-center justify-between mb-1" style={{ fontSize: progressFontSize }}>
+              <span className="text-slate-500">Progress</span>
+              <span className="text-slate-600 font-medium">Batch {batch}/{totalBatches}</span>
             </div>
             <div className="w-full bg-slate-200 rounded-full h-1.5">
               <div
@@ -272,7 +289,7 @@ export function PipelineFlowCanvas({
             </div>
           </div>
           {generatedCases > 0 && (
-            <span className="text-xs text-slate-500 whitespace-nowrap">{generatedCases} cases</span>
+            <span className="text-slate-500 whitespace-nowrap" style={{ fontSize: progressFontSize }}>{generatedCases} cases</span>
           )}
         </div>
       </div>
