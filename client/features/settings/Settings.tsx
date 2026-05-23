@@ -7,11 +7,17 @@ import {
   Globe,
   FolderGit2,
   RefreshCw,
+  Cpu,
+  Check,
+  X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { MutationActions, EnvironmentMutationActions } from "@/shared/hooks/useQueryHooks";
+import { MutationActions, EnvironmentMutationActions, useProviderConfigs, useProviderConfigMutations } from "@/shared/hooks/useQueryHooks";
 import { queryKeys } from "@/shared/hooks/queryKeys";
 import { Project, Settings as SettingsType } from "@/shared/types";
+import type { ProviderConfig } from "../../../shared/contracts/index";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
@@ -45,7 +51,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [newEnvName, setNewEnvName] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
   const [activeTab, setActiveTab] = useState<
-    "PROJECTS" | "ENVIRONMENTS" | "SYSTEM"
+    "PROJECTS" | "ENVIRONMENTS" | "SYSTEM" | "PROVIDERS"
   >("PROJECTS");
 
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -162,6 +168,12 @@ export const Settings: React.FC<SettingsProps> = ({
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "SYSTEM" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"}`}
             >
               System
+            </button>
+            <button
+              onClick={() => setActiveTab("PROVIDERS")}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "PROVIDERS" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"}`}
+            >
+              AI Provider
             </button>
           </div>
         </div>
@@ -565,7 +577,204 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
         )}
+        {activeTab === "PROVIDERS" && <ProviderConfigsTab />}
       </div>
     </div>
   );
 };
+
+function ProviderConfigsTab() {
+  const { data: configs = [], isLoading } = useProviderConfigs();
+  const { create, update, remove, setActive } = useProviderConfigMutations();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [form, setForm] = useState({ name: '', type: 'azure-openai' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleEdit = (c: any) => {
+    setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '' });
+    setEditingId(c.id);
+    setShowForm(true);
+    setShowApiKey(false);
+  };
+
+  const handleCreate = () => {
+    setForm({ name: '', type: 'azure-openai', endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '' });
+    setEditingId(null);
+    setShowForm(true);
+    setShowApiKey(false);
+  };
+
+  const handleSave = async () => {
+    if (!form.name || !form.apiKey) return;
+    setIsSubmitting(true);
+    try {
+      if (editingId) {
+        await update(editingId, {
+          name: form.name, type: form.type, endpoint: form.endpoint,
+          encryptedApiKey: form.apiKey, deployment: form.deployment,
+          apiVersion: form.apiVersion, model: form.model,
+        });
+      } else {
+        await create({
+          name: form.name, type: form.type, endpoint: form.endpoint,
+          encryptedApiKey: form.apiKey, deployment: form.deployment,
+          apiVersion: form.apiVersion, model: form.model,
+        });
+      }
+      setShowForm(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const typeLabels: Record<string, string> = {
+    'azure-openai': 'Azure OpenAI',
+    'nvidia-nim': 'Nvidia NIM',
+    'openrouter': 'OpenRouter',
+    'openai': 'OpenAI',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <div className="px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold text-slate-800">AI Providers</h3>
+            <HelpTooltip content="Configure AI model providers for the AI Pipeline. The active provider will be used by default when running a pipeline. API keys are encrypted before storage." />
+          </div>
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={14} />
+            Add Provider
+          </button>
+        </div>
+      </div>
+
+      <div className="p-6">
+        {isLoading ? (
+          <div className="text-sm text-slate-400 text-center py-8">Loading...</div>
+        ) : configs.length === 0 ? (
+          <div className="text-sm text-slate-400 text-center py-8">
+            No provider configurations. Add one to use AI Pipeline.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {configs.map((config: any) => (
+              <div key={config.id} className={`flex items-center justify-between p-4 border rounded-lg ${config.isActive ? 'border-blue-300 bg-blue-50/30' : 'border-slate-200'}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-700">{config.name}</span>
+                      {config.isActive && (
+                        <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">Active</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {typeLabels[config.type] || config.type} {config.model ? `· ${config.model}` : ''}
+                      {config.endpoint ? ` · ${config.endpoint}` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {!config.isActive && (
+                    <button
+                      onClick={() => setActive(config.id)}
+                      className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded"
+                      title="Set as active"
+                    >
+                      Activate
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleEdit(config)}
+                    className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirmId(config.id)}
+                    className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="border-t border-slate-200 p-6">
+          <h4 className="text-sm font-medium text-slate-700 mb-4">
+            {editingId ? 'Edit Provider' : 'New Provider'}
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Name *</label>
+              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="My Azure OpenAI" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Type *</label>
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                {Object.entries(typeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">Endpoint URL</label>
+              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder="https://your-resource.openai.azure.com" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">API Key *</label>
+              <div className="relative">
+                <input type={showApiKey ? 'text' : 'password'} value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editingId ? '(unchanged)' : 'sk-...'} className="w-full border border-slate-200 rounded pl-2 pr-8 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                <button onClick={() => setShowApiKey(!showApiKey)} className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600">
+                  {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Model</label>
+              <input type="text" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder="gpt-4o" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+            </div>
+            {(form.type === 'azure-openai') && (
+              <>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Deployment</label>
+                  <input type="text" value={form.deployment} onChange={e => setForm({ ...form, deployment: e.target.value })} placeholder="gpt-4o" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">API Version</label>
+                  <input type="text" value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} placeholder="2024-08-01-preview" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setShowForm(false)} className="px-4 py-1.5 text-xs text-slate-600 border border-slate-200 rounded hover:bg-slate-50" disabled={isSubmitting}>
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={isSubmitting || !form.name || !form.apiKey} className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={async () => { if (deleteConfirmId) { await remove(deleteConfirmId); setDeleteConfirmId(null); } }}
+        title="Delete Provider?"
+        message="This will permanently remove this provider configuration. AI Pipeline runs will fail if no other active provider exists."
+        confirmLabel="Delete"
+        type="danger"
+      />
+    </div>
+  );
+}

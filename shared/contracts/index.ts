@@ -587,3 +587,19 @@ export interface PipelineState {
   phase: 'init' | 'analysis' | 'review-conditions' | 'design' | 'review-draft' | 'quality' | 'final-review' | 'complete';
   errors: { phase: string; agent: string; step: string; message: string; rawResponse?: string; timestamp: number }[];
 }
+
+export interface ProviderConfig {
+  id: string;
+  projectId: string;
+  name: string;
+  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai';
+  endpoint: string;
+  encryptedApiKey: string;
+  deployment: string;
+  apiVersion: string;
+  model: string;
+  fallbackConfigIds: string[];
+  monthlyTokenLimit: number | null;
+  isActive: boolean;
+  createdAt: string;
+}

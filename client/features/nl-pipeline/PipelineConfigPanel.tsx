@@ -4,6 +4,7 @@ import type { Requirement, BusinessFlow } from '../../../shared/contracts/index'
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
 import { queryKeys } from '@/shared/hooks/queryKeys';
 import { useQueryClient } from '@tanstack/react-query';
+import { useProviderConfigs } from '../../shared/hooks/useQueryHooks';
 
 interface PipelineConfigPanelProps {
   requirements: Requirement[];
@@ -129,6 +130,7 @@ export function PipelineConfigPanel({
   disabled,
 }: PipelineConfigPanelProps) {
   const queryClient = useQueryClient();
+  const { data: providerConfigs = [] } = useProviderConfigs();
   const [name, setName] = useState('');
   const [reqSearch, setReqSearch] = useState('');
   const [selectedReqs, setSelectedReqs] = useState<Set<string>>(new Set());
@@ -137,6 +139,7 @@ export function PipelineConfigPanel({
   const [showApprovedOnly, setShowApprovedOnly] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandAll, setExpandAll] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState('');
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
   const filteredTree = useMemo(() => {
@@ -186,7 +189,7 @@ export function PipelineConfigPanel({
       requirementIds: Array.from(selectedReqs),
       flowIds: Array.from(selectedFlows),
       mode,
-      providerConfigName: '',
+      providerConfigName: selectedProvider,
     });
   };
 
@@ -333,6 +336,24 @@ export function PipelineConfigPanel({
           <p className="text-xs text-slate-400 mt-1">
             {mode === 'auto' ? 'Automatically complete all stages' : 'Pause at each checkpoint for review'}
           </p>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-600 block mb-1">AI Provider</label>
+          <select
+            value={selectedProvider}
+            onChange={e => setSelectedProvider(e.target.value)}
+            className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"
+          >
+            <option value="">Auto (active provider)</option>
+            {providerConfigs.map((p: any) => (
+              <option key={p.id} value={p.name}>
+                {p.name} ({p.type}{p.model ? ` - ${p.model}` : ''}){p.isActive ? ' *' : ''}
+              </option>
+            ))}
+          </select>
+          {providerConfigs.length === 0 && (
+            <p className="text-xs text-amber-600 mt-1">No providers configured. Go to Settings &gt; AI Provider.</p>
+          )}
         </div>
         <button
           onClick={handleStart}

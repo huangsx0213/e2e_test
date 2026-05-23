@@ -18,4 +18,5 @@ export const queryKeys = {
     logs: (runId: string) => ['pipeline', 'logs', runId] as const,
   },
   nlCases: (projectId: string) => ['nl-cases', projectId] as const,
+  providerConfigs: ['provider-configs'] as const,
 };

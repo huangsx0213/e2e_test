@@ -151,6 +151,11 @@ businessFlows: {
     listByProject: (projectId: string) =>
       apiFetch<any[]>(`nl-cases/by-project/${projectId}`),
   },
+  providerConfigs: {
+    ...createCrudService<any>('provider-configs'),
+    setActive: (id: string) =>
+      apiFetch<{ success: boolean }>(`provider-configs/${id}/set-active`, { method: 'POST' }),
+  },
 };
 
 // --- Execution API ---
