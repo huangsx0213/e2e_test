@@ -404,7 +404,44 @@ export function useBusinessFlowMutations(projectId: string) {
     create: (item: Omit<BusinessFlow, 'id'> | BusinessFlow) => create.mutateAsync(item),
     update: (id: string, data: Partial<BusinessFlow>) => update.mutateAsync({ id, data }),
     remove: (id: string) => remove.mutateAsync(id),
-    approve: (id: string) => approve.mutateAsync(id),
+approve: (id: string) => approve.mutateAsync(id),
     unapprove: (id: string) => unapprove.mutateAsync(id),
   };
+}
+
+export function usePipelineRuns(projectId: string) {
+  return useQuery({
+    queryKey: queryKeys.pipeline.runs(projectId),
+    queryFn: () => api.pipeline.runs(projectId),
+    enabled: !!projectId,
+    refetchInterval: (query: any) => {
+      const running = query.state.data?.some((r: any) => r.status === 'RUNNING' || r.status === 'WAITING_REVIEW');
+      return running ? 3000 : false;
+    },
+  });
+}
+
+export function useCheckpoint(runId: string) {
+  return useQuery({
+    queryKey: queryKeys.pipeline.checkpoint(runId),
+    queryFn: () => api.pipeline.checkpoint(runId),
+    enabled: !!runId,
+    refetchInterval: 5000,
+  });
+}
+
+export function useAgentLogs(runId: string, agentName?: string) {
+  return useQuery({
+    queryKey: queryKeys.pipeline.logs(runId),
+    queryFn: () => api.pipeline.logs(runId, agentName),
+    enabled: !!runId,
+  });
+}
+
+export function useNlCases(projectId: string) {
+  return useQuery({
+    queryKey: queryKeys.nlCases(projectId),
+    queryFn: () => api.nlCases.listByProject(projectId),
+    enabled: !!projectId,
+  });
 }

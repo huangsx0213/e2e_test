@@ -121,11 +121,35 @@ export const api = {
     ...createCrudService<Requirement>('requirements'),
     listByProject: (projectId: string) => apiFetch<Requirement[]>(`requirements/by-project/${projectId}`),
   },
-  businessFlows: {
+businessFlows: {
     ...createCrudService<BusinessFlow>('business-flows'),
     listByProject: (projectId: string) => apiFetch<BusinessFlow[]>(`business-flows/by-project/${projectId}`),
     approve: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/approve`, { method: 'POST' }),
     unapprove: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/unapprove`, { method: 'POST' }),
+  },
+  pipeline: {
+    runs: (projectId: string) => apiFetch<any[]>(`pipeline/runs/${projectId}`),
+    start: (projectId: string, config: any) =>
+      apiFetch<{ runId: string }>(`pipeline/${projectId}/start`, {
+        method: 'POST',
+        body: JSON.stringify(config),
+      }),
+    resume: (runId: string, action: any) =>
+      apiFetch<{ success: boolean }>(`pipeline/${runId}/resume`, {
+        method: 'POST',
+        body: JSON.stringify(action),
+      }),
+    checkpoint: (runId: string) =>
+      apiFetch<any>(`pipeline/${runId}/checkpoint`),
+    logs: (runId: string, agentName?: string) =>
+      apiFetch<any[]>(`pipeline/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
+    abort: (runId: string) =>
+      apiFetch<{ success: boolean }>(`pipeline/${runId}/abort`, { method: 'POST' }),
+  },
+  nlCases: {
+    ...createCrudService<any>('nl-cases'),
+    listByProject: (projectId: string) =>
+      apiFetch<any[]>(`nl-cases/by-project/${projectId}`),
   },
 };
 
