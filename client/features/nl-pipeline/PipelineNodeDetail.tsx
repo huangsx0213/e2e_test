@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Brain, Loader2 } from 'lucide-react';
 
 interface NodeDetailProps {
   node: {
@@ -12,13 +12,31 @@ interface NodeDetailProps {
   } | null;
   agentLog: any | null;
   checkpointData: any | null;
+  thinkingText: string | null;
   onClose: () => void;
   onCheckpointAction?: (action: 'approve' | 'edit' | 'retry', data?: any) => void;
 }
 
-function AgentDetailTabs({ agentLog }: { agentLog: any }) {
-  const [activeTab, setActiveTab] = useState<'input' | 'output' | 'trace' | 'errors'>('output');
-  const tabs = ['input', 'output', 'trace', 'errors'] as const;
+function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node: any; thinkingText: string | null }) {
+  const [activeTab, setActiveTab] = useState<'thinking' | 'input' | 'output' | 'trace' | 'errors'>('output');
+  const thinkingRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll thinking content
+  useEffect(() => {
+    if (thinkingText && activeTab === 'thinking' && thinkingRef.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+    }
+  }, [thinkingText, activeTab]);
+
+  // Switch to thinking tab when content arrives
+  useEffect(() => {
+    if (thinkingText && node?.status === 'running') {
+      setActiveTab('thinking');
+    }
+  }, [thinkingText, node?.status]);
+
+  const isRunning = node?.status === 'running';
+  const tabs = ['thinking', 'input', 'output', 'trace', 'errors'] as const;
 
   return (
     <div className="flex flex-col h-full">
@@ -27,17 +45,42 @@ function AgentDetailTabs({ agentLog }: { agentLog: any }) {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-2 text-xs font-medium capitalize border-b-2 transition-colors ${
+            className={`px-3 py-2 text-xs font-medium capitalize border-b-2 transition-colors relative ${
               activeTab === tab
                 ? 'border-blue-500 text-blue-700'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
+            {tab === 'thinking' && isRunning && thinkingText && (
+              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            )}
             {tab}
           </button>
         ))}
       </div>
       <div className="flex-1 overflow-y-auto p-3 text-sm">
+        {activeTab === 'thinking' && (
+          <div ref={thinkingRef} className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-600 max-h-full overflow-y-auto">
+            {thinkingText ? (
+              <div>
+                {thinkingText}
+                {isRunning && <span className="inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5 align-middle" />}
+              </div>
+            ) : (
+              <div className="text-slate-400 italic">
+                {isRunning ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    Waiting for agent response...
+                  </span>
+                ) : (
+                  'Agent thinking process will appear here during execution.'
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'input' && (
           <div className="space-y-3">
             <div>
@@ -77,7 +120,13 @@ function AgentDetailTabs({ agentLog }: { agentLog: any }) {
         )}
 
         {activeTab === 'errors' && (
-          <div className="text-xs text-slate-500">No errors</div>
+          <div className="text-xs text-slate-500">
+            {agentLog?.status === 'FAILED' ? (
+              <div className="text-red-600">Agent execution failed.</div>
+            ) : (
+              'No errors'
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -163,6 +212,7 @@ export function PipelineNodeDetail({
   node,
   agentLog,
   checkpointData,
+  thinkingText,
   onClose,
   onCheckpointAction,
 }: NodeDetailProps) {
@@ -174,15 +224,22 @@ export function PipelineNodeDetail({
     );
   }
 
+  const statusLabel = node.status === 'running' ? 'Running...' : node.status === 'waiting' ? 'Waiting for review' : node.status;
+  const hasMeta = node.meta?.latencyMs || node.meta?.tokenUsage;
+
   return (
     <div className="w-96 border-l border-slate-200 bg-white shrink-0 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
         <div>
           <h4 className="text-sm font-medium text-slate-800">{node.label}</h4>
-          <div className="text-xs text-slate-400 mt-0.5">
-            Status: {node.status}
-            {node.meta?.latencyMs && ` \u00B7 ${node.meta.latencyMs}ms`}
-            {node.meta?.tokenUsage && ` \u00B7 ${node.meta.tokenUsage} tokens`}
+          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+            <span>Status: {statusLabel}</span>
+            {hasMeta && (
+              <>
+                {node.meta?.latencyMs && <span>\u00B7 {node.meta.latencyMs}ms</span>}
+                {node.meta?.tokenUsage && <span>\u00B7 {node.meta.tokenUsage.toLocaleString()} tokens</span>}
+              </>
+            )}
           </div>
         </div>
         <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded">
@@ -191,7 +248,7 @@ export function PipelineNodeDetail({
       </div>
 
       {node.type === 'agent' ? (
-        <AgentDetailTabs agentLog={agentLog} />
+        <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} />
       ) : node.type === 'checkpoint' && checkpointData && node.status === 'waiting' ? (
         <CheckpointDetailTabs
           checkpointData={checkpointData}
@@ -199,7 +256,7 @@ export function PipelineNodeDetail({
         />
       ) : node.type === 'checkpoint' ? (
         <div className="p-4 text-sm text-slate-500">
-          {node.status === 'auto-passed' ? 'Auto-passed — no review needed for auto mode.' : 'Waiting for review data...'}
+          {node.status === 'auto-passed' ? 'Auto-passed \u2014 no review needed for auto mode.' : 'Waiting for review data...'}
         </div>
       ) : (
         <div className="p-4 text-sm text-slate-500">No detailed data available for this node.</div>

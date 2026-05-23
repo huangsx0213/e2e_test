@@ -41,21 +41,23 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
 
   const paged = filtered.slice(page * pageSize, (page + 1) * pageSize);
   const totalPages = Math.ceil(filtered.length / pageSize);
-  const selected = selectedId ? cases.find((c: any) => c.id === selectedId) : null;
 
   if (!currentProjectId) {
     return <div className="h-full flex items-center justify-center text-slate-400">Select a project to continue</div>;
   }
 
   if (isLoading) {
-    return <div className="h-full flex items-center justify-center text-slate-400">Loading...</div>;
+    return <div className="h-full flex items-center justify-center text-slate-400 text-sm">Loading test cases...</div>;
   }
+
+  const hasData = cases.length > 0;
+  const isFiltered = search || statusFilter !== 'All' || priorityFilter !== 'All' || categoryFilter !== 'All';
 
   return (
     <div className="h-full flex flex-col bg-white overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 shrink-0">
         <h2 className="text-base font-semibold text-slate-800">NL Test Cases</h2>
-        <span className="text-sm text-slate-400">{filtered.length} cases</span>
+        <span className="text-sm text-slate-400">{filtered.length} of {cases.length} cases</span>
       </div>
 
       <div className="px-4 py-2 flex gap-2 border-b border-slate-100 shrink-0">
@@ -177,7 +179,12 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
             {paged.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
-                  {filtered.length === 0 ? 'No test cases found. Run an AI Pipeline to generate them.' : 'No results match your filters.'}
+                  {!hasData
+                    ? <span>No test cases yet. <span className="text-blue-500">Run an AI Pipeline</span> to generate them.</span>
+                    : isFiltered
+                    ? 'No results match your filters.'
+                    : 'No test cases found.'
+                  }
                 </td>
               </tr>
             )}

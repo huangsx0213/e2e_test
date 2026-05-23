@@ -6,9 +6,9 @@ interface NodeState {
   label: string;
   type: 'preparation' | 'agent' | 'checkpoint' | 'complete';
   agentName?: string;
-  subSteps?: { label: string; done: boolean }[];
+  subSteps?: { label: string; done: boolean; running?: boolean }[];
   status: 'pending' | 'running' | 'waiting' | 'done' | 'error' | 'auto-passed';
-  meta?: { tokenUsage?: number; latencyMs?: number; outputCount?: number; outputLabel?: string };
+  meta?: { tokenUsage?: number; latencyMs?: number; outputCount?: number; outputLabel?: string; errorMessage?: string };
 }
 
 interface PipelineFlowCanvasProps {
@@ -114,8 +114,8 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
         <div className="text-slate-500" style={{ fontSize }}>
           {node.subSteps.map((step, i) => (
             <div key={i} className="flex items-center truncate" style={{ gap }}>
-              <span>{step.done ? '\u2713' : '\u25CB'}</span>
-              <span>{step.label}</span>
+              <span>{step.done ? <CheckCircle2 size={10} className="text-green-500" /> : step.running ? <Activity size={10} className="text-blue-500 animate-spin" /> : <Clock size={10} className="text-slate-300" />}</span>
+              <span className={step.running ? 'text-blue-600 font-medium' : step.done ? 'text-green-600' : ''}>{step.label}</span>
             </div>
           ))}
         </div>
@@ -157,6 +157,11 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
 
       {node.status === 'auto-passed' && scale > 0.7 && (
         <span className="text-slate-400" style={{ fontSize }}>Auto-passed</span>
+      )}
+      {node.status === 'error' && node.meta?.errorMessage && (
+        <div className="text-red-500 mt-1" style={{ fontSize }} title={node.meta.errorMessage}>
+          {node.meta.errorMessage.length > 60 ? node.meta.errorMessage.slice(0, 60) + '...' : node.meta.errorMessage}
+        </div>
       )}
     </div>
   );

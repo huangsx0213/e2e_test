@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { History, Plus } from 'lucide-react';
 import { useRequirements, useBusinessFlows, usePipelineRuns, useCheckpoint, useAgentLogs } from '../../shared/hooks/useQueryHooks';
 import { usePipelineSSE } from '../../shared/hooks/usePipelineSSE';
@@ -7,6 +7,7 @@ import { PipelineConfigPanel, type PipelineStartConfig } from './PipelineConfigP
 import { PipelineFlowCanvas } from './PipelineFlowCanvas';
 import { PipelineNodeDetail } from './PipelineNodeDetail';
 import { PipelineRunHistory } from './PipelineRunHistory';
+import { ConfirmModal } from '../../shared/ui/ConfirmModal';
 
 interface AiPipelinePageProps {
   currentProjectId: string | null;
@@ -17,9 +18,9 @@ interface PipelineNodeState {
   label: string;
   type: 'preparation' | 'agent' | 'checkpoint' | 'complete';
   agentName?: string;
-  subSteps?: { label: string; done: boolean }[];
+  subSteps?: { label: string; done: boolean; running?: boolean }[];
   status: 'pending' | 'running' | 'waiting' | 'done' | 'error' | 'auto-passed';
-  meta?: { tokenUsage?: number; latencyMs?: number; outputCount?: number; outputLabel?: string };
+  meta?: { tokenUsage?: number; latencyMs?: number; outputCount?: number; outputLabel?: string; errorMessage?: string };
 }
 
 const PIPELINE_NODES: PipelineNodeState[] = [
@@ -48,6 +49,8 @@ const PIPELINE_NODES: PipelineNodeState[] = [
   { id: 'complete', label: 'Complete', type: 'complete', status: 'pending' },
 ];
 
+const agentNodeIds = new Set(PIPELINE_NODES.filter(n => n.type === 'agent').map(n => n.id));
+
 export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
   const [view, setView] = useState<'config' | 'history'>('config');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -59,6 +62,10 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [checkpointData, setCheckpointData] = useState<any>(null);
   const [runMode, setRunMode] = useState<'auto' | 'interactive'>('auto');
+  const [error, setError] = useState<string | null>(null);
+  const [showAbortConfirm, setShowAbortConfirm] = useState(false);
+  const [thinkingText, setThinkingText] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: requirements = [] } = useRequirements(currentProjectId || '');
   const { data: businessFlows = [] } = useBusinessFlows(currentProjectId || '');
@@ -66,31 +73,77 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
   const { data: checkpoint } = useCheckpoint(activeRunId || '');
   const { data: agentLogs = [] } = useAgentLogs(activeRunId || '', selectedNodeId?.replace('agent_', '') || undefined);
 
+  const showError = useCallback((msg: string) => {
+    setError(msg);
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setError(null), 8000);
+  }, []);
+
   const handleSSEEvent = useCallback((event: any) => {
     setNodeStates((prev: PipelineNodeState[]) => prev.map((node: PipelineNodeState) => {
       switch (event.type) {
-        case 'agent:start':
-          if (node.id === `agent_${event.data.agentName}`) {
+        case 'agent:start': {
+          const nodeId = `agent_${event.data.agentName}`;
+          if (node.id === nodeId) {
             return { ...node, status: 'running' as const, subSteps: node.subSteps?.map(s => ({ ...s, done: false })) };
           }
-          return node;
-        case 'agent:complete':
-          if (node.id === `agent_${event.data.agentName}`) {
-            return { ...node, status: 'done' as const, meta: { outputCount: 0, outputLabel: event.data.outputSummary } };
-          }
-          return node;
-        case 'checkpoint:waiting':
-          if (node.id === `checkpoint_${event.data.checkpointNumber}`) {
-            return { ...node, status: 'waiting' as const };
-          }
-          setCheckpointData(event.data.payload);
-          return node;
-        case 'checkpoint:resolved':
-          if (node.id === `checkpoint_${event.data.checkpointNumber}`) {
+          // Mark preceding nodes as done
+          const nodeIndex = prev.findIndex(n => n.id === nodeId);
+          if (prev.indexOf(node) < nodeIndex && node.type !== 'complete') {
             return { ...node, status: 'done' as const };
           }
-          setCheckpointData(null);
           return node;
+        }
+        case 'agent:complete':
+          if (node.id === `agent_${event.data.agentName}`) {
+            return {
+              ...node,
+              status: 'done' as const,
+              meta: {
+                outputCount: event.data.outputCount || 0,
+                outputLabel: event.data.outputSummary || '',
+                tokenUsage: event.data.tokenUsage,
+                latencyMs: event.data.latencyMs,
+              },
+            };
+          }
+          return node;
+        case 'agent:step':
+          if (node.id === `agent_${event.data.agentName}` && node.subSteps) {
+            return {
+              ...node,
+              subSteps: node.subSteps.map((s, i) => ({
+                ...s,
+                done: i < event.data.stepIndex,
+                running: i === event.data.stepIndex,
+              })),
+            };
+          }
+          return node;
+        case 'agent:thinking':
+          if (node.id === `agent_${event.data.agentName}`) {
+            setThinkingText(event.data.text);
+          }
+          return node;
+        case 'checkpoint:waiting': {
+          const cpId = `checkpoint_${event.data.checkpointNumber}`;
+          setCheckpointData(event.data.payload);
+          // Auto-select the checkpoint node
+          setSelectedNodeId(cpId);
+          if (node.id === cpId) {
+            return { ...node, status: 'waiting' as const };
+          }
+          return node;
+        }
+        case 'checkpoint:resolved': {
+          const cpId = `checkpoint_${event.data.checkpointNumber}`;
+          setCheckpointData(null);
+          setThinkingText(null);
+          if (node.id === cpId) {
+            return { ...node, status: 'done' as const };
+          }
+          return node;
+        }
         case 'batch:start':
           setBatch(event.data.batch);
           setTotalBatches(event.data.total);
@@ -100,20 +153,23 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
           return node;
         case 'pipeline:complete':
           setIsRunning(false);
-          setNodeStates((prev: PipelineNodeState[]) => prev.map(n => {
-            if (n.id === 'complete') return { ...n, status: 'done' as const };
-            return { ...n, status: n.status === 'pending' ? 'done' as const : n.status };
-          }));
+          setThinkingText(null);
+          setNodeStates((prev2: PipelineNodeState[]) => prev2.map(n => ({
+            ...n,
+            status: n.status === 'pending' ? 'done' as const : n.status,
+          })));
           setGeneratedCases(event.data.stats?.totalCases || 0);
           refetchRuns();
           return node;
         case 'pipeline:error':
+          showError(event.data.message || 'Pipeline error');
+          // Mark current batch node in error if recoverable
           return node;
         default:
           return node;
       }
     }));
-  }, [refetchRuns]);
+  }, [refetchRuns, showError]);
 
   const { start: startSSE, stop: stopSSE, isConnected: isSSEConnected } = usePipelineSSE({
     projectId: currentProjectId,
@@ -121,11 +177,37 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
     onEvent: handleSSEEvent,
   });
 
+  // Auto-follow: when a node becomes running or waiting, switch to viewing it
+  const nodeStatesRef = useRef(nodeStates);
+  nodeStatesRef.current = nodeStates;
+  const autoFollowRef = useRef(true);
+
+  const findActiveNode = useCallback((states: PipelineNodeState[]) => {
+    const active = states.find(n => n.status === 'running' || n.status === 'waiting');
+    return active?.id || null;
+  }, []);
+
+  // Watch node states and auto-select running/waiting nodes
+  React.useEffect(() => {
+    if (!isRunning || !autoFollowRef.current) return;
+    const activeId = findActiveNode(nodeStates);
+    if (activeId && activeId !== selectedNodeId) {
+      setSelectedNodeId(activeId);
+    }
+  }, [nodeStates, isRunning, selectedNodeId, findActiveNode]);
+
+  const handleNodeClick = useCallback((nodeId: string) => {
+    autoFollowRef.current = false;
+    setSelectedNodeId(prev => prev === nodeId ? null : nodeId);
+    // Re-enable auto-follow after 30s of manual interaction
+    setTimeout(() => { autoFollowRef.current = true; }, 30000);
+  }, []);
+
   const handleStart = useCallback(async (config: PipelineStartConfig) => {
     setNodeStates(PIPELINE_NODES.map(n => ({
       ...n,
       status: 'pending' as PipelineNodeState['status'],
-      subSteps: n.subSteps?.map(s => ({ ...s, done: false })),
+      subSteps: n.subSteps?.map(s => ({ ...s, done: false, running: false })),
     })));
     setBatch(0);
     setTotalBatches(0);
@@ -134,20 +216,19 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
     setSelectedNodeId(null);
     setCheckpointData(null);
     setRunMode(config.mode);
+    setError(null);
+    setThinkingText(null);
+    autoFollowRef.current = true;
 
     try {
       const { runId } = await api.pipeline.start(currentProjectId!, config);
       setActiveRunId(runId);
-      // Trigger SSE connection
       startSSE();
     } catch (err: any) {
       setIsRunning(false);
+      showError('Failed to start pipeline: ' + (err.message || 'Unknown error'));
     }
-  }, [currentProjectId, startSSE]);
-
-  const handleNodeClick = useCallback((nodeId: string) => {
-    setSelectedNodeId(prev => prev === nodeId ? null : nodeId);
-  }, []);
+  }, [currentProjectId, startSSE, showError]);
 
   const handleCheckpointAction = useCallback(async (action: 'approve' | 'edit' | 'retry', data?: any) => {
     if (!activeRunId) return;
@@ -155,25 +236,26 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
       await api.pipeline.resume(activeRunId, { action, feedback: data?.feedback });
       setCheckpointData(null);
     } catch (err: any) {
-      alert('Failed: ' + err.message);
+      showError('Failed to ' + action + ': ' + (err.message || 'Unknown error'));
     }
-  }, [activeRunId]);
+  }, [activeRunId, showError]);
 
   const handleAbort = useCallback(async () => {
+    setShowAbortConfirm(false);
     if (!activeRunId) return;
     try {
       await api.pipeline.abort(activeRunId);
       stopSSE();
       setIsRunning(false);
+      setThinkingText(null);
       refetchRuns();
     } catch (err: any) {
-      alert('Failed to abort: ' + err.message);
+      showError('Failed to abort: ' + (err.message || 'Unknown error'));
     }
-  }, [activeRunId, stopSSE, refetchRuns]);
+  }, [activeRunId, stopSSE, refetchRuns, showError]);
 
   const handleSelectHistoryRun = useCallback((_runId: string) => {
     setView('config');
-    // For now, we just switch back — full history detail view is future work
   }, []);
 
   const selectedNode = selectedNodeId
@@ -192,7 +274,12 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white shrink-0">
         <h2 className="text-base font-semibold text-slate-800">AI Pipeline</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {error && (
+            <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 animate-in fade-in max-w-md truncate">
+              {error}
+            </span>
+          )}
           {isRunning && (
             <span className={`text-xs px-2 py-1 rounded ${isSSEConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
               {isSSEConnected ? 'Connected' : 'Disconnected'}
@@ -233,19 +320,30 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
             generatedCases={generatedCases}
             onNodeClick={handleNodeClick}
             selectedNodeId={selectedNodeId}
-            onAbort={handleAbort}
             isRunning={isRunning}
+            onAbort={() => setShowAbortConfirm(true)}
             onCheckpointAction={runMode === 'interactive' ? handleCheckpointAction : undefined}
           />
           <PipelineNodeDetail
             node={selectedNode}
             agentLog={agentLog}
             checkpointData={checkpointData}
-            onClose={() => setSelectedNodeId(null)}
+            thinkingText={thinkingText}
+            onClose={() => { setSelectedNodeId(null); autoFollowRef.current = false; }}
             onCheckpointAction={handleCheckpointAction}
           />
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showAbortConfirm}
+        onClose={() => setShowAbortConfirm(false)}
+        onConfirm={handleAbort}
+        title="Abort Pipeline?"
+        message="This will stop the current pipeline run. Generated test cases from completed batches will be preserved. This action cannot be undone."
+        confirmLabel="Abort Pipeline"
+        type="warning"
+      />
     </div>
   );
 }
