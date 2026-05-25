@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentRole } from '../agent.ts';
+import { PipelineBusinessFlowBlueprintSchema } from '../../contracts/index.ts';
 
 export const BatchAnalystInputSchema = z.object({
   requirements: z.array(z.object({
@@ -21,6 +22,7 @@ export const BatchAnalystInputSchema = z.object({
     pages: z.array(z.object({ name: z.string() })),
     endpoints: z.array(z.object({ name: z.string(), method: z.string() })),
   }),
+  businessFlowBlueprints: z.array(PipelineBusinessFlowBlueprintSchema).optional(),
 });
 
 export const AnalystOutputSchema = z.object({
@@ -33,7 +35,7 @@ export const AnalystOutputSchema = z.object({
     requirementId: z.string(),
     requirementLevel: z.enum(['epic', 'feature', 'story', 'ac']),
     condition: z.string(),
-    category: z.enum(['happy-path', 'alternate', 'error', 'boundary']),
+    category: z.enum(['happy-path', 'alternate', 'error', 'boundary']).catch('alternate'),
     riskLevel: z.enum(['high', 'medium', 'low']),
     priority: z.enum(['critical', 'high', 'medium', 'low']),
     primaryTechnique: z.enum(['equivalence-partitioning', 'boundary-value-analysis', 'decision-table', 'state-transition', 'use-case']),
@@ -67,7 +69,7 @@ Return valid JSON with exactly these two top-level fields:
 2. "testConditions" — array of condition objects (see skill for field details)
 
 Both fields are required. Never omit requirementAnalysis.`,
-  requiredSkills: ['test-analyst', 'requirement-index', 'requirement-query', 'requirement-analysis'],
+  requiredSkills: ['test-analyst', 'requirement-index', 'requirement-query', 'requirement-analysis', 'flow-design'],
   inputSchema: BatchAnalystInputSchema,
   outputSchema: AnalystOutputSchema,
   options: { maxTokens: 128000 },

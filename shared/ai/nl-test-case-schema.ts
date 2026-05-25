@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PipelineBusinessFlowBlueprintSchema } from '../contracts/index.ts';
 
 export const SelfReviewIssueSchema = z.object({
   severity: z.enum(['blocker', 'major', 'minor']),
@@ -14,7 +15,7 @@ export const SelfReviewSchema = z.object({
 });
 
 export const TestDataSchema = z.object({
-  key: z.string(), value: z.string(), description: z.string(),
+  key: z.string(), value: z.union([z.string(), z.number()]).transform(v => String(v)), description: z.string(),
 });
 
 export const StepSchema = z.object({
@@ -64,6 +65,7 @@ export const CoverageMatrixSchema = z.object({
 export const QMInputSchema = z.object({
   draftCases: z.array(QmInputCaseSchema),
   humanFeedback: z.string().optional(),
+  businessFlowBlueprints: z.array(PipelineBusinessFlowBlueprintSchema).optional(),
 });
 
 export const QMOutputSchema = z.object({

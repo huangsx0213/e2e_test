@@ -169,11 +169,13 @@ describe('PipelineConfigPanel', () => {
     expect(startBtn.closest('button')).toBeDisabled();
   });
 
-  it('TC-1.9: Start button enabled when requirements selected', () => {
+  it('TC-1.9: Start button enabled when requirements and provider selected', () => {
     const reqs = buildTreeSample();
     const onStart = vi.fn();
     renderWithQuery(React.createElement(PipelineConfigPanel, { ...defaultProps, requirements: reqs, onStart }));
     fireEvent.click(screen.getByText('Select All'));
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'Azure OpenAI' } });
     const startBtn = screen.getByText('Start Pipeline');
     expect(startBtn.closest('button')).not.toBeDisabled();
     fireEvent.click(startBtn);

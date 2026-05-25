@@ -95,6 +95,7 @@ function prepareAgentRun(context: AgentContext, input: unknown): PreparedAgentRu
 export interface AgentRunOptions {
   timeoutMs?: number;
   maxRetries?: number;
+  useCache?: boolean;
   onStep?: (stepIndex: number, stepName: string) => void;
   onThinking?: (text: string) => void;
 }
@@ -106,13 +107,18 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
 
   const { parsedInput, inputJson, messages } = prepareAgentRun(context, input);
 
-  console.log(`[agent] ${role.name}: checking cache (version=${promptVersion}, model=${modelName})...`);
-  const cached = getCached(parsedInput, promptVersion, modelName);
-  if (cached) {
-    console.log(`[agent] ${role.name}: cache HIT, returning cached result`);
-    return { result: cached, tokenUsage: { input: 0, output: 0, reasoning: 0 }, latencyMs: 0, inputPrompt: [], rawOutput: '' };
+  const useCache = options.useCache ?? true;
+  if (useCache) {
+    console.log(`[agent] ${role.name}: checking cache (version=${promptVersion}, model=${modelName})...`);
+    const cached = getCached(parsedInput, promptVersion, modelName);
+    if (cached) {
+      console.log(`[agent] ${role.name}: cache HIT, returning cached result`);
+      return { result: cached, tokenUsage: { input: 0, output: 0, reasoning: 0 }, latencyMs: 0, inputPrompt: [], rawOutput: '' };
+    }
+  } else {
+    console.log(`[agent] ${role.name}: cache DISABLED, will invoke LLM directly`);
   }
-  console.log(`[agent] ${role.name}: cache MISS, will invoke LLM`);
+  console.log(`[agent] ${role.name}: cache MISS${useCache ? '' : ' (disabled)'}, will invoke LLM`);
 
   let lastError: Error | null = null;
   const startTime = Date.now();
@@ -122,43 +128,66 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
 
-      let response;
+      let fullContent = '';
+      let usageData: { promptTokens: number; completionTokens: number; reasoningTokens?: number } | undefined;
+      let reasoningContent = '';
+      let lastEmit = 0;
+      const THROTTLE_MS = 80;
+
       try {
-        response = await provider.chat(messages, { ...role.options, agentName: role.name, responseFormat: 'json_object', signal: controller.signal });
+        for await (const chunk of provider.streamChat(messages, { ...role.options, agentName: role.name, responseFormat: 'json_object', signal: controller.signal })) {
+          if (chunk.type === 'reasoning') {
+            reasoningContent += chunk.content;
+            options.onThinking?.(chunk.content);
+          } else if (chunk.type === 'content') {
+            fullContent += chunk.content;
+            const now = Date.now();
+            if (now - lastEmit >= THROTTLE_MS) {
+              lastEmit = now;
+              options.onThinking?.(fullContent);
+            }
+          } else if (chunk.type === 'done' && chunk.usage) {
+            usageData = chunk.usage;
+          }
+        }
       } finally {
         clearTimeout(timer);
       }
 
-      const responseLen = response.content.length;
-      const reasoningLen = response.reasoningContent?.length ?? 0;
-      console.log(`[agent] ${role.name}: attempt ${attempt + 1} response received, content=${responseLen}chars, reasoning=${reasoningLen}chars`);
+      if (fullContent) {
+        options.onThinking?.(fullContent);
+      }
 
-      if (response.usage) {
-        tokenTracker.add(response.usage);
+      const responseLen = fullContent.length;
+      const reasoningLen = reasoningContent.length;
+      console.log(`[agent] ${role.name}: attempt ${attempt + 1} stream complete, content=${responseLen}chars, reasoning=${reasoningLen}chars`);
+
+      if (usageData) {
+        tokenTracker.add(usageData);
       }
       const totalTokens = tokenTracker.getTotal().totalTokens;
       if (context.tokenLimit && totalTokens > context.tokenLimit) {
         throw new Error(`Token limit exceeded (${totalTokens} > ${context.tokenLimit}). Run aborted.`);
       }
       console.log(`[agent] ${role.name}: parsing JSON response...`);
-      const parsed = JSON.parse(response.content);
+      const parsed = JSON.parse(fullContent);
       console.log(`[agent] ${role.name}: validating against schema...`);
       const validated = role.outputSchema.parse(parsed);
       const tcCount = Array.isArray((validated as any).testConditions) ? (validated as any).testConditions.length
         : Array.isArray((validated as any).draftTestCases) ? (validated as any).draftTestCases.length
         : Array.isArray((validated as any).finalTestCases) ? (validated as any).finalTestCases.length
         : 'N/A';
-      console.log(`[agent] ${role.name}: validation PASSED (items=${tcCount}), caching result`);
-      setCache(parsedInput, promptVersion, modelName, validated);
+      console.log(`[agent] ${role.name}: validation PASSED (items=${tcCount})${useCache ? ', caching result' : ', cache disabled'}`);
+      if (useCache) setCache(parsedInput, promptVersion, modelName, validated);
       const latencyMs = Date.now() - startTime;
       const tokenUsage = {
-        input: response.usage?.promptTokens ?? 0,
-        output: response.usage?.completionTokens ?? 0,
-        reasoning: response.usage?.reasoningTokens ?? 0,
+        input: usageData?.promptTokens ?? 0,
+        output: usageData?.completionTokens ?? 0,
+        reasoning: usageData?.reasoningTokens ?? 0,
       };
       console.log(`[agent] ${role.name}: SUCCESS, latency=${latencyMs}ms, tokens=${tokenUsage.input}in/${tokenUsage.output}out/${tokenUsage.reasoning}reason`);
-      return { result: validated, tokenUsage, latencyMs, inputPrompt: messages, rawOutput: response.content };
-      } catch (err: any) {
+      return { result: validated, tokenUsage, latencyMs, inputPrompt: messages, rawOutput: fullContent };
+    } catch (err: any) {
         lastError = err as Error;
 
         const isTimeout = err?.name === 'TimeoutError'

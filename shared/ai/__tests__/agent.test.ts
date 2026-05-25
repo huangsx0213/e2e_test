@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { createAgentContext, runAgent, AgentTimeoutError, type AgentRole } from '../agent.ts';
-import type { AIProvider } from '../provider.ts';
+import type { AIProvider, StreamChunk } from '../provider.ts';
 import { invalidateCache } from '../cache.ts';
 
 const testRole: AgentRole = {
@@ -9,8 +9,16 @@ const testRole: AgentRole = {
   requiredSkills: [], inputSchema: z.object({ text: z.string() }), outputSchema: z.object({ result: z.string() }),
 };
 
+async function* makeStream(chunks: StreamChunk[]): AsyncGenerator<StreamChunk> {
+  for (const c of chunks) yield c;
+}
+
 function createMockProvider(responseContent: string): AIProvider {
-  return { chat: vi.fn().mockResolvedValue({ content: responseContent, usage: { promptTokens: 10, completionTokens: 5 } }), streamChat: vi.fn() } as any;
+  const streamChat = vi.fn().mockImplementation(async function*() {
+    yield { type: 'content' as const, content: responseContent };
+    yield { type: 'done' as const, content: '', usage: { promptTokens: 10, completionTokens: 5 } };
+  });
+  return { chat: vi.fn(), streamChat } as any;
 }
 
 describe('runAgent', () => {
@@ -25,40 +33,62 @@ describe('runAgent', () => {
   });
 
   it('retries once on validation failure', async () => {
-    const provider = { chat: vi.fn().mockResolvedValueOnce({ content: '{"wrong":"field"}', usage: {} }).mockResolvedValueOnce({ content: '{"result":"corrected"}', usage: {} }), streamChat: vi.fn() } as unknown as AIProvider;
+    const streamChat = vi.fn()
+      .mockImplementationOnce(async function*() {
+        yield { type: 'content' as const, content: '{"wrong":"field"}' };
+        yield { type: 'done' as const, content: '' };
+      })
+      .mockImplementationOnce(async function*() {
+        yield { type: 'content' as const, content: '{"result":"corrected"}' };
+        yield { type: 'done' as const, content: '', usage: { promptTokens: 5, completionTokens: 3 } };
+      });
+    const provider = { chat: vi.fn(), streamChat } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
     const result = await runAgent(context, { text: 'test input' });
     expect(result.result).toEqual({ result: 'corrected' });
-    expect(provider.chat).toHaveBeenCalledTimes(2);
+    expect(provider.streamChat).toHaveBeenCalledTimes(2);
   });
 
   it('throws after 2 failed attempts', async () => {
-    const provider = { chat: vi.fn().mockResolvedValue({ content: 'invalid json {{{', usage: {} }), streamChat: vi.fn() } as unknown as AIProvider;
+    const streamChat = vi.fn().mockImplementation(async function*() {
+      yield { type: 'content' as const, content: 'invalid json {{{' };
+      yield { type: 'done' as const, content: '' };
+    });
+    const provider = { chat: vi.fn(), streamChat } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
     await expect(runAgent(context, { text: 'test input' })).rejects.toThrow();
   });
 
   it('throws AgentTimeoutError on abort error without retrying', async () => {
     const abortError = new DOMException('This operation was aborted', 'AbortError');
-    const provider = { chat: vi.fn().mockRejectedValue(abortError), streamChat: vi.fn() } as unknown as AIProvider;
+    const streamChat = vi.fn().mockImplementation(async function*() {
+      throw abortError;
+    });
+    const provider = { chat: vi.fn(), streamChat } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
     await expect(runAgent(context, { text: 'test input' }, { timeoutMs: 5000 })).rejects.toThrow(AgentTimeoutError);
-    expect(provider.chat).toHaveBeenCalledTimes(1);
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
   });
 
   it('throws AgentTimeoutError on TimeoutError without retrying', async () => {
     const timeoutError = new DOMException('Timeout', 'TimeoutError');
-    const provider = { chat: vi.fn().mockRejectedValue(timeoutError), streamChat: vi.fn() } as unknown as AIProvider;
+    const streamChat = vi.fn().mockImplementation(async function*() {
+      throw timeoutError;
+    });
+    const provider = { chat: vi.fn(), streamChat } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
     await expect(runAgent(context, { text: 'test input' }, { timeoutMs: 5000 })).rejects.toThrow(AgentTimeoutError);
-    expect(provider.chat).toHaveBeenCalledTimes(1);
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry on non-validation errors', async () => {
     const networkError = new Error('Network error');
-    const provider = { chat: vi.fn().mockRejectedValue(networkError), streamChat: vi.fn() } as unknown as AIProvider;
+    const streamChat = vi.fn().mockImplementation(async function*() {
+      throw networkError;
+    });
+    const provider = { chat: vi.fn(), streamChat } as unknown as AIProvider;
     const context = createAgentContext(provider, testRole);
     await expect(runAgent(context, { text: 'test input' })).rejects.toThrow('Network error');
-    expect(provider.chat).toHaveBeenCalledTimes(1);
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
   });
 });

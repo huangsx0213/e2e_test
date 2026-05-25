@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Brain, PenTool, Star, CheckCircle2, Loader2, FileText, Table2, AlertTriangle } from 'lucide-react';
 
 interface NodeDetailProps {
@@ -285,13 +285,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
 
 function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node: any; thinkingText: string | null }) {
   const [activeTab, setActiveTab] = useState<'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors'>('summary');
-  const thinkingRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (thinkingText && activeTab === 'thinking' && thinkingRef.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
-    }
-  }, [thinkingText, activeTab]);
+  const autoScroll = node?.status === 'running';
 
   useEffect(() => {
     if (thinkingText && node?.status === 'running') {
@@ -332,7 +326,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
 
         {activeTab === 'thinking' && (
           <div className="p-3">
-            <div ref={thinkingRef} className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-600 max-h-full overflow-y-auto">
+            <div className="font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-600 max-h-full overflow-y-auto">
               {thinkingText ? (
                 <div>
                   {thinkingText}
@@ -350,6 +344,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
                   )}
                 </div>
               )}
+              <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
             </div>
           </div>
         )}

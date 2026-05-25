@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type ActionType = string;
 export type SelectorType = 'CSS' | 'XPATH' | 'TEXT' | 'ID' | 'TEST_ID' | string;
 
@@ -486,6 +488,22 @@ export interface PipelineBusinessFlowBlueprint {
   type: BusinessFlow['type'];
   steps: PipelineBusinessFlowBlueprintStep[];
 }
+
+export const PipelineBusinessFlowBlueprintStepSchema = z.object({
+  sequence: z.number(),
+  requirementId: z.string(),
+  requirementTitle: z.string(),
+  requirementLevel: z.enum(['epic', 'feature', 'story', 'ac']),
+  actionSummary: z.string(),
+  acceptanceCriteria: z.array(z.string()),
+});
+
+export const PipelineBusinessFlowBlueprintSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(['happy-path', 'alternate', 'exception']),
+  steps: z.array(PipelineBusinessFlowBlueprintStepSchema),
+});
 
 export interface TestCondition {
   id: string;

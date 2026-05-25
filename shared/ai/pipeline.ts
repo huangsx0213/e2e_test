@@ -1,5 +1,5 @@
 import { StateGraph, START, END, Annotation, type BaseCheckpointSaver } from '@langchain/langgraph';
-import type { TestCondition, NlTestCase, CoverageMatrix, Requirement } from '../contracts/index.ts';
+import type { TestCondition, NlTestCase, CoverageMatrix, Requirement, PipelineBusinessFlowBlueprint } from '../contracts/index.ts';
 import type { AIProvider, ChatMessage } from './provider.ts';
 import { createAgentContext, type AgentRole } from './agent.ts';
 import { createAgentNode, createCheckpointNode, type AgentObserver } from './pipeline-nodes.ts';
@@ -17,6 +17,7 @@ const PipelineStateAnnotation = Annotation.Root({
   currentBatch: Annotation<Requirement[]>,
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
+  businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
 
   requirementAnalysis: Annotation<{ overallApproach: string; riskAssessmentSummary: string } | undefined>,
   testConditions: Annotation<TestCondition[] | undefined>,
@@ -63,6 +64,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
   modelName?: string;
   tokenLimit?: number | null;
   timeoutMs?: number;
+  useCache?: boolean;
 }, checkpointer?: BaseCheckpointSaver) {
   const testAnalystCtx = createAgentContext(provider, roles.testAnalyst, agentOpts);
   const testDesignerCtx = createAgentContext(provider, roles.testDesigner, agentOpts);
@@ -75,7 +77,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
   const node_analyst = createAgentNode(
     testAnalystCtx,
     'test_analyst',
-    (state) => ({ requirements: state.currentBatch, batchContext: state.batchContext, projectContext: state.projectContext }),
+    (state) => ({ requirements: state.currentBatch, batchContext: state.batchContext, projectContext: state.projectContext, businessFlowBlueprints: state.businessFlowBlueprints }),
     (raw) => {
       const result = raw.result as { requirementAnalysis: { overallApproach: string; riskAssessmentSummary: string }; testConditions: TestCondition[] };
       return { requirementAnalysis: result.requirementAnalysis, testConditions: result.testConditions, phase: 'review-conditions' };
@@ -84,6 +86,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     [{ index: 1, name: 'Extract test conditions' }, { index: 2, name: 'Select ISTQB techniques' }],
     observer,
     agentOpts?.timeoutMs,
+    agentOpts?.useCache,
     (state) => {
       const reqCount = state.currentBatch?.length ?? 0;
       const batchInfo = `batch ${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
@@ -118,7 +121,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
   const node_designer = createAgentNode(
     testDesignerCtx,
     'test_designer',
-    (state) => ({ conditions: state.approvedConditions, projectContext: state.projectContext }),
+    (state) => ({ conditions: state.approvedConditions, projectContext: state.projectContext, businessFlowBlueprints: state.businessFlowBlueprints }),
     (raw) => {
       const result = raw.result as { draftTestCases: NlTestCase[] };
       return { draftTestCases: result.draftTestCases, phase: 'review-draft' };
@@ -127,6 +130,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     [{ index: 1, name: 'Apply test techniques' }, { index: 2, name: 'Self-review quality' }],
     observer,
     agentOpts?.timeoutMs,
+    agentOpts?.useCache,
     (state) => {
       const condCount = state.approvedConditions?.length ?? 0;
       console.log(`[pipeline:graph] [agent_test_designer] ENTER, ${condCount} conditions to design, phase=${state.phase}`);
@@ -160,7 +164,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
   const node_reviewer = createAgentNode(
     qualityManagerCtx,
     'quality_manager',
-    (state) => ({ draftCases: state.approvedDraftCases, humanFeedback: state.humanReviewFeedback }),
+    (state) => ({ draftCases: state.approvedDraftCases, humanFeedback: state.humanReviewFeedback, businessFlowBlueprints: state.businessFlowBlueprints }),
     (raw) => {
       const result = raw.result as { finalTestCases: NlTestCase[]; coverageMatrix: CoverageMatrix };
       return { finalTestCases: result.finalTestCases, coverageMatrix: result.coverageMatrix, phase: 'final-review' };
@@ -169,6 +173,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     [{ index: 1, name: 'Merge human feedback' }, { index: 2, name: 'Generate coverage matrix' }],
     observer,
     agentOpts?.timeoutMs,
+    agentOpts?.useCache,
     (state) => {
       const draftCount = state.approvedDraftCases?.length ?? 0;
       const fb = state.humanReviewFeedback ? `, feedback="${state.humanReviewFeedback.slice(0, 80)}"` : '';

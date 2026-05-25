@@ -26,7 +26,7 @@ Return valid JSON with exactly two top-level fields:
 2. "coverageMatrix" — object with "rows" array
 
 Both fields are required. Never omit either field.`,
-  requiredSkills: ['quality-manager'],
+  requiredSkills: ['quality-manager', 'flow-design'],
   inputSchema: QMInputSchema,
   outputSchema: QMOutputSchema,
 };

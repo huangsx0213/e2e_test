@@ -18,11 +18,12 @@ export function createInitialState(): PipelineRunState {
     autoFollowEnabled: true,
     batchProgress: null,
     checkpointData: null,
-    thinkingText: null,
+    thinkingTextByNode: {},
     runSummary: null,
     isConnected: false,
     error: null,
     isRunning: false,
+    agentLogs: [],
   };
 }
 
@@ -41,7 +42,7 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
       const { type, data } = action.event;
       let nodes = state.nodes;
       let checkpointData = state.checkpointData;
-      let thinkingText = state.thinkingText;
+      let thinkingTextByNode = state.thinkingTextByNode;
       let batchProgress = state.batchProgress;
       let runSummary = state.runSummary;
 
@@ -84,7 +85,7 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
         case 'agent:thinking': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
-          thinkingText = data.text;
+          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: data.text };
           break;
         }
         case 'checkpoint:waiting': {
@@ -100,7 +101,6 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
           const cpId = CHECKPOINT_NODE_IDS[data.checkpointNumber];
           if (!cpId) return state;
           checkpointData = null;
-          thinkingText = null;
           nodes = markPrecedingDone(nodes, cpId);
           nodes = nodes.map(n =>
             n.id === cpId ? { ...n, status: 'completed' as const } : n,
@@ -128,14 +128,13 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
               ? 'completed' as const : n.status,
             meta: n.id === 'complete' ? { ...n.meta, ...runSummary } : n.meta,
           }));
-          thinkingText = null;
-          return { ...state, nodes, checkpointData, thinkingText, batchProgress, runSummary, isRunning: false };
+          return { ...state, nodes, checkpointData, thinkingTextByNode, batchProgress, runSummary, isRunning: false };
         case 'pipeline:error':
           return { ...state, error: { code: 'API_ERROR', message: data.message || 'Pipeline error', detail: data } };
         default:
           return state;
       }
-      return { ...state, nodes, checkpointData, thinkingText, batchProgress, runSummary };
+      return { ...state, nodes, checkpointData, thinkingTextByNode, batchProgress, runSummary };
     }
 
     case 'RUN_STARTED':
@@ -148,7 +147,7 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
         selectedNodeId: null,
         batchProgress: null,
         checkpointData: null,
-        thinkingText: null,
+        thinkingTextByNode: {},
         runSummary: null,
         error: null,
         isRunning: true,
@@ -161,12 +160,12 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
         isRunning: false,
         isConnected: false,
         error: null,
-        thinkingText: null,
+        thinkingTextByNode: {},
       };
 
     case 'RESTORE_RUN': {
       const { nodes: restoredNodes, checkpointDataResult } = buildRestoredNodes(
-        action.phase, action.status, action.checkpointData,
+        action.phase, action.status, action.checkpointData, action.totalBatches,
       );
       const isRunning = action.status !== 'COMPLETED' && action.status !== 'FAILED';
       return {
@@ -175,30 +174,78 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
         mode: action.mode ?? state.mode,
         nodes: restoredNodes,
         isRunning,
-        checkpointData: checkpointDataResult,
-        thinkingText: null,
+        checkpointData:         checkpointDataResult,
+        thinkingTextByNode: {},
         error: null,
+        agentLogs: [],
       };
     }
 
     case 'MERGE_AGENT_LOGS': {
       const nodes: PipelineNode[] = state.nodes.map(n => {
+        if (n.id === 'complete') {
+          const logs = action.logs ?? [];
+          const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
+          let totalOutputCount = 0;
+          let totalTokens = 0;
+          let totalLatencyMs = 0;
+          const mergedOutputData: Record<string, any> = {};
+          for (const log of completedLogs) {
+            const od = log.output_data;
+            if (od) {
+              const finalCases = od.finalTestCases;
+              const count = Array.isArray(finalCases) ? finalCases.length : 0;
+              totalOutputCount += count;
+              for (const [key, val] of Object.entries(od)) {
+                if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+              }
+            }
+            const tu = log.token_usage;
+            if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+            totalLatencyMs += log.latency_ms ?? 0;
+          }
+          return {
+            ...n, status: 'completed' as const,
+            meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
+          };
+        }
         if (!n.agentName) return n;
-        const log = (action.logs ?? []).find((l: any) => l.agent_name === n.agentName);
-        if (!log) return n;
-        const outputData = log.output_data;
-        const outputCount: number = outputData
-          ? (Object.values(outputData) as any[]).reduce((sum: number, v: any) => sum + (Array.isArray(v) ? v.length : 0), 0)
-          : 0;
-        const tu = log.token_usage;
-        const totalTokens: number = tu ? ((tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0)) : 0;
-        const status = log.status === 'COMPLETED' ? 'completed' as const :
-                       log.status === 'FAILED' ? 'error' as const :
+        const agentLogs = (action.logs ?? []).filter((l: any) => l.agent_name === n.agentName);
+        if (agentLogs.length === 0) return n;
+        // Use latest batch's status, but merge output_data and sum stats across all batches
+        const latest = agentLogs.reduce((best: any, l: any) =>
+          (l.batch || 0) > (best?.batch || 0) ? l : best, agentLogs[0]);
+        let outputCount = 0;
+        const mergedOutputData: Record<string, any> = {};
+        let totalTokens = 0;
+        let totalLatencyMs = 0;
+        for (const log of agentLogs) {
+          const od = log.output_data;
+          if (od) {
+            outputCount += (Object.values(od) as any[]).reduce((sum: number, v: any) => sum + (Array.isArray(v) ? v.length : 0), 0);
+            for (const [key, val] of Object.entries(od)) {
+              if (Array.isArray(val)) {
+                if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
+                mergedOutputData[key] = [...mergedOutputData[key], ...val];
+              } else {
+                mergedOutputData[key] = val;
+              }
+            }
+          }
+          const tu = log.token_usage;
+          if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+          totalLatencyMs += log.latency_ms ?? 0;
+        }
+        const status = latest.status === 'COMPLETED' ? 'completed' as const :
+                       latest.status === 'FAILED' ? 'error' as const :
                        n.status;
-        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: log.latency_ms ?? 0, outputCount, outputData } };
+        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
-      return { ...state, nodes };
+      return { ...state, nodes, agentLogs: action.logs ?? [] };
     }
+
+    case 'SET_RUN_SUMMARY':
+      return { ...state, runSummary: action.summary };
 
     case 'SELECT_NODE':
       return {

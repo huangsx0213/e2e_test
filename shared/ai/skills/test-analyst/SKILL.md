@@ -42,42 +42,66 @@ A test condition MUST test exactly ONE thing:
 | Numeric calculations with rounding or precision | equivalence-partitioning | boundary-value-analysis | Normal range, precision boundary (0.01), overflow boundary |
 | Authorization/role-based access | decision-table | — | Each role × each action = test column |
 
-## Output Format
-Return valid JSON matching the specified output schema. The top-level object has two fields:
+## Flow-Aware Condition Extraction
 
-### requirementAnalysis (required)
-An object summarizing the analysis of all requirements in the batch:
+When `businessFlowBlueprints` is present in the input, flows provide cross-requirement context. Use flows to:
+
+### Risk/Priority Adjustment by Flow Position
+- A requirement appearing in a business flow step inherits the flow's importance
+- Requirements in `happy-path` flows get one level higher risk/priority than standalone analysis would suggest
+- Requirements appearing in MULTIPLE flows are higher priority (broader business impact)
+- Requirements NOT appearing in any flow may still need coverage but likely lower business criticality
+
+### Cross-Step Condition Extraction
+From each flow, extract conditions that span multiple steps:
+- **Transition conditions**: "Data produced at step N is correctly consumed at step N+1"
+- **State continuity conditions**: "System preserves flow state across all steps"
+- **Rollback conditions**: "If step N+1 fails, step N side effects are rolled back"
+- **Timeout/recovery conditions**: "If a step times out, flow can be resumed from the interruption point"
+
+### Flow-Informed Technique Selection
+- For flow-level conditions (multi-step), prefer `use-case` and `state-transition` techniques
+- For per-step conditions (single step in isolation), use standard technique selection rules
+- When a requirement appears in a flow step with `type: happy-path`, prioritize `happy-path` and `alternate` categories
+- When a requirement appears in a flow step with `type: exception`, add `error` and `boundary` categories
+
+### Flow Condition Categories
+Map flow conditions into standard categories:
+- `happy-path`: Every step executes successfully end-to-end
+- `alternate`: A step takes a valid branch (e.g., different payment method, different shipping option)
+- `error`: A step receives invalid input or encounters system failure; verify graceful handling and state preservation
+- `boundary`: Data limits across flow steps (e.g., maximum cart quantity before checkout, minimum order amount)
+
+## Output Format
+Return valid JSON matching the specified output schema. EVERY field listed below is REQUIRED — never omit any field.
+
+### requirementAnalysis (required object)
 ```json
 {
-  "requirementAnalysis": {
-    "overallApproach": "Your chosen test approach for this batch (e.g., technique focus, depth, areas of emphasis)",
-    "riskAssessmentSummary": "Risk profile of the batch (e.g., which requirements are highest risk, any gaps found)"
-  }
+  "overallApproach": "Your chosen test approach for this batch (e.g., technique focus, depth, areas of emphasis)",
+  "riskAssessmentSummary": "Risk profile of the batch (e.g., which requirements are highest risk, any gaps found)"
 }
 ```
 
-### testConditions (required)
-An array of atomic test conditions. Every entry must include:
-- id: unique identifier string
-- requirementId: reference to the requirement being tested
-- requirementLevel: epic|feature|story|ac
-- condition: atomic, one specific thing to test
-- category: happy-path|alternate|error|boundary
-- riskLevel: high|medium|low
-- priority: critical|high|medium|low
-- primaryTechnique: the ISTQB technique to use for test design
-- secondaryTechniques: additional applicable techniques
-- techniqueRationale: WHY this technique was chosen (2-3 sentences)
-- coverageDimensions: [{ dimension: string, variants: string[] }] — **REQUIRED, must always be a non-empty array**
-
-### coverageDimensions Requirements
-The `coverageDimensions` field is **mandatory** and must always be an array with at least one entry. Example:
+### testConditions (required array)
+Each test condition MUST include ALL of the following fields:
 ```json
-"coverageDimensions": [
-  { "dimension": "input-length", "variants": ["min-1", "min", "min+1", "max-1", "max", "max+1"] },
-  { "dimension": "input-format", "variants": ["valid", "invalid"] }
-]
+{
+  "id": "unique identifier string",
+  "requirementId": "reference to the requirement being tested",
+  "requirementLevel": "epic|feature|story|ac",
+  "condition": "atomic — one specific thing to test",
+  "category": "happy-path|alternate|error|boundary",
+  "riskLevel": "high|medium|low",
+  "priority": "critical|high|medium|low",
+  "primaryTechnique": "the ISTQB technique to use for test design",
+  "secondaryTechniques": ["additional applicable techniques"],
+  "techniqueRationale": "WHY this technique was chosen (2-3 sentences)",
+  "coverageDimensions": [
+    { "dimension": "input-length", "variants": ["min-1", "min", "min+1", "max-1", "max", "max+1"] },
+    { "dimension": "input-format", "variants": ["valid", "invalid"] }
+  ]
+}
 ```
-Each condition MUST have coverage dimensions sufficient to ensure complete testing per the assigned technique. Never omit or leave this field as null/undefined.
 
-Each condition must generate enough coverage dimensions to ensure complete testing per the assigned technique.
+⚠️ **CRITICAL**: The `coverageDimensions` field is **MANDATORY** and must be a non-empty array on EVERY condition. Never omit it or leave it as null/undefined. Each condition must have enough coverage dimensions to ensure complete testing per the assigned technique.

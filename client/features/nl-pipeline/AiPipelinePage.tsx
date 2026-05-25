@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { History, Plus, RefreshCw } from 'lucide-react';
+import { History, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequirements, useBusinessFlows } from '@/shared/hooks/useQueryHooks';
 import { usePipelineRun } from '@/shared/pipeline-run';
@@ -24,10 +24,15 @@ export function AiPipelinePage({ currentProjectId }: AiPipelinePageProps) {
   const { data: businessFlows = [] } = useBusinessFlows(currentProjectId || '');
 
 const handleRefresh = useCallback(async () => {
-    await pipeline.refresh();
-    // Trigger refetch of agent logs
-    await queryClient.invalidateQueries({ queryKey: queryKeys.pipeline.logs(pipeline.runId || '') });
-  }, [pipeline, queryClient]);
+    // Always refresh the runs list (history)
+    await queryClient.invalidateQueries({ queryKey: queryKeys.pipeline.runs(currentProjectId || '') });
+    // If there's an active run, also refresh its data
+    if (pipeline.runId) {
+      await pipeline.refresh();
+      // Also re-fetch agent logs for the current run
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipeline.logs(pipeline.runId) });
+    }
+  }, [pipeline, queryClient, currentProjectId]);
 
   const handleStart = useCallback(async (config: PipelineStartConfig) => {
     try {
@@ -35,6 +40,9 @@ const handleRefresh = useCallback(async () => {
         requirementIds: config.requirementIds,
         providerConfigName: config.providerConfigName,
         mode: config.mode,
+        businessFlowIds: config.flowIds,
+        includeFlowCases: config.includeFlowCases,
+        useCache: config.useCache,
       });
     } catch {
       // error dispatched to reducer via SET_ERROR
@@ -45,8 +53,13 @@ const handleRefresh = useCallback(async () => {
     try {
       const { api } = await import('@/shared/services/api');
       await api.pipeline.delete(runId);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.pipeline.runs(currentProjectId || '') });
     } catch { /* best effort */ }
-  }, []);
+  }, [currentProjectId, queryClient]);
+
+  const handleClear = useCallback(() => {
+    pipeline.reset();
+  }, [pipeline]);
 
   const handleAbort = useCallback(async () => {
     setShowAbortConfirm(false);
@@ -67,6 +80,11 @@ const handleRefresh = useCallback(async () => {
 
   const handleCheckpointAction = useCallback((action: any, data?: any) => {
     pipeline.resume(action, data);
+  }, [pipeline]);
+
+  const handleSelectRun = useCallback(async (runId: string) => {
+    await pipeline.loadRun(runId);
+    setView('config');
   }, [pipeline]);
 
   // Debug: log pipeline state on node selection
@@ -104,17 +122,22 @@ const handleRefresh = useCallback(async () => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {pipeline.runId && (
-            <button
-              onClick={handleRefresh}
-              disabled={!pipeline.runId}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              title="Refresh node status and content"
-            >
-              <RefreshCw size={14} />
-              Refresh
-            </button>
-          )}
+          <button
+            onClick={handleClear}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            title="Clear current pipeline to start fresh"
+          >
+            <Trash2 size={14} />
+            Clear
+          </button>
+          <button
+            onClick={handleRefresh}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            title="Refresh pipeline runs list and node status"
+          >
+            <RefreshCw size={14} />
+            Refresh
+          </button>
           {pipeline.isRunning && (
             <button
               onClick={() => setShowAbortConfirm(true)}
@@ -140,7 +163,7 @@ const handleRefresh = useCallback(async () => {
       {view === 'history' ? (
         <PipelineRunHistory
           runs={pipeline.runs}
-          onSelect={() => setView('config')}
+          onSelect={handleSelectRun}
           onBack={() => setView('config')}
           onDeleteRun={handleDeleteRun}
         />

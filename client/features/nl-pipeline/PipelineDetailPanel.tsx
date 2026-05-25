@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   X, 
   Brain, 
@@ -332,14 +332,8 @@ type TabId = 'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors';
 function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node: any; thinkingText: string | null }) {
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [copied, setCopied] = useState(false);
-  const thinkingRef = useRef<HTMLDivElement>(null);
   const isRunning = node?.status === 'running';
-
-  useEffect(() => {
-    if (thinkingText && activeTab === 'thinking' && thinkingRef.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
-    }
-  }, [thinkingText, activeTab]);
+  const autoScroll = isRunning;
 
   useEffect(() => {
     if (node?.status === 'running') setActiveTab('thinking');
@@ -405,7 +399,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
                     <Terminal size={10} /> AI Agent CLI Stdout
                   </div>
 
-                  <div ref={thinkingRef} className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1">
+                  <div className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1">
                     {thinkingText ? (
                       <div className="text-slate-300">
                         {thinkingText}
@@ -423,6 +417,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
                         ) : 'No system thinking logs available for this batch.'}
                       </div>
                     )}
+                    <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
                   </div>
                 </div>
               </div>
@@ -1065,11 +1060,12 @@ function CheckpointPassedView({ node, agentLog, checkpointData }: { node: any; a
   );
 }
 
-function CompleteNodeView({ runSummary }: { runSummary: any }) {
-  const cases = runSummary?.totalCases ?? 0; 
-  const tokens = runSummary?.totalTokens ?? 0;
-  const latency = runSummary?.totalLatencyMs ?? 0; 
-  const batches = runSummary?.totalBatches ?? 0;
+function CompleteNodeView({ runSummary, node }: { runSummary: any; node: any }) {
+  const meta = node?.meta || {};
+  const cases = runSummary?.totalCases ?? meta.totalCases ?? meta.outputCount ?? 0;
+  const tokens = runSummary?.totalTokens ?? meta.totalTokens ?? meta.tokenUsage ?? 0;
+  const latency = runSummary?.totalLatencyMs ?? meta.totalLatencyMs ?? meta.latencyMs ?? 0;
+  const batches = runSummary?.totalBatches ?? meta.totalBatches ?? 0;
   
   return (
     <div className="p-6 space-y-6 text-center">
@@ -1096,7 +1092,7 @@ function CompleteNodeView({ runSummary }: { runSummary: any }) {
         </div>
         <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
           <div className="text-3xl font-black text-slate-800 tracking-tight">{batches}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Batch Batons</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Batches</div>
         </div>
         <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
           <div className="text-xl font-bold text-slate-800 tracking-tight">{formatTokens(tokens)}</div>
@@ -1238,7 +1234,7 @@ export function PipelineDetailPanel({
           // Show checkpoint data from agent logs if available (for completed runs)
           <CheckpointPassedView node={node} agentLog={agentLog} checkpointData={checkpointData} />
         ) : nodeType === 'complete' ? (
-          <CompleteNodeView runSummary={runSummary} />
+          <CompleteNodeView runSummary={runSummary} node={node} />
         ) : (
           <div className="p-4">
             {nodeType === 'preparation' && node.subSteps && (

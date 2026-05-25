@@ -22,6 +22,7 @@ import { businessFlowRepo } from '../../business-flows/repository.ts';
 import { PipelineExecutionScope } from '../pipeline-scope.ts';
 import { pipelineRepo, decryptApiKey } from '../infrastructure/db/pipeline-repository.ts';
 import type { SSEGateway } from '../infrastructure/sse/sse-gateway.ts';
+import type { PipelineBusinessFlowBlueprint, Requirement } from '../../../../shared/contracts/index.ts';
 
 interface ResumeEntry {
   resolve: (value: any) => void;
@@ -81,6 +82,9 @@ export class PipelineService {
     requirementIds: string[];
     providerConfigName?: string;
     mode: string;
+    flowIds?: string[];
+    includeFlowCases?: boolean;
+    useCache?: boolean;
   }): Promise<void> {
     const sendEvent = (event: string, data: unknown) => this.sseGateway.emit(runId, event, data);
     const aborted = () => this.abortedRuns.has(runId);
@@ -93,7 +97,7 @@ export class PipelineService {
       await this.concurrencySlot.acquire();
       if (aborted()) return;
 
-      const { requirementIds, providerConfigName } = params;
+      const { requirementIds, providerConfigName, flowIds, includeFlowCases } = params;
 
       const allIndex = buildRequirementIndex(projectId);
       const selectedIds = new Set(requirementIds || []);
@@ -180,14 +184,20 @@ export class PipelineService {
         modelName,
         tokenLimit: providerConfigRow.monthly_token_limit ?? null,
         timeoutMs: 300_000,
+        useCache: params.useCache ?? false,
       }, new SqliteSaver(db));
 
       initCompleted = true;
       if (initTimer) clearTimeout(initTimer);
 
       const requirements = requirementRepo.listByProject(projectId);
+      const allProjectFlows = businessFlowRepo.listByProject(projectId);
+      const selectedFlowSet = new Set(flowIds || []);
+      const filteredFlows = selectedFlowSet.size > 0
+        ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
+        : allProjectFlows;
       const businessFlows = buildBusinessFlowBlueprints({
-        flows: businessFlowRepo.listByProject(projectId),
+        flows: filteredFlows,
         requirements,
       });
 
@@ -207,6 +217,7 @@ export class PipelineService {
       }
 
       const allResults: any[] = [];
+      let actualBatches = 0;
 
       const processBatch = async (epic: any, batchIndex: number, mode: 'auto' | 'interactive') => {
         if (aborted()) return;
@@ -223,6 +234,7 @@ export class PipelineService {
           currentBatch: batchRequirements,
           batchContext: { currentBatch: batchIndex, totalBatches, processedCount: batchIndex },
           projectContext: { name: epic.title, pages: [], endpoints: [] },
+          businessFlowBlueprints: businessFlows,
           phase: 'analysis',
           errors: [],
         };
@@ -230,6 +242,7 @@ export class PipelineService {
         try {
           const result = await this.runBatch(pipeline, inputState, config, runId, batchIndex, sendEvent, aborted, mode);
           if (result?.finalTestCases?.length) allResults.push(result);
+          actualBatches++;
           sendEvent('batch:complete', { batch: batchIndex + 1, total: totalBatches, testCases: result?.finalTestCases?.length || 0 });
         } catch (err: any) {
           if (aborted()) return;
@@ -237,7 +250,10 @@ export class PipelineService {
         }
       };
 
-      if (runMode === 'interactive') {
+      if (includeFlowCases) {
+        await this.processFlowBatch(pipeline, runId, projectId, businessFlows, requirements, sendEvent, aborted, runMode, allResults);
+        actualBatches = 1;
+      } else if (runMode === 'interactive') {
         for (let i = 0; i < totalBatches; i++) {
           if (aborted()) break;
           await processBatch(epics[i], i, 'interactive');
@@ -260,7 +276,7 @@ export class PipelineService {
           nlCaseRepo.save({ ...tc, projectId });
         }
 
-        scope.markComplete({ totalCases: allCases.length, totalBatches });
+        scope.markComplete({ totalCases: allCases.length, totalBatches: actualBatches || totalBatches });
       }
     } catch (err: any) {
       if (initTimer && !initCompleted) clearTimeout(initTimer);
@@ -273,6 +289,64 @@ export class PipelineService {
       this.concurrencySlot.release();
       this.abortedRuns.delete(runId);
       this.sseGateway.cleanup(runId);
+    }
+  }
+
+  private async processFlowBatch(
+    pipeline: Awaited<ReturnType<typeof createNlPipeline>>,
+    runId: string,
+    projectId: string,
+    businessFlows: PipelineBusinessFlowBlueprint[],
+    requirements: Requirement[],
+    sendEvent: (event: string, data: unknown) => void,
+    aborted: () => boolean,
+    mode: string,
+    allResults: any[],
+  ): Promise<void> {
+    const reqIdSet = new Set<string>();
+    for (const flow of businessFlows) {
+      for (const step of flow.steps) {
+        reqIdSet.add(step.requirementId);
+      }
+    }
+
+    const expandedIds = new Set<string>();
+    const addDescendants = (parentId: string) => {
+      for (const req of requirements) {
+        if (req.parentId === parentId && !expandedIds.has(req.id)) {
+          expandedIds.add(req.id);
+          addDescendants(req.id);
+        }
+      }
+    };
+    for (const id of reqIdSet) {
+      expandedIds.add(id);
+      addDescendants(id);
+    }
+
+    const flowRequirements = requirements.filter(r => expandedIds.has(r.id));
+
+    sendEvent('phase:start', { phase: 'flow-batch', message: `Processing ${businessFlows.length} flow(s) with ${flowRequirements.length} expanded requirements` });
+
+    const config = { configurable: { thread_id: `${runId}-flow-batch` } };
+    const inputState = {
+      projectId,
+      requirementIds: Array.from(expandedIds),
+      currentBatch: flowRequirements,
+      batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
+      projectContext: { name: 'Business Flow Batch', pages: [], endpoints: [] },
+      businessFlowBlueprints: businessFlows,
+      phase: 'analysis',
+      errors: [],
+    };
+
+    try {
+      const result = await this.runBatch(pipeline, inputState, config, runId, 0, sendEvent, aborted, mode as 'auto' | 'interactive');
+      if (result?.finalTestCases?.length) allResults.push(result);
+      sendEvent('batch:complete', { batch: 1, total: 1, testCases: result?.finalTestCases?.length || 0 });
+    } catch (err: any) {
+      if (aborted()) return;
+      sendEvent('pipeline:error', { phase: 'flow-batch', batch: 1, message: err.message, recoverable: true });
     }
   }
 

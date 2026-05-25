@@ -18,6 +18,7 @@ export function createAgentNode(
   postSteps: Array<{ index: number; name: string }>,
   observer?: AgentObserver,
   timeoutMs?: number,
+  useCache?: boolean,
   logEnter?: (state: any) => void,
   logExit?: (raw: any) => void,
 ) {
@@ -27,6 +28,7 @@ export function createAgentNode(
     observer?.onStep?.(agentName, preStep.index, preStep.name);
     const raw = await runAgent(ctx, buildInput(state), {
       timeoutMs,
+      useCache,
       onStep: (idx, name) => observer?.onStep?.(agentName, idx, name),
       onThinking: (text) => observer?.onThinking?.(agentName, text),
     });

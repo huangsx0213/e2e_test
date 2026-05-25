@@ -93,6 +93,9 @@ router.post('/:projectId/start', withErrorHandling((req, res) => {
     requirementIds: body.requirementIds,
     providerConfigName: body.providerConfigName,
     mode: body.mode,
+    flowIds: body.flowIds ?? [],
+    includeFlowCases: body.includeFlowCases,
+    useCache: body.useCache,
   });
 }));
 

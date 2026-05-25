@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentRole } from '../agent.ts';
 import { DesignerOutputSchema } from '../nl-test-case-schema.ts';
+import { PipelineBusinessFlowBlueprintSchema } from '../../contracts/index.ts';
 
 export const DesignerInputSchema = z.object({
   conditions: z.array(z.object({
@@ -9,6 +10,7 @@ export const DesignerInputSchema = z.object({
     coverageDimensions: z.array(z.object({ dimension: z.string(), variants: z.array(z.string()) })),
   })),
   projectContext: z.object({ name: z.string(), pages: z.array(z.object({ name: z.string() })), endpoints: z.array(z.object({ name: z.string(), method: z.string() })) }),
+  businessFlowBlueprints: z.array(PipelineBusinessFlowBlueprintSchema).optional(),
 });
 
 export const TestDesignerRole: AgentRole = {
@@ -35,7 +37,7 @@ Return valid JSON with exactly one top-level field:
 - "draftTestCases" — array of draft test case objects (see skill for field details)
 
 All fields inside each test case are required. Never omit any field.`,
-  requiredSkills: ['test-designer'],
+  requiredSkills: ['test-designer', 'flow-design'],
   inputSchema: DesignerInputSchema,
   outputSchema: DesignerOutputSchema,
 };

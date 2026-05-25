@@ -59,6 +59,8 @@ export interface StartConfig {
   providerConfigName?: string;
   mode: RunMode;
   businessFlowIds?: string[];
+  includeFlowCases?: boolean;
+  useCache?: boolean;
 }
 
 export interface PipelineEvent {
@@ -75,19 +77,21 @@ export interface PipelineRunState {
   autoFollowEnabled: boolean;
   batchProgress: BatchProgress | null;
   checkpointData: any | null;
-  thinkingText: string | null;
+  thinkingTextByNode: Record<string, string>;
   runSummary: RunSummary | null;
   isConnected: boolean;
   error: PipelineError | null;
   isRunning: boolean;
+  agentLogs: any[];
 }
 
 export type PipelineReducerAction =
   | { type: 'SSE_EVENT'; event: PipelineEvent }
   | { type: 'RUN_STARTED'; runId: string; config: StartConfig }
   | { type: 'RUN_ABORTED' }
-  | { type: 'RESTORE_RUN'; runId: string; phase: string; status: string; checkpointData?: any; mode?: RunMode }
+  | { type: 'RESTORE_RUN'; runId: string; phase: string; status: string; checkpointData?: any; mode?: RunMode; totalBatches?: number }
   | { type: 'MERGE_AGENT_LOGS'; logs: any[] }
+  | { type: 'SET_RUN_SUMMARY'; summary: RunSummary }
   | { type: 'SELECT_NODE'; nodeId: NodeId | null }
   | { type: 'AUTO_FOLLOW_ENABLE'; enabled: boolean }
   | { type: 'SET_CONNECTED'; connected: boolean }
@@ -154,6 +158,7 @@ export function buildRestoredNodes(
   phase: string,
   status: string,
   checkpointData?: any,
+  totalBatches?: number,
 ): { nodes: PipelineNode[]; checkpointDataResult: any | null } {
   const isWaiting = status === 'WAITING_REVIEW';
   const isCompleted = status === 'COMPLETED';
@@ -181,8 +186,13 @@ export function buildRestoredNodes(
     status: doneNodes.includes(n.id) ? 'completed' as const
       : n.id === currentNodeId
         ? (isWaiting ? 'waiting' as const : 'running' as const)
-        : n.status,
-    subSteps: n.subSteps?.map(s => ({ ...s, done: doneNodes.includes(n.id) })),
+        : isCompleted && n.id === 'complete'
+          ? 'completed' as const
+          : n.status,
+    subSteps: n.subSteps?.map(s => ({ ...s, done: doneNodes.includes(n.id) || (isCompleted && n.id === 'complete') })),
+    meta: n.id === 'complete' && totalBatches != null
+      ? { ...n.meta, totalBatches }
+      : n.meta,
   }));
   return { nodes, checkpointDataResult };
 }

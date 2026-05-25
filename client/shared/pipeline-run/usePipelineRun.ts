@@ -1,5 +1,7 @@
 import { useReducer, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePipelineRuns, useAgentLogs } from '../hooks/useQueryHooks';
+import { queryKeys } from '../hooks/queryKeys';
 import { useSSEConnection } from '../sse/useSSEConnection';
 import { pipelineReducer, createInitialState } from './pipeline-reducer';
 import { usePipelineRunDeps } from './PipelineRunProvider';
@@ -40,6 +42,8 @@ export interface UsePipelineRunAPI {
   resume: (action: CheckpointAction, data?: { feedback?: string }) => Promise<void>;
   abort: () => Promise<void>;
   refresh: () => Promise<void>;
+  reset: () => void;
+  loadRun: (runId: string) => Promise<void>;
   isStarting: boolean;
   isAborting: boolean;
   isResuming: boolean;
@@ -56,6 +60,7 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
 
   const [state, dispatch] = useReducer(pipelineReducer, undefined, createInitialState);
   const { api } = usePipelineRunDeps();
+  const queryClient = useQueryClient();
   const autoFollowTimeoutRef = useRef<number | null>(null);
 
   // Fetch runs list
@@ -76,6 +81,7 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
           status: active.status,
           checkpointData: active.checkpoint_data,
           mode: active.mode ?? 'auto',
+          totalBatches: active.total_batches,
         });
       } catch {
         // No active run — stay idle
@@ -124,17 +130,16 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     }
   }, [state.nodes, state.isRunning, state.autoFollowEnabled, autoFollow, state.selectedNodeId]);
 
-  // Always fetch ALL logs (not filtered by selected agent) — used for
-  // both detail panel rendering and node meta restoration via MERGE_AGENT_LOGS.
   const { data: agentLogs = [] } = useAgentLogs(
-    state.runId ?? '', undefined, state.isRunning ? refetchLogsMs : 0,
+    state.runId ?? '', undefined, state.runId ? refetchLogsMs : 0,
   );
 
-  // Merge persisted logs into nodes after RESTORE_RUN, even if SSE was missed
   useEffect(() => {
     if (!state.runId || !agentLogs.length) return;
+    // Don't merge if there's an active checkpoint — preserves user edits
+    if (state.checkpointData) return;
     dispatch({ type: 'MERGE_AGENT_LOGS', logs: agentLogs });
-  }, [agentLogs, state.runId]);
+  }, [agentLogs, state.runId, state.checkpointData]);
 
   // Actions
   const start = useCallback(async (config: StartConfig): Promise<string> => {
@@ -176,12 +181,54 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
           status: runInfo.status,
           checkpointData: runInfo.checkpoint_data,
           mode: runInfo.mode ?? state.mode,
+          totalBatches: runInfo.total_batches,
         });
       }
     } catch {
       // Best effort
     }
   }, [state.runId, state.mode, api]);
+
+  const loadRun = useCallback(async (runId: string) => {
+    try {
+      const runInfo = await api.get(runId);
+      if (runInfo) {
+        dispatch({
+          type: 'RESTORE_RUN',
+          runId: runInfo.id,
+          phase: runInfo.phase,
+          status: runInfo.status,
+          checkpointData: runInfo.checkpoint_data,
+          mode: runInfo.mode ?? 'auto',
+          totalBatches: runInfo.total_batches,
+        });
+        const logs = await api.logs(runId);
+        if (logs.length > 0) {
+          dispatch({ type: 'MERGE_AGENT_LOGS', logs });
+        }
+        const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
+        const totalCases = completedLogs.reduce((sum: number, l: any) => {
+          const od = l.output_data;
+          if (!od) return sum;
+          const finalCases = od.finalTestCases;
+          const count = Array.isArray(finalCases) ? finalCases.length : 0;
+          return sum + count;
+        }, 0);
+        const tu = runInfo.token_usage;
+        dispatch({
+          type: 'SET_RUN_SUMMARY',
+          summary: {
+            totalCases,
+            totalTokens: tu?.total_tokens || 0,
+            totalLatencyMs: logs.reduce((sum: number, l: any) => sum + (l.latency_ms ?? 0), 0),
+            totalBatches: runInfo.total_batches || 0,
+          },
+        });
+      }
+    } catch {
+      // Best effort
+    }
+  }, [api]);
 
   const setAutoFollowEnabled = useCallback((enabled: boolean) => {
     if (autoFollowTimeoutRef.current !== null) {
@@ -193,17 +240,23 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
 
   const selectNode = useCallback((id: NodeId | null) => {
     dispatch({ type: 'SELECT_NODE', nodeId: id });
-    if (id !== null && autoFollowTimeoutRef.current === null) {
+    // Only re-enable autoFollow after timeout when pipeline is still running
+    if (id !== null && state.isRunning && autoFollowTimeoutRef.current === null) {
       autoFollowTimeoutRef.current = window.setTimeout(() => {
         autoFollowTimeoutRef.current = null;
         dispatch({ type: 'AUTO_FOLLOW_ENABLE', enabled: true });
       }, 30000);
     }
-  }, []);
+  }, [state.isRunning]);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });
   }, []);
+
+  const reset = useCallback(() => {
+    dispatch({ type: 'RESET' });
+    queryClient.invalidateQueries({ queryKey: queryKeys.pipeline.runs(currentProjectId ?? '') });
+  }, [currentProjectId, queryClient]);
 
 // Derived selectedNode
   const selectedNode = state.selectedNodeId
@@ -217,11 +270,52 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     checkpoint_3: 'quality_manager',
   };
 
-  // For agent nodes or checkpoint nodes, get the corresponding agent log
+  // Merge output_data from multiple logs into one (concatenates arrays, keeps last non-null for objects)
+  const mergeOutputData = (logs: any[]): any => {
+    const result: Record<string, any> = {};
+    for (const log of logs) {
+      const od = log.output_data;
+      if (!od) continue;
+      for (const [key, value] of Object.entries(od)) {
+        if (Array.isArray(value)) {
+          if (!Array.isArray(result[key])) result[key] = [];
+          result[key] = [...result[key], ...value];
+        } else {
+          result[key] = value;
+        }
+      }
+    }
+    return result;
+  };
+
+  // Get logs for agent (all batches), with merged output_data and aggregated stats
+  const getMergedAgentLog = (agentName: string): any => {
+    const logs = state.agentLogs.filter((l: any) => l.agent_name === agentName);
+    if (logs.length === 0) return null;
+    const latest = logs.reduce((best: any, l: any) =>
+      (l.batch || 0) > (best?.batch || 0) ? l : best, logs[0]);
+    const mergedOutputData = mergeOutputData(logs);
+    const totalTokens = logs.reduce((sum: number, l: any) => {
+      const tu = l.token_usage;
+      return sum + (tu ? ((tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0)) : 0);
+    }, 0);
+    const totalLatencyMs = logs.reduce((sum: number, l: any) => sum + (l.latency_ms ?? 0), 0);
+    const allCompleted = logs.every((l: any) => l.status === 'COMPLETED');
+    const anyFailed = logs.some((l: any) => l.status === 'FAILED');
+    return {
+      ...latest,
+      output_data: mergedOutputData,
+      token_usage: { input: 0, output: 0, reasoning: 0, total_tokens: totalTokens },
+      latency_ms: totalLatencyMs,
+      status: anyFailed ? 'FAILED' : allCompleted ? 'COMPLETED' : latest.status,
+    };
+  };
+
+  // For agent nodes or checkpoint nodes, get the corresponding agent log (merged for multi-batch)
   const selectedAgentLog = selectedNode?.agentName
-    ? agentLogs.find((l: any) => l.agent_name === selectedNode.agentName) || null
+    ? getMergedAgentLog(selectedNode.agentName) || null
     : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
-      ? agentLogs.find((l: any) => l.agent_name === CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
+      ? getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
       : null;
 
   // For checkpoint nodes, derive checkpoint data from matching agent log output
@@ -232,7 +326,7 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     // Otherwise derive from agent logs (survives SSE misses)
     const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
     if (!agentName) return null;
-    const log = agentLogs.find((l: any) => l.agent_name === agentName);
+    const log = getMergedAgentLog(agentName);
     if (!log?.output_data) return null;
     const od = log.output_data;
     // Normalize field names from agent output_data to match checkpoint payload format
@@ -246,7 +340,7 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     return { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
   })();
 
-  return {
+return {
     runId: explicitRunId ?? state.runId ?? undefined,
     nodes: state.nodes,
     isRunning: state.isRunning,
@@ -255,9 +349,9 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     selectedNodeId: state.selectedNodeId ?? undefined,
     selectedNode,
     selectNode,
-    agentLogs,
+    agentLogs: state.agentLogs,
     checkpointData: selectedCheckpointData,
-    thinkingText: state.thinkingText,
+    thinkingText: state.selectedNodeId ? (state.thinkingTextByNode[state.selectedNodeId] ?? null) : null,
     runSummary: state.runSummary,
     isPending: !state.runId && !state.isRunning && runs.length === 0,
     isConnected: state.isConnected,
@@ -268,6 +362,8 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     resume,
     abort,
     refresh,
+    reset,
+    loadRun,
     isStarting: false,
     isAborting: false,
     isResuming: false,

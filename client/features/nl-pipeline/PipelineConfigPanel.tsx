@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Search, ChevronRight, ChevronDown, Play, RefreshCw } from 'lucide-react';
 import type { Requirement, BusinessFlow } from '../../../shared/contracts/index';
 import { HelpTooltip } from '@/shared/ui/HelpTooltip';
@@ -19,6 +19,8 @@ export interface PipelineStartConfig {
   flowIds: string[];
   mode: 'auto' | 'interactive';
   providerConfigName: string;
+  includeFlowCases?: boolean;
+  useCache?: boolean;
 }
 
 interface TreeNode {
@@ -140,6 +142,14 @@ export function PipelineConfigPanel({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandAll, setExpandAll] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('');
+  useEffect(() => {
+    if (!selectedProvider) {
+      const active = providerConfigs.find((p: any) => p.isActive);
+      if (active) setSelectedProvider(active.name);
+    }
+  }, [providerConfigs, selectedProvider]);
+  const [includeFlowCases, setIncludeFlowCases] = useState(false);
+  const [useCache, setUseCache] = useState(false);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
   const filteredTree = useMemo(() => {
@@ -190,10 +200,12 @@ export function PipelineConfigPanel({
       flowIds: Array.from(selectedFlows),
       mode,
       providerConfigName: selectedProvider,
+      includeFlowCases,
+      useCache,
     });
   };
 
-  const canStart = (selectedReqs.size > 0 || selectedFlows.size > 0) && selectedProvider !== '' && !disabled;
+  const canStart = (includeFlowCases ? selectedFlows.size > 0 : selectedReqs.size > 0) && selectedProvider !== '' && !disabled;
 
   return (
     <div className="w-80 border-r border-slate-200 flex flex-col h-full bg-white shrink-0">
@@ -344,7 +356,6 @@ export function PipelineConfigPanel({
             onChange={e => setSelectedProvider(e.target.value)}
             className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"
           >
-            <option value="">Auto (active provider)</option>
             {providerConfigs.map((p: any) => (
               <option key={p.id} value={p.name}>
                 {p.name} ({p.type}{p.model ? ` - ${p.model}` : ''}){p.isActive ? ' *' : ''}
@@ -354,6 +365,28 @@ export function PipelineConfigPanel({
           {providerConfigs.length === 0 && (
             <p className="text-xs text-amber-600 mt-1">No providers configured. Go to Settings &gt; AI Provider.</p>
           )}
+        </div>
+        <div className="border-t border-slate-200 pt-2">
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeFlowCases}
+              onChange={e => setIncludeFlowCases(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-slate-600">Generate flow-level test cases (Flow Batch)</span>
+            <HelpTooltip content="When enabled, only end-to-end flow test cases are generated based on selected Business Flows. Atomic per-requirement cases are skipped. Requires at least one Business Flow to be selected." />
+          </label>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!useCache}
+              onChange={e => setUseCache(!e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-slate-600">Disable cache</span>
+            <HelpTooltip content="When checked, each AI agent run bypasses the cache for fresh LLM responses. Useful for debugging or evaluating prompt changes." />
+          </label>
         </div>
         <button
           onClick={handleStart}
