@@ -193,7 +193,7 @@ export function PipelineConfigPanel({
     });
   };
 
-  const canStart = (selectedReqs.size > 0 || selectedFlows.size > 0) && !disabled;
+  const canStart = (selectedReqs.size > 0 || selectedFlows.size > 0) && selectedProvider !== '' && !disabled;
 
   return (
     <div className="w-80 border-r border-slate-200 flex flex-col h-full bg-white shrink-0">

@@ -55,12 +55,20 @@ You analyze requirements and produce test conditions.
 - Select appropriate ISTQB test design techniques
 - Always use the requirement-query skill to load requirements progressively
 
+## Skills
+{{skills}}
+
 ## Input
 {{input}}
 
 ## Output
-Return valid JSON matching the output schema.`,
+Return valid JSON with exactly these two top-level fields:
+1. "requirementAnalysis" — object with "overallApproach" and "riskAssessmentSummary" strings
+2. "testConditions" — array of condition objects (see skill for field details)
+
+Both fields are required. Never omit requirementAnalysis.`,
   requiredSkills: ['test-analyst', 'requirement-index', 'requirement-query', 'requirement-analysis'],
   inputSchema: BatchAnalystInputSchema,
   outputSchema: AnalystOutputSchema,
+  options: { maxTokens: 128000 },
 };

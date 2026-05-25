@@ -129,6 +129,8 @@ businessFlows: {
   },
   pipeline: {
     runs: (projectId: string) => apiFetch<any[]>(`pipeline/runs/${projectId}`),
+    active: (projectId: string) => apiFetch<any | null>(`pipeline/active/${projectId}`),
+    get: (runId: string) => apiFetch<any>(`pipeline/${runId}`),
     start: (projectId: string, config: any) =>
       apiFetch<{ runId: string }>(`pipeline/${projectId}/start`, {
         method: 'POST',
@@ -145,6 +147,8 @@ businessFlows: {
       apiFetch<any[]>(`pipeline/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
     abort: (runId: string) =>
       apiFetch<{ success: boolean }>(`pipeline/${runId}/abort`, { method: 'POST' }),
+    delete: (runId: string) =>
+      apiFetch<{ success: boolean }>(`pipeline/${runId}`, { method: 'DELETE' }),
   },
   nlCases: {
     ...createCrudService<any>('nl-cases'),

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { AgentRole } from '../agent.ts';
+import { DesignerOutputSchema } from '../nl-test-case-schema.ts';
 
 export const DesignerInputSchema = z.object({
   conditions: z.array(z.object({
@@ -8,28 +9,6 @@ export const DesignerInputSchema = z.object({
     coverageDimensions: z.array(z.object({ dimension: z.string(), variants: z.array(z.string()) })),
   })),
   projectContext: z.object({ name: z.string(), pages: z.array(z.object({ name: z.string() })), endpoints: z.array(z.object({ name: z.string(), method: z.string() })) }),
-});
-
-const SelfReviewIssueSchema = z.object({
-  severity: z.enum(['blocker', 'major', 'minor']),
-  category: z.enum(['atomicity', 'testability', 'coverage', 'repeatability', 'clarity', 'data-completeness']),
-  description: z.string(),
-  suggestion: z.string(),
-});
-
-const SelfReviewSchema = z.object({ score: z.number(), issues: z.array(SelfReviewIssueSchema), pass: z.boolean() });
-
-export const DesignerOutputSchema = z.object({
-  draftTestCases: z.array(z.object({
-    id: z.string(), title: z.string(), requirementId: z.string(), conditionId: z.string(),
-    techniqueApplied: z.string(), priority: z.enum(['critical', 'high', 'medium', 'low']),
-    category: z.string(),
-    preconditions: z.array(z.string()),
-    testData: z.array(z.object({ key: z.string(), value: z.string(), description: z.string() })),
-    steps: z.array(z.object({ sequence: z.number(), action: z.string(), expected: z.string() })),
-    postconditions: z.array(z.string()), tags: z.array(z.string()),
-    selfReview: SelfReviewSchema,
-  })),
 });
 
 export const TestDesignerRole: AgentRole = {
@@ -45,11 +24,17 @@ You design detailed natural language test cases from approved test conditions.
 - Each step is atomic (one action per step)
 - Expected result is measurable and observable
 
+## Skills
+{{skills}}
+
 ## Input
 {{input}}
 
 ## Output
-Return valid JSON matching the output schema.`,
+Return valid JSON with exactly one top-level field:
+- "draftTestCases" — array of draft test case objects (see skill for field details)
+
+All fields inside each test case are required. Never omit any field.`,
   requiredSkills: ['test-designer'],
   inputSchema: DesignerInputSchema,
   outputSchema: DesignerOutputSchema,

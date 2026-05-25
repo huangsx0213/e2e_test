@@ -1,0 +1,278 @@
+import { useReducer, useEffect, useCallback, useRef, useMemo } from 'react';
+import { usePipelineRuns, useAgentLogs } from '../hooks/useQueryHooks';
+import { useSSEConnection } from '../sse/useSSEConnection';
+import { pipelineReducer, createInitialState } from './pipeline-reducer';
+import { usePipelineRunDeps } from './PipelineRunProvider';
+import type {
+  NodeId, RunSummary, PipelineError, StartConfig,
+  CheckpointAction, PipelineNode, BatchProgress,
+} from './types';
+import { PIPELINE_NODE_DEFS } from './types';
+
+export interface UsePipelineRunOptions {
+  runId?: string;
+  config?: {
+    autoFollow?: boolean;
+    autoRecover?: boolean;
+    refetchLogsMs?: number;
+  };
+}
+
+export interface UsePipelineRunAPI {
+  runId: string | undefined;
+  nodes: readonly PipelineNode[];
+  isRunning: boolean;
+  mode: 'auto' | 'interactive';
+  batchProgress: BatchProgress | null;
+  selectedNodeId: NodeId | undefined;
+  selectedNode: PipelineNode | undefined;
+  selectNode: (id: NodeId | null) => void;
+  agentLogs: any[];
+  checkpointData: any | null;
+  thinkingText: string | null;
+  runSummary: RunSummary | null;
+  isPending: boolean;
+  isConnected: boolean;
+  error: PipelineError | null;
+  dismissError: () => void;
+  runs: any[];
+  start: (config: StartConfig) => Promise<string>;
+  resume: (action: CheckpointAction, data?: { feedback?: string }) => Promise<void>;
+  abort: () => Promise<void>;
+  refresh: () => Promise<void>;
+  isStarting: boolean;
+  isAborting: boolean;
+  isResuming: boolean;
+  autoFollowEnabled: boolean;
+  setAutoFollowEnabled: (enabled: boolean) => void;
+  selectedAgentLog: any | null;
+}
+
+export function usePipelineRun(currentProjectId: string | null, options?: UsePipelineRunOptions): UsePipelineRunAPI {
+  const { runId: explicitRunId, config: opts } = options ?? {};
+  const autoFollow = opts?.autoFollow ?? true;
+  const autoRecover = opts?.autoRecover ?? true;
+  const refetchLogsMs = opts?.refetchLogsMs ?? 3000;
+
+  const [state, dispatch] = useReducer(pipelineReducer, undefined, createInitialState);
+  const { api } = usePipelineRunDeps();
+  const autoFollowTimeoutRef = useRef<number | null>(null);
+
+  // Fetch runs list
+  const { data: runs = [] } = usePipelineRuns(currentProjectId ?? '');
+
+  // Auto-detect active run on mount
+  useEffect(() => {
+    if (!currentProjectId || !autoRecover) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const active = await api.active(currentProjectId);
+        if (!active || cancelled) return;
+        dispatch({
+          type: 'RESTORE_RUN',
+          runId: active.id,
+          phase: active.phase,
+          status: active.status,
+          checkpointData: active.checkpoint_data,
+          mode: active.mode ?? 'auto',
+        });
+      } catch {
+        // No active run — stay idle
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentProjectId, autoRecover, api]);
+
+  // SSE URL
+  const sseUrl = useMemo(() => {
+    const rid = explicitRunId ?? state.runId;
+    return rid && state.isRunning ? `/api/pipeline/${rid}/stream` : null;
+  }, [explicitRunId, state.runId, state.isRunning]);
+
+  // SSE connection
+  const handleSSEEvent = useCallback((event: { type: string; data: any }) => {
+    dispatch({ type: 'SSE_EVENT', event });
+  }, []);
+
+  const sse = useSSEConnection({
+    url: sseUrl,
+    onEvent: handleSSEEvent,
+    autoConnect: state.isRunning && !!sseUrl,
+  });
+
+  // Sync connection status
+  useEffect(() => {
+    dispatch({ type: 'SET_CONNECTED', connected: sse.isConnected });
+  }, [sse.isConnected]);
+
+  // Auto-follow: select the first running/waiting node, or complete node when finished
+  useEffect(() => {
+    if (!state.autoFollowEnabled || !autoFollow) return;
+    if (state.isRunning) {
+      const active = state.nodes.find(n => n.status === 'running' || n.status === 'waiting');
+      if (active && active.id !== state.selectedNodeId) {
+        dispatch({ type: 'SELECT_NODE', nodeId: active.id as NodeId });
+      }
+    } else {
+      const completeNode = state.nodes.find(n => n.id === 'complete');
+      if (completeNode && completeNode.status === 'completed') {
+        if (state.selectedNodeId !== 'complete') {
+          dispatch({ type: 'SELECT_NODE', nodeId: 'complete' });
+        }
+      }
+    }
+  }, [state.nodes, state.isRunning, state.autoFollowEnabled, autoFollow, state.selectedNodeId]);
+
+  // Always fetch ALL logs (not filtered by selected agent) — used for
+  // both detail panel rendering and node meta restoration via MERGE_AGENT_LOGS.
+  const { data: agentLogs = [] } = useAgentLogs(
+    state.runId ?? '', undefined, state.isRunning ? refetchLogsMs : 0,
+  );
+
+  // Merge persisted logs into nodes after RESTORE_RUN, even if SSE was missed
+  useEffect(() => {
+    if (!state.runId || !agentLogs.length) return;
+    dispatch({ type: 'MERGE_AGENT_LOGS', logs: agentLogs });
+  }, [agentLogs, state.runId]);
+
+  // Actions
+  const start = useCallback(async (config: StartConfig): Promise<string> => {
+    if (!currentProjectId) throw new Error('No project selected');
+    try {
+      const { runId } = await api.start(currentProjectId, config);
+      dispatch({ type: 'RUN_STARTED', runId, config });
+      return runId;
+    } catch (err) {
+      dispatch({
+        type: 'SET_ERROR',
+        error: { code: 'START_FAILED', message: err instanceof Error ? err.message : 'Failed to start pipeline' },
+      });
+      throw err;
+    }
+  }, [currentProjectId, api]);
+
+  const resume = useCallback(async (action: CheckpointAction, data?: { feedback?: string }) => {
+    if (!state.runId) throw new Error('No active run');
+    await api.resume(state.runId, { action, feedback: data?.feedback });
+  }, [state.runId, api]);
+
+  const abort = useCallback(async () => {
+    if (!state.runId) throw new Error('No active run');
+    await api.abort(state.runId);
+    sse.disconnect();
+    dispatch({ type: 'RUN_ABORTED' });
+  }, [state.runId, api, sse]);
+
+  const refresh = useCallback(async () => {
+    if (!state.runId) return;
+    try {
+      const runInfo = await api.get(state.runId);
+      if (runInfo) {
+        dispatch({
+          type: 'RESTORE_RUN',
+          runId: runInfo.id,
+          phase: runInfo.phase,
+          status: runInfo.status,
+          checkpointData: runInfo.checkpoint_data,
+          mode: runInfo.mode ?? state.mode,
+        });
+      }
+    } catch {
+      // Best effort
+    }
+  }, [state.runId, state.mode, api]);
+
+  const setAutoFollowEnabled = useCallback((enabled: boolean) => {
+    if (autoFollowTimeoutRef.current !== null) {
+      clearTimeout(autoFollowTimeoutRef.current);
+      autoFollowTimeoutRef.current = null;
+    }
+    dispatch({ type: 'AUTO_FOLLOW_ENABLE', enabled });
+  }, []);
+
+  const selectNode = useCallback((id: NodeId | null) => {
+    dispatch({ type: 'SELECT_NODE', nodeId: id });
+    if (id !== null && autoFollowTimeoutRef.current === null) {
+      autoFollowTimeoutRef.current = window.setTimeout(() => {
+        autoFollowTimeoutRef.current = null;
+        dispatch({ type: 'AUTO_FOLLOW_ENABLE', enabled: true });
+      }, 30000);
+    }
+  }, []);
+
+  const dismissError = useCallback(() => {
+    dispatch({ type: 'DISMISS_ERROR' });
+  }, []);
+
+// Derived selectedNode
+  const selectedNode = state.selectedNodeId
+    ? state.nodes.find(n => n.id === state.selectedNodeId)
+    : undefined;
+
+  // Map checkpoint node IDs to the agent whose output they should display
+  const CHECKPOINT_AGENT_MAP: Record<string, string> = {
+    checkpoint_1: 'test_analyst',
+    checkpoint_2: 'test_designer',
+    checkpoint_3: 'quality_manager',
+  };
+
+  // For agent nodes or checkpoint nodes, get the corresponding agent log
+  const selectedAgentLog = selectedNode?.agentName
+    ? agentLogs.find((l: any) => l.agent_name === selectedNode.agentName) || null
+    : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
+      ? agentLogs.find((l: any) => l.agent_name === CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
+      : null;
+
+  // For checkpoint nodes, derive checkpoint data from matching agent log output
+  const selectedCheckpointData = (() => {
+    if (selectedNode?.kind !== 'checkpoint') return null;
+    // If state has checkpointData (active checkpoint), use it
+    if (state.checkpointData) return state.checkpointData;
+    // Otherwise derive from agent logs (survives SSE misses)
+    const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
+    if (!agentName) return null;
+    const log = agentLogs.find((l: any) => l.agent_name === agentName);
+    if (!log?.output_data) return null;
+    const od = log.output_data;
+    // Normalize field names from agent output_data to match checkpoint payload format
+    if (selectedNode.id === 'checkpoint_1') {
+      return { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
+    }
+    if (selectedNode.id === 'checkpoint_2') {
+      return { cases: od.draftTestCases || [] };
+    }
+    // checkpoint_3
+    return { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+  })();
+
+  return {
+    runId: explicitRunId ?? state.runId ?? undefined,
+    nodes: state.nodes,
+    isRunning: state.isRunning,
+    mode: state.mode,
+    batchProgress: state.batchProgress,
+    selectedNodeId: state.selectedNodeId ?? undefined,
+    selectedNode,
+    selectNode,
+    agentLogs,
+    checkpointData: selectedCheckpointData,
+    thinkingText: state.thinkingText,
+    runSummary: state.runSummary,
+    isPending: !state.runId && !state.isRunning && runs.length === 0,
+    isConnected: state.isConnected,
+    error: state.error,
+    dismissError,
+    runs,
+    start,
+    resume,
+    abort,
+    refresh,
+    isStarting: false,
+    isAborting: false,
+    isResuming: false,
+    autoFollowEnabled: state.autoFollowEnabled,
+    setAutoFollowEnabled,
+    selectedAgentLog,
+  };
+}

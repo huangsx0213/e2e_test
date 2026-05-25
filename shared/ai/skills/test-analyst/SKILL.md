@@ -43,7 +43,21 @@ A test condition MUST test exactly ONE thing:
 | Authorization/role-based access | decision-table | — | Each role × each action = test column |
 
 ## Output Format
-Return valid JSON matching the specified output schema. Every test condition must include:
+Return valid JSON matching the specified output schema. The top-level object has two fields:
+
+### requirementAnalysis (required)
+An object summarizing the analysis of all requirements in the batch:
+```json
+{
+  "requirementAnalysis": {
+    "overallApproach": "Your chosen test approach for this batch (e.g., technique focus, depth, areas of emphasis)",
+    "riskAssessmentSummary": "Risk profile of the batch (e.g., which requirements are highest risk, any gaps found)"
+  }
+}
+```
+
+### testConditions (required)
+An array of atomic test conditions. Every entry must include:
 - id: unique identifier string
 - requirementId: reference to the requirement being tested
 - requirementLevel: epic|feature|story|ac
@@ -54,6 +68,16 @@ Return valid JSON matching the specified output schema. Every test condition mus
 - primaryTechnique: the ISTQB technique to use for test design
 - secondaryTechniques: additional applicable techniques
 - techniqueRationale: WHY this technique was chosen (2-3 sentences)
-- coverageDimensions: [{ dimension: string, variants: string[] }] — what variants must be covered
+- coverageDimensions: [{ dimension: string, variants: string[] }] — **REQUIRED, must always be a non-empty array**
+
+### coverageDimensions Requirements
+The `coverageDimensions` field is **mandatory** and must always be an array with at least one entry. Example:
+```json
+"coverageDimensions": [
+  { "dimension": "input-length", "variants": ["min-1", "min", "min+1", "max-1", "max", "max+1"] },
+  { "dimension": "input-format", "variants": ["valid", "invalid"] }
+]
+```
+Each condition MUST have coverage dimensions sufficient to ensure complete testing per the assigned technique. Never omit or leave this field as null/undefined.
 
 Each condition must generate enough coverage dimensions to ensure complete testing per the assigned technique.

@@ -1,5 +1,17 @@
 import { createHash } from 'node:crypto';
-import { db } from '../../server/shared/db/client.ts';
+
+export interface CacheStore {
+  getCache(key: string): { output: string } | undefined;
+  setCache(key: string, inputHash: string, promptVersion: string, model: string, output: string): void;
+  invalidateByPromptVersion(promptVersion: string): void;
+  invalidateAll(): void;
+}
+
+let _store: CacheStore | undefined;
+
+export function useCacheStore(store: CacheStore): void {
+  _store = store;
+}
 
 const CACHE_TTL_HOURS = 24;
 
@@ -11,10 +23,9 @@ function buildKey(input: unknown, promptVersion: string, model: string): string 
 }
 
 export function getCached(input: unknown, promptVersion: string, model: string): unknown | null {
+  if (!_store) return null;
   const key = buildKey(input, promptVersion, model);
-  const row = db.prepare(
-    "SELECT output FROM agent_cache WHERE cache_key = ? AND expires_at > datetime('now')"
-  ).get(key) as { output: string } | undefined;
+  const row = _store.getCache(key);
   if (!row) return null;
   try {
     return JSON.parse(row.output);
@@ -24,18 +35,17 @@ export function getCached(input: unknown, promptVersion: string, model: string):
 }
 
 export function setCache(input: unknown, promptVersion: string, model: string, output: unknown): void {
+  if (!_store) return;
   const key = buildKey(input, promptVersion, model);
   const inputHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-  db.prepare(`
-    INSERT OR REPLACE INTO agent_cache (cache_key, input_hash, prompt_version, model, output, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+${CACHE_TTL_HOURS} hours'))
-  `).run(key, inputHash, promptVersion, model, JSON.stringify(output));
+  _store.setCache(key, inputHash, promptVersion, model, JSON.stringify(output));
 }
 
 export function invalidateCache(promptVersion?: string): void {
+  if (!_store) return;
   if (promptVersion) {
-    db.prepare('DELETE FROM agent_cache WHERE prompt_version = ?').run(promptVersion);
+    _store.invalidateByPromptVersion(promptVersion);
   } else {
-    db.prepare('DELETE FROM agent_cache').run();
+    _store.invalidateAll();
   }
 }

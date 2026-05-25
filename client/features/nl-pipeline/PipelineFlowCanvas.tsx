@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Activity, Brain, PenTool, Star, CheckCircle2, AlertCircle, Clock, Pause } from 'lucide-react';
+import { Activity, Brain, PenTool, Star, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { pipelineTopology } from '@/shared/pipeline-run/topology';
+import type { NodeId } from '@/shared/pipeline-run/types';
 
 interface NodeState {
   id: string;
@@ -20,7 +22,6 @@ interface PipelineFlowCanvasProps {
   selectedNodeId: string | null;
   onAbort?: () => void;
   isRunning: boolean;
-  onCheckpointAction?: (action: 'approve' | 'edit' | 'retry') => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -35,7 +36,7 @@ const statusColors: Record<string, string> = {
 const statusIcons: Record<string, React.ReactNode> = {
   pending: <Clock size={14} />,
   running: <Activity size={14} className="animate-spin" />,
-  waiting: <Pause size={14} className="animate-pulse" />,
+  waiting: <AlertCircle size={14} className="text-orange-500" />,
   done: <CheckCircle2 size={14} />,
   error: <AlertCircle size={14} />,
   'auto-passed': <CheckCircle2 size={14} />,
@@ -46,6 +47,8 @@ const agentIcons: Record<string, React.ReactNode> = {
   test_designer: <PenTool size={16} />,
   quality_manager: <Star size={16} />,
 };
+
+const NODE_INDEX = new Map(pipelineTopology.allNodeIds.map((id, i) => [id, i]));
 
 function ArrowRight({ scale }: { scale: number }) {
   const w = Math.round(36 * scale);
@@ -75,11 +78,10 @@ function ArrowDown({ scale }: { scale: number }) {
   );
 }
 
-function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
+function NodeCard({ node, isSelected, onClick, scale }: {
   node: NodeState;
   isSelected: boolean;
   onClick: () => void;
-  onCheckpointAction?: (action: 'approve' | 'edit' | 'retry') => void;
   scale: number;
 }) {
   const agentW = Math.round(280 * scale);
@@ -92,7 +94,6 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
   const iconSize = Math.max(12, Math.round(15 * scale));
   const agentIconSize = Math.max(14, Math.round(18 * scale));
   const showSubSteps = scale > 0.65;
-  const showCheckpointActions = scale > 0.55;
 
   return (
     <div
@@ -118,32 +119,6 @@ function NodeCard({ node, isSelected, onClick, onCheckpointAction, scale }: {
               <span className={step.running ? 'text-blue-600 font-medium' : step.done ? 'text-green-600' : ''}>{step.label}</span>
             </div>
           ))}
-        </div>
-      )}
-
-      {node.type === 'checkpoint' && node.status === 'waiting' && onCheckpointAction && showCheckpointActions && (
-        <div className="flex" style={{ gap, marginTop: gap }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onCheckpointAction('approve'); }}
-            className="bg-green-500 text-white rounded hover:bg-green-600"
-            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
-          >
-            Approve
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onCheckpointAction('edit'); }}
-            className="bg-blue-500 text-white rounded hover:bg-blue-600"
-            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
-          >
-            Edit
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onCheckpointAction('retry'); }}
-            className="bg-slate-500 text-white rounded hover:bg-slate-600"
-            style={{ fontSize, padding: `${Math.round(1 * scale)}px ${Math.round(4 * scale)}px` }}
-          >
-            Retry
-          </button>
         </div>
       )}
 
@@ -181,7 +156,6 @@ export function PipelineFlowCanvas({
   selectedNodeId,
   onAbort,
   isRunning,
-  onCheckpointAction,
 }: PipelineFlowCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -206,11 +180,21 @@ export function PipelineFlowCanvas({
   const progressPercent = totalBatches > 0 ? Math.round((batch / totalBatches) * 100) : 0;
   const progressFontSize = Math.max(0.6, Math.round(0.7 * scale * 10) / 10) + 'rem';
 
-  const prepNode = nodes[0];
-  const row1 = nodes.slice(1, 3);
-  const row2 = nodes.slice(3, 5);
-  const row3 = nodes.slice(5, 7);
-  const completeNode = nodes[7];
+  const nodeById = (id: NodeId) => nodes[NODE_INDEX.get(id)!];
+
+  const renderRow = (row: typeof pipelineTopology.rows[number]) => {
+    const rowNodes = row.nodeIds.map(nodeById);
+    return (
+      <div key={row.id} className="flex items-center justify-center" style={{ gap: row.direction === 'horizontal' ? Math.round(12 * scale) : 0 }}>
+        {rowNodes.map((n, i) => (
+          <React.Fragment key={n.id}>
+            {i > 0 && <ArrowRight scale={scale} />}
+            <NodeCard node={n} isSelected={n.id === selectedNodeId} onClick={() => onNodeClick(n.id)} scale={scale} />
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
@@ -242,39 +226,12 @@ export function PipelineFlowCanvas({
       <div ref={containerRef} className="flex-1 overflow-hidden">
         <div className="h-full flex items-center justify-center">
           <div className="flex flex-col items-center gap-0">
-            <div className="flex justify-center">
-              <NodeCard node={prepNode} isSelected={prepNode.id === selectedNodeId} onClick={() => onNodeClick(prepNode.id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-            </div>
-
-            <ArrowDown scale={scale} />
-
-            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
-              <NodeCard node={row1[0]} isSelected={row1[0].id === selectedNodeId} onClick={() => onNodeClick(row1[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-              <ArrowRight scale={scale} />
-              <NodeCard node={row1[1]} isSelected={row1[1].id === selectedNodeId} onClick={() => onNodeClick(row1[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-            </div>
-
-            <ArrowDown scale={scale} />
-
-            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
-              <NodeCard node={row2[0]} isSelected={row2[0].id === selectedNodeId} onClick={() => onNodeClick(row2[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-              <ArrowRight scale={scale} />
-              <NodeCard node={row2[1]} isSelected={row2[1].id === selectedNodeId} onClick={() => onNodeClick(row2[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-            </div>
-
-            <ArrowDown scale={scale} />
-
-            <div className="flex items-center justify-center" style={{ gap: Math.round(12 * scale) }}>
-              <NodeCard node={row3[0]} isSelected={row3[0].id === selectedNodeId} onClick={() => onNodeClick(row3[0].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-              <ArrowRight scale={scale} />
-              <NodeCard node={row3[1]} isSelected={row3[1].id === selectedNodeId} onClick={() => onNodeClick(row3[1].id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-            </div>
-
-            <ArrowDown scale={scale} />
-
-            <div className="flex justify-center">
-              <NodeCard node={completeNode} isSelected={completeNode.id === selectedNodeId} onClick={() => onNodeClick(completeNode.id)} onCheckpointAction={onCheckpointAction} scale={scale} />
-            </div>
+            {pipelineTopology.rows.map((row, rIdx) => (
+              <React.Fragment key={row.id}>
+                {rIdx > 0 && <ArrowDown scale={scale} />}
+                {renderRow(row)}
+              </React.Fragment>
+            ))}
           </div>
         </div>
       </div>

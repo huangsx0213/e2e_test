@@ -7,19 +7,25 @@ interface PipelineEvent {
 }
 
 interface UsePipelineSSEOptions {
-  projectId: string | null;
-  config: any | null;
+  runId: string | null;
   onEvent?: (event: PipelineEvent) => void;
 }
 
-export function usePipelineSSE({ projectId, config, onEvent }: UsePipelineSSEOptions) {
+export function usePipelineSSE({ runId, onEvent }: UsePipelineSSEOptions) {
   const controllerRef = useRef<AbortController | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   const start = useCallback(() => {
-    if (!projectId || !config) return;
+    if (!runId) {
+      console.log('[pipeline-sse] start called without runId, skipping');
+      return;
+    }
+
+    console.log(`[pipeline-sse] start: connecting to ${runId}`);
+    setLastError(null);
 
     if (controllerRef.current) {
       controllerRef.current.abort();
@@ -28,26 +34,20 @@ export function usePipelineSSE({ projectId, config, onEvent }: UsePipelineSSEOpt
     const controller = new AbortController();
     controllerRef.current = controller;
 
-    const body = JSON.stringify({
-      requirementIds: config.requirementIds,
-      flowIds: config.flowIds,
-      providerConfigName: config.providerConfigName,
-      mode: config.mode,
-      name: config.name,
-    });
-
-    fetch(`/api/pipeline/${projectId}/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
+    fetch(`/api/pipeline/${runId}/stream`, {
+      method: 'GET',
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Failed to start pipeline' }));
-        onEventRef.current?.({ type: 'pipeline:error', data: { message: err.error || 'Unknown error', recoverable: false }, timestamp: Date.now() });
+        const err = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+        const msg = err.error || 'SSE connection failed';
+        console.error(`[pipeline-sse] HTTP error: ${response.status}`, err);
+        setLastError(msg);
+        onEventRef.current?.({ type: 'pipeline:error', data: { message: msg, recoverable: false }, timestamp: Date.now() });
         return;
       }
 
+      console.log(`[pipeline-sse] connected to ${runId}`);
       setIsConnected(true);
       const reader = response.body?.getReader();
       if (!reader) return;
@@ -57,7 +57,10 @@ export function usePipelineSSE({ projectId, config, onEvent }: UsePipelineSSEOpt
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log(`[pipeline-sse] ${runId}: stream ended`);
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -81,16 +84,20 @@ export function usePipelineSSE({ projectId, config, onEvent }: UsePipelineSSEOpt
       setIsConnected(false);
     }).catch((err: any) => {
       if (err.name !== 'AbortError') {
+        console.error(`[pipeline-sse] ${runId}: connection error:`, err.message);
+        setLastError(err.message);
         onEventRef.current?.({ type: 'pipeline:error', data: { message: err.message, recoverable: false }, timestamp: Date.now() });
       }
       setIsConnected(false);
     });
-  }, [projectId, config]);
+  }, [runId]);
 
   const stop = useCallback(() => {
+    console.log('[pipeline-sse] stop');
     controllerRef.current?.abort();
     controllerRef.current = null;
     setIsConnected(false);
+    setLastError(null);
   }, []);
 
   useEffect(() => {
@@ -99,5 +106,5 @@ export function usePipelineSSE({ projectId, config, onEvent }: UsePipelineSSEOpt
     };
   }, []);
 
-  return { start, stop, isConnected };
+  return { start, stop, isConnected, lastError };
 }

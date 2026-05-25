@@ -24,6 +24,9 @@ import { DataContext, DataContextValue } from '@/app/contexts/DataContext';
 import { WorkspaceContext, WorkspaceContextValue } from '@/app/contexts/WorkspaceContext';
 import { ExecutionPanelContext, ExecutionContextValue } from '@/app/contexts/ExecutionContext';
 import { ExecutionState } from '@/app/types';
+import { PipelineRunDepsProvider } from '@/shared/pipeline-run';
+import { createFetchSSEConnection } from '@/shared/sse';
+import { api } from '@/shared/services/api';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -141,17 +144,24 @@ function AppProvidersInner({ children }: { children: (isLoading: boolean) => Rea
     [executionState, setExecutionStateStable],
   );
 
+  const pipelineDeps = useMemo(() => ({
+    api: api.pipeline as any,
+    createSSEConnection: (url: string) => createFetchSSEConnection(url, {}),
+  }), []);
+
   if (isLoading) {
     return <>{children(true)}</>;
   }
 
   return (
-    <WorkspaceContext.Provider value={workspaceValue}>
-      <DataContext.Provider value={dataValue}>
-        <ExecutionPanelContext.Provider value={executionValue}>
-          {children(false)}
-        </ExecutionPanelContext.Provider>
-      </DataContext.Provider>
-    </WorkspaceContext.Provider>
+    <PipelineRunDepsProvider deps={pipelineDeps}>
+      <WorkspaceContext.Provider value={workspaceValue}>
+        <DataContext.Provider value={dataValue}>
+          <ExecutionPanelContext.Provider value={executionValue}>
+            {children(false)}
+          </ExecutionPanelContext.Provider>
+        </DataContext.Provider>
+      </WorkspaceContext.Provider>
+    </PipelineRunDepsProvider>
   );
 }
