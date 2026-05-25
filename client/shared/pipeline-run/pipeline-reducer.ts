@@ -182,33 +182,43 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
     }
 
     case 'MERGE_AGENT_LOGS': {
-      const nodes: PipelineNode[] = state.nodes.map(n => {
-        if (n.id === 'complete') {
-          const logs = action.logs ?? [];
-          const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
-          let totalOutputCount = 0;
-          let totalTokens = 0;
-          let totalLatencyMs = 0;
-          const mergedOutputData: Record<string, any> = {};
-          for (const log of completedLogs) {
-            const od = log.output_data;
-            if (od) {
-              const finalCases = od.finalTestCases;
-              const count = Array.isArray(finalCases) ? finalCases.length : 0;
-              totalOutputCount += count;
-              for (const [key, val] of Object.entries(od)) {
-                if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+    const nodes: PipelineNode[] = state.nodes.map(n => {
+      if (n.id === 'complete') {
+        const logs = action.logs ?? [];
+        const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
+        let totalOutputCount = 0;
+        let totalTokens = 0;
+        let totalLatencyMs = 0;
+        const mergedOutputData: Record<string, any> = {};
+        const seenCaseIds = new Set<string>();
+        
+        for (const log of completedLogs) {
+          const od = log.output_data;
+          if (od) {
+            // Count only finalTestCases (deduplicated by id)
+            const finalCases = od.finalTestCases;
+            if (Array.isArray(finalCases)) {
+              for (const tc of finalCases) {
+                if (tc.id && !seenCaseIds.has(tc.id)) {
+                  seenCaseIds.add(tc.id);
+                  totalOutputCount++;
+                }
               }
             }
-            const tu = log.token_usage;
-            if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
-            totalLatencyMs += log.latency_ms ?? 0;
+            // Merge all output data
+            for (const [key, val] of Object.entries(od)) {
+              if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+            }
           }
-          return {
-            ...n, status: 'completed' as const,
-            meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
-          };
+          const tu = log.token_usage;
+          if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+          totalLatencyMs += log.latency_ms ?? 0;
         }
+        return {
+          ...n, status: 'completed' as const,
+          meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
+        };
+      }
         if (!n.agentName) return n;
         const agentLogs = (action.logs ?? []).filter((l: any) => l.agent_name === n.agentName);
         if (agentLogs.length === 0) return n;

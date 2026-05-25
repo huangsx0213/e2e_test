@@ -55,7 +55,6 @@ export interface UsePipelineRunAPI {
 export function usePipelineRun(currentProjectId: string | null, options?: UsePipelineRunOptions): UsePipelineRunAPI {
   const { runId: explicitRunId, config: opts } = options ?? {};
   const autoFollow = opts?.autoFollow ?? true;
-  const autoRecover = opts?.autoRecover ?? true;
   const refetchLogsMs = opts?.refetchLogsMs ?? 3000;
 
   const [state, dispatch] = useReducer(pipelineReducer, undefined, createInitialState);
@@ -66,29 +65,12 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
   // Fetch runs list
   const { data: runs = [] } = usePipelineRuns(currentProjectId ?? '');
 
-  // Auto-detect active run on mount
+  // Auto-detect active run on mount - DISABLED by default
+  // User must explicitly select a run from history to load data
   useEffect(() => {
-    if (!currentProjectId || !autoRecover) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const active = await api.active(currentProjectId);
-        if (!active || cancelled) return;
-        dispatch({
-          type: 'RESTORE_RUN',
-          runId: active.id,
-          phase: active.phase,
-          status: active.status,
-          checkpointData: active.checkpoint_data,
-          mode: active.mode ?? 'auto',
-          totalBatches: active.total_batches,
-        });
-      } catch {
-        // No active run — stay idle
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [currentProjectId, autoRecover, api]);
+    // Disabled: do not auto-restore active runs on mount
+    // This keeps the pipeline empty on page load
+  }, [currentProjectId]);
 
   // SSE URL
   const sseUrl = useMemo(() => {
@@ -112,23 +94,23 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     dispatch({ type: 'SET_CONNECTED', connected: sse.isConnected });
   }, [sse.isConnected]);
 
-  // Auto-follow: select the first running/waiting node, or complete node when finished
+  // Auto-follow: continuously track the active node during pipeline execution
+  // This effect runs whenever nodes change, ensuring we always follow the active node
   useEffect(() => {
-    if (!state.autoFollowEnabled || !autoFollow) return;
+    // Always track during pipeline execution (cannot be disabled)
     if (state.isRunning) {
       const active = state.nodes.find(n => n.status === 'running' || n.status === 'waiting');
       if (active && active.id !== state.selectedNodeId) {
         dispatch({ type: 'SELECT_NODE', nodeId: active.id as NodeId });
       }
-    } else {
-      const completeNode = state.nodes.find(n => n.id === 'complete');
-      if (completeNode && completeNode.status === 'completed') {
-        if (state.selectedNodeId !== 'complete') {
-          dispatch({ type: 'SELECT_NODE', nodeId: 'complete' });
-        }
+    } 
+    // After completion: only track if auto-follow is enabled
+    else if (state.autoFollowEnabled && state.nodes.some(n => n.id === 'complete' && n.status === 'completed')) {
+      if (state.selectedNodeId !== 'complete') {
+        dispatch({ type: 'SELECT_NODE', nodeId: 'complete' as NodeId });
       }
     }
-  }, [state.nodes, state.isRunning, state.autoFollowEnabled, autoFollow, state.selectedNodeId]);
+  }, [state.nodes, state.isRunning, state.selectedNodeId, state.autoFollowEnabled]);
 
   const { data: agentLogs = [] } = useAgentLogs(
     state.runId ?? '', undefined, state.runId ? refetchLogsMs : 0,
@@ -231,23 +213,23 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
   }, [api]);
 
   const setAutoFollowEnabled = useCallback((enabled: boolean) => {
+    // During pipeline execution, force auto-follow to stay enabled
+    if (state.isRunning) {
+      console.log('[AutoFollow] Cannot disable during pipeline execution');
+      return;
+    }
     if (autoFollowTimeoutRef.current !== null) {
       clearTimeout(autoFollowTimeoutRef.current);
       autoFollowTimeoutRef.current = null;
     }
     dispatch({ type: 'AUTO_FOLLOW_ENABLE', enabled });
-  }, []);
+  }, [state.isRunning]);
 
   const selectNode = useCallback((id: NodeId | null) => {
     dispatch({ type: 'SELECT_NODE', nodeId: id });
-    // Only re-enable autoFollow after timeout when pipeline is still running
-    if (id !== null && state.isRunning && autoFollowTimeoutRef.current === null) {
-      autoFollowTimeoutRef.current = window.setTimeout(() => {
-        autoFollowTimeoutRef.current = null;
-        dispatch({ type: 'AUTO_FOLLOW_ENABLE', enabled: true });
-      }, 30000);
-    }
-  }, [state.isRunning]);
+    // Note: auto-follow is always active during pipeline execution
+    // User can only disable it after pipeline completes
+  }, []);
 
   const dismissError = useCallback(() => {
     dispatch({ type: 'DISMISS_ERROR' });

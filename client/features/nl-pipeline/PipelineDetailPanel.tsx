@@ -75,10 +75,106 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
+function PreparationSummaryView({ node, agentLog }: { node: any; agentLog: any }) {
+  const meta = node?.meta;
+  const output = agentLog?.output_data;
+
+  return (
+    <div className="p-3 space-y-3 text-xs">
+      {/* Initialization Header */}
+      <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/35 rounded-lg p-2.5 border border-indigo-100/60 shadow-sm">
+        <div className="flex items-center gap-1 text-[9px] font-bold text-indigo-800 uppercase tracking-wider mb-1">
+          <Zap size={11} className="text-indigo-600" />
+          Environment Initialized
+        </div>
+        <p className="text-[11px] text-slate-600 leading-snug font-medium">
+          Pipeline environment ready for test generation
+        </p>
+      </div>
+
+      {/* Preparation Stats Grid */}
+      <div className="grid grid-cols-2 gap-2">
+        {/* Requirements Count */}
+        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
+          <div className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-1">
+            <FileText size={9} className="text-slate-400" />
+            Requirements
+          </div>
+          <div className="text-lg font-bold text-slate-700">
+            {output?.requirementCount || meta?.requirementCount || '-'}
+          </div>
+        </div>
+
+        {/* Batch Info */}
+        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
+          <div className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-1">
+            <Copy size={9} className="text-slate-400" />
+            Batches
+          </div>
+          <div className="text-lg font-bold text-slate-700">
+            {output?.totalBatches || meta?.totalBatches || '-'}
+          </div>
+        </div>
+
+        {/* Token Budget */}
+        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
+          <div className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-1">
+            <Activity size={9} className="text-slate-400" />
+            Token Budget
+          </div>
+          <div className="text-sm font-bold text-slate-700 truncate">
+            {output?.estimatedTokens ? `${formatTokens(output.estimatedTokens)} est.` : meta?.estimatedTokens ? `${formatTokens(meta.estimatedTokens)} est.` : '-'}
+          </div>
+        </div>
+
+        {/* Flow Cases */}
+        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
+          <div className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-1">
+            <History size={9} className="text-slate-400" />
+            Flow Cases
+          </div>
+          <div className="text-lg font-bold text-slate-700">
+            {output?.flowCases ? `${output.flowCases}` : meta?.flowCases ? `${meta.flowCases}` : '-'}
+          </div>
+        </div>
+      </div>
+
+      {/* Environment Details */}
+      {(output?.environment || meta?.environment) && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 shadow-sm">
+          <div className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-1.5">
+            <Terminal size={9} className="text-slate-400" />
+            Environment
+          </div>
+          <pre className="text-[10px] text-slate-600 font-mono whitespace-pre-wrap leading-relaxed">
+            {JSON.stringify(output?.environment || meta?.environment, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {/* Preparation Steps */}
+      <div className="space-y-1.5">
+        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 flex items-center gap-1">
+          <CheckCircle2 size={9} className="text-emerald-500" />
+          Initialization Steps
+        </span>
+        <div className="space-y-1">
+          {['Environment setup complete', 'Requirements loaded', 'Batch processing ready', 'Token budget estimated'].map((step, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-[10px] text-slate-600 bg-white border border-slate-100 rounded px-1.5 py-1">
+              <CheckCircle2 size={8} className="text-emerald-500 shrink-0" />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
   const output = agentLog?.output_data;
-  
+
   if (!output) {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl m-3">
@@ -389,7 +485,13 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
             transition={{ duration: 0.15 }}
             className="h-full"
           >
-            {activeTab === 'summary' && <AgentSummaryView agentLog={agentLog} agentName={node.agentName} />}
+            {activeTab === 'summary' && (
+  node.kind === 'preparation' || node.agentName === 'preparation' ? (
+    <PreparationSummaryView node={node} agentLog={agentLog} />
+  ) : (
+    <AgentSummaryView agentLog={agentLog} agentName={node.agentName} />
+  )
+)}
             
             {activeTab === 'thinking' && (
               <div className="p-4 h-full">

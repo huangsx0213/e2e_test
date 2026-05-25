@@ -1,19 +1,16 @@
-import { useRef, useEffect, useCallback } from 'react';
-import { 
-  Brain, 
-  PenTool, 
-  Star, 
-  Zap, 
-  CheckCircle2, 
-  AlertCircle, 
-  Activity, 
-  ArrowRight, 
-  Maximize2,
+import { useRef } from 'react';
+import {
+  Brain,
+  PenTool,
+  Star,
+  Zap,
+  CheckCircle2,
+  Activity,
+  ArrowRight,
   ShieldCheck,
-  Sparkles,
   Loader2
 } from 'lucide-react';
-import { motion } from 'motion/react';
+
 import type { PipelineNode, NodeId } from '@/shared/pipeline-run/types';
 
 const PHASE_DEFS = [
@@ -78,12 +75,6 @@ function formatMs(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatTokens(n: number) {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
 export function PipelineStepper({
   nodes,
   selectedNodeId,
@@ -92,37 +83,15 @@ export function PipelineStepper({
   onToggleAutoFollow,
   isRunning,
 }: PipelineStepperProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const activeNodeRef = useRef<HTMLDivElement>(null);
-
-  // Scroll to selected or active node smoothly
-  const handleScrollToTarget = useCallback(() => {
-    if (activeNodeRef.current && scrollRef.current) {
-      const parent = scrollRef.current;
-      const target = activeNodeRef.current;
-      const offsetLeft = target.offsetLeft - parent.offsetLeft - parent.clientWidth / 2 + target.clientWidth / 2;
-      parent.scrollTo({
-        left: Math.max(0, offsetLeft),
-        behavior: 'smooth',
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (autoFollowEnabled) {
-      // Small timeout to allow render cycle to finish
-      const timer = setTimeout(handleScrollToTarget, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedNodeId, autoFollowEnabled, handleScrollToTarget]);
 
   // Find active node status
   const runningNode = nodes.find(n => n.status === 'running' || n.status === 'waiting');
 
   return (
-    <div className="bg-slate-50 border-b border-slate-200 text-slate-800 shrink-0 select-none relative overflow-hidden">
+    <div className="bg-slate-50 border-b border-slate-200 text-slate-800 shrink-0 select-none">
       {/* Header Controller */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-white relative z-10 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <div className="relative flex h-2 w-2">
@@ -145,220 +114,136 @@ export function PipelineStepper({
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleAutoFollow}
-            className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-              autoFollowEnabled
+            disabled={isRunning}
+            className={`text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+              isRunning
+                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                : autoFollowEnabled
                 ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
             }`}
+            title={isRunning ? 'Auto-Follow is locked during pipeline execution' : ''}
           >
-            {autoFollowEnabled ? '🛰️ Auto-Follow' : '🛰️ Manual View'}
+            {isRunning && <Loader2 size={10} className="animate-spin" />}
+            {isRunning ? '🔒 Auto-Lock' : autoFollowEnabled ? '🛰️ Auto-Follow' : '🛰️ Manual View'}
           </button>
-          
-          {runningNode && (
-            <button
-              onClick={handleScrollToTarget}
-              title="Locate Current Executing Step"
-              className="p-1 px-2.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-blue-600 rounded-lg transition-all flex items-center gap-1 text-[10px] shadow-sm cursor-pointer"
-            >
-              <Maximize2 size={10} /> Focus Active
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Horizontally scrolling unified pipeline container */}
-      <div 
-        ref={scrollRef} 
-        className="overflow-x-auto py-4 px-6 relative z-10"
-      >
-        <div className="flex items-stretch gap-5" style={{ minWidth: 'max-content' }}>
+      {/* Pipeline flow - 5 phases distributed evenly */}
+      <div className="w-full px-4 py-3">
+        <div className="grid grid-cols-5 gap-3">
           {PHASE_DEFS.map((phase, pIndex) => {
-            // Find current phase state based on composite nodes
             const phaseNodes = nodes.filter(n => phase.nodeIds.includes(n.id));
             const statuses = phaseNodes.map(n => n.status);
             const hasError = statuses.some(s => s === 'error');
             const allDone = statuses.every(s => s === 'completed' || s === 'auto-passed');
             const hasActive = statuses.some(s => s === 'running' || s === 'waiting');
-            
-            const phaseStatus = hasError 
-              ? 'error' 
-              : allDone 
-                ? 'completed' 
-                : hasActive 
-                  ? 'current' 
-                  : 'future';
 
-            // Clean, professional light theme palettes based on phase active status
+            const phaseStatus = hasError
+              ? 'error'
+              : allDone
+              ? 'completed'
+              : hasActive
+              ? 'current'
+              : 'future';
+
             const phaseTheme = {
-              indigo: { border: 'border-indigo-100 bg-indigo-50/20', titleBg: 'bg-indigo-50 border-indigo-100/85 text-indigo-750' },
-              sky: { border: 'border-sky-100 bg-sky-50/20', titleBg: 'bg-sky-50 border-sky-100/85 text-sky-755' },
-              violet: { border: 'border-violet-100 bg-violet-50/20', titleBg: 'bg-violet-50 border-violet-100/85 text-violet-750' },
-              amber: { border: 'border-amber-100 bg-amber-50/20', titleBg: 'bg-amber-50 border-amber-100/85 text-amber-750' },
-              emerald: { border: 'border-emerald-100 bg-emerald-50/20', titleBg: 'bg-emerald-50 border-emerald-100/85 text-emerald-750' },
+              indigo: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
+              sky: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
+              violet: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
+              amber: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
+              emerald: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
             }[phase.colorClass];
 
             return (
-              <div key={phase.id} className="flex items-center">
-                {/* Horizontal flow progress line between Phase Groups */}
+              <div key={phase.id} className="relative">
+                {/* Connector arrow between phases */}
                 {pIndex > 0 && (
-                  <div className="flex items-center shrink-0 px-1 mx-1">
-                    <div className={`w-8 h-0.5 rounded ${
-                      phaseStatus === 'completed'
-                        ? 'bg-emerald-400'
-                        : phaseStatus === 'current'
-                          ? 'bg-blue-400 animate-pulse'
-                          : 'bg-slate-200'
-                    }`} />
-                    <ArrowRight size={12} className={`-ml-2 ${
-                      phaseStatus === 'completed'
-                        ? 'text-emerald-500'
-                        : phaseStatus === 'current'
-                          ? 'text-blue-500'
-                          : 'text-slate-300'
-                    }`} />
+                  <div className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 text-slate-300">
+                    <ArrowRight size={14} />
                   </div>
                 )}
 
-                {/* Phase Swimlane */}
-                <div className={`p-2.5 rounded-xl border bg-white/70 shadow-sm flex flex-col justify-between transition-all ${phaseTheme.border} ${
-                  phaseStatus === 'future' ? 'opacity-65 hover:opacity-100' : ''
+                <div className={`rounded-lg border p-2 w-full transition-all ${phaseTheme.border} ${
+                  phaseStatus === 'future' ? 'opacity-70' : ''
                 }`}>
-                  {/* High-level Phase header bar */}
-                  <div className={`flex items-center gap-1.5 px-2 py-1 mb-2.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider ${phaseTheme.titleBg}`}>
-                    <phase.icon className="shrink-0" size={11} />
-                    <span>{phase.label}</span>
-                    
+                  {/* Phase Header */}
+                  <div className={`flex items-center gap-1.5 px-1.5 py-1 mb-2 rounded text-[9px] font-bold uppercase tracking-wider ${phaseTheme.titleBg}`}>
+                    <phase.icon className="shrink-0" size={10} />
+                    <span className="truncate">{phase.label}</span>
                     {phaseStatus === 'completed' && (
-                      <span className="ml-auto text-emerald-600 font-bold">✓</span>
+                      <span className="ml-auto text-emerald-600">✓</span>
                     )}
                     {phaseStatus === 'current' && (
                       <span className="ml-auto flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
                     )}
                   </div>
 
-                  {/* Connected executable node cards inside the phase */}
-                  <div className="flex items-center gap-2">
-                    {phase.nodeIds.map((nodeId, nIndex) => {
+                  {/* Node cards - fixed height container */}
+                  <div className="flex flex-col gap-1.5 min-h-[72px]">
+                    {phase.nodeIds.map((nodeId) => {
                       const node = nodes.find(n => n.id === nodeId);
                       if (!node) return null;
 
                       const isSelected = selectedNodeId === nodeId;
-                      const isActiveNode = node.status === 'running' || node.status === 'waiting';
-                      const isRef = isSelected || isActiveNode;
+                      const isRef = isSelected || node.status === 'running' || node.status === 'waiting';
+                      const isCheckpoint = nodeId.startsWith('checkpoint_');
 
-                      // Elegant light theme statuses
-                      let nodeBg = 'bg-white hover:bg-slate-100/50 border-slate-200 text-slate-500 hover:text-slate-700 shadow-sm';
-                      let activeRing = '';
-                      let labelColor = 'text-slate-650';
-                      
-                      if (node.status === 'completed') {
-                        nodeBg = 'bg-emerald-55/35 hover:bg-emerald-50/60 border-emerald-200 text-slate-700';
-                        labelColor = 'text-emerald-800 font-medium';
-                      } else if (node.status === 'auto-passed') {
-                        nodeBg = 'bg-slate-50/50 border-slate-200 text-slate-400';
-                        labelColor = 'text-slate-400';
+                      let nodeBg = 'bg-white border-slate-200 text-slate-600';
+                      if (isCheckpoint) {
+                        nodeBg = 'bg-slate-100 border-slate-300 text-slate-700';
+                      } else if (node.status === 'completed') {
+                        nodeBg = 'bg-emerald-50 border-emerald-200 text-slate-700';
                       } else if (node.status === 'running') {
-                        nodeBg = 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm';
-                        activeRing = 'ring-2 ring-blue-500/10';
-                        labelColor = 'text-blue-900 font-semibold';
+                        nodeBg = 'bg-blue-50 border-blue-300 text-blue-800';
                       } else if (node.status === 'waiting') {
-                        nodeBg = 'bg-amber-50 border-amber-400 text-amber-700 shadow-sm animate-pulse';
-                        activeRing = 'ring-2 ring-amber-500/10';
-                        labelColor = 'text-amber-900 font-semibold';
+                        nodeBg = 'bg-amber-50 border-amber-300 text-amber-800';
                       } else if (node.status === 'error') {
-                        nodeBg = 'bg-red-50 border-red-300 text-red-700';
-                        labelColor = 'text-red-900 font-semibold';
+                        nodeBg = 'bg-red-50 border-red-200 text-red-700';
                       }
 
                       if (isSelected) {
-                        nodeBg = `${nodeBg.split(' ')[0]} border-2 border-blue-600 text-blue-950 font-semibold shadow-md`;
+                        nodeBg = 'bg-blue-50 border-2 border-blue-500 text-blue-900';
                       }
 
                       const NodeIcon = nodeIcons[nodeId] || ShieldCheck;
 
                       return (
-                        <div key={nodeId} className="flex items-center">
-                          {/* Inner Step-to-Step Arrow connector */}
-                          {nIndex > 0 && (
-                            <div className="flex items-center shrink-0 text-slate-300 px-1">
-                              <ArrowRight size={10} className={node.status === 'completed' ? 'text-emerald-500' : 'text-slate-300'} />
+          <div
+            key={nodeId}
+            ref={isRef ? activeNodeRef : undefined}
+            onClick={() => onNodeClick(nodeId)}
+            className={`px-2 py-1.5 rounded border text-left cursor-pointer select-none transition-all text-[10px] min-h-[42px] flex items-center ${nodeBg}`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <NodeIcon size={10} className={`shrink-0 ${
+                node.status === 'running'
+                  ? 'text-blue-500 animate-pulse'
+                  : node.status === 'waiting'
+                    ? 'text-amber-500'
+                    : node.status === 'completed'
+                      ? 'text-emerald-500'
+                      : 'text-slate-400'
+              }`} />
+              <span className="truncate font-medium">{nodeLabels[nodeId] || node.label}</span>
+              {node.status === 'running' && (
+                <span className="text-[9px] font-medium text-blue-600 animate-pulse shrink-0">
+                  Thinking...
+                </span>
+              )}
+            </div>
+
+                          {node.meta && (node.meta.latencyMs || node.meta.outputCount) && (
+                            <div className="flex items-center gap-1 mt-0 pt-0 border-t-0 text-[8px] text-slate-500 shrink-0">
+                              {node.meta.latencyMs && (
+                                <span className="font-mono whitespace-nowrap">⏱ {formatMs(node.meta.latencyMs)}</span>
+                              )}
+                              {node.meta.outputCount && (
+                                <span className="whitespace-nowrap">📦 {node.meta.outputCount}</span>
+                              )}
                             </div>
                           )}
-
-                          {/* Individual Node Card */}
-                          <div
-                            ref={isRef ? activeNodeRef : undefined}
-                            onClick={() => onNodeClick(nodeId)}
-                            className={`px-3 py-2 rounded-xl border text-left cursor-pointer select-none transition-all duration-200 w-36 relative overflow-hidden group ${nodeBg} ${activeRing}`}
-                          >
-                            {/* Accent highlight bar for chosen selections */}
-                            {isSelected && (
-                              <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-blue-600" />
-                            )}
-
-                            <div className="flex items-start justify-between gap-1">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <NodeIcon size={12} className={`shrink-0 ${
-                                  node.status === 'running' 
-                                    ? 'text-blue-500 animate-pulse' 
-                                    : node.status === 'waiting'
-                                      ? 'text-amber-500 animate-bounce'
-                                      : node.status === 'completed'
-                                        ? 'text-emerald-500'
-                                        : 'text-slate-400 group-hover:text-slate-500'
-                                }`} />
-                                <span className={`text-[11px] truncate leading-tight ${labelColor}`}>
-                                  {nodeLabels[nodeId] || node.label}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Node Status / Metadata Label Subtitle */}
-                            <div className="mt-1.5 flex flex-col gap-0.5 justify-end">
-                              {node.status === 'running' && (
-                                <span className="flex items-center gap-1 text-[9px] font-medium text-blue-600 animate-pulse">
-                                  <Loader2 size={8} className="animate-spin" /> Thinking...
-                                </span>
-                              )}
-                              {node.status === 'waiting' && (
-                                <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 animate-pulse">
-                                  ⚠️ Action Needed
-                                </span>
-                              )}
-                              {node.status === 'completed' && !node.meta?.latencyMs && (
-                                <span className="text-[9px] text-emerald-600 font-medium flex items-center gap-0.5">
-                                  ✓ Done
-                                </span>
-                              )}
-                              {node.status === 'auto-passed' && (
-                                <span className="text-[9px] text-slate-400 flex items-center gap-0.5">
-                                  ✓ Auto-Passed
-                                </span>
-                              )}
-                              {node.status === 'idle' && (
-                                <span className="text-[9px] text-slate-400">Pending</span>
-                              )}
-                              {node.status === 'error' && (
-                                <span className="text-[9px] text-red-500 font-medium">✕ Failed</span>
-                              )}
-
-                              {/* Real-time stats badges printed directly on the Node Card */}
-                              {node.meta && (node.meta.latencyMs || node.meta.tokenUsage || node.meta.outputCount) && (
-                                <div className="flex flex-wrap items-center gap-1 mt-1 pt-1 border-t border-slate-100 text-[8px] text-slate-400 group-hover:text-slate-500 transition-colors">
-                                  {node.meta.latencyMs && (
-                                    <span className="font-mono bg-slate-50 px-1 py-0.5 rounded text-slate-500 border border-slate-100 shrink-0">
-                                      ⏱ {formatMs(node.meta.latencyMs)}
-                                    </span>
-                                  )}
-                                  {node.meta.outputCount && (
-                                    <span className="bg-blue-50 border border-blue-100 px-1 py-0.5 rounded text-blue-600 font-medium truncate max-w-full">
-                                      📦 {node.meta.outputCount}{node.meta.outputLabel === 'conditions' ? 'C' : node.meta.outputLabel === 'cases' ? 'T' : ''}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
                         </div>
                       );
                     })}
