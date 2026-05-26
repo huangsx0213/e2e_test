@@ -46,6 +46,49 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
       let batchProgress = state.batchProgress;
       let runSummary = state.runSummary;
 
+// Store pipeline initialization logs in preparation node
+if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase:start') {
+  const prepNode = nodes.find(n => n.id === 'preparation');
+  if (prepNode) {
+    const initLogs = prepNode.meta?.initLogs ? [...prepNode.meta.initLogs] : [];
+    initLogs.push({ type, data, timestamp: new Date().toISOString() });
+    
+    // Parse key data from SSE events for display
+    const updatedMeta: any = { ...prepNode.meta, initLogs };
+    
+    if (type === 'pipeline:context') {
+      // Extract requirement count from indexEntries
+      if (data.indexEntries != null) {
+        updatedMeta.requirementCount = data.indexEntries;
+      }
+      if (data.flows != null) {
+        updatedMeta.flowCases = data.flows;
+      }
+    }
+    
+    if (type === 'pipeline:budget') {
+      // Extract token budget info
+      if (data.estimated != null) {
+        updatedMeta.estimatedTokens = data.estimated;
+      }
+    }
+    
+    if (type === 'phase:start' && data.phase === 'preparation') {
+      // Extract batch info from preparation phase start
+      const match = data.message?.match(/(\d+) batch\(es\)/);
+      if (match) {
+        updatedMeta.totalBatches = parseInt(match[1], 10);
+      }
+    }
+    
+    nodes = nodes.map(n =>
+      n.id === 'preparation'
+      ? { ...n, meta: updatedMeta }
+      : n
+    );
+  }
+}
+
       switch (type) {
         case 'agent:start': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
@@ -132,7 +175,7 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
         case 'pipeline:error':
           return { ...state, error: { code: 'API_ERROR', message: data.message || 'Pipeline error', detail: data } };
         default:
-          return state;
+          break;
       }
       return { ...state, nodes, checkpointData, thinkingTextByNode, batchProgress, runSummary };
     }
@@ -261,7 +304,6 @@ export function pipelineReducer(state: PipelineRunState, action: PipelineReducer
       return {
         ...state,
         selectedNodeId: action.nodeId,
-        autoFollowEnabled: action.nodeId === null,
       };
 
     case 'AUTO_FOLLOW_ENABLE':

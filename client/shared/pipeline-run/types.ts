@@ -30,6 +30,10 @@ export interface PipelineNode {
     totalTokens?: number;
     totalLatencyMs?: number;
     outputData?: any;
+    initLogs?: Array<{ type: string; data: any; timestamp: string }>;
+    requirementCount?: number;
+    estimatedTokens?: number;
+    flowCases?: number;
   };
 }
 

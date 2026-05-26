@@ -19,6 +19,7 @@ export function createAgentNode(
   observer?: AgentObserver,
   timeoutMs?: number,
   useCache?: boolean,
+  signal?: AbortSignal,
   logEnter?: (state: any) => void,
   logExit?: (raw: any) => void,
 ) {
@@ -29,6 +30,7 @@ export function createAgentNode(
     const raw = await runAgent(ctx, buildInput(state), {
       timeoutMs,
       useCache,
+      signal,
       onStep: (idx, name) => observer?.onStep?.(agentName, idx, name),
       onThinking: (text) => observer?.onThinking?.(agentName, text),
     });

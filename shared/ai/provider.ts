@@ -41,7 +41,7 @@ export type ProviderConfig =
   | { type: 'openrouter'; apiKey: string; model: string }
   | { type: 'openai'; apiKey: string; model: string };
 
-function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): AbortSignal | undefined {
+export function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): AbortSignal | undefined {
   if (!signal1 && !signal2) return undefined;
   if (!signal1) return signal2;
   if (!signal2) return signal1;

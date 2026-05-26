@@ -29,20 +29,21 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface NodeDetailProps {
   node: {
-    id: string; 
-    label: string; 
+    id: string;
+    label: string;
     kind?: 'preparation' | 'agent' | 'checkpoint' | 'complete';
     type?: 'preparation' | 'agent' | 'checkpoint' | 'complete';
-    agentName?: string; 
-    status: string; 
-    meta?: any; 
+    agentName?: string;
+    status: string;
+    meta?: any;
     subSteps?: { label: string; done: boolean; running?: boolean }[];
   } | null;
-  agentLog: any | null; 
-  checkpointData: any | null; 
+  agentLog: any | null;
+  checkpointData: any | null;
   thinkingText: string | null;
   runSummary: { totalCases: number; totalTokens: number; totalLatencyMs: number; totalBatches: number } | null;
-  onClose: () => void; 
+  agentLogs?: any[];
+  onClose: () => void;
   onCheckpointAction?: (action: 'approve' | 'edit' | 'retry', data?: any) => void;
 }
 
@@ -75,9 +76,38 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
-function PreparationSummaryView({ node, agentLog }: { node: any; agentLog: any }) {
+function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs }: { node: any; agentLog: any; thinkingText: string | null; allAgentLogs: any[] }) {
   const meta = node?.meta;
   const output = agentLog?.output_data;
+
+  // Use logs from agentLog output_data (persisted after completion)
+  const initLogs = output?.initLogs || output?.initializationLogs || [];
+
+  // Format log entry to human-readable message
+  const formatLogEntry = (log: any): string => {
+    if (log.data?.message) return log.data.message;
+    if (log.message || log.text) return log.message || log.text;
+    if (log.type === 'pipeline:context') {
+      const d = log.data || {};
+      const parts = [];
+      if (d.indexEntries != null) parts.push(`${d.indexEntries} requirements`);
+      if (d.flows != null) parts.push(`${d.flows} business flows`);
+      return parts.length > 0 ? `Loaded ${parts.join(' across ')}` : 'Pipeline context initialized';
+    }
+    if (log.type === 'pipeline:budget') {
+      const d = log.data || {};
+      const est = d.estimated != null ? `${(d.estimated / 1000).toFixed(0)},000 tokens` : 'unknown';
+      const limit = d.limit != null ? `limit: ${(d.limit / 1000).toFixed(0)},000 tokens` : 'no limit configured';
+      return `Estimated token usage: ${est} (${limit})`;
+    }
+    if (log.type === 'phase:start' && log.data?.phase === 'preparation') {
+      const d = log.data;
+      return d.message || 'Starting preparation phase';
+    }
+    if (log.type && log.data) return `${log.type}: ${JSON.stringify(log.data)}`;
+    if (log.type) return log.type;
+    return JSON.stringify(log);
+  };
 
   return (
     <div className="p-3 space-y-3 text-xs">
@@ -92,6 +122,35 @@ function PreparationSummaryView({ node, agentLog }: { node: any; agentLog: any }
         </p>
       </div>
 
+      {/* AI Flow Initialization Info - Only show if we have logs */}
+      {initLogs.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
+          <div className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-wider text-slate-450 mb-2">
+            <Activity size={10} className="text-blue-500" />
+            AI Flow Initialization Logs
+          </div>
+
+          <div className="space-y-1 pr-1">
+            {initLogs.map((log: any, i: number) => {
+              const logStr = formatLogEntry(log);
+
+              let iconColor = 'text-slate-400';
+              let Icon = Activity;
+              if (log.type === 'pipeline:context') { iconColor = 'text-blue-600'; Icon = FileText; }
+              else if (log.type === 'pipeline:budget') { iconColor = 'text-amber-600'; Icon = Activity; }
+              else if (log.type === 'phase:start') { iconColor = 'text-emerald-600'; Icon = Zap; }
+
+              return (
+                <div key={i} className="flex items-start gap-2 text-[9px]">
+                  <Icon size={10} className={`${iconColor} shrink-0 mt-0.5`} />
+                  <span className="text-slate-600 leading-relaxed">{logStr}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Preparation Stats Grid */}
       <div className="grid grid-cols-2 gap-2">
         {/* Requirements Count */}
@@ -101,7 +160,7 @@ function PreparationSummaryView({ node, agentLog }: { node: any; agentLog: any }
             Requirements
           </div>
           <div className="text-lg font-bold text-slate-700">
-            {output?.requirementCount || meta?.requirementCount || '-'}
+            {output?.requirementCount || meta?.requirementCount || output?.initLogs?.length || 0}
           </div>
         </div>
 
@@ -151,22 +210,6 @@ function PreparationSummaryView({ node, agentLog }: { node: any; agentLog: any }
           </pre>
         </div>
       )}
-
-      {/* Preparation Steps */}
-      <div className="space-y-1.5">
-        <span className="text-[8px] font-bold uppercase tracking-wider text-slate-450 flex items-center gap-1">
-          <CheckCircle2 size={9} className="text-emerald-500" />
-          Initialization Steps
-        </span>
-        <div className="space-y-1">
-          {['Environment setup complete', 'Requirements loaded', 'Batch processing ready', 'Token budget estimated'].map((step, i) => (
-            <div key={i} className="flex items-center gap-1.5 text-[10px] text-slate-600 bg-white border border-slate-100 rounded px-1.5 py-1">
-              <CheckCircle2 size={8} className="text-emerald-500 shrink-0" />
-              <span>{step}</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -225,7 +268,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
             )}
           </div>
 
-          <div className="space-y-1 max-h-[20rem] overflow-y-auto pr-0.5">
+          <div className="space-y-1 pr-0.5">
             {filteredConditions.map((c: any, i: number) => (
               <div 
                 key={i} 
@@ -285,7 +328,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
           )}
         </div>
 
-        <div className="space-y-1.5 max-h-[22rem] overflow-y-auto pr-0.5">
+        <div className="space-y-1.5 pr-0.5">
           {filteredCases.map((tc: any, i: number) => (
             <div 
               key={i} 
@@ -350,7 +393,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
               Coverage Matrix ({matrixRows.length} requirements)
             </div>
             
-            <div className="space-y-1.5 max-h-24 overflow-y-auto pr-0.5">
+            <div className="space-y-1.5 pr-0.5">
               {matrixRows.map((r: any, i: number) => (
                 <div key={i} className="flex flex-col gap-1 bg-white rounded border border-slate-100 px-2 py-1 shadow-sm">
                   <div className="flex items-center justify-between text-[11px]">
@@ -378,12 +421,12 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
         )}
 
         <div className="space-y-1.5">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-450 flex items-center gap-1">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-450 flex items-center gap-1 mb-2">
             <CheckCircle2 size={10} className="text-emerald-500" />
             Approved Final Test Cases ({cases.length})
           </span>
 
-          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+          <div className="space-y-1 pr-0.5">
             {cases.map((tc: any, i: number) => (
               <div key={i} className="text-[11px] bg-white border border-slate-100 rounded-lg px-2.5 py-1.5 shadow-sm flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 truncate">
@@ -417,15 +460,17 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
   }
 
   return (
-    <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl font-mono whitespace-pre-wrap max-h-90 overflow-y-auto m-2.5 border border-slate-800">
-      {JSON.stringify(output, null, 2)}
-    </pre>
+    <div className="p-3 h-full flex flex-col">
+      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl font-mono whitespace-pre-wrap overflow-y-auto min-h-0 flex-1 border border-slate-800">
+        {JSON.stringify(output, null, 2)}
+      </pre>
+    </div>
   );
 }
 
 type TabId = 'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors';
 
-function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node: any; thinkingText: string | null }) {
+function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog: any; node: any; thinkingText: string | null; agentLogs?: any[] }) {
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [copied, setCopied] = useState(false);
   const isRunning = node?.status === 'running';
@@ -454,7 +499,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
   }, [agentLog]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden">
       {/* Sleek Sub-tabs */}
       <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto scrollbar-none sticky top-0 z-20 px-2 shrink-0">
         {tabs.map(tab => (
@@ -475,7 +520,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-white">
+      <div className="flex-1 overflow-hidden bg-white">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -483,25 +528,24 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -3 }}
             transition={{ duration: 0.15 }}
-            className="h-full"
+            className="h-full overflow-y-auto"
           >
             {activeTab === 'summary' && (
   node.kind === 'preparation' || node.agentName === 'preparation' ? (
-    <PreparationSummaryView node={node} agentLog={agentLog} />
+    <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
   ) : (
     <AgentSummaryView agentLog={agentLog} agentName={node.agentName} />
   )
 )}
             
             {activeTab === 'thinking' && (
-              <div className="p-4 h-full">
-                {/* Developer Terminal Box */}
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-inner text-slate-300 font-mono text-[11px] leading-relaxed max-height-96 min-h-[22rem] flex flex-col relative justify-between overflow-hidden">
+              <div className="p-4 h-full flex flex-col">
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-inner text-slate-300 font-mono text-[11px] leading-relaxed flex-1 flex flex-col relative overflow-hidden min-h-0">
                   <div className="absolute top-1.5 right-2 flex items-center gap-1.5 text-[9px] text-slate-600 font-bold select-none uppercase">
                     <Terminal size={10} /> AI Agent CLI Stdout
                   </div>
 
-                  <div className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1">
+                  <div className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1 min-h-0">
                     {thinkingText ? (
                       <div className="text-slate-300">
                         {thinkingText}
@@ -526,31 +570,33 @@ function AgentDetailTabs({ agentLog, node, thinkingText }: { agentLog: any; node
             )}
             
             {activeTab === 'input' && (
-              <div className="p-4 space-y-4">
+              <div className="p-4 h-full flex flex-col overflow-hidden">
                 {Array.isArray(agentLog?.input_prompt) ? (
-                  agentLog.input_prompt.map((msg: any, i: number) => (
-                    <div key={i} className="space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{msg.role} Prompt Context</div>
-                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl max-h-40 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono">
-                        {msg.content || 'N/A'}
-                      </pre>
-                    </div>
-                  ))
+                  <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
+                    {agentLog.input_prompt.map((msg: any, i: number) => (
+                      <div key={i} className="flex-1 flex flex-col min-h-0 space-y-1">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">{msg.role} Prompt Context</div>
+                        <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
+                          {msg.content || 'N/A'}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <>
-                    <div className="space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">System Instructions</div>
-                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl max-h-40 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono">
+                  <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
+                    <div className="flex-1 flex flex-col min-h-0 space-y-1">
+                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase shrink-0">System Instructions</div>
+                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
                         {agentLog?.input_prompt?.systemPrompt || 'N/A'}
                       </pre>
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">User Request Variables</div>
-                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl max-h-45 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono">
+                    <div className="flex-1 flex flex-col min-h-0 space-y-1">
+                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase shrink-0">User Request Variables</div>
+                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
                         {agentLog?.input_prompt?.userMessage || 'N/A'}
                       </pre>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -1132,8 +1178,8 @@ function CheckpointPassedView({ node, agentLog, checkpointData }: { node: any; a
   const items = checkpointData?.conditions || checkpointData?.cases || 
                 agentLog?.output_data?.testConditions || agentLog?.output_data?.draftTestCases || agentLog?.output_data?.finalTestCases || [];
   return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+    <div className="p-4 space-y-3 h-full flex flex-col">
+      <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-100 rounded-xl p-3 shrink-0">
         <CheckCircle2 size={16} className="text-emerald-500 fill-emerald-50" />
         <div>
           <span>Verification Complete</span>
@@ -1141,7 +1187,7 @@ function CheckpointPassedView({ node, agentLog, checkpointData }: { node: any; a
         </div>
       </div>
       
-      <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+      <div className="flex-1 overflow-y-auto min-h-0 space-y-1.5 pr-1">
         {items.slice(0, 30).map((item: any, i: number) => (
           <div 
             key={i} 
@@ -1170,7 +1216,7 @@ function CompleteNodeView({ runSummary, node }: { runSummary: any; node: any }) 
   const batches = runSummary?.totalBatches ?? meta.totalBatches ?? 0;
   
   return (
-    <div className="p-6 space-y-6 text-center">
+    <div className="p-6 space-y-6 text-center h-full flex flex-col items-center justify-center overflow-y-auto">
       {/* Radiant Sparkle Success check */}
       <div className="relative inline-flex items-center justify-center">
         <div className="absolute inset-0 rounded-full bg-emerald-100/50 scale-125 animate-pulse" />
@@ -1240,14 +1286,15 @@ const statusColors: Record<string, { badge: string; label: string }> = {
   error: { badge: 'text-red-700 bg-red-50 border-red-200', label: 'Error' },
 };
 
-export function PipelineDetailPanel({ 
-  node, 
-  agentLog, 
-  checkpointData, 
-  thinkingText, 
-  runSummary, 
-  onClose, 
-  onCheckpointAction 
+export function PipelineDetailPanel({
+  node,
+  agentLog,
+  checkpointData,
+  thinkingText,
+  runSummary,
+  agentLogs,
+  onClose,
+  onCheckpointAction
 }: NodeDetailProps) {
   
   if (!node) {
@@ -1327,9 +1374,11 @@ export function PipelineDetailPanel({
       </div>
 
       {/* Main Panel Content Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {nodeType === 'agent' ? (
-          <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} />
+          <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} agentLogs={agentLogs} />
+        ) : nodeType === 'preparation' ? (
+          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
         ) : nodeType === 'checkpoint' && (node.status === 'waiting' || node.status === 'running') ? (
           <CheckpointEditView checkpointData={checkpointData} onAction={(action, data) => onCheckpointAction?.(action, data)} />
         ) : nodeType === 'checkpoint' ? (

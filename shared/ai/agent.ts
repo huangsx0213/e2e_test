@@ -1,5 +1,6 @@
 import type { ZodType } from 'zod';
 import type { AIProvider, ChatMessage, ChatOptions } from './provider.ts';
+import { mergeSignals } from './provider.ts';
 import { loadSkillContext, type SkillContext } from './skill-loader.ts';
 import { TokenTracker } from './token-tracker.ts';
 import { getCached, setCache } from './cache.ts';
@@ -49,6 +50,10 @@ export class AgentTimeoutError extends Error {
   constructor(message: string) { super(message); this.name = 'AgentTimeoutError'; }
 }
 
+export class AgentAbortError extends Error {
+  constructor() { super('Agent execution aborted'); this.name = 'AgentAbortError'; }
+}
+
 function fillTemplate(template: string, variables: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? `{{${key}}}`);
 }
@@ -96,6 +101,7 @@ export interface AgentRunOptions {
   timeoutMs?: number;
   maxRetries?: number;
   useCache?: boolean;
+  signal?: AbortSignal;
   onStep?: (stepIndex: number, stepName: string) => void;
   onThinking?: (text: string) => void;
 }
@@ -125,8 +131,11 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     console.log(`[agent] ${role.name}: attempt ${attempt + 1}/${maxRetries} starting...`);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
+      const timeoutController = new AbortController();
+      const timer = setTimeout(() => timeoutController.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
+      const combinedSignal = options.signal
+        ? mergeSignals(options.signal, timeoutController.signal)
+        : timeoutController.signal;
 
       let fullContent = '';
       let usageData: { promptTokens: number; completionTokens: number; reasoningTokens?: number } | undefined;
@@ -135,7 +144,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       const THROTTLE_MS = 80;
 
       try {
-        for await (const chunk of provider.streamChat(messages, { ...role.options, agentName: role.name, responseFormat: 'json_object', signal: controller.signal })) {
+        for await (const chunk of provider.streamChat(messages, { ...role.options, agentName: role.name, responseFormat: 'json_object', signal: combinedSignal })) {
           if (chunk.type === 'reasoning') {
             reasoningContent += chunk.content;
             options.onThinking?.(chunk.content);
@@ -189,6 +198,11 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       return { result: validated, tokenUsage, latencyMs, inputPrompt: messages, rawOutput: fullContent };
     } catch (err: any) {
         lastError = err as Error;
+
+        const isPipelineAbort = options.signal?.aborted;
+        if (isPipelineAbort) {
+          throw new AgentAbortError();
+        }
 
         const isTimeout = err?.name === 'TimeoutError'
           || err?.name === 'AbortError'

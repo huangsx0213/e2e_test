@@ -68,10 +68,12 @@ const handleRefresh = useCallback(async () => {
 
   const handleNodeClick = useCallback((nodeId: string) => {
     pipeline.selectNode(nodeId as any);
+    pipeline.setAutoFollowEnabled(false);
   }, [pipeline]);
 
   const handleCloseDetail = useCallback(() => {
     pipeline.selectNode(null);
+    pipeline.setAutoFollowEnabled(true);
   }, [pipeline]);
 
   const handleToggleAutoFollow = useCallback(() => {
@@ -185,15 +187,16 @@ const handleRefresh = useCallback(async () => {
               isRunning={pipeline.isRunning}
             />
             <div className="flex-1 overflow-hidden">
-              <PipelineDetailPanel
-                node={pipeline.selectedNode as any ?? null}
-                agentLog={selectedAgentLog}
-                checkpointData={pipeline.checkpointData}
-                thinkingText={pipeline.thinkingText}
-                runSummary={pipeline.runSummary}
-                onClose={handleCloseDetail}
-                onCheckpointAction={handleCheckpointAction}
-              />
+        <PipelineDetailPanel
+          node={pipeline.selectedNode as any ?? null}
+          agentLog={selectedAgentLog}
+          checkpointData={pipeline.checkpointData}
+          thinkingText={pipeline.thinkingText}
+          runSummary={pipeline.runSummary}
+          agentLogs={pipeline.agentLogs}
+          onClose={handleCloseDetail}
+          onCheckpointAction={handleCheckpointAction}
+        />
             </div>
           </div>
         </div>

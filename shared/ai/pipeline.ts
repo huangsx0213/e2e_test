@@ -65,6 +65,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
   tokenLimit?: number | null;
   timeoutMs?: number;
   useCache?: boolean;
+  signal?: AbortSignal;
 }, checkpointer?: BaseCheckpointSaver) {
   const testAnalystCtx = createAgentContext(provider, roles.testAnalyst, agentOpts);
   const testDesignerCtx = createAgentContext(provider, roles.testDesigner, agentOpts);
@@ -87,6 +88,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     observer,
     agentOpts?.timeoutMs,
     agentOpts?.useCache,
+    agentOpts?.signal,
     (state) => {
       const reqCount = state.currentBatch?.length ?? 0;
       const batchInfo = `batch ${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
@@ -131,6 +133,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     observer,
     agentOpts?.timeoutMs,
     agentOpts?.useCache,
+    agentOpts?.signal,
     (state) => {
       const condCount = state.approvedConditions?.length ?? 0;
       console.log(`[pipeline:graph] [agent_test_designer] ENTER, ${condCount} conditions to design, phase=${state.phase}`);
@@ -174,6 +177,7 @@ export async function createNlPipeline(provider: AIProvider, roles: {
     observer,
     agentOpts?.timeoutMs,
     agentOpts?.useCache,
+    agentOpts?.signal,
     (state) => {
       const draftCount = state.approvedDraftCases?.length ?? 0;
       const fb = state.humanReviewFeedback ? `, feedback="${state.humanReviewFeedback.slice(0, 80)}"` : '';

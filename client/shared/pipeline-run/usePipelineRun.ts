@@ -293,12 +293,17 @@ export function usePipelineRun(currentProjectId: string | null, options?: UsePip
     };
   };
 
-  // For agent nodes or checkpoint nodes, get the corresponding agent log (merged for multi-batch)
-  const selectedAgentLog = selectedNode?.agentName
-    ? getMergedAgentLog(selectedNode.agentName) || null
-    : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
-      ? getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
-      : null;
+// For agent nodes or checkpoint nodes, get the corresponding agent log (merged for multi-batch)
+// For preparation nodes: try agentLogs first (historical runs), then fall back to node meta (same-session SSE)
+const selectedAgentLog = selectedNode?.agentName
+  ? getMergedAgentLog(selectedNode.agentName) || null
+  : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
+  ? getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
+  : selectedNode?.kind === 'preparation'
+  ? (getMergedAgentLog('preparation') || (selectedNode.meta?.initLogs
+    ? { output_data: { initLogs: selectedNode.meta.initLogs, requirementCount: selectedNode.meta.requirementCount, totalBatches: selectedNode.meta.totalBatches, estimatedTokens: selectedNode.meta.estimatedTokens, flowCases: selectedNode.meta.flowCases } }
+    : null))
+  : null;
 
   // For checkpoint nodes, derive checkpoint data from matching agent log output
   const selectedCheckpointData = (() => {

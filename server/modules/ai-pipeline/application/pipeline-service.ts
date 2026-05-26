@@ -23,6 +23,7 @@ import { PipelineExecutionScope } from '../pipeline-scope.ts';
 import { pipelineRepo, decryptApiKey } from '../infrastructure/db/pipeline-repository.ts';
 import type { SSEGateway } from '../infrastructure/sse/sse-gateway.ts';
 import type { PipelineBusinessFlowBlueprint, Requirement } from '../../../../shared/contracts/index.ts';
+import { randomId } from '../../../shared/utils/index.ts';
 
 interface ResumeEntry {
   resolve: (value: any) => void;
@@ -32,6 +33,7 @@ interface ResumeEntry {
 export class PipelineService {
   private readonly resumeWaiters = new Map<string, ResumeEntry>();
   private readonly abortedRuns = new Set<string>();
+  private readonly abortControllers = new Map<string, AbortController>();
   private readonly concurrencySlot: Semaphore;
   private readonly maxConcurrent: number;
 
@@ -45,7 +47,9 @@ export class PipelineService {
   }
 
   abortRun(runId: string): void {
+    console.log(`[pipeline:abort] aborting run ${runId}...`);
     this.abortedRuns.add(runId);
+    this.abortControllers.get(runId)?.abort();
     const waiter = this.resumeWaiters.get(runId);
     if (waiter) {
       this.resumeWaiters.delete(runId);
@@ -96,6 +100,10 @@ export class PipelineService {
     try {
       await this.concurrencySlot.acquire();
       if (aborted()) return;
+
+      const runAbortController = new AbortController();
+      this.abortControllers.set(runId, runAbortController);
+      const abortSignal = runAbortController.signal;
 
       const { requirementIds, providerConfigName, flowIds, includeFlowCases } = params;
 
@@ -185,6 +193,7 @@ export class PipelineService {
         tokenLimit: providerConfigRow.monthly_token_limit ?? null,
         timeoutMs: 300_000,
         useCache: params.useCache ?? false,
+        signal: abortSignal,
       }, new SqliteSaver(db));
 
       initCompleted = true;
@@ -201,20 +210,38 @@ export class PipelineService {
         requirements,
       });
 
-      sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
-      sendEvent('pipeline:context', { flows: businessFlows.length, indexEntries: selectedIndex.length });
+sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
+sendEvent('pipeline:context', { flows: businessFlows.length, indexEntries: selectedIndex.length });
 
-      const avgTokensPerReq = 1000;
-      const estimated = selectedIndex.length * avgTokensPerReq;
-      const tokenLimit = providerConfigRow.monthly_token_limit as number | null;
-      if (tokenLimit) {
-        const budgetMsg = estimated > tokenLimit
-          ? `Estimated token usage (${estimated}) exceeds limit (${tokenLimit}). Some batches may fail.`
-          : `Estimated token usage (${estimated}) within limit (${tokenLimit}).`;
-        sendEvent('pipeline:budget', { estimated, limit: tokenLimit, warning: estimated > tokenLimit, message: budgetMsg });
-      } else {
-        sendEvent('pipeline:budget', { estimated, limit: null, warning: false, message: `Estimated ${estimated} tokens (no limit configured)` });
-      }
+const avgTokensPerReq = 1000;
+const estimated = selectedIndex.length * avgTokensPerReq;
+const tokenLimit = providerConfigRow.monthly_token_limit as number | null;
+if (tokenLimit) {
+  const budgetMsg = estimated > tokenLimit
+    ? `Estimated token usage (${estimated}) exceeds limit (${tokenLimit}). Some batches may fail.`
+    : `Estimated token usage (${estimated}) within limit (${tokenLimit}).`;
+  sendEvent('pipeline:budget', { estimated, limit: tokenLimit, warning: estimated > tokenLimit, message: budgetMsg });
+} else {
+  sendEvent('pipeline:budget', { estimated, limit: null, warning: false, message: `Estimated ${estimated} tokens (no limit configured)` });
+}
+
+// Save preparation initialization data to database for later retrieval
+const preparationLogId = randomId('log');
+const preparationOutput = {
+  initLogs: [
+    { type: 'pipeline:context', data: { flows: businessFlows.length, indexEntries: selectedIndex.length }, timestamp: new Date().toISOString() },
+    { type: 'pipeline:budget', data: { estimated, limit: tokenLimit }, timestamp: new Date().toISOString() },
+    { type: 'phase:start', data: { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` }, timestamp: new Date().toISOString() }
+  ],
+  requirementCount: selectedIndex.length,
+  totalBatches,
+  estimatedTokens: estimated,
+  flowCases: businessFlows.length,
+};
+db.prepare(`
+  INSERT INTO pipeline_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
+  VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
+`).run(preparationLogId, runId, JSON.stringify(preparationOutput));
 
       const allResults: any[] = [];
       let actualBatches = 0;
@@ -240,7 +267,7 @@ export class PipelineService {
         };
 
         try {
-          const result = await this.runBatch(pipeline, inputState, config, runId, batchIndex, sendEvent, aborted, mode);
+          const result = await this.runBatch(pipeline, inputState, config, runId, batchIndex, sendEvent, aborted, mode, abortSignal);
           if (result?.finalTestCases?.length) allResults.push(result);
           actualBatches++;
           sendEvent('batch:complete', { batch: batchIndex + 1, total: totalBatches, testCases: result?.finalTestCases?.length || 0 });
@@ -251,7 +278,7 @@ export class PipelineService {
       };
 
       if (includeFlowCases) {
-        await this.processFlowBatch(pipeline, runId, projectId, businessFlows, requirements, sendEvent, aborted, runMode, allResults);
+        await this.processFlowBatch(pipeline, runId, projectId, businessFlows, requirements, sendEvent, aborted, runMode, allResults, abortSignal);
         actualBatches = 1;
       } else if (runMode === 'interactive') {
         for (let i = 0; i < totalBatches; i++) {
@@ -288,6 +315,7 @@ export class PipelineService {
     } finally {
       this.concurrencySlot.release();
       this.abortedRuns.delete(runId);
+      this.abortControllers.delete(runId);
       this.sseGateway.cleanup(runId);
     }
   }
@@ -302,6 +330,7 @@ export class PipelineService {
     aborted: () => boolean,
     mode: string,
     allResults: any[],
+    abortSignal: AbortSignal,
   ): Promise<void> {
     const reqIdSet = new Set<string>();
     for (const flow of businessFlows) {
@@ -341,7 +370,7 @@ export class PipelineService {
     };
 
     try {
-      const result = await this.runBatch(pipeline, inputState, config, runId, 0, sendEvent, aborted, mode as 'auto' | 'interactive');
+      const result = await this.runBatch(pipeline, inputState, config, runId, 0, sendEvent, aborted, mode as 'auto' | 'interactive', abortSignal);
       if (result?.finalTestCases?.length) allResults.push(result);
       sendEvent('batch:complete', { batch: 1, total: 1, testCases: result?.finalTestCases?.length || 0 });
     } catch (err: any) {
@@ -359,6 +388,7 @@ export class PipelineService {
     sendEvent: (event: string, data: unknown) => void,
     aborted: () => boolean,
     mode: 'auto' | 'interactive' = 'interactive',
+    abortSignal?: AbortSignal,
   ): Promise<any | null> {
     let isResume = false;
     while (true) {
@@ -372,9 +402,14 @@ export class PipelineService {
 
       let lastState: any = null;
 
-      for await (const chunk of stream) {
-        if (aborted()) return null;
-        lastState = chunk as any;
+      try {
+        for await (const chunk of stream) {
+          if (aborted()) return null;
+          lastState = chunk as any;
+        }
+      } catch (err: any) {
+        if (aborted() || abortSignal?.aborted) return null;
+        throw err;
       }
 
       const interruptValue = (lastState as any)?.__interrupt__;
