@@ -77,14 +77,14 @@ export class TestGenRepository {
   // --- Pipeline Runs ---
   createRun(runId: string, projectId: string, mode: string, config: unknown): void {
     db.prepare(`
-      INSERT INTO pipeline_runs (id, project_id, status, phase, current_batch, total_batches, mode, created_by, config)
+      INSERT INTO test_gen_runs (id, project_id, status, phase, current_batch, total_batches, mode, created_by, config)
       VALUES (?, ?, 'RUNNING', 'init', 0, 0, ?, ?, ?)
     `).run(runId, projectId, mode, 'anonymous', JSON.stringify(config));
   }
 
   listRunsByProject(projectId: string): any[] {
     const rows = db.prepare(
-      'SELECT id, project_id, status, phase, current_batch, total_batches, mode, config, created_by, token_usage, created_at, updated_at FROM pipeline_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 50'
+      'SELECT id, project_id, status, phase, current_batch, total_batches, mode, config, created_by, token_usage, created_at, updated_at FROM test_gen_runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 50'
     ).all(projectId);
     return (rows as any[]).map(r => ({
       ...r,
@@ -95,7 +95,7 @@ export class TestGenRepository {
 
   getActiveRun(projectId: string): any {
     const row = db.prepare(
-      "SELECT id, status, phase, current_batch, total_batches, mode, config, checkpoint_data, created_at, updated_at FROM pipeline_runs WHERE project_id = ? AND status IN ('RUNNING', 'WAITING_REVIEW') ORDER BY created_at DESC LIMIT 1"
+      "SELECT id, status, phase, current_batch, total_batches, mode, config, checkpoint_data, created_at, updated_at FROM test_gen_runs WHERE project_id = ? AND status IN ('RUNNING', 'WAITING_REVIEW') ORDER BY created_at DESC LIMIT 1"
     ).get(projectId) as any;
     if (!row) return null;
     return {
@@ -106,11 +106,11 @@ export class TestGenRepository {
   }
 
   getRun(runId: string): TestGenRunRow | undefined {
-    return db.prepare('SELECT id, project_id, status, phase, current_batch, total_batches, mode FROM pipeline_runs WHERE id = ?').get(runId) as any;
+    return db.prepare('SELECT id, project_id, status, phase, current_batch, total_batches, mode FROM test_gen_runs WHERE id = ?').get(runId) as any;
   }
 
   getRunInfo(runId: string): any {
-    const row = db.prepare('SELECT * FROM pipeline_runs WHERE id = ?').get(runId) as any;
+    const row = db.prepare('SELECT * FROM test_gen_runs WHERE id = ?').get(runId) as any;
     if (!row) return null;
     return {
       status: row.status,
@@ -129,11 +129,11 @@ export class TestGenRepository {
   }
 
   updateBatchCount(runId: string, totalBatches: number): void {
-    db.prepare('UPDATE pipeline_runs SET total_batches = ?, current_batch = 1 WHERE id = ?').run(totalBatches, runId);
+    db.prepare('UPDATE test_gen_runs SET total_batches = ?, current_batch = 1 WHERE id = ?').run(totalBatches, runId);
   }
 
   updateCurrentBatch(runId: string, batch: number): void {
-    db.prepare('UPDATE pipeline_runs SET current_batch = ? WHERE id = ?').run(batch, runId);
+    db.prepare('UPDATE test_gen_runs SET current_batch = ? WHERE id = ?').run(batch, runId);
   }
 
   updateProviderInfo(runId: string, info: {
@@ -143,7 +143,7 @@ export class TestGenRepository {
     providerConfigName: string | null;
     tokenLimit: number | null;
   }): void {
-    db.prepare(`UPDATE pipeline_runs SET
+    db.prepare(`UPDATE test_gen_runs SET
       provider_type = ?, model_name = ?, prompt_version = ?, provider_config_name = ?, token_limit = ?
       WHERE id = ?`).run(
       info.providerType, info.modelName, info.promptVersion,
@@ -152,16 +152,16 @@ export class TestGenRepository {
   }
 
   setCheckpointData(runId: string, data: unknown, phase: string): void {
-    db.prepare("UPDATE pipeline_runs SET checkpoint_data = ?, status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') WHERE id = ?")
+    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') WHERE id = ?")
       .run(JSON.stringify(data), phase, runId);
   }
 
   markRunFailed(runId: string): void {
-    db.prepare("UPDATE pipeline_runs SET status = 'FAILED', updated_at = datetime('now') WHERE id = ?").run(runId);
+    db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') WHERE id = ?").run(runId);
   }
 
   setRunRunning(runId: string): void {
-    db.prepare("UPDATE pipeline_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?").run(runId);
+    db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?").run(runId);
   }
 
   getMonthlyTokenUsage(projectId: string): number {
@@ -170,16 +170,16 @@ export class TestGenRepository {
     monthStart.setHours(0, 0, 0, 0);
     const result = db.prepare(`
       SELECT SUM(CAST(COALESCE(json_extract(token_usage, '$.total_tokens'), '0') AS INTEGER)) as total
-      FROM pipeline_runs
+      FROM test_gen_runs
       WHERE project_id = ? AND created_at >= ? AND status IN ('COMPLETED', 'RUNNING')
     `).get(projectId, monthStart.toISOString()) as any;
     return result?.total ?? 0;
   }
 
   deleteRun(runId: string): void {
-    db.prepare('DELETE FROM pipeline_agent_logs WHERE run_id = ?').run(runId);
-    db.prepare('DELETE FROM pipeline_audit_log WHERE run_id = ?').run(runId);
-    db.prepare('DELETE FROM pipeline_runs WHERE id = ?').run(runId);
+    db.prepare('DELETE FROM test_gen_agent_logs WHERE run_id = ?').run(runId);
+    db.prepare('DELETE FROM test_gen_audit_log WHERE run_id = ?').run(runId);
+    db.prepare('DELETE FROM test_gen_runs WHERE id = ?').run(runId);
   }
 
   // --- Agent Logs ---
@@ -187,11 +187,11 @@ export class TestGenRepository {
     let rows: any[];
     if (agent) {
       rows = db.prepare(
-        'SELECT * FROM pipeline_agent_logs WHERE run_id = ? AND agent_name = ? ORDER BY created_at'
+        'SELECT * FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? ORDER BY created_at'
       ).all(runId, agent);
     } else {
       rows = db.prepare(
-        'SELECT * FROM pipeline_agent_logs WHERE run_id = ? ORDER BY created_at'
+        'SELECT * FROM test_gen_agent_logs WHERE run_id = ? ORDER BY created_at'
       ).all(runId);
     }
     return (rows as any[]).map(r => ({
@@ -204,17 +204,17 @@ export class TestGenRepository {
   }
 
   markAgentLogFailed(logId: string): void {
-    db.prepare("UPDATE pipeline_agent_logs SET status = 'FAILED' WHERE id = ?").run(logId);
+    db.prepare("UPDATE test_gen_agent_logs SET status = 'FAILED' WHERE id = ?").run(logId);
   }
 
   updateAgentLogOutput(runId: string, agentName: string, outputData: Record<string, unknown>): void {
     const log = db.prepare(
-      'SELECT id, output_data FROM pipeline_agent_logs WHERE run_id = ? AND agent_name = ? AND status = \'COMPLETED\' ORDER BY batch DESC LIMIT 1'
+      'SELECT id, output_data FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? AND status = \'COMPLETED\' ORDER BY batch DESC LIMIT 1'
     ).get(runId, agentName) as any;
     if (log) {
       const existing = log.output_data ? JSON.parse(log.output_data) : {};
       const merged = { ...existing, ...outputData };
-      db.prepare('UPDATE pipeline_agent_logs SET output_data = ? WHERE id = ?').run(JSON.stringify(merged), log.id);
+      db.prepare('UPDATE test_gen_agent_logs SET output_data = ? WHERE id = ?').run(JSON.stringify(merged), log.id);
     }
   }
 
@@ -222,7 +222,7 @@ export class TestGenRepository {
   insertAuditLog(runId: string, checkpointId: string, action: string, editedData: unknown): void {
     const logId = randomId('audit');
     db.prepare(`
-      INSERT INTO pipeline_audit_log (id, run_id, checkpoint_id, action, user_id, snapshot)
+      INSERT INTO test_gen_audit_log (id, run_id, checkpoint_id, action, user_id, snapshot)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(logId, runId, checkpointId, action, 'anonymous', editedData ? JSON.stringify(editedData) : null);
   }

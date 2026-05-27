@@ -34,7 +34,7 @@ export function useTestGenSSE({ runId, onEvent }: UseTestGenSSEOptions) {
     const controller = new AbortController();
     controllerRef.current = controller;
 
-    fetch(`/api/pipeline/${runId}/stream`, {
+    fetch(`/api/test-gen/${runId}/stream`, {
       method: 'GET',
       signal: controller.signal,
     }).then(async (response) => {

@@ -145,7 +145,7 @@ function AppProvidersInner({ children }: { children: (isLoading: boolean) => Rea
   );
 
   const pipelineDeps = useMemo(() => ({
-    api: api.pipeline as any,
+    api: api.testGen as any,
     createSSEConnection: (url: string) => createFetchSSEConnection(url, {}),
   }), []);
 

@@ -122,7 +122,7 @@ export class TestGenService {
         providerConfigRow = pipelineRepo.getActiveProviderConfig();
       }
       if (!providerConfigRow) {
-        throw new Error('No active AI provider configuration found. Go to Settings â†’ AI Provider to configure one.');
+        throw new Error('No active AI provider configuration found. Go to Settings â†?AI Provider to configure one.');
       }
 
       const monthlyLimit = providerConfigRow.monthly_token_limit as number | null;
@@ -239,7 +239,7 @@ const preparationOutput = {
   flowCases: businessFlows.length,
 };
 db.prepare(`
-  INSERT INTO pipeline_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
+  INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
   VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
 `).run(preparationLogId, runId, JSON.stringify(preparationOutput));
 

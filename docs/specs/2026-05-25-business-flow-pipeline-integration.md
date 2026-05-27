@@ -57,10 +57,10 @@ Checked: Flow Batch（一个 batch × 所有选中的 flows）
 ```
 PipelineConfigPanel
   → PipelineStartConfig: { ..., flowIds, includeFlowCases: boolean }
-  → AiPipelinePage.handleStart()
+  → AiTestGenPage.handleStart()
     → pipeline.start({ ..., flowIds, includeFlowCases })
-    → api.pipeline.start(projectId, { ..., flowIds, includeFlowCases })
-      → POST /api/pipeline/:projectId/start
+    → api.testGen.start(projectId, { ..., flowIds, includeFlowCases })
+      → POST /api/test-gen/:projectId/start
 ```
 
 ### 4.2 Server API Contract
@@ -191,15 +191,15 @@ export const PipelineBusinessFlowBlueprintSchema = z.object({
 
 ### 5.2 Server
 
-#### `server/modules/ai-pipeline/schema.ts`
+#### `server/modules/ai-test-gen/schema.ts`
 
 - `startPipelineSchema` 加 `includeFlowCases: z.boolean().optional().default(false)`
 
-#### `server/modules/ai-pipeline/index.ts`
+#### `server/modules/ai-test-gen/index.ts`
 
 - `startPipeline` route 传 `includeFlowCases` 给 `pipelineService.startPipeline`
 
-#### `server/modules/ai-pipeline/application/pipeline-service.ts`
+#### `server/modules/ai-test-gen/application/test-gen-service.ts`
 
 - `startPipeline` 方法签名加 `includeFlowCases` 参数
 - 根据 `includeFlowCases` 分支：
@@ -215,7 +215,7 @@ export const PipelineBusinessFlowBlueprintSchema = z.object({
 
 ### 5.3 Client
 
-#### `client/features/nl-pipeline/PipelineConfigPanel.tsx`
+#### `client/features/ai-test-gen/TestGenConfigPanel.tsx`
 
 - Add checkbox in the bottom config area:
   ```tsx
@@ -227,7 +227,7 @@ export const PipelineBusinessFlowBlueprintSchema = z.object({
 - `PipelineStartConfig` 加 `includeFlowCases: boolean`
 - `handleStart` 传入 `includeFlowCases`
 
-#### `client/features/nl-pipeline/AiPipelinePage.tsx`
+#### `client/features/ai-test-gen/AiTestGenPage.tsx`
 
 - `handleStart` 透传 `includeFlowCases` 给 `pipeline.start()`
 

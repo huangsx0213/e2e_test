@@ -33,7 +33,7 @@ describe('TestGenPersister', () => {
 
   it('saveAgentLog prepares INSERT with ON CONFLICT', () => {
     persister.saveAgentLog(snapshot, 'run-1');
-    expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO pipeline_agent_logs'));
+    expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO test_gen_agent_logs'));
     expect(mockDb.statement.run).toHaveBeenCalledWith(
       'log-1', 'run-1', 1, 'analyst',
       null,
@@ -66,7 +66,7 @@ describe('TestGenPersister', () => {
 
   it('insertAuditLog inserts audit record', () => {
     persister.insertAuditLog('run-1', 'chk-1', 'approve', 'user-1', { note: 'ok' });
-    expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO pipeline_audit_log'));
+    expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO test_gen_audit_log'));
     expect(mockDb.statement.run).toHaveBeenCalledWith(
       'audit_mock', 'run-1', 'chk-1', 'approve', 'user-1',
       JSON.stringify({ note: 'ok' }),

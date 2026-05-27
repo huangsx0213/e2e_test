@@ -4,7 +4,7 @@
 
 **Goal:** Add requirement dependencies, a standalone business-flow module, a business-flow UI, and pipeline blueprint assembly for approved flows.
 
-**Architecture:** Keep requirements as the hierarchy source of truth, add `dependencies` as graph edges, add `business_flows` as a separate approved-path module, and let `ai-pipeline` consume expanded blueprints instead of raw rows. Follow the existing CRUD module and React Query patterns already used by requirements and test-conditions.
+**Architecture:** Keep requirements as the hierarchy source of truth, add `dependencies` as graph edges, add `business_flows` as a separate approved-path module, and let `ai-test-gen` consume expanded blueprints instead of raw rows. Follow the existing CRUD module and React Query patterns already used by requirements and test-conditions.
 
 **Tech Stack:** TypeScript, Express 5, Better-SQLite3, React 19, React Query, Vitest, Testing Library.
 
@@ -213,9 +213,9 @@ Expected: PASS.
 
 **Files:**
 - Modify: `shared/contracts/index.ts`
-- Modify: `server/modules/ai-pipeline/index.ts`
-- Create: `server/modules/ai-pipeline/business-flow-blueprint.ts`
-- Test: `server/modules/ai-pipeline/__tests__/business-flow-blueprint.test.ts`
+- Modify: `server/modules/ai-test-gen/index.ts`
+- Create: `server/modules/ai-test-gen/business-flow-blueprint.ts`
+- Test: `server/modules/ai-test-gen/__tests__/business-flow-blueprint.test.ts`
 
 - [ ] **Step 1: Write the failing blueprint test**
 
@@ -254,7 +254,7 @@ sendEvent('phase:complete', { phase: 'analysis', summary: 'Pipeline infrastructu
 
 - [ ] **Step 5: Run pipeline blueprint tests**
 
-Run: `npm test -- server/modules/ai-pipeline/__tests__/business-flow-blueprint.test.ts`
+Run: `npm test -- server/modules/ai-test-gen/__tests__/business-flow-blueprint.test.ts`
 Expected: PASS.
 
 ### Task 5: Run integrated verification
@@ -265,7 +265,7 @@ Expected: PASS.
 
 - [ ] **Step 1: Run the focused test set**
 
-Run: `npm test -- server/modules/requirements/__tests__/mapper.test.ts server/modules/requirements/__tests__/repository.test.ts server/modules/business-flows/__tests__/mapper.test.ts server/modules/business-flows/__tests__/repository.test.ts server/modules/business-flows/__tests__/routes.test.ts client/features/business-flows/__tests__/BusinessFlowsPage.test.tsx server/modules/ai-pipeline/__tests__/business-flow-blueprint.test.ts`
+Run: `npm test -- server/modules/requirements/__tests__/mapper.test.ts server/modules/requirements/__tests__/repository.test.ts server/modules/business-flows/__tests__/mapper.test.ts server/modules/business-flows/__tests__/repository.test.ts server/modules/business-flows/__tests__/routes.test.ts client/features/business-flows/__tests__/BusinessFlowsPage.test.tsx server/modules/ai-test-gen/__tests__/business-flow-blueprint.test.ts`
 Expected: PASS.
 
 - [ ] **Step 2: Run type-checking**

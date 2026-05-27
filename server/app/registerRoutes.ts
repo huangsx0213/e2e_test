@@ -18,7 +18,7 @@ import { businessFlowsModule } from '../modules/business-flows/index.ts';
 import { providerConfigsModule } from '../modules/provider-configs/index.ts';
 import { testConditionsModule } from '../modules/test-conditions/index.ts';
 import { nlCasesModule } from '../modules/nl-cases/index.ts';
-import { aiPipelineModule } from '../modules/ai-pipeline/index.ts';
+import { aiTestGenModule } from '../modules/ai-test-gen/index.ts';
 import { autRouter } from '../../aut/server/routes';
 
 export function registerRoutes(app: Express) {
@@ -40,7 +40,7 @@ requirementsModule,
     providerConfigsModule,
     testConditionsModule,
     nlCasesModule,
-    aiPipelineModule,
+    aiTestGenModule,
   ];
 
   for (const module of modules) {

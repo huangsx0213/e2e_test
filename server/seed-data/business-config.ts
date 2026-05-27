@@ -1434,35 +1434,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "projectId": "p-aut-demo",
       "title": "Authentication System",
       "description": "",
+      "dependencies": [],
       "level": "epic",
       "priority": "MEDIUM",
       "status": "DRAFT",
       "tags": [],
       "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard",
-      "projectId": "p-aut-demo",
-      "title": "Dashboard",
-      "description": "",
-      "level": "epic",
-      "priority": "MEDIUM",
-      "status": "DRAFT",
-      "tags": [],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt",
-      "projectId": "p-aut-demo",
-      "title": "User Management",
-      "description": "",
-      "level": "epic",
-      "priority": "MEDIUM",
-      "status": "DRAFT",
-      "tags": [],
-      "position": 2,
       "metadata": {}
     },
     {
@@ -1471,43 +1448,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth",
       "title": "Login Page UI & UX",
       "description": "The login page provides a user-friendly authentication interface with form validation and password visibility toggle.",
+      "dependencies": [],
       "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
         "authentication",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt",
-      "title": "User List View",
-      "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
-      "level": "feature",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard",
-      "title": "Dashboard Home Page",
-      "description": "The dashboard landing page displays key metrics and navigation to other sections.",
-      "level": "feature",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
         "ui"
       ],
       "position": 0,
@@ -1519,6 +1465,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-ui",
       "title": "Login Form Display",
       "description": "The login form must render correctly with all required fields and controls.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -1526,51 +1473,6 @@ export const businessConfigSeed: BusinessConfigSeed = {
         "authentication",
         "ui"
       ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-table",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Table Display & Sorting",
-      "description": "The user table must display data with sortable columns for easy browsing.",
-      "level": "story",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-welcome",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui",
-      "title": "Welcome & Navigation",
-      "description": "The dashboard must greet the user and provide quick links to major sections.",
-      "level": "story",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-auth-login-ui-form-loading",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-ui-form",
-      "title": "Disable submit button and show loading state during authentication",
-      "description": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
-      "level": "story",
-      "priority": "MEDIUM",
-      "status": "DRAFT",
-      "tags": [],
       "position": 0,
       "metadata": {}
     },
@@ -1580,6 +1482,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-ui-form",
       "title": "Display login form with username and password fields",
       "description": "The login form must render username input with user icon, password input with lock icon, and submit button.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "DRAFT",
@@ -1588,50 +1491,29 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-table-display",
+      "id": "req-aut-auth-login-ui-form-loading",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-table",
-      "title": "Display user table with Name, Email, Role, Status, and date columns",
-      "description": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
-      "level": "ac",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-welcome-greeting",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-welcome",
-      "title": "Display welcome message for authenticated user",
-      "description": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
-      "level": "ac",
+      "parentId": "req-aut-auth-login-ui-form",
+      "title": "Disable submit button and show loading state during authentication",
+      "description": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
+      "dependencies": [],
+      "level": "story",
       "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
+      "status": "DRAFT",
+      "tags": [],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-dashboard-home-api",
+      "id": "req-aut-dashboard",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard",
-      "title": "Dashboard Statistics API",
-      "description": "The dashboard fetches real-time statistics from the server.",
-      "level": "feature",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "api"
-      ],
+      "title": "Dashboard",
+      "description": "",
+      "dependencies": [],
+      "level": "epic",
+      "priority": "MEDIUM",
+      "status": "DRAFT",
+      "tags": [],
       "position": 1,
       "metadata": {}
     },
@@ -1641,6 +1523,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth",
       "title": "Login Authentication API",
       "description": "The authentication API validates credentials and returns a token for session management.",
+      "dependencies": [],
       "level": "feature",
       "priority": "CRITICAL",
       "status": "APPROVED",
@@ -1652,32 +1535,17 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-quick-add",
+      "id": "req-aut-dashboard-home-api",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt",
-      "title": "Quick Add User",
-      "description": "A simple modal form for quickly creating a new user with basic fields.",
+      "parentId": "req-aut-dashboard",
+      "title": "Dashboard Statistics API",
+      "description": "The dashboard fetches real-time statistics from the server.",
+      "dependencies": [],
       "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
-        "user-management",
-        "crud"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-auth-login-api-errors",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-api",
-      "title": "Error Handling",
-      "description": "Invalid credentials and network failures must be handled gracefully with appropriate error messages.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "authentication",
+        "dashboard",
         "api"
       ],
       "position": 1,
@@ -1689,6 +1557,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-ui",
       "title": "Form Validation & UX",
       "description": "The login form must validate input and provide good user experience with password visibility and utility controls.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -1700,45 +1569,14 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-filter",
+      "id": "req-aut-auth-login-api-errors",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Filtering",
-      "description": "Users must be filterable by text search and dropdown selections.",
+      "parentId": "req-aut-auth-login-api",
+      "title": "Error Handling",
+      "description": "Invalid credentials and network failures must be handled gracefully with appropriate error messages.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-stats",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui",
-      "title": "Statistics Display",
-      "description": "The dashboard must display real-time system metrics in stat cards.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-auth-login-api-errors-network",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-api-errors",
-      "title": "Handle network errors gracefully",
-      "description": "If the login request fails due to network error, display \"Network error occurred\" message.",
-      "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
         "authentication",
@@ -1753,6 +1591,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-ui-validation",
       "title": "Toggle password visibility with eye icon",
       "description": "The password field must have a toggle button to show/hide password text using Eye/EyeOff icons.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -1764,35 +1603,33 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-table-sort",
+      "id": "req-aut-auth-login-api-errors-network",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-table",
-      "title": "Sort users by clicking column headers",
-      "description": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
+      "parentId": "req-aut-auth-login-api-errors",
+      "title": "Handle network errors gracefully",
+      "description": "If the login request fails due to network error, display \"Network error occurred\" message.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "user-management",
-        "ui"
+        "authentication",
+        "api"
       ],
       "position": 1,
       "metadata": {}
     },
     {
-      "id": "req-aut-dashboard-home-ui-welcome-nav",
+      "id": "req-aut-user-mgmt",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-welcome",
-      "title": "Provide navigation links to Users and Reports pages",
-      "description": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
-      "level": "ac",
+      "title": "User Management",
+      "description": "",
+      "dependencies": [],
+      "level": "epic",
       "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 1,
+      "status": "DRAFT",
+      "tags": [],
+      "position": 2,
       "metadata": {}
     },
     {
@@ -1801,6 +1638,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt",
       "title": "Advanced User Form",
       "description": "A comprehensive form with rich controls including cascading department selector, permissions, drag-and-drop upload, and more.",
+      "dependencies": [],
       "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -1817,40 +1655,9 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-advanced-form",
       "title": "Security Settings",
       "description": "The form must configure security-related settings with various control types.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 2,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-pagination",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list",
-      "title": "Pagination & Loading",
-      "description": "The table must paginate results and show appropriate loading states.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 2,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-advanced-form-security-avatar",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form-security",
-      "title": "Avatar upload via drag-and-drop",
-      "description": "A drag-and-drop zone must accept image files for avatar upload, showing the filename after selection.",
-      "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
       "tags": [
         "user-management",
@@ -1865,6 +1672,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-ui-validation",
       "title": "Show Remember me checkbox and Forgot password link",
       "description": "The form must include a \"Remember me\" checkbox and a \"Forgot password?\" link below the password field.",
+      "dependencies": [],
       "level": "ac",
       "priority": "LOW",
       "status": "APPROVED",
@@ -1876,11 +1684,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-pagination-empty",
+      "id": "req-aut-user-mgmt-advanced-form-security-avatar",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Display empty state when no users match filters",
-      "description": "When no users are found, the table must display \"No users found\" message spanning all columns.",
+      "parentId": "req-aut-user-mgmt-advanced-form-security",
+      "title": "Avatar upload via drag-and-drop",
+      "description": "A drag-and-drop zone must accept image files for avatar upload, showing the filename after selection.",
+      "dependencies": [],
       "level": "ac",
       "priority": "LOW",
       "status": "APPROVED",
@@ -1896,6 +1705,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "projectId": "p-aut-demo",
       "title": "Reports & Analytics",
       "description": "Visual data reports including charts for user role distribution and department distribution.",
+      "dependencies": [],
       "level": "epic",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -1906,27 +1716,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-reports-api",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports",
-      "title": "Reports Data API",
-      "description": "API endpoint serving aggregated report data for charts and metrics.",
-      "level": "feature",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "reports",
-        "api"
-      ],
-      "position": 3,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-user-mgmt-edit",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-user-mgmt",
       "title": "Edit User",
       "description": "Edit existing user details through the advanced form pre-filled with current data.",
+      "dependencies": [],
       "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -1938,10 +1733,28 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
+      "id": "req-aut-reports-api",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-reports",
+      "title": "Reports Data API",
+      "description": "API endpoint serving aggregated report data for charts and metrics.",
+      "dependencies": [],
+      "level": "feature",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "reports",
+        "api"
+      ],
+      "position": 3,
+      "metadata": {}
+    },
+    {
       "id": "req-aut-fault",
       "projectId": "p-aut-demo",
       "title": "Fault Injection & Testing Utilities",
       "description": "Endpoints designed for testing error handling, timeouts, and content type variations in automated tests.",
+      "dependencies": [],
       "level": "epic",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -1957,6 +1770,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt",
       "title": "Delete User",
       "description": "Delete individual users with confirmation.",
+      "dependencies": [],
       "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -1973,6 +1787,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt",
       "title": "Batch Operations",
       "description": "Perform bulk actions on multiple selected users simultaneously.",
+      "dependencies": [],
       "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -1989,6 +1804,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt",
       "title": "User Action Utilities",
       "description": "Additional user actions including view details, export, password reset, and account suspension.",
+      "dependencies": [],
       "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2004,6 +1820,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt",
       "title": "User Management API",
       "description": "RESTful API endpoints for all user CRUD operations, batch operations, and utility actions.",
+      "dependencies": [],
       "level": "feature",
       "priority": "CRITICAL",
       "status": "APPROVED",
@@ -2016,27 +1833,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-timeout",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault",
-      "title": "Timeout Simulation",
-      "description": "Simulates a slow API response for testing timeout handling.",
-      "level": "feature",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-reports-stats",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-reports",
       "title": "Reports Stat Cards",
       "description": "Summary metric cards displayed at the top of the reports page.",
+      "dependencies": [],
       "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2048,12 +1850,13 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-timeout-delay",
+      "id": "req-aut-fault-timeout",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-timeout",
-      "title": "Delayed Response",
-      "description": "A configurable delay endpoint for testing client timeout behavior.",
-      "level": "story",
+      "parentId": "req-aut-fault",
+      "title": "Timeout Simulation",
+      "description": "Simulates a slow API response for testing timeout handling.",
+      "dependencies": [],
+      "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -2064,74 +1867,97 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-reports-api-aggregation",
+      "id": "req-aut-dashboard-home-ui",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-api",
-      "title": "Data Aggregation",
-      "description": "The reports API must aggregate user data into chart-friendly formats.",
-      "level": "story",
-      "priority": "MEDIUM",
+      "parentId": "req-aut-dashboard",
+      "title": "Dashboard Home Page",
+      "description": "The dashboard landing page displays key metrics and navigation to other sections.",
+      "dependencies": [],
+      "level": "feature",
+      "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
-        "reports",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-reports-stats-metrics",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-stats",
-      "title": "Metric Display",
-      "description": "The reports page must show key metrics as summary cards.",
-      "level": "story",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "reports",
+        "dashboard",
         "ui"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-api-list",
+      "id": "req-aut-user-mgmt-list",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api",
-      "title": "List & Query",
-      "description": "The API must support querying users with filtering, sorting, and pagination.",
-      "level": "story",
+      "parentId": "req-aut-user-mgmt",
+      "title": "User List View",
+      "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
+      "dependencies": [],
+      "level": "feature",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
         "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-auth-login-api-success",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-auth-login-api",
+      "title": "Successful Authentication",
+      "description": "Valid credentials must be accepted and result in a successful login with token.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
+        "authentication",
         "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-actions-profile",
+      "id": "req-aut-dashboard-home-api-fetch",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions",
-      "title": "Profile & Export",
-      "description": "Users can view detailed profiles and export data.",
+      "parentId": "req-aut-dashboard-home-api",
+      "title": "Data Fetching",
+      "description": "The dashboard API must return aggregated statistics from the user database.",
+      "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
+      "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
-        "user-management"
+        "dashboard",
+        "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-batch-select",
+      "id": "req-aut-user-mgmt-advanced-form-personal",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch",
-      "title": "Multi-Select",
-      "description": "Users must be selectable individually or in bulk via checkboxes.",
+      "parentId": "req-aut-user-mgmt-advanced-form",
+      "title": "Personal Details",
+      "description": "The advanced form must capture basic personal information.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-edit-flow",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-edit",
+      "title": "Edit Flow",
+      "description": "Editing a user must pre-load existing data into the form.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2148,6 +1974,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-delete",
       "title": "Deletion Flow",
       "description": "Deleting a user must require confirmation before proceeding.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2159,11 +1986,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-edit-flow",
+      "id": "req-aut-user-mgmt-batch-select",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-edit",
-      "title": "Edit Flow",
-      "description": "Editing a user must pre-load existing data into the form.",
+      "parentId": "req-aut-user-mgmt-batch",
+      "title": "Multi-Select",
+      "description": "Users must be selectable individually or in bulk via checkboxes.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2175,76 +2003,80 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-advanced-form-personal",
+      "id": "req-aut-user-mgmt-actions-profile",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form",
-      "title": "Personal Details",
-      "description": "The advanced form must capture basic personal information.",
+      "parentId": "req-aut-user-mgmt-actions",
+      "title": "Profile & Export",
+      "description": "Users can view detailed profiles and export data.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
+        "user-management"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-list",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api",
+      "title": "List & Query",
+      "description": "The API must support querying users with filtering, sorting, and pagination.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
         "user-management",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-reports-stats-metrics",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-reports-stats",
+      "title": "Metric Display",
+      "description": "The reports page must show key metrics as summary cards.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "reports",
         "ui"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-dashboard-home-api-fetch",
+      "id": "req-aut-reports-api-aggregation",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-api",
-      "title": "Data Fetching",
-      "description": "The dashboard API must return aggregated statistics from the user database.",
+      "parentId": "req-aut-reports-api",
+      "title": "Data Aggregation",
+      "description": "The reports API must aggregate user data into chart-friendly formats.",
+      "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "dashboard",
+        "reports",
         "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-auth-login-api-success",
+      "id": "req-aut-fault-timeout-delay",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-api",
-      "title": "Successful Authentication",
-      "description": "Valid credentials must be accepted and result in a successful login with token.",
+      "parentId": "req-aut-fault-timeout",
+      "title": "Delayed Response",
+      "description": "A configurable delay endpoint for testing client timeout behavior.",
+      "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
-      "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-quick-add-form",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-quick-add",
-      "title": "Simple Creation Form",
-      "description": "The Quick Add modal provides a minimal form for rapid user creation.",
-      "level": "story",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-fault-timeout-delay-endpoint",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-timeout-delay",
-      "title": "GET /aut-api/fault/timeout returns response after 5-second delay",
-      "description": "The endpoint must delay the response by 5000ms before returning a success JSON response.",
-      "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -2255,59 +2087,114 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-reports-api-aggregation-endpoint",
+      "id": "req-aut-dashboard-home-ui-welcome",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-api-aggregation",
-      "title": "GET /aut-api/reports returns aggregated report data",
-      "description": "The endpoint must return totalUsers, activeUsers, roleDistribution array, and departmentDistribution array computed from the user database.",
-      "level": "ac",
+      "parentId": "req-aut-dashboard-home-ui",
+      "title": "Welcome & Navigation",
+      "description": "The dashboard must greet the user and provide quick links to major sections.",
+      "dependencies": [],
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "reports",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-reports-stats-metrics-cards",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-stats-metrics",
-      "title": "Display stat cards for Total Users, Active Accounts, Admins, and Engagement Rate",
-      "description": "Four metric cards must show: total user count, active account count, admin count, and engagement rate percentage.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "reports",
+        "dashboard",
         "ui"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-api-list-endpoint",
+      "id": "req-aut-user-mgmt-list-table",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api-list",
-      "title": "GET /aut-api/users returns paginated, filterable, sortable list",
-      "description": "The endpoint must accept query params: name, role, status, search, page, limit, sortBy, sortOrder and return paginated results with total count.",
-      "level": "ac",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Table Display & Sorting",
+      "description": "The user table must display data with sortable columns for easy browsing.",
+      "dependencies": [],
+      "level": "story",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
         "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-auth-login-ui-validation-empty",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-auth-login-ui-validation",
+      "title": "Show validation error for empty fields",
+      "description": "When username or password is empty on submit, display error message \"Please fill in all required fields.\"",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "authentication",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-auth-login-api-success-valid",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-auth-login-api-success",
+      "title": "Authenticate with admin/admin123 credentials",
+      "description": "POST /aut-api/auth/login with username \"admin\" and password \"admin123\" must return success with a JWT token.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
+        "authentication",
         "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-actions-profile-view",
+      "id": "req-aut-auth-login-api-errors-invalid",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions-profile",
-      "title": "View user profile details in read-only modal",
-      "description": "Clicking the eye icon must open a detailed read-only view of user profile with all fields displayed.",
+      "parentId": "req-aut-auth-login-api-errors",
+      "title": "Return 401 for invalid credentials",
+      "description": "POST /aut-api/auth/login with wrong credentials must return status 401 with error message \"Invalid credentials\".",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "authentication",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-api-fetch-stats",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-api-fetch",
+      "title": "GET /aut-api/dashboard/stats returns user statistics",
+      "description": "The API must return totalUsers count, activeUsers count, and recentRegistrations list from the user database.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-advanced-form-personal-fields",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-advanced-form-personal",
+      "title": "Personal details section with name, email, and biography",
+      "description": "The Personal Details section must include Full Name, Email Address, and Biography textarea fields.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2319,11 +2206,29 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-batch-select-checkboxes",
+      "id": "req-aut-user-mgmt-advanced-form-security-permissions",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch-select",
-      "title": "Select all or individual users via checkboxes",
-      "description": "A header checkbox must select/deselect all visible users. Individual row checkboxes allow selective multi-select.",
+      "parentId": "req-aut-user-mgmt-advanced-form-security",
+      "title": "System permissions via checkboxes and access level slider",
+      "description": "The Security section must include permission checkboxes (view_reports, manage_users, billing_access, api_access) and a 1-5 range slider for access level.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-edit-flow-preload",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-edit-flow",
+      "title": "Pre-fill form with existing user data on edit",
+      "description": "Clicking the edit button must open the advanced form with all fields populated from the selected user record.",
+      "dependencies": [],
       "level": "ac",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2340,6 +2245,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-delete-flow",
       "title": "Show confirmation dialog before single delete",
       "description": "Clicking the delete action button must show a browser confirm dialog before performing the delete request.",
+      "dependencies": [],
       "level": "ac",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2351,11 +2257,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-edit-flow-preload",
+      "id": "req-aut-user-mgmt-batch-select-checkboxes",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-edit-flow",
-      "title": "Pre-fill form with existing user data on edit",
-      "description": "Clicking the edit button must open the advanced form with all fields populated from the selected user record.",
+      "parentId": "req-aut-user-mgmt-batch-select",
+      "title": "Select all or individual users via checkboxes",
+      "description": "A header checkbox must select/deselect all visible users. Individual row checkboxes allow selective multi-select.",
+      "dependencies": [],
       "level": "ac",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2367,11 +2274,12 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-advanced-form-security-permissions",
+      "id": "req-aut-user-mgmt-actions-profile-view",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form-security",
-      "title": "System permissions via checkboxes and access level slider",
-      "description": "The Security section must include permission checkboxes (view_reports, manage_users, billing_access, api_access) and a 1-5 range slider for access level.",
+      "parentId": "req-aut-user-mgmt-actions-profile",
+      "title": "View user profile details in read-only modal",
+      "description": "Clicking the eye icon must open a detailed read-only view of user profile with all fields displayed.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2383,163 +2291,105 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-advanced-form-personal-fields",
+      "id": "req-aut-user-mgmt-api-list-endpoint",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form-personal",
-      "title": "Personal details section with name, email, and biography",
-      "description": "The Personal Details section must include Full Name, Email Address, and Biography textarea fields.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-api-fetch-stats",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-api-fetch",
-      "title": "GET /aut-api/dashboard/stats returns user statistics",
-      "description": "The API must return totalUsers count, activeUsers count, and recentRegistrations list from the user database.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-auth-login-api-errors-invalid",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-api-errors",
-      "title": "Return 401 for invalid credentials",
-      "description": "POST /aut-api/auth/login with wrong credentials must return status 401 with error message \"Invalid credentials\".",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-auth-login-api-success-valid",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-api-success",
-      "title": "Authenticate with admin/admin123 credentials",
-      "description": "POST /aut-api/auth/login with username \"admin\" and password \"admin123\" must return success with a JWT token.",
+      "parentId": "req-aut-user-mgmt-api-list",
+      "title": "GET /aut-api/users returns paginated, filterable, sortable list",
+      "description": "The endpoint must accept query params: name, role, status, search, page, limit, sortBy, sortOrder and return paginated results with total count.",
+      "dependencies": [],
       "level": "ac",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
-        "authentication",
+        "user-management",
         "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-auth-login-ui-validation-empty",
+      "id": "req-aut-reports-stats-metrics-cards",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-auth-login-ui-validation",
-      "title": "Show validation error for empty fields",
-      "description": "When username or password is empty on submit, display error message \"Please fill in all required fields.\"",
+      "parentId": "req-aut-reports-stats-metrics",
+      "title": "Display stat cards for Total Users, Active Accounts, Admins, and Engagement Rate",
+      "description": "Four metric cards must show: total user count, active account count, admin count, and engagement rate percentage.",
+      "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "authentication",
+        "reports",
         "ui"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-quick-add-form-modal",
+      "id": "req-aut-reports-api-aggregation-endpoint",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-quick-add-form",
-      "title": "Open modal form with name, email, role, and status fields",
-      "description": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
+      "parentId": "req-aut-reports-api-aggregation",
+      "title": "GET /aut-api/reports returns aggregated report data",
+      "description": "The endpoint must return totalUsers, activeUsers, roleDistribution array, and departmentDistribution array computed from the user database.",
+      "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "user-management",
-        "crud"
+        "reports",
+        "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-pagination-nav",
+      "id": "req-aut-fault-timeout-delay-endpoint",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Support pagination with page number buttons and navigation",
-      "description": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
+      "parentId": "req-aut-fault-timeout-delay",
+      "title": "GET /aut-api/fault/timeout returns response after 5-second delay",
+      "description": "The endpoint must delay the response by 5000ms before returning a success JSON response.",
+      "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-list-filter-inputs",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-filter",
-      "title": "Filter users by name search, role dropdown, and status dropdown",
-      "description": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-dashboard-home-ui-stats-cards",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-dashboard-home-ui-stats",
-      "title": "Show stat cards for Total Users, Active Sessions, and System Status",
-      "description": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-fault-error",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault",
-      "title": "Error Simulation",
-      "description": "Simulates server errors for testing error handling logic.",
-      "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
         "fault-injection",
         "api"
       ],
-      "position": 1,
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-welcome-greeting",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui-welcome",
+      "title": "Display welcome message for authenticated user",
+      "description": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-table-display",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-table",
+      "title": "Display user table with Name, Email, Role, Status, and date columns",
+      "description": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "CRITICAL",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
       "metadata": {}
     },
     {
@@ -2548,6 +2398,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-reports",
       "title": "Role Distribution Chart",
       "description": "A donut pie chart visualizing users by their assigned role.",
+      "dependencies": [],
       "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2559,43 +2410,30 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-api-crud",
+      "id": "req-aut-fault-error",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api",
-      "title": "Create & Update",
-      "description": "The API must support creating and updating user records.",
-      "level": "story",
-      "priority": "HIGH",
+      "parentId": "req-aut-fault",
+      "title": "Error Simulation",
+      "description": "Simulates server errors for testing error handling logic.",
+      "dependencies": [],
+      "level": "feature",
+      "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "user-management",
+        "fault-injection",
         "api"
       ],
       "position": 1,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-actions-admin",
+      "id": "req-aut-user-mgmt-quick-add",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions",
-      "title": "Admin Utilities",
-      "description": "Administrative actions for user account management.",
-      "level": "story",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-batch-actions",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch",
-      "title": "Batch Actions",
-      "description": "Batch operations must support status updates and deletion.",
-      "level": "story",
+      "parentId": "req-aut-user-mgmt",
+      "title": "Quick Add User",
+      "description": "A simple modal form for quickly creating a new user with basic fields.",
+      "dependencies": [],
+      "level": "feature",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -2611,6 +2449,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-advanced-form",
       "title": "Job Configuration",
       "description": "The form must capture job-related details with rich controls.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2622,12 +2461,46 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-api-crud-update",
+      "id": "req-aut-user-mgmt-batch-actions",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api-crud",
-      "title": "PUT and PATCH /aut-api/users/:id for updates",
-      "description": "PUT must replace all fields. PATCH must support partial update. Both must update the updatedAt timestamp.",
-      "level": "ac",
+      "parentId": "req-aut-user-mgmt-batch",
+      "title": "Batch Actions",
+      "description": "Batch operations must support status updates and deletion.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-actions-admin",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-actions",
+      "title": "Admin Utilities",
+      "description": "Administrative actions for user account management.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-crud",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api",
+      "title": "Create & Update",
+      "description": "The API must support creating and updating user records.",
+      "dependencies": [],
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -2638,91 +2511,31 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-actions-admin-suspend",
+      "id": "req-aut-dashboard-home-ui-stats",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions-admin",
-      "title": "Suspend user account with confirmation",
-      "description": "The More Options menu must include a suspend action that sets user status to inactive after confirmation.",
-      "level": "ac",
-      "priority": "LOW",
-      "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-actions-profile-export",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions-profile",
-      "title": "Export user data as downloadable JSON file",
-      "description": "The More Options menu must include an export action that downloads user data as a JSON file.",
-      "level": "ac",
-      "priority": "LOW",
-      "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-batch-actions-delete",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch-actions",
-      "title": "Batch delete selected users with confirmation",
-      "description": "\"Delete Selected\" must show a confirmation dialog with the count of users to be deleted before sending batch delete request.",
-      "level": "ac",
+      "parentId": "req-aut-dashboard-home-ui",
+      "title": "Statistics Display",
+      "description": "The dashboard must display real-time system metrics in stat cards.",
+      "dependencies": [],
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
-        "user-management",
-        "crud"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-batch-select-bar",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch-select",
-      "title": "Show batch action bar with selected count",
-      "description": "When users are selected, a batch action bar must appear showing the count badge, Activate/Deactivate buttons, and Delete Selected button.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
-      "position": 1,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-advanced-form-security-2fa",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form-security",
-      "title": "Two-factor authentication toggle switch",
-      "description": "A toggle switch must allow enabling/disabling two-factor authentication with a styled sliding control.",
-      "level": "ac",
-      "priority": "LOW",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
+        "dashboard",
         "ui"
       ],
       "position": 1,
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-advanced-form-job-dates",
+      "id": "req-aut-user-mgmt-list-filter",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-advanced-form-job",
-      "title": "Contract period date range picker",
-      "description": "The Job Details section must include start date and end date native date inputs with a \"to\" separator.",
-      "level": "ac",
-      "priority": "LOW",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Filtering",
+      "description": "Users must be filterable by text search and dropdown selections.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
         "user-management",
@@ -2737,6 +2550,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-auth-login-api-success",
       "title": "Store token in localStorage and redirect to dashboard",
       "description": "On successful login, the token must be stored as \"aut_token\" in localStorage and navigate to /aut.",
+      "dependencies": [],
       "level": "ac",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -2748,11 +2562,146 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-list-pagination-loading",
+      "id": "req-aut-user-mgmt-advanced-form-job-dates",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-list-pagination",
-      "title": "Show loading skeleton and syncing overlay",
-      "description": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
+      "parentId": "req-aut-user-mgmt-advanced-form-job",
+      "title": "Contract period date range picker",
+      "description": "The Job Details section must include start date and end date native date inputs with a \"to\" separator.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-advanced-form-security-2fa",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-advanced-form-security",
+      "title": "Two-factor authentication toggle switch",
+      "description": "A toggle switch must allow enabling/disabling two-factor authentication with a styled sliding control.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-batch-select-bar",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-batch-select",
+      "title": "Show batch action bar with selected count",
+      "description": "When users are selected, a batch action bar must appear showing the count badge, Activate/Deactivate buttons, and Delete Selected button.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-batch-actions-delete",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-batch-actions",
+      "title": "Batch delete selected users with confirmation",
+      "description": "\"Delete Selected\" must show a confirmation dialog with the count of users to be deleted before sending batch delete request.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-actions-profile-export",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-actions-profile",
+      "title": "Export user data as downloadable JSON file",
+      "description": "The More Options menu must include an export action that downloads user data as a JSON file.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "user-management"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-actions-admin-suspend",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-actions-admin",
+      "title": "Suspend user account with confirmation",
+      "description": "The More Options menu must include a suspend action that sets user status to inactive after confirmation.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "user-management"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-crud-update",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api-crud",
+      "title": "PUT and PATCH /aut-api/users/:id for updates",
+      "description": "PUT must replace all fields. PATCH must support partial update. Both must update the updatedAt timestamp.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "api"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-welcome-nav",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui-welcome",
+      "title": "Provide navigation links to Users and Reports pages",
+      "description": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-table-sort",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-table",
+      "title": "Sort users by clicking column headers",
+      "description": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2764,33 +2713,35 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-xml",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault",
-      "title": "XML Content Type Response",
-      "description": "Returns XML formatted response for testing content type handling.",
-      "level": "feature",
-      "priority": "LOW",
-      "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
-      "position": 2,
-      "metadata": {}
-    },
-    {
       "id": "req-aut-reports-dept-chart",
       "projectId": "p-aut-demo",
       "parentId": "req-aut-reports",
       "title": "Department Distribution Chart",
       "description": "A bar chart displaying user count per department.",
+      "dependencies": [],
       "level": "feature",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
         "reports",
         "ui"
+      ],
+      "position": 2,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-fault-xml",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-fault",
+      "title": "XML Content Type Response",
+      "description": "Returns XML formatted response for testing content type handling.",
+      "dependencies": [],
+      "level": "feature",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "fault-injection",
+        "api"
       ],
       "position": 2,
       "metadata": {}
@@ -2801,12 +2752,30 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-api",
       "title": "Delete & Batch",
       "description": "The API must support single/batch deletion and batch updates.",
+      "dependencies": [],
       "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
         "user-management",
         "api"
+      ],
+      "position": 2,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list",
+      "title": "Pagination & Loading",
+      "description": "The table must paginate results and show appropriate loading states.",
+      "dependencies": [],
+      "level": "story",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
       ],
       "position": 2,
       "metadata": {}
@@ -2817,6 +2786,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-batch-actions",
       "title": "Handle mixed status selection gracefully",
       "description": "When selected users have mixed active/inactive statuses, show warning badge and disable batch status update buttons.",
+      "dependencies": [],
       "level": "ac",
       "priority": "LOW",
       "status": "APPROVED",
@@ -2828,33 +2798,35 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-xml-content",
+      "id": "req-aut-user-mgmt-list-pagination-empty",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-xml",
-      "title": "Content Type Testing",
-      "description": "An endpoint that returns XML instead of JSON for testing content negotiation.",
-      "level": "story",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Display empty state when no users match filters",
+      "description": "When no users are found, the table must display \"No users found\" message spanning all columns.",
+      "dependencies": [],
+      "level": "ac",
       "priority": "LOW",
       "status": "APPROVED",
       "tags": [
-        "fault-injection",
-        "api"
+        "user-management",
+        "ui"
       ],
-      "position": 0,
+      "position": 2,
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-error-500",
+      "id": "req-aut-reports-role-chart-pie",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-error",
-      "title": "Server Error Testing",
-      "description": "An endpoint that randomly returns 500 errors for testing error recovery.",
+      "parentId": "req-aut-reports-role-chart",
+      "title": "Pie Chart Visualization",
+      "description": "The role distribution must be visualized as an interactive donut chart.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "fault-injection",
-        "api"
+        "reports",
+        "ui"
       ],
       "position": 0,
       "metadata": {}
@@ -2865,6 +2837,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-reports-dept-chart",
       "title": "Bar Chart Visualization",
       "description": "The department distribution must be visualized as an interactive bar chart.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
@@ -2876,28 +2849,30 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-reports-role-chart-pie",
+      "id": "req-aut-fault-error-500",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-role-chart",
-      "title": "Pie Chart Visualization",
-      "description": "The role distribution must be visualized as an interactive donut chart.",
+      "parentId": "req-aut-fault-error",
+      "title": "Server Error Testing",
+      "description": "An endpoint that randomly returns 500 errors for testing error recovery.",
+      "dependencies": [],
       "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
-        "reports",
-        "ui"
+        "fault-injection",
+        "api"
       ],
       "position": 0,
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-xml-content-endpoint",
+      "id": "req-aut-fault-xml-content",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-xml-content",
-      "title": "GET /aut-api/fault/xml-content returns XML with proper content type",
-      "description": "The endpoint must return XML formatted response with Content-Type header set to application/xml.",
-      "level": "ac",
+      "parentId": "req-aut-fault-xml",
+      "title": "Content Type Testing",
+      "description": "An endpoint that returns XML instead of JSON for testing content negotiation.",
+      "dependencies": [],
+      "level": "story",
       "priority": "LOW",
       "status": "APPROVED",
       "tags": [
@@ -2908,108 +2883,13 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-fault-error-500-endpoint",
+      "id": "req-aut-user-mgmt-quick-add-form",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-fault-error-500",
-      "title": "GET /aut-api/fault/simulate-500 returns 500 error with 50% probability",
-      "description": "The endpoint must return HTTP 500 with error message 50% of the time, and success the other 50%.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-reports-dept-chart-bar-display",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-dept-chart-bar",
-      "title": "Display bar chart of users per department with tooltip",
-      "description": "A bar chart must show department names on X-axis and user counts on Y-axis with hover tooltips for exact values.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-reports-role-chart-pie-display",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-reports-role-chart-pie",
-      "title": "Display donut pie chart of users grouped by role with legend",
-      "description": "The pie chart must show admin, editor, and viewer segments with different colors. A legend must show role names with corresponding colors.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-api-batch-delete",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api-batch",
-      "title": "DELETE endpoints for single and batch removal",
-      "description": "DELETE /aut-api/users/:id removes single user. POST /aut-api/users/batch-delete removes multiple users by ID array.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-api-crud-create",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api-crud",
-      "title": "POST /aut-api/users creates user with name/email validation",
-      "description": "The endpoint must validate that name and email are required strings, return 400 with error message if validation fails.",
-      "level": "ac",
-      "priority": "HIGH",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-actions-admin-pw-reset",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-actions-admin",
-      "title": "Trigger password reset email",
-      "description": "The More Options menu must include a password reset action that calls POST /aut-api/users/:id/reset-password.",
-      "level": "ac",
-      "priority": "MEDIUM",
-      "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
-      "position": 0,
-      "metadata": {}
-    },
-    {
-      "id": "req-aut-user-mgmt-batch-actions-activate",
-      "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-batch-actions",
-      "title": "Batch activate or deactivate selected users",
-      "description": "\"Activate All\" must set status to active for all selected inactive users. \"Deactivate All\" must set status to inactive for selected active users.",
-      "level": "ac",
+      "parentId": "req-aut-user-mgmt-quick-add",
+      "title": "Simple Creation Form",
+      "description": "The Quick Add modal provides a minimal form for rapid user creation.",
+      "dependencies": [],
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -3025,6 +2905,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "parentId": "req-aut-user-mgmt-advanced-form-job",
       "title": "Cascading department tree selector",
       "description": "The department selector must support 3-level cascading: Development > Frontend/Backend > React/Vue/Node.js/Python, and Design > UI Design/UX Research.",
+      "dependencies": [],
       "level": "ac",
       "priority": "HIGH",
       "status": "APPROVED",
@@ -3036,17 +2917,239 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "metadata": {}
     },
     {
-      "id": "req-aut-user-mgmt-api-batch-update",
+      "id": "req-aut-user-mgmt-batch-actions-activate",
       "projectId": "p-aut-demo",
-      "parentId": "req-aut-user-mgmt-api-batch",
-      "title": "POST /aut-api/users/batch-update for mass updates",
-      "description": "The endpoint must accept { ids: number[], data: object } and apply the data update to all specified users.",
+      "parentId": "req-aut-user-mgmt-batch-actions",
+      "title": "Batch activate or deactivate selected users",
+      "description": "\"Activate All\" must set status to active for all selected inactive users. \"Deactivate All\" must set status to inactive for selected active users.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-actions-admin-pw-reset",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-actions-admin",
+      "title": "Trigger password reset email",
+      "description": "The More Options menu must include a password reset action that calls POST /aut-api/users/:id/reset-password.",
+      "dependencies": [],
       "level": "ac",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
         "user-management",
         "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-crud-create",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api-crud",
+      "title": "POST /aut-api/users creates user with name/email validation",
+      "description": "The endpoint must validate that name and email are required strings, return 400 with error message if validation fails.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-batch-delete",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api-batch",
+      "title": "DELETE endpoints for single and batch removal",
+      "description": "DELETE /aut-api/users/:id removes single user. POST /aut-api/users/batch-delete removes multiple users by ID array.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-reports-role-chart-pie-display",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-reports-role-chart-pie",
+      "title": "Display donut pie chart of users grouped by role with legend",
+      "description": "The pie chart must show admin, editor, and viewer segments with different colors. A legend must show role names with corresponding colors.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "reports",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-reports-dept-chart-bar-display",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-reports-dept-chart-bar",
+      "title": "Display bar chart of users per department with tooltip",
+      "description": "A bar chart must show department names on X-axis and user counts on Y-axis with hover tooltips for exact values.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "reports",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-fault-error-500-endpoint",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-fault-error-500",
+      "title": "GET /aut-api/fault/simulate-500 returns 500 error with 50% probability",
+      "description": "The endpoint must return HTTP 500 with error message 50% of the time, and success the other 50%.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "fault-injection",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-fault-xml-content-endpoint",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-fault-xml-content",
+      "title": "GET /aut-api/fault/xml-content returns XML with proper content type",
+      "description": "The endpoint must return XML formatted response with Content-Type header set to application/xml.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "LOW",
+      "status": "APPROVED",
+      "tags": [
+        "fault-injection",
+        "api"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-dashboard-home-ui-stats-cards",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-dashboard-home-ui-stats",
+      "title": "Show stat cards for Total Users, Active Sessions, and System Status",
+      "description": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-filter-inputs",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-filter",
+      "title": "Filter users by name search, role dropdown, and status dropdown",
+      "description": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination-nav",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Support pagination with page number buttons and navigation",
+      "description": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-quick-add-form-modal",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-quick-add-form",
+      "title": "Open modal form with name, email, role, and status fields",
+      "description": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "HIGH",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "crud"
+      ],
+      "position": 0,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-api-batch-update",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-api-batch",
+      "title": "POST /aut-api/users/batch-update for mass updates",
+      "description": "The endpoint must accept { ids: number[], data: object } and apply the data update to all specified users.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "api"
+      ],
+      "position": 1,
+      "metadata": {}
+    },
+    {
+      "id": "req-aut-user-mgmt-list-pagination-loading",
+      "projectId": "p-aut-demo",
+      "parentId": "req-aut-user-mgmt-list-pagination",
+      "title": "Show loading skeleton and syncing overlay",
+      "description": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
+      "dependencies": [],
+      "level": "ac",
+      "priority": "MEDIUM",
+      "status": "APPROVED",
+      "tags": [
+        "user-management",
+        "ui"
       ],
       "position": 1,
       "metadata": {}

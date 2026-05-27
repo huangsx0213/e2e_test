@@ -127,33 +127,33 @@ businessFlows: {
     approve: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/approve`, { method: 'POST' }),
     unapprove: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/unapprove`, { method: 'POST' }),
   },
-  pipeline: {
-    runs: (projectId: string) => apiFetch<any[]>(`pipeline/runs/${projectId}`),
-    active: (projectId: string) => apiFetch<any | null>(`pipeline/active/${projectId}`),
-    get: (runId: string) => apiFetch<any>(`pipeline/${runId}`),
+  testGen: {
+    runs: (projectId: string) => apiFetch<any[]>(`test-gen/runs/${projectId}`),
+    active: (projectId: string) => apiFetch<any | null>(`test-gen/active/${projectId}`),
+    get: (runId: string) => apiFetch<any>(`test-gen/${runId}`),
     start: (projectId: string, config: any) =>
-      apiFetch<{ runId: string }>(`pipeline/${projectId}/start`, {
+      apiFetch<{ runId: string }>(`test-gen/${projectId}/start`, {
         method: 'POST',
         body: JSON.stringify(config),
       }),
     resume: (runId: string, action: any) =>
-      apiFetch<{ success: boolean }>(`pipeline/${runId}/resume`, {
+      apiFetch<{ success: boolean }>(`test-gen/${runId}/resume`, {
         method: 'POST',
         body: JSON.stringify(action),
       }),
     checkpoint: (runId: string) =>
-      apiFetch<any>(`pipeline/${runId}/checkpoint`),
+      apiFetch<any>(`test-gen/${runId}/checkpoint`),
     saveCheckpointEdits: (runId: string, editedData: any, agentName: string) =>
-      apiFetch<{ success: boolean }>(`pipeline/${runId}/checkpoint-data`, {
+      apiFetch<{ success: boolean }>(`test-gen/${runId}/checkpoint-data`, {
         method: 'PATCH',
         body: JSON.stringify({ editedData, agentName }),
       }),
     logs: (runId: string, agentName?: string) =>
-      apiFetch<any[]>(`pipeline/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
+      apiFetch<any[]>(`test-gen/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
     abort: (runId: string) =>
-      apiFetch<{ success: boolean }>(`pipeline/${runId}/abort`, { method: 'POST' }),
+      apiFetch<{ success: boolean }>(`test-gen/${runId}/abort`, { method: 'POST' }),
     delete: (runId: string) =>
-      apiFetch<{ success: boolean }>(`pipeline/${runId}`, { method: 'DELETE' }),
+      apiFetch<{ success: boolean }>(`test-gen/${runId}`, { method: 'DELETE' }),
   },
   nlCases: {
     ...createCrudService<any>('nl-cases'),

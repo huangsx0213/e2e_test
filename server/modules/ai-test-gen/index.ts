@@ -116,4 +116,4 @@ router.get('/:runId/stream', (req, res) => {
   sseGateway.attachStream(p(req.params.runId), res);
 });
 
-export const aiPipelineModule = { basePath: '/api/pipeline', router };
+export const aiTestGenModule = { basePath: '/api/test-gen', router };

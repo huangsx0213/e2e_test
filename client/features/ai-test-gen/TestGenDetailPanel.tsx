@@ -353,7 +353,10 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
             return (
             <div key={i} className="text-sm bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-slate-800 text-sm truncate">{tc.title || tc.id}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="font-semibold text-slate-800 text-sm truncate">{tc.title || tc.id}</span>
+                </div>
                 <div className="flex flex-wrap items-center gap-1 shrink-0">
                   {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${tc.priority === 'high' || tc.priority === 'p0' ? 'bg-rose-50 text-rose-600 border-rose-100' : tc.priority === 'medium' || tc.priority === 'p1' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.priority}</span>}
                   {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
@@ -465,6 +468,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                 <div key={i} className="flex flex-col gap-1 bg-white rounded border border-slate-100 px-2 py-1 shadow-sm">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-1.5 truncate">
+                      <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1 rounded">{String(i + 1).padStart(2, '0')}</span>
                       <button onClick={() => toggleField(`matrix_${i}`)} className="shrink-0 text-slate-300 hover:text-slate-500">
                         {matrixExp ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       </button>
@@ -541,6 +545,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
               <div key={i} className="text-sm bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 truncate">
+                    <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
                     <span className="h-3.5 w-3.5 rounded-full bg-emerald-50 text-[10px] text-emerald-600 font-bold border border-emerald-100 flex items-center justify-center shrink-0">✓</span>
                     <span className="font-medium text-slate-700 truncate">{tc.title || tc.id}</span>
                   </div>
@@ -1125,6 +1130,7 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
               <div key={item.id} className="text-sm bg-white border border-slate-100 rounded-xl p-3 text-slate-700 shadow-sm flex flex-col gap-1.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
+                    <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
                     <Check size={11} className="text-emerald-500 shrink-0 mt-0.5 self-start" />
                     <p className="font-semibold text-slate-800">{data.title || data.condition || `Item ${i + 1}`}</p>
                   </div>
@@ -1274,6 +1280,7 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                 >
                   <div className="flex items-center justify-between w-full gap-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="shrink-0 text-[10px] font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded font-bold">{String(items.indexOf(item) + 1).padStart(2, '0')}</span>
                       {isNew && <span className="shrink-0 text-[10px] font-black tracking-widest text-emerald-600 bg-emerald-100/60 px-1.5 py-0.5 rounded border border-emerald-200">ADDED</span>}
                       {isModified && <span className="shrink-0 text-[10px] font-black tracking-widest text-amber-600 bg-amber-100/60 px-1.5 py-0.5 rounded border border-amber-200">EDITED</span>}
                       <span className="text-sm text-blue-600 font-extrabold flex items-center gap-1"><Edit3 size={14} /> Editing</span>
@@ -1286,55 +1293,79 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                   <div className="mt-2.5 w-full space-y-2 text-sm">
                     {checkpointData?.conditions ? (
                       <>
-                        <textarea value={item.originalData?.condition || ''} onChange={e => handleFieldEdit(item.id, 'condition', e.target.value)}
-                          className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
-                        <div className="grid grid-cols-3 gap-2">
-                          <select value={item.originalData?.category || 'happy-path'} onChange={e => handleFieldEdit(item.id, 'category', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="happy-path">Happy Path</option>
-                            <option value="alternate">Alternate</option>
-                            <option value="error">Error</option>
-                            <option value="boundary">Boundary</option>
-                          </select>
-                          <select value={item.originalData?.riskLevel || 'Medium'} onChange={e => handleFieldEdit(item.id, 'riskLevel', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="High">High</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Low">Low</option>
-                          </select>
-                          <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="Critical">Critical</option>
-                            <option value="High">High</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Low">Low</option>
-                          </select>
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Condition</label>
+                          <textarea value={item.originalData?.condition || ''} onChange={e => handleFieldEdit(item.id, 'condition', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
                         </div>
-                        <input value={item.originalData?.primaryTechnique || ''} onChange={e => handleFieldEdit(item.id, 'primaryTechnique', e.target.value)}
-                          className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Primary Technique" />
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Category</label>
+                            <select value={item.originalData?.category || 'happy-path'} onChange={e => handleFieldEdit(item.id, 'category', e.target.value)}
+                              className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="happy-path">Happy Path</option>
+                              <option value="alternate">Alternate</option>
+                              <option value="error">Error</option>
+                              <option value="boundary">Boundary</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Risk Level</label>
+                            <select value={item.originalData?.riskLevel || 'Medium'} onChange={e => handleFieldEdit(item.id, 'riskLevel', e.target.value)}
+                              className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="High">High</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Priority</label>
+                            <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
+                              className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="Critical">Critical</option>
+                              <option value="High">High</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Low">Low</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Primary Technique</label>
+                          <input value={item.originalData?.primaryTechnique || ''} onChange={e => handleFieldEdit(item.id, 'primaryTechnique', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Primary Technique" />
+                        </div>
                       </>
                     ) : (
                       <>
-                        <textarea value={item.originalData?.title || ''} onChange={e => handleFieldEdit(item.id, 'title', e.target.value)}
-                          className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Title</label>
+                          <textarea value={item.originalData?.title || ''} onChange={e => handleFieldEdit(item.id, 'title', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
-                          <select value={item.originalData?.category || 'happy-path'} onChange={e => handleFieldEdit(item.id, 'category', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="happy-path">Happy Path</option>
-                            <option value="alternate">Alternate</option>
-                            <option value="error">Error</option>
-                            <option value="boundary">Boundary</option>
-                          </select>
-                          <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="Critical">Critical</option>
-                            <option value="High">High</option>
-                            <option value="Medium">Medium</option>
-                            <option value="Low">Low</option>
-                            <option value="P0">P0</option>
-                            <option value="P1">P1</option>
-                            <option value="P2">P2</option>
-                          </select>
+                          <div>
+                            <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Category</label>
+                            <select value={item.originalData?.category || 'happy-path'} onChange={e => handleFieldEdit(item.id, 'category', e.target.value)}
+                              className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="happy-path">Happy Path</option>
+                              <option value="alternate">Alternate</option>
+                              <option value="error">Error</option>
+                              <option value="boundary">Boundary</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Priority</label>
+                            <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
+                              className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                              <option value="Critical">Critical</option>
+                              <option value="High">High</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Low">Low</option>
+                              <option value="P0">P0</option>
+                              <option value="P1">P1</option>
+                              <option value="P2">P2</option>
+                            </select>
+                          </div>
                         </div>
                         <div>
                           <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Preconditions</label>

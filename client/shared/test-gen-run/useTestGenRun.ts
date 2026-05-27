@@ -69,7 +69,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
 
   const sseUrl = useMemo(() => {
     const rid = explicitRunId ?? state.runId;
-    return rid && state.isRunning ? `/api/pipeline/${rid}/stream` : null;
+    return rid && state.isRunning ? `/api/test-gen/${rid}/stream` : null;
   }, [explicitRunId, state.runId, state.isRunning]);
 
   const handleSSEEvent = useCallback((event: { type: string; data: any }) => {

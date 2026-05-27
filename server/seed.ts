@@ -40,8 +40,8 @@ function seedRequirements(): void {
 
 function clearAllData(): void {
   db.exec(`
-    DELETE FROM pipeline_coverages;
-    DELETE FROM pipeline_runs;
+    DELETE FROM test_gen_coverages;
+    DELETE FROM test_gen_runs;
     DELETE FROM natural_language_test_cases;
     DELETE FROM test_conditions;
     DELETE FROM report_logs;

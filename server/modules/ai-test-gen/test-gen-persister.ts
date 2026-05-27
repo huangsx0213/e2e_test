@@ -12,7 +12,7 @@ export class TestGenPersister implements RunPersister {
   saveAgentLog(snapshot: AgentRunSnapshot, runId: string): void {
     const json = (v: unknown) => v !== null && v !== undefined ? JSON.stringify(v) : null;
     db.prepare(`
-      INSERT INTO pipeline_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
+      INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
       VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         input_prompt = COALESCE(excluded.input_prompt, input_prompt),
@@ -33,12 +33,12 @@ export class TestGenPersister implements RunPersister {
   updateRunStatus(runId: string, status: string, phase: string, usage?: unknown): void {
     if (usage) {
       db.prepare(`
-        UPDATE pipeline_runs SET status = ?, phase = ?, token_usage = ?, updated_at = datetime('now')
+        UPDATE test_gen_runs SET status = ?, phase = ?, token_usage = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(status, phase, JSON.stringify(usage), runId);
     } else {
       db.prepare(`
-        UPDATE pipeline_runs SET status = ?, phase = ?, updated_at = datetime('now')
+        UPDATE test_gen_runs SET status = ?, phase = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(status, phase, runId);
     }
@@ -48,7 +48,7 @@ export class TestGenPersister implements RunPersister {
     const logId = randomId('audit');
     const json = (v: unknown) => v !== null && v !== undefined ? JSON.stringify(v) : null;
     db.prepare(`
-      INSERT INTO pipeline_audit_log (id, run_id, checkpoint_id, action, user_id, snapshot, created_at)
+      INSERT INTO test_gen_audit_log (id, run_id, checkpoint_id, action, user_id, snapshot, created_at)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(logId, runId, checkpointId, action, userId, json(snapshot));
   }

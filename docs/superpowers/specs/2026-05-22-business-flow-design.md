@@ -25,7 +25,7 @@ The current codebase already has the right modular shape for this feature:
 
 - `server/modules/requirements/` owns requirement CRUD and import
 - `client/features/requirements/` owns the requirement tree and editor UI
-- `server/modules/test-conditions/`, `server/modules/nl-cases/`, and `server/modules/ai-pipeline/` already represent downstream phases
+- `server/modules/test-conditions/`, `server/modules/nl-cases/`, and `server/modules/ai-test-gen/` already represent downstream phases
 - `server/modules/requirements/index-generator.ts` already builds a lightweight requirement index for AI context
 
 The main gap is that requirements currently model tree structure only. They do not express cross-node temporal dependencies, and there is no separate business-path abstraction that can be approved and consumed by the pipeline.
@@ -37,7 +37,7 @@ Adopt a dual-model approach:
 - `Requirement` remains the source of truth for spatial hierarchy
 - `Requirement.dependencies` represents logical prerequisite edges between requirements
 - `BusinessFlow` represents a curated temporal path through the requirement graph
-- `ai-pipeline` consumes approved flows as an expanded blueprint input
+- `ai-test-gen` consumes approved flows as an expanded blueprint input
 
 This preserves clean boundaries:
 

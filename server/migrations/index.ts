@@ -13,14 +13,12 @@ import { migration009AgentsVersion } from './009_agents_version.ts';
 import { migration010ProjectElementMetadata } from './010_project_element_metadata.ts';
 import { migration011StepMetadata } from './011_step_metadata.ts';
 import { migration012RequirementsSchema } from './012_requirements_schema.ts';
-import { migration013AiPipelineSchema } from './013_ai_pipeline_schema.ts';
+import { migration013AiTestGenSchema } from './013_ai_test_gen_schema.ts';
 import { migration014DynamicVariableEvaluationStrategy } from './014_dynamic_variable_evaluation_strategy.ts';
 import { migration015RequirementLevel } from './015_requirement_level.ts';
 import { migration016RequirementTags } from './016_requirement_tags.ts';
 import { migration017SuitePosition } from './017_suite_position.ts';
 import { migration018RequirementDependenciesAndBusinessFlows } from './018_requirement_dependencies_and_business_flows.ts';
-import { migration019PipelineProduction } from './019_pipeline_production.ts';
-import { migration020 } from './020_pipeline_agent_logs.ts';
 import { migration021ProviderConfigFix } from './021_provider_config_fix.ts';
 
 import { seedDefaults } from '../seed.ts';
@@ -40,15 +38,13 @@ export const migrations: Migration[] = [
   migration010ProjectElementMetadata,
   migration011StepMetadata,
   migration012RequirementsSchema,
-  migration013AiPipelineSchema,
+  migration013AiTestGenSchema,
   migration014DynamicVariableEvaluationStrategy,
   migration015RequirementLevel,
   migration016RequirementTags,
   migration017SuitePosition,
 migration018RequirementDependenciesAndBusinessFlows,
-  migration019PipelineProduction,
-  migration020,
-  migration021ProviderConfigFix,
+migration021ProviderConfigFix,
 ];
 
 function appliedMigrationIds(): Set<string> {

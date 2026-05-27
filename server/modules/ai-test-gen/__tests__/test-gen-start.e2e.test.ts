@@ -30,7 +30,7 @@ const mockNlCaseRepo = vi.hoisted(() => ({ save: vi.fn() }));
 const mockBusinessFlowRepo = vi.hoisted(() => ({ listByProject: vi.fn(() => []) }));
 const mockBuildBusinessFlowBlueprints = vi.hoisted(() => vi.fn(() => []));
 const mockCreateAIProviderWithFallback = vi.hoisted(() => vi.fn());
-const mockCreateNlPipeline = vi.hoisted(() => vi.fn());
+const mockCreateTestGenerationPipeline = vi.hoisted(() => vi.fn());
 const mockComputePromptVersion = vi.hoisted(() => vi.fn(() => 'test-version'));
 const mockDecryptApiKey = vi.hoisted(() => vi.fn((key: string) => key));
 
@@ -51,7 +51,7 @@ vi.mock('../../nl-cases/repository.ts', () => ({ nlCaseRepo: mockNlCaseRepo }));
 vi.mock('../../business-flows/repository.ts', () => ({ businessFlowRepo: mockBusinessFlowRepo }));
 vi.mock('../business-flow-blueprint.ts', () => ({ buildBusinessFlowBlueprints: mockBuildBusinessFlowBlueprints }));
 vi.mock('../../../../shared/ai/provider.ts', () => ({ createAIProviderWithFallback: mockCreateAIProviderWithFallback }));
-vi.mock('../../../../shared/ai-test-gen/test-generation.ts', () => ({ createNlPipeline: mockCreateNlPipeline }));
+vi.mock('../../../../shared/ai-test-gen/test-generation.ts', () => ({ createTestGenerationPipeline: mockCreateTestGenerationPipeline }));
 vi.mock('../../../../shared/ai/prompt-version.ts', () => ({ computePromptVersion: mockComputePromptVersion }));
 vi.mock('../test-gen-persister.ts', () => ({ RunPersister: {}, TestGenPersister: mockTestGenPersister }));
 
@@ -135,7 +135,7 @@ describe('startPipeline e2e', () => {
       expect(mockPipelineRepo.getProviderConfigByName).toHaveBeenCalledWith('test-provider');
       expect(mockPipelineRepo.updateBatchCount).toHaveBeenCalledWith('run-1', 1);
       expect(mockCreateAIProviderWithFallback).toHaveBeenCalled();
-      expect(mockCreateNlPipeline).toHaveBeenCalledWith(
+      expect(mockCreateTestGenerationPipeline).toHaveBeenCalledWith(
         fakeProvider, expect.anything(), expect.anything(),
         expect.objectContaining({ modelName: 'gpt-4o', promptVersion: 'test-version' }),
         expect.anything(),
@@ -222,7 +222,7 @@ describe('startPipeline e2e', () => {
       mockPipelineRepo.getActiveProviderConfig.mockReturnValue(PROVIDER_CONFIG);
       const fakeProvider = { chat: vi.fn(), streamChat: vi.fn() };
       mockCreateAIProviderWithFallback.mockReturnValue(fakeProvider);
-      mockCreateNlPipeline.mockResolvedValue(makeFakePipeline());
+      mockCreateTestGenerationPipeline.mockResolvedValue(makeFakePipeline());
 
       service.abortRun('run-1');
 
@@ -231,7 +231,7 @@ describe('startPipeline e2e', () => {
       });
 
       expect(mockCreateAIProviderWithFallback).not.toHaveBeenCalled();
-      expect(mockCreateNlPipeline).not.toHaveBeenCalled();
+      expect(mockCreateTestGenerationPipeline).not.toHaveBeenCalled();
       expect(mockNlCaseRepo.save).not.toHaveBeenCalled();
       expect(mockPipelineRepo.markRunFailed).toHaveBeenCalledWith('run-1');
     });
@@ -247,7 +247,7 @@ describe('startPipeline e2e', () => {
       mockPipelineRepo.getProviderConfigByName.mockReturnValue(PROVIDER_CONFIG);
       const fakeProvider = { chat: vi.fn(), streamChat: vi.fn() };
       mockCreateAIProviderWithFallback.mockReturnValue(fakeProvider);
-      mockCreateNlPipeline.mockResolvedValue(makeFakePipeline());
+      mockCreateTestGenerationPipeline.mockResolvedValue(makeFakePipeline());
       const events = captureEvents(sseGateway, 'run-2');
 
       await service.startPipeline('run-2', 'proj-1', {

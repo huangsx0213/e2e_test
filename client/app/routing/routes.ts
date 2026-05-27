@@ -15,7 +15,7 @@ import { AgentManagement } from '@/features/agents/AgentManagement';
 import { RequirementsPage } from '@/features/requirements/RequirementsPage';
 import { BusinessFlowsPage } from '@/features/business-flows/BusinessFlowsPage';
 import { NlCasesPage } from '@/features/nl-cases/NlCasesPage';
-import { AiTestGenPage } from '@/features/nl-pipeline/AiTestGenPage';
+import { AiTestGenPage } from '@/features/ai-test-gen/AiTestGenPage';
 
 registerRoute('DASHBOARD', Dashboard, (ctx) => ({
   projects: ctx.projects,
