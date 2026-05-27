@@ -46,7 +46,7 @@ export function createAgentNode(
 export function createCheckpointNode<T extends { retry?: boolean }>(
   buildPayload: (state: any) => T,
   onResolve: (state: any, response: T) => Record<string, unknown>,
-  onRetry: (state: any) => Record<string, unknown>,
+  onRetry: (state: any, response?: T) => Record<string, unknown>,
   logEnter?: (state: any) => void,
   logRetry?: () => void,
   logExit?: (state: any, response: T) => void,
@@ -56,7 +56,7 @@ export function createCheckpointNode<T extends { retry?: boolean }>(
     const response = interrupt<T>(buildPayload(state));
     if (response?.retry) {
       logRetry?.();
-      return onRetry(state);
+      return onRetry(state, response);
     }
     logExit?.(state, response);
     return onResolve(state, response);

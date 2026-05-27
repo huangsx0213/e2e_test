@@ -143,6 +143,11 @@ businessFlows: {
       }),
     checkpoint: (runId: string) =>
       apiFetch<any>(`pipeline/${runId}/checkpoint`),
+    saveCheckpointEdits: (runId: string, editedData: any, agentName: string) =>
+      apiFetch<{ success: boolean }>(`pipeline/${runId}/checkpoint-data`, {
+        method: 'PATCH',
+        body: JSON.stringify({ editedData, agentName }),
+      }),
     logs: (runId: string, agentName?: string) =>
       apiFetch<any[]>(`pipeline/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
     abort: (runId: string) =>

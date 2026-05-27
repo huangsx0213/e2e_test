@@ -15,7 +15,7 @@ export type AppTab =
   | 'REQUIREMENTS'
   | 'BUSINESS_FLOWS'
   | 'NL_CASES'
-  | 'AI_PIPELINE';
+  | 'AI_TEST_GEN';
 
 export interface ExecutionState {
   suiteId: string;

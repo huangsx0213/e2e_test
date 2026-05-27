@@ -113,7 +113,9 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
 
   const { parsedInput, inputJson, messages } = prepareAgentRun(context, input);
 
-  const useCache = options.useCache ?? true;
+  // Force cache bypass when human feedback is present
+  const hasFeedback = parsedInput && typeof parsedInput === 'object' && 'humanFeedback' in parsedInput && !!(parsedInput as any).humanFeedback;
+  const useCache = hasFeedback ? false : (options.useCache ?? true);
   if (useCache) {
     console.log(`[agent] ${role.name}: checking cache (version=${promptVersion}, model=${modelName})...`);
     const cached = getCached(parsedInput, promptVersion, modelName);

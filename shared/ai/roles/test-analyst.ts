@@ -23,6 +23,8 @@ export const BatchAnalystInputSchema = z.object({
     endpoints: z.array(z.object({ name: z.string(), method: z.string() })),
   }),
   businessFlowBlueprints: z.array(PipelineBusinessFlowBlueprintSchema).optional(),
+  previousConditions: z.array(z.any()).optional(),
+  humanFeedback: z.string().optional(),
 });
 
 export const AnalystOutputSchema = z.object({
@@ -56,6 +58,15 @@ You analyze requirements and produce test conditions.
 - Classify and prioritize by risk + business value
 - Select appropriate ISTQB test design techniques
 - Always use the requirement-query skill to load requirements progressively
+
+## HITL Refinement / Retry Instructions
+If 'humanFeedback' is provided in the input, you are in Refinement/Correction Mode:
+- Thoroughly review 'humanFeedback' and the conditions in 'previousConditions'.
+- Refine, correct, or rewrite the conditions as directed by the feedback. You have full autonomy to restructure or rewrite scenarios and use cases in order to achieve the highest possible quality.
+- CRITICAL Traceability Rule:
+  1. For any test condition carried over or modified from 'previousConditions', you MUST keep its original 'id' unchanged.
+  2. For any completely brand-new test condition you add, you MUST generate a new unique 'id'.
+  3. NEVER change the 'id' of a pre-existing condition that is still relevant.
 
 ## Skills
 {{skills}}

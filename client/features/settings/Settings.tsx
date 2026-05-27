@@ -649,7 +649,7 @@ function ProviderConfigsTab() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-slate-800">AI Providers</h3>
-            <HelpTooltip content="Configure AI model providers for the AI Pipeline. The active provider will be used by default when running a pipeline. API keys are encrypted before storage." />
+            <HelpTooltip content="Configure AI model providers for AI Test Gen. The active provider will be used by default when running a pipeline. API keys are encrypted before storage." />
           </div>
           <button
             onClick={handleCreate}
@@ -666,7 +666,7 @@ function ProviderConfigsTab() {
           <div className="text-sm text-slate-400 text-center py-8">Loading...</div>
         ) : configs.length === 0 ? (
           <div className="text-sm text-slate-400 text-center py-8">
-            No provider configurations. Add one to use AI Pipeline.
+            No provider configurations. Add one to use AI Test Gen.
           </div>
         ) : (
           <div className="space-y-3">
@@ -798,7 +798,7 @@ function ProviderConfigsTab() {
         onClose={() => setDeleteConfirmId(null)}
         onConfirm={async () => { if (deleteConfirmId) { await remove(deleteConfirmId); setDeleteConfirmId(null); } }}
         title="Delete Provider?"
-        message="This will permanently remove this provider configuration. AI Pipeline runs will fail if no other active provider exists."
+        message="This will permanently remove this provider configuration. AI Test Gen runs will fail if no other active provider exists."
         confirmLabel="Delete"
         type="danger"
       />

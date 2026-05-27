@@ -24,7 +24,7 @@ import { DataContext, DataContextValue } from '@/app/contexts/DataContext';
 import { WorkspaceContext, WorkspaceContextValue } from '@/app/contexts/WorkspaceContext';
 import { ExecutionPanelContext, ExecutionContextValue } from '@/app/contexts/ExecutionContext';
 import { ExecutionState } from '@/app/types';
-import { PipelineRunDepsProvider } from '@/shared/pipeline-run';
+import { TestGenRunDepsProvider } from '@/shared/test-gen-run';
 import { createFetchSSEConnection } from '@/shared/sse';
 import { api } from '@/shared/services/api';
 
@@ -154,7 +154,7 @@ function AppProvidersInner({ children }: { children: (isLoading: boolean) => Rea
   }
 
   return (
-    <PipelineRunDepsProvider deps={pipelineDeps}>
+    <TestGenRunDepsProvider deps={pipelineDeps}>
       <WorkspaceContext.Provider value={workspaceValue}>
         <DataContext.Provider value={dataValue}>
           <ExecutionPanelContext.Provider value={executionValue}>
@@ -162,6 +162,6 @@ function AppProvidersInner({ children }: { children: (isLoading: boolean) => Rea
           </ExecutionPanelContext.Provider>
         </DataContext.Provider>
       </WorkspaceContext.Provider>
-    </PipelineRunDepsProvider>
+    </TestGenRunDepsProvider>
   );
 }

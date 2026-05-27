@@ -48,7 +48,7 @@ export const navigationSections: NavigationSection[] = [
 { tab: 'REQUIREMENTS', label: 'Requirements', icon: ClipboardList },
       { tab: 'BUSINESS_FLOWS', label: 'Business Flows', icon: GitBranchPlus },
       { tab: 'NL_CASES', label: 'NL Test Cases', icon: FileText },
-      { tab: 'AI_PIPELINE', label: 'AI Pipeline', icon: PlaySquare },
+      { tab: 'AI_TEST_GEN', label: 'AI Test Gen', icon: PlaySquare },
       { tab: 'AGENTS', label: 'Remote Agents', icon: Server },
     ],
   },

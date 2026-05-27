@@ -11,6 +11,8 @@ export const DesignerInputSchema = z.object({
   })),
   projectContext: z.object({ name: z.string(), pages: z.array(z.object({ name: z.string() })), endpoints: z.array(z.object({ name: z.string(), method: z.string() })) }),
   businessFlowBlueprints: z.array(PipelineBusinessFlowBlueprintSchema).optional(),
+  previousDraftCases: z.array(z.any()).optional(),
+  humanFeedback: z.string().optional(),
 });
 
 export const TestDesignerRole: AgentRole = {
@@ -25,6 +27,15 @@ You design detailed natural language test cases from approved test conditions.
 - After designing, perform self-quality review on all cases
 - Each step is atomic (one action per step)
 - Expected result is measurable and observable
+
+## HITL Refinement / Retry Instructions
+If 'humanFeedback' is provided in the input, you are in Refinement/Correction Mode:
+- Thoroughly review 'humanFeedback' and the draft test cases in 'previousDraftCases'.
+- Refine, correct, or rewrite the test cases as directed by the feedback. You have full autonomy to rewrite steps, preconditions, and postconditions to satisfy high quality standards.
+- CRITICAL Traceability Rule:
+  1. For any test case carried over or modified from 'previousDraftCases', you MUST keep its original 'id' unchanged.
+  2. For any completely brand-new test case you add, you MUST generate a new unique 'id'.
+  3. NEVER change the 'id' of a pre-existing test case that is still relevant.
 
 ## Skills
 {{skills}}

@@ -15,7 +15,7 @@ import { AgentManagement } from '@/features/agents/AgentManagement';
 import { RequirementsPage } from '@/features/requirements/RequirementsPage';
 import { BusinessFlowsPage } from '@/features/business-flows/BusinessFlowsPage';
 import { NlCasesPage } from '@/features/nl-cases/NlCasesPage';
-import { AiPipelinePage } from '@/features/nl-pipeline/AiPipelinePage';
+import { AiTestGenPage } from '@/features/nl-pipeline/AiTestGenPage';
 
 registerRoute('DASHBOARD', Dashboard, (ctx) => ({
   projects: ctx.projects,
@@ -124,6 +124,6 @@ registerRoute('NL_CASES', NlCasesPage, (ctx) => ({
   currentProjectId: ctx.currentProjectId,
 }));
 
-registerRoute('AI_PIPELINE', AiPipelinePage, (ctx) => ({
+registerRoute('AI_TEST_GEN', AiTestGenPage, (ctx) => ({
   currentProjectId: ctx.currentProjectId,
 }));

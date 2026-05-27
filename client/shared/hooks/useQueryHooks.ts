@@ -12,5 +12,5 @@ export { useAgents, useQueue, useAgentMutations } from './useAgentHooks';
 export { useRequirements, useRequirementMutations } from './useRequirementHooks';
 export { useProviderConfigs, useProviderConfigMutations } from './useProviderConfigHooks';
 export { useBusinessFlows, useBusinessFlowMutations } from './useBusinessFlowHooks';
-export { usePipelineRuns, useCheckpoint, useAgentLogs } from './usePipelineHooks';
+export { useTestGenRuns, useCheckpoint, useAgentLogs } from './useTestGenHooks';
 export { useNlCases } from './useNlCaseHooks';

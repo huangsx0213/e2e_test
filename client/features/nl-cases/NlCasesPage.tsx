@@ -180,7 +180,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
                   {!hasData
-                    ? <span>No test cases yet. <span className="text-blue-500">Run an AI Pipeline</span> to generate them.</span>
+                    ? <span>No test cases yet. <span className="text-blue-500">Run AI Test Gen</span> to generate them.</span>
                     : isFiltered
                     ? 'No results match your filters.'
                     : 'No test cases found.'

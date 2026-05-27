@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import { createAgentContext, runAgent, AgentTimeoutError, type AgentRole } from '../agent.ts';
 import type { AIProvider, StreamChunk } from '../provider.ts';
-import { invalidateCache } from '../cache.ts';
+import { invalidateCache, useCacheStore } from '../cache.ts';
 
 const testRole: AgentRole = {
   name: 'test', systemPromptTemplate: 'You are a test agent. Input: {{input}}',
@@ -23,6 +23,17 @@ function createMockProvider(responseContent: string): AIProvider {
 
 describe('runAgent', () => {
   beforeEach(() => {
+    const storeMap: Record<string, { output: string }> = {};
+    useCacheStore({
+      getCache: vi.fn((key: string) => storeMap[key] ?? undefined),
+      setCache: vi.fn((key: string, _ih: string, _pv: string, _m: string, output: string) => {
+        storeMap[key] = { output };
+      }),
+      invalidateByPromptVersion: vi.fn(),
+      invalidateAll: vi.fn(() => {
+        for (const k of Object.keys(storeMap)) delete storeMap[k];
+      }),
+    });
     invalidateCache();
   });
   it('calls provider and returns validated output', async () => {
@@ -90,5 +101,26 @@ describe('runAgent', () => {
     const context = createAgentContext(provider, testRole);
     await expect(runAgent(context, { text: 'test input' })).rejects.toThrow('Network error');
     expect(provider.streamChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('forces cache bypass when humanFeedback is present in input', async () => {
+    const roleWithFeedback: AgentRole = {
+      name: 'test-feedback', systemPromptTemplate: 'You are a test agent. Feedback: {{input}}',
+      requiredSkills: [], inputSchema: z.object({ text: z.string(), humanFeedback: z.string().optional() }), outputSchema: z.object({ result: z.string() }),
+    };
+    const provider = createMockProvider('{"result":"hello"}');
+    const context = createAgentContext(provider, roleWithFeedback);
+
+    // Run first time to populate cache
+    await runAgent(context, { text: 'test input' });
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
+
+    // Running again with same input should hit cache
+    await runAgent(context, { text: 'test input' });
+    expect(provider.streamChat).toHaveBeenCalledTimes(1); // Still 1 due to cache hit
+
+    // Running with humanFeedback should bypass cache
+    await runAgent(context, { text: 'test input', humanFeedback: 'some feedback' });
+    expect(provider.streamChat).toHaveBeenCalledTimes(2); // Invocations count goes up to 2 (cache bypassed)
   });
 });

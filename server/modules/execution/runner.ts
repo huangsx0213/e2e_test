@@ -25,7 +25,7 @@ export async function startExecution(request: ExecutionRequest): Promise<{ repor
     throw new Error('A local execution is already running. Please wait for it to finish or abort it.');
   }
 
-  const runId = randomId('run');
+  const runId = randomId('ai-pl');
   const reportId = randomId('report');
   const abortController = new AbortController();
 

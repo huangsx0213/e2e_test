@@ -41,7 +41,7 @@ function AppShell() {
     REQUIREMENTS: queryKeys.requirements,
 BUSINESS_FLOWS: queryKeys.businessFlows,
     NL_CASES: [],
-    AI_PIPELINE: [],
+    AI_TEST_GEN: [],
   };
 
   const handleTabChange = useCallback(

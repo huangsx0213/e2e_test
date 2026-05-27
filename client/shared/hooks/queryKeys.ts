@@ -12,10 +12,10 @@ export const queryKeys = {
   requirements: ['requirements'] as const,
   businessFlows: ['business-flows'] as const,
   queue: ['queue'] as const,
-  pipeline: {
-    runs: (projectId: string) => ['pipeline', 'runs', projectId] as const,
-    checkpoint: (runId: string) => ['pipeline', 'checkpoint', runId] as const,
-    logs: (runId: string) => ['pipeline', 'logs', runId] as const,
+  testGen: {
+    runs: (projectId: string) => ['test-gen', 'runs', projectId] as const,
+    checkpoint: (runId: string) => ['test-gen', 'checkpoint', runId] as const,
+    logs: (runId: string) => ['test-gen', 'logs', runId] as const,
   },
   nlCases: (projectId: string) => ['nl-cases', projectId] as const,
   providerConfigs: ['provider-configs'] as const,

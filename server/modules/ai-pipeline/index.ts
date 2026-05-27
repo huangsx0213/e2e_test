@@ -2,21 +2,22 @@ import { Router } from 'express';
 import { randomId } from '../../shared/utils/index.ts';
 import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { validateWithSchema } from '../../shared/validation/validate.ts';
-import { pipelineRepo } from './infrastructure/db/pipeline-repository.ts';
+import { pipelineRepo } from './infrastructure/db/test-gen-repository.ts';
 import { SSEGateway } from './infrastructure/sse/sse-gateway.ts';
-import { PipelineService } from './application/pipeline-service.ts';
+import { TestGenService } from './application/test-gen-service.ts';
 import { startPipelineSchema, resumePipelineSchema } from './schema.ts';
+import { z } from 'zod';
 
 const router = Router();
 const sseGateway = new SSEGateway();
-const pipelineService = new PipelineService(sseGateway);
+const pipelineService = new TestGenService(sseGateway);
 
-// --- Pipeline Runs List ---
+// --- Test Gen Runs List ---
 function p(param: string | string[]): string {
   return typeof param === 'string' ? param : param[0];
 }
 
-// --- Pipeline Runs List ---
+// --- Test Gen Runs List ---
 router.get('/runs/:projectId', withErrorHandling((req, res) => {
   res.json(pipelineRepo.listRunsByProject(p(req.params.projectId)));
 }));
@@ -27,7 +28,7 @@ router.get('/active/:projectId', withErrorHandling((req, res) => {
   res.json(run);
 }));
 
-// --- Pipeline Logs ---
+// --- Test Gen Logs ---
 router.get('/:runId/logs', withErrorHandling((req, res) => {
   const runId = p(req.params.runId);
   const { agent } = req.query;
@@ -37,16 +38,16 @@ router.get('/:runId/logs', withErrorHandling((req, res) => {
 // --- Single Run ---
 router.get('/:runId', withErrorHandling((req, res) => {
   const row = pipelineRepo.getRun(p(req.params.runId));
-  if (!row) { res.status(404).json({ error: 'Pipeline run not found' }); return; }
+  if (!row) { res.status(404).json({ error: 'Test gen run not found' }); return; }
   const fullRow = pipelineRepo.getRunInfo(p(req.params.runId));
-  if (!fullRow) { res.status(404).json({ error: 'Pipeline run not found' }); return; }
+  if (!fullRow) { res.status(404).json({ error: 'Test gen run not found' }); return; }
   res.json(fullRow);
 }));
 
-// --- Pipeline Info ---
+// --- Test Gen Info ---
 router.get('/:runId/info', withErrorHandling((req, res) => {
   const info = pipelineRepo.getRunInfo(p(req.params.runId));
-  if (!info) { res.status(404).json({ error: 'Pipeline run not found' }); return; }
+  if (!info) { res.status(404).json({ error: 'Test gen run not found' }); return; }
   res.json(info);
 }));
 
@@ -54,7 +55,7 @@ router.get('/:runId/info', withErrorHandling((req, res) => {
 router.delete('/:runId', withErrorHandling((req, res) => {
   const runId = p(req.params.runId);
   const row = pipelineRepo.getRun(runId);
-  if (!row) { res.status(404).json({ error: 'Pipeline run not found' }); return; }
+  if (!row) { res.status(404).json({ error: 'Test gen run not found' }); return; }
   pipelineService.deleteRun(runId);
   res.json({ success: true });
 }));
@@ -72,12 +73,23 @@ router.post('/:runId/resume', withErrorHandling((req, res) => {
   res.json({ success: true, action });
 }));
 
-// --- Start Pipeline ---
+// --- Save edits for passed checkpoint ---
+router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
+  const { editedData, agentName } = validateWithSchema(z.object({
+    editedData: z.record(z.string(), z.unknown()),
+    agentName: z.string(),
+  }), req.body);
+  pipelineRepo.updateAgentLogOutput(p(req.params.runId), agentName, editedData as Record<string, unknown>);
+  pipelineRepo.insertAuditLog(p(req.params.runId), agentName, 'save-edits', editedData);
+  res.json({ success: true });
+}));
+
+// --- Start Test Gen ---
 router.post('/:projectId/start', withErrorHandling((req, res) => {
   const projectId = p(req.params.projectId);
   const body = validateWithSchema(startPipelineSchema, req.body);
 
-  const runId = randomId('run');
+  const runId = randomId('ai-pl');
 
   pipelineRepo.createRun(runId, projectId, body.mode, {
     requirementIds: body.requirementIds,

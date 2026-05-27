@@ -3,7 +3,14 @@ import { randomUUID } from 'crypto';
 export type WithId = { id: string };
 
 export function randomId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const now = new Date();
+  const ts = now.getFullYear() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') + '-' +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0') +
+    String(now.getSeconds()).padStart(2, '0');
+  return `${prefix}-${ts}-${randomUUID().slice(0, 6)}`;
 }
 
 export function asText(value: unknown, fallback = ''): string {
