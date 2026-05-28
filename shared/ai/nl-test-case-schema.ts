@@ -15,7 +15,7 @@ export const SelfReviewSchema = z.object({
 });
 
 export const TestDataSchema = z.object({
-  key: z.string(), value: z.union([z.string(), z.number()]).transform(v => String(v)), description: z.string(),
+  key: z.string(), value: z.union([z.string(), z.number(), z.null(), z.undefined()]).transform(v => v ?? ''), description: z.string(),
 });
 
 export const StepSchema = z.object({

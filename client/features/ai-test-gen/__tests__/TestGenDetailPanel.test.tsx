@@ -39,7 +39,10 @@ describe('TestGenDetailPanel', () => {
         runSummary={null}
         agentLogs={[]}
         onClose={vi.fn()}
-        onCheckpointAction={vi.fn()}
+        onApprove={vi.fn()}
+        onRetry={vi.fn()}
+        onToggleReview={vi.fn()}
+        onDoneReviewing={vi.fn()}
       />,
     );
 

@@ -106,6 +106,16 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
                   tokenUsage: data.tokenUsage, latencyMs: data.latencyMs } }
               : n,
           );
+          const AGENT_TO_CHECKPOINT: Record<string, NodeId> = {
+            test_analyst: 'checkpoint_1',
+            test_designer: 'checkpoint_2',
+            quality_manager: 'checkpoint_3',
+          };
+          const nextCp = AGENT_TO_CHECKPOINT[data.agentName];
+          const cpNode = nextCp ? nodes.find(n => n.id === nextCp && n.status === 'idle') : undefined;
+          if (cpNode) {
+            return { ...state, nodes, checkpointData: null, selectedNodeId: cpNode.id, thinkingTextByNode, batchProgress, runSummary };
+          }
           break;
         }
         case 'agent:step': {
@@ -133,7 +143,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           nodes = nodes.map(n =>
             n.id === cpId ? { ...n, status: 'waiting' as const } : n,
           );
-          break;
+          return { ...state, nodes, checkpointData, selectedNodeId: cpId, thinkingTextByNode, batchProgress, runSummary };
         }
         case 'checkpoint:resolved': {
           const cpId = CHECKPOINT_NODE_IDS[data.checkpointNumber];

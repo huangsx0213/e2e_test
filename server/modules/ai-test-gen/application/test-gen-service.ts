@@ -1,4 +1,3 @@
-import { Command } from '@langchain/langgraph';
 import { SqliteSaver } from '@langchain/langgraph-checkpoint-sqlite';
 import { Semaphore } from '../../../../shared/ai/semaphore.ts';
 import { createAIProviderWithFallback } from '../../../../shared/ai/provider.ts';
@@ -19,23 +18,21 @@ import { buildFallbackConfigs } from './fallback-config-builder.ts';
 import { nlCaseRepo } from '../../nl-cases/repository.ts';
 import { buildBusinessFlowBlueprints } from '../business-flow-blueprint.ts';
 import { businessFlowRepo } from '../../business-flows/repository.ts';
-import { TestGenExecutionScope } from '../test-gen-scope.ts';
 import { pipelineRepo, decryptApiKey } from '../infrastructure/db/test-gen-repository.ts';
 import type { SSEGateway } from '../infrastructure/sse/sse-gateway.ts';
 import type { PipelineBusinessFlowBlueprint, Requirement } from '../../../../shared/contracts/index.ts';
 import { randomId } from '../../../shared/utils/index.ts';
-
-interface ResumeEntry {
-  resolve: (value: any) => void;
-  reject: (err: Error) => void;
-}
+import { TestGenExecutionScope } from '../test-gen-scope.ts';
+import { TestGenSession } from './test-gen-session.ts';
+import { InteractiveResolver, AutoResolver } from './checkpoint-resolver.ts';
+import { BatchOrchestrator } from './batch-orchestrator.ts';
 
 export class TestGenService {
-  private readonly resumeWaiters = new Map<string, ResumeEntry>();
   private readonly abortedRuns = new Set<string>();
   private readonly abortControllers = new Map<string, AbortController>();
   private readonly concurrencySlot: Semaphore;
   private readonly maxConcurrent: number;
+  private readonly interactiveResolver: InteractiveResolver;
 
   constructor(
     private readonly sseGateway: SSEGateway,
@@ -43,18 +40,17 @@ export class TestGenService {
   ) {
     this.maxConcurrent = maxConcurrent;
     this.concurrencySlot = new Semaphore(maxConcurrent);
+    this.interactiveResolver = new InteractiveResolver(
+      (runId, data, phase) => pipelineRepo.setCheckpointData(runId, data, phase),
+      sseGateway,
+    );
     useCacheStore(pipelineRepo.getCacheStore());
   }
 
   abortRun(runId: string): void {
-    console.log(`[pipeline:abort] aborting run ${runId}...`);
     this.abortedRuns.add(runId);
     this.abortControllers.get(runId)?.abort();
-    const waiter = this.resumeWaiters.get(runId);
-    if (waiter) {
-      this.resumeWaiters.delete(runId);
-      waiter.reject(new Error('Test gen aborted'));
-    }
+    this.interactiveResolver.abortRun(runId);
     pipelineRepo.markRunFailed(runId);
   }
 
@@ -65,19 +61,11 @@ export class TestGenService {
     }
     pipelineRepo.insertAuditLog(runId, row.phase, action, editedData);
     pipelineRepo.setRunRunning(runId);
-    const waiter = this.resumeWaiters.get(runId);
-    if (waiter) {
-      this.resumeWaiters.delete(runId);
-      waiter.resolve({ action, feedback, editedData });
-    }
+    this.interactiveResolver.resumeRun(runId, action, feedback, editedData);
   }
 
   deleteRun(runId: string): void {
-    const waiter = this.resumeWaiters.get(runId);
-    if (waiter) {
-      this.resumeWaiters.delete(runId);
-      waiter.reject(new Error('Test gen deleted'));
-    }
+    this.interactiveResolver.abortRun(runId);
     pipelineRepo.deleteRun(runId);
     this.sseGateway.cleanup(runId);
   }
@@ -92,10 +80,10 @@ export class TestGenService {
   }): Promise<void> {
     const sendEvent = (event: string, data: unknown) => this.sseGateway.emit(runId, event, data);
     const aborted = () => this.abortedRuns.has(runId);
+    const runMode = (params.mode || 'auto') as 'auto' | 'interactive';
 
     let initCompleted = false;
     let initTimer: ReturnType<typeof setTimeout> | undefined;
-    const runMode = (params.mode || 'auto') as 'auto' | 'interactive';
 
     try {
       await this.concurrencySlot.acquire();
@@ -122,7 +110,7 @@ export class TestGenService {
         providerConfigRow = pipelineRepo.getActiveProviderConfig();
       }
       if (!providerConfigRow) {
-        throw new Error('No active AI provider configuration found. Go to Settings â†?AI Provider to configure one.');
+        throw new Error('No active AI provider configuration found. Go to Settings â†’ AI Provider to configure one.');
       }
 
       const monthlyLimit = providerConfigRow.monthly_token_limit as number | null;
@@ -210,91 +198,88 @@ export class TestGenService {
         requirements,
       });
 
-sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
-sendEvent('pipeline:context', { flows: businessFlows.length, indexEntries: selectedIndex.length });
+      sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
+      sendEvent('pipeline:context', { flows: businessFlows.length, indexEntries: selectedIndex.length });
 
-const avgTokensPerReq = 1000;
-const estimated = selectedIndex.length * avgTokensPerReq;
-const tokenLimit = providerConfigRow.monthly_token_limit as number | null;
-if (tokenLimit) {
-  const budgetMsg = estimated > tokenLimit
-    ? `Estimated token usage (${estimated}) exceeds limit (${tokenLimit}). Some batches may fail.`
-    : `Estimated token usage (${estimated}) within limit (${tokenLimit}).`;
-  sendEvent('pipeline:budget', { estimated, limit: tokenLimit, warning: estimated > tokenLimit, message: budgetMsg });
-} else {
-  sendEvent('pipeline:budget', { estimated, limit: null, warning: false, message: `Estimated ${estimated} tokens (no limit configured)` });
-}
+      const avgTokensPerReq = 1000;
+      const estimated = selectedIndex.length * avgTokensPerReq;
+      const tokenLimit = providerConfigRow.monthly_token_limit as number | null;
+      if (tokenLimit) {
+        const budgetMsg = estimated > tokenLimit
+          ? `Estimated token usage (${estimated}) exceeds limit (${tokenLimit}). Some batches may fail.`
+          : `Estimated token usage (${estimated}) within limit (${tokenLimit}).`;
+        sendEvent('pipeline:budget', { estimated, limit: tokenLimit, warning: estimated > tokenLimit, message: budgetMsg });
+      } else {
+        sendEvent('pipeline:budget', { estimated, limit: null, warning: false, message: `Estimated ${estimated} tokens (no limit configured)` });
+      }
 
-// Save preparation initialization data to database for later retrieval
-const preparationLogId = randomId('log');
-const preparationOutput = {
-  initLogs: [
-    { type: 'pipeline:context', data: { flows: businessFlows.length, indexEntries: selectedIndex.length }, timestamp: new Date().toISOString() },
-    { type: 'pipeline:budget', data: { estimated, limit: tokenLimit }, timestamp: new Date().toISOString() },
-    { type: 'phase:start', data: { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` }, timestamp: new Date().toISOString() }
-  ],
-  requirementCount: selectedIndex.length,
-  totalBatches,
-  estimatedTokens: estimated,
-  flowCases: businessFlows.length,
-};
-db.prepare(`
-  INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
-  VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
-`).run(preparationLogId, runId, JSON.stringify(preparationOutput));
+      const preparationLogId = randomId('log');
+      const preparationOutput = {
+        initLogs: [
+          { type: 'pipeline:context', data: { flows: businessFlows.length, indexEntries: selectedIndex.length }, timestamp: new Date().toISOString() },
+          { type: 'pipeline:budget', data: { estimated, limit: tokenLimit }, timestamp: new Date().toISOString() },
+          { type: 'phase:start', data: { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` }, timestamp: new Date().toISOString() },
+        ],
+        requirementCount: selectedIndex.length,
+        totalBatches,
+        estimatedTokens: estimated,
+        flowCases: businessFlows.length,
+      };
+      db.prepare(`
+        INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
+        VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
+      `).run(preparationLogId, runId, JSON.stringify(preparationOutput));
 
-      const allResults: any[] = [];
+      const resolver = runMode === 'interactive' ? this.interactiveResolver : new AutoResolver();
+      const session = new TestGenSession(runId, pipeline, resolver, {
+        mode: runMode,
+        onEvent: sendEvent,
+        signal: abortSignal,
+      });
+
+      let allResults: any[] = [];
       let actualBatches = 0;
 
-      const processBatch = async (epic: any, batchIndex: number, mode: 'auto' | 'interactive') => {
-        if (aborted()) return;
-        scope.setBatch(batchIndex + 1, totalBatches);
-
-        const batchReqIds = new Set(rootGroups.get(epic.id)!);
-        const batchRequirements = requirements.filter(r => batchReqIds.has(r.id));
-        pipelineRepo.updateCurrentBatch(runId, batchIndex + 1);
-
-        const config = { configurable: { thread_id: `${runId}-batch-${batchIndex}` } };
-        const inputState = {
-          projectId,
-          requirementIds,
-          currentBatch: batchRequirements,
-          batchContext: { currentBatch: batchIndex, totalBatches, processedCount: batchIndex },
-          projectContext: { name: epic.title, pages: [], endpoints: [] },
-          businessFlowBlueprints: businessFlows,
-          phase: 'analysis',
-          errors: [],
-        };
-
-        try {
-          const result = await this.runBatch(pipeline, inputState, config, runId, batchIndex, sendEvent, aborted, mode, abortSignal);
-          if (result?.finalTestCases?.length) allResults.push(result);
-          actualBatches++;
-          sendEvent('batch:complete', { batch: batchIndex + 1, total: totalBatches, testCases: result?.finalTestCases?.length || 0 });
-        } catch (err: any) {
-          if (aborted()) return;
-          sendEvent('pipeline:error', { phase: 'batch', batch: batchIndex + 1, message: err.message, recoverable: true });
-        }
-      };
-
       if (includeFlowCases) {
-        await this.processFlowBatch(pipeline, runId, projectId, businessFlows, requirements, sendEvent, aborted, runMode, allResults, abortSignal);
+        await this.processFlowBatch(session, scope, runId, projectId, businessFlows, requirements, sendEvent, aborted, abortSignal, allResults);
         actualBatches = 1;
-      } else if (runMode === 'interactive') {
-        for (let i = 0; i < totalBatches; i++) {
-          if (aborted()) break;
-          await processBatch(epics[i], i, 'interactive');
-        }
       } else {
-        const batchSemaphore = new Semaphore(this.maxConcurrent);
-        const batchTasks = epics.map((epic, i) =>
-          batchSemaphore.acquire().then(() => processBatch(epic, i, 'auto')).finally(() => batchSemaphore.release()),
-        );
-        await Promise.allSettled(batchTasks);
+        const orchestrator = new BatchOrchestrator(session, {
+          onBatchStart: (batchIndex) => {
+            scope.setBatch(batchIndex + 1, totalBatches);
+            pipelineRepo.updateCurrentBatch(runId, batchIndex + 1);
+          },
+          onBatchComplete: (batchIndex, result) => {
+            if (result?.lastState) allResults.push(result.lastState);
+            actualBatches++;
+            sendEvent('batch:complete', { batch: batchIndex + 1, total: totalBatches, testCases: result?.cases.length ?? 0 });
+          },
+          onBatchError: (batchIndex, err) => {
+            sendEvent('pipeline:error', { phase: 'batch', batch: batchIndex + 1, message: err.message, recoverable: true });
+          },
+          isAborted: aborted,
+        });
+
+        const batchInputs = epics.map((epic, i) => ({
+          batchIndex: i,
+          inputState: {
+            projectId,
+            requirementIds,
+            currentBatch: requirements.filter(r => new Set(rootGroups.get(epic.id)!).has(r.id)),
+            batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
+            projectContext: { name: epic.title, pages: [], endpoints: [] },
+            businessFlowBlueprints: businessFlows,
+            phase: 'analysis',
+            errors: [],
+          },
+        }));
+
+        const summary = await orchestrator.runAll(batchInputs);
+        actualBatches = summary.actualBatches;
       }
 
       if (!aborted()) {
-        const { allCases, conflicts, removedCount } = deduplicateTestCases(allResults.flatMap(r => r.finalTestCases || []));
+        const { allCases, conflicts, removedCount } = deduplicateTestCases(allResults.flatMap((r: any) => r.finalTestCases || []));
         if (removedCount > 0) {
           sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length, conflicts });
         }
@@ -308,9 +293,7 @@ db.prepare(`
     } catch (err: any) {
       if (initTimer && !initCompleted) clearTimeout(initTimer);
       if (!aborted()) {
-        const scope = new TestGenExecutionScope(runId, projectId, runMode,
-          (event, data) => this.sseGateway.emit(runId, event, data));
-        scope.markFailed(err.message);
+        sendEvent('pipeline:error', { phase: 'orchestrator', message: err.message, recoverable: false });
       }
     } finally {
       this.concurrencySlot.release();
@@ -321,16 +304,16 @@ db.prepare(`
   }
 
   private async processFlowBatch(
-    pipeline: Awaited<ReturnType<typeof createTestGenerationPipeline>>,
+    session: TestGenSession,
+    scope: TestGenExecutionScope,
     runId: string,
     projectId: string,
     businessFlows: PipelineBusinessFlowBlueprint[],
     requirements: Requirement[],
     sendEvent: (event: string, data: unknown) => void,
     aborted: () => boolean,
-    mode: string,
-    allResults: any[],
     abortSignal: AbortSignal,
+    allResults: any[],
   ): Promise<void> {
     const reqIdSet = new Set<string>();
     for (const flow of businessFlows) {
@@ -354,133 +337,26 @@ db.prepare(`
     }
 
     const flowRequirements = requirements.filter(r => expandedIds.has(r.id));
+    scope.setBatch(1, 1);
 
     sendEvent('phase:start', { phase: 'flow-batch', message: `Processing ${businessFlows.length} flow(s) with ${flowRequirements.length} expanded requirements` });
 
-    const config = { configurable: { thread_id: `${runId}-flow-batch` } };
-    const inputState = {
-      projectId,
-      requirementIds: Array.from(expandedIds),
-      currentBatch: flowRequirements,
-      batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
-      projectContext: { name: 'Business Flow Batch', pages: [], endpoints: [] },
-      businessFlowBlueprints: businessFlows,
-      phase: 'analysis',
-      errors: [],
-    };
-
     try {
-      const result = await this.runBatch(pipeline, inputState, config, runId, 0, sendEvent, aborted, mode as 'auto' | 'interactive', abortSignal);
-      if (result?.finalTestCases?.length) allResults.push(result);
-      sendEvent('batch:complete', { batch: 1, total: 1, testCases: result?.finalTestCases?.length || 0 });
+      const result = await session.runBatch(0, {
+        projectId,
+        requirementIds: Array.from(expandedIds),
+        currentBatch: flowRequirements,
+        batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
+        projectContext: { name: 'Business Flow Batch', pages: [], endpoints: [] },
+        businessFlowBlueprints: businessFlows,
+        phase: 'analysis',
+        errors: [],
+      });
+      if (result?.lastState) allResults.push(result.lastState);
+      sendEvent('batch:complete', { batch: 1, total: 1, testCases: result?.cases.length ?? 0 });
     } catch (err: any) {
       if (aborted()) return;
       sendEvent('pipeline:error', { phase: 'flow-batch', batch: 1, message: err.message, recoverable: true });
-    }
-  }
-
-  private async runBatch(
-    pipeline: Awaited<ReturnType<typeof createTestGenerationPipeline>>,
-    inputState: any,
-    config: any,
-    runId: string,
-    batchIndex: number,
-    sendEvent: (event: string, data: unknown) => void,
-    aborted: () => boolean,
-    mode: 'auto' | 'interactive' = 'interactive',
-    abortSignal?: AbortSignal,
-  ): Promise<any | null> {
-    let isResume = false;
-    while (true) {
-      if (aborted()) return null;
-
-      const stream = await pipeline.stream(
-        isResume ? new Command({ resume: inputState }) : inputState,
-        { ...config, streamMode: 'values' as const },
-      );
-      isResume = true;
-
-      let lastState: any = null;
-
-      try {
-        for await (const chunk of stream) {
-          if (aborted()) return null;
-          lastState = chunk as any;
-        }
-      } catch (err: any) {
-        if (aborted() || abortSignal?.aborted) return null;
-        throw err;
-      }
-
-      const interruptValue = (lastState as any)?.__interrupt__;
-      if (interruptValue && interruptValue.length > 0) {
-        const interruptPayload = interruptValue[0].value;
-
-        const checkpointNumber = interruptPayload.conditions ? 1
-          : interruptPayload.matrix ? 3 : 2;
-
-        if (mode === 'auto') {
-          if (checkpointNumber === 1) {
-            inputState = { conditions: interruptPayload.conditions, analysis: interruptPayload.analysis };
-          } else if (checkpointNumber === 2) {
-            inputState = { cases: interruptPayload.cases };
-          } else {
-            inputState = { cases: interruptPayload.cases, matrix: interruptPayload.matrix };
-          }
-          continue;
-        }
-
-        const cpPhase = lastState?.phase || (checkpointNumber === 1 ? 'review-conditions' : checkpointNumber === 2 ? 'review-draft' : 'final-review');
-        pipelineRepo.setCheckpointData(runId, interruptPayload, cpPhase);
-
-        sendEvent('checkpoint:waiting', {
-          checkpointId: `${runId}-cp-${batchIndex}-${checkpointNumber}`,
-          checkpointNumber,
-          type: cpPhase,
-          summary: checkpointNumber === 1 ? `${interruptPayload.conditions?.length || 0} Test Conditions`
-            : checkpointNumber === 2 ? `${interruptPayload.cases?.length || 0} Draft Cases`
-            : 'Final Review',
-          payload: interruptPayload,
-        });
-
-        const resumeResult = await new Promise<any>((resolve, reject) => {
-          this.resumeWaiters.set(runId, { resolve, reject });
-          setTimeout(() => {
-            if (this.resumeWaiters.has(runId)) {
-              this.resumeWaiters.delete(runId);
-              reject(new Error('Review timeout after 30 minutes'));
-            }
-          }, 30 * 60 * 1000);
-        });
-
-        sendEvent('checkpoint:resolved', {
-          checkpointId: `${runId}-cp-${batchIndex}-${checkpointNumber}`,
-          checkpointNumber,
-          action: resumeResult.action,
-          timestamp: Date.now(),
-        });
-
-        if (resumeResult.action === 'retry') {
-          inputState = { retry: true, feedback: resumeResult.feedback, editedData: resumeResult.editedData };
-        } else {
-          const edits = resumeResult.editedData ?? {};
-          if (checkpointNumber === 1) {
-            inputState = { conditions: edits.conditions ?? interruptPayload.conditions, analysis: edits.analysis ?? interruptPayload.analysis, feedback: resumeResult.feedback };
-          } else if (checkpointNumber === 2) {
-            inputState = { cases: edits.cases ?? interruptPayload.cases, feedback: resumeResult.feedback };
-          } else {
-            inputState = { cases: edits.cases ?? interruptPayload.cases, matrix: edits.matrix ?? interruptPayload.matrix };
-          }
-        }
-
-        continue;
-      }
-
-      if (lastState) {
-        return lastState;
-      }
-
-      return null;
     }
   }
 }

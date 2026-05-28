@@ -11,13 +11,6 @@ interface TestGenConfigPanelProps {
   businessFlows: BusinessFlow[];
   onStart: (config: TestGenStartConfig) => void;
   disabled?: boolean;
-  checkpointWaiting?: boolean;
-  onContinue?: () => void;
-  checkpointCompleted?: boolean;
-  onSave?: () => void;
-  saving?: boolean;
-  saved?: boolean;
-  hideButtonArea?: boolean;
 }
 
 export interface TestGenStartConfig {
@@ -137,13 +130,6 @@ export function TestGenConfigPanel({
   businessFlows,
   onStart,
   disabled,
-  checkpointWaiting,
-  onContinue,
-  checkpointCompleted,
-  onSave,
-  saving,
-  saved,
-  hideButtonArea,
 }: TestGenConfigPanelProps) {
   const queryClient = useQueryClient();
   const { data: providerConfigs = [] } = useProviderConfigs();
@@ -402,32 +388,14 @@ export function TestGenConfigPanel({
             <HelpTooltip content="When checked, each AI agent run bypasses the cache for fresh LLM responses. Useful for debugging or evaluating prompt changes." />
           </label>
         </div>
-        {hideButtonArea ? null : checkpointWaiting ? (
-          <button
-            onClick={onContinue}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Play size={16} />
-            Continue
-          </button>
-        ) : checkpointCompleted ? (
-          <button
-            onClick={onSave}
-            disabled={saving || saved}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {saved ? 'Saved' : saving ? 'Saving...' : 'Save'}
-          </button>
-        ) : (
-          <button
-            onClick={handleStart}
-            disabled={!canStart}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Play size={16} />
-            Start Test Gen
-          </button>
-        )}
+        <button
+          onClick={handleStart}
+          disabled={!canStart}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <Play size={16} />
+          Start Test Gen
+        </button>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { History, Plus, RefreshCw, Trash2, Eye, Check } from 'lucide-react';
+import { History, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequirements, useBusinessFlows } from '@/shared/hooks/useQueryHooks';
 import { useTestGenRun } from '@/shared/test-gen-run';
@@ -20,11 +20,7 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const pipeline = useTestGenRun(currentProjectId);
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
-  const isCheckpointSelected = pipeline.selectedNode?.kind === 'checkpoint';
-  const hideButtonArea = isCheckpointSelected && !reviewMode;
 
   const { data: requirements = [] } = useRequirements(currentProjectId || '');
   const { data: businessFlows = [] } = useBusinessFlows(currentProjectId || '');
@@ -58,7 +54,7 @@ const handleRefresh = useCallback(async () => {
   const handleDeleteRun = useCallback(async (runId: string) => {
     try {
       const { api } = await import('@/shared/services/api');
-      await api.pipeline.delete(runId);
+      await api.testGen.delete(runId);
       await queryClient.invalidateQueries({ queryKey: queryKeys.testGen.runs(currentProjectId || '') });
     } catch { /* best effort */ }
   }, [currentProjectId, queryClient]);
@@ -86,56 +82,58 @@ const handleRefresh = useCallback(async () => {
     pipeline.setAutoFollowEnabled(!pipeline.autoFollowEnabled);
   }, [pipeline]);
 
-const handleCheckpointAction = useCallback((action: any, data?: any) => {
-  if (action === 'continue') {
-    pipeline.resume('edit', data);
-  } else {
-    pipeline.resume(action, data);
-  }
-}, [pipeline]);
+  const handleApprove = useCallback(() => {
+    if (!pipeline.runId) return;
+    pipeline.resume('approve', { editedData: checkpointEditedData.current });
+    setReviewMode(false);
+  }, [pipeline]);
+
+  const handleRetry = useCallback(() => {
+    if (!pipeline.runId) return;
+    pipeline.resume('retry');
+    setReviewMode(false);
+  }, [pipeline]);
 
   const handleToggleReview = useCallback(() => {
     setReviewMode(prev => !prev);
   }, []);
 
+  const handleDoneReviewing = useCallback(async () => {
+    // If auto + completed, save to DB
+    if (pipeline.selectedNode?.kind === 'checkpoint') {
+      const isAutoCompleted = pipeline.nodes.some(
+        n => n.id === pipeline.selectedNode?.id && n.status === 'auto-passed'
+      );
+      if (isAutoCompleted && checkpointEditedData.current && pipeline.runId) {
+        const { api } = await import('@/shared/services/api');
+        const nodeId = pipeline.selectedNode.id;
+        const agentMap: Record<string, string> = {
+          checkpoint_1: 'test_analyst',
+          checkpoint_2: 'test_designer',
+          checkpoint_3: 'quality_manager',
+        };
+        const fieldMap: Record<string, string> = {
+          checkpoint_1: 'testConditions',
+          checkpoint_2: 'draftTestCases',
+          checkpoint_3: 'finalTestCases',
+        };
+        const agentName = agentMap[nodeId];
+        const field = fieldMap[nodeId];
+        if (agentName && field) {
+          await api.testGen.saveCheckpointEdits(
+            pipeline.runId,
+            { [field]: checkpointEditedData.current },
+            agentName
+          );
+        }
+      }
+    }
+    setReviewMode(false);
+  }, [pipeline]);
+
   const handleCheckpointDataChange = useCallback((data: any) => {
     checkpointEditedData.current = data;
-    if (saved) setSaved(false);
-  }, [saved]);
-
-  const handleExitReview = useCallback(() => {
-    setReviewMode(false);
   }, []);
-
-  const handleSaveCheckpoint = useCallback(async () => {
-    if (!pipeline.runId || !checkpointEditedData.current) return;
-    setSaving(true);
-    try {
-      const { api } = await import('@/shared/services/api');
-      const nodeId = pipeline.selectedNode?.id;
-      const agentMap: Record<string, string> = {
-        checkpoint_1: 'test_analyst',
-        checkpoint_2: 'test_designer',
-        checkpoint_3: 'quality_manager',
-      };
-      const agentName = nodeId ? agentMap[nodeId] : undefined;
-      const fieldMap: Record<string, string> = {
-        checkpoint_1: 'testConditions',
-        checkpoint_2: 'draftTestCases',
-        checkpoint_3: 'finalTestCases',
-      };
-      const field = nodeId ? fieldMap[nodeId] : undefined;
-      if (agentName && field) {
-        await api.pipeline.saveCheckpointEdits(pipeline.runId, { [field]: checkpointEditedData.current }, agentName);
-      }
-      setSaved(true);
-      setReviewMode(false);
-    } finally {
-      setSaving(false);
-    }
-  }, [pipeline.runId, pipeline.selectedNode]);
-
-  const checkpointCompleted = pipeline.nodes.some(n => n.status === 'completed' || n.status === 'auto-passed') && pipeline.selectedNode?.kind === 'checkpoint';
 
   const handleSelectRun = useCallback(async (runId: string) => {
     await pipeline.loadRun(runId);
@@ -177,20 +175,6 @@ const handleCheckpointAction = useCallback((action: any, data?: any) => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {isCheckpointSelected && (
-            <button
-              onClick={handleToggleReview}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                reviewMode
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-              title={reviewMode ? 'Exit editing mode' : 'Review and edit checkpoint output'}
-            >
-              {reviewMode ? <Check size={14} /> : <Eye size={14} />}
-              {reviewMode ? 'Done Reviewing' : 'Review'}
-            </button>
-          )}
           <button
             onClick={handleClear}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
@@ -243,13 +227,6 @@ const handleCheckpointAction = useCallback((action: any, data?: any) => {
             businessFlows={businessFlows}
             onStart={handleStart}
             disabled={pipeline.isRunning}
-            checkpointWaiting={pipeline.nodes.some(n => n.status === 'waiting')}
-            onContinue={() => { pipeline.resume('edit', { editedData: checkpointEditedData.current }); handleExitReview(); }} 
-            checkpointCompleted={checkpointCompleted}
-            onSave={handleSaveCheckpoint}
-            saving={saving}
-            saved={saved}
-            hideButtonArea={hideButtonArea}
           />
           <div className="flex-1 flex flex-col overflow-hidden">
             <TestGenStepper
@@ -269,9 +246,12 @@ const handleCheckpointAction = useCallback((action: any, data?: any) => {
           runSummary={pipeline.runSummary}
           agentLogs={pipeline.agentLogs}
           onClose={handleCloseDetail}
-          onCheckpointAction={handleCheckpointAction}
+          onApprove={handleApprove}
+          onRetry={handleRetry}
+          onToggleReview={handleToggleReview}
+          onDoneReviewing={handleDoneReviewing}
           onCheckpointDataChange={handleCheckpointDataChange}
-          reviewMode={reviewMode}
+          isEditing={reviewMode}
         />
             </div>
           </div>

@@ -86,6 +86,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     dispatch({ type: 'SET_CONNECTED', connected: sse.isConnected });
   }, [sse.isConnected]);
 
+  // Auto-select active node (running or waiting) when pipeline is running
   useEffect(() => {
     if (state.isRunning) {
       const active = state.nodes.find(n => n.status === 'running' || n.status === 'waiting');

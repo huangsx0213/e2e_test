@@ -46,9 +46,12 @@ interface NodeDetailProps {
   runSummary: { totalCases: number; totalTokens: number; totalLatencyMs: number; totalBatches: number } | null;
   agentLogs?: any[];
   onClose: () => void;
-  onCheckpointAction?: (action: 'approve' | 'edit' | 'retry' | 'continue', data?: any) => void;
+  onApprove?: () => void;
+  onRetry?: () => void;
+  onToggleReview?: () => void;
+  onDoneReviewing?: () => void;
   onCheckpointDataChange?: (data: any) => void;
-  reviewMode?: boolean;
+  isEditing?: boolean;
 }
 
 function formatMs(ms: number) { 
@@ -1088,8 +1091,8 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
   const handleAdd = useCallback(() => {
     const isConditions = !!checkpointData?.conditions;
     const defaultData = isConditions
-      ? { condition: 'New Test Condition', category: 'Functional', riskLevel: 'Medium', primaryTechnique: 'Boundary Value Analysis' }
-      : { title: 'New Test Scenario', category: 'Functional', priority: 'Medium', preconditions: [], steps: [] };
+      ? { condition: 'New Test Condition', category: 'happy-path', riskLevel: 'medium', primaryTechnique: '' }
+      : { title: 'New Test Scenario', category: 'happy-path', priority: 'medium', preconditions: [], steps: [] };
 
     setItems(prev => [...prev, { 
       id: nextId, 
@@ -1311,21 +1314,21 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                           </div>
                           <div>
                             <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Risk Level</label>
-                            <select value={item.originalData?.riskLevel || 'Medium'} onChange={e => handleFieldEdit(item.id, 'riskLevel', e.target.value)}
+                            <select value={item.originalData?.riskLevel || 'medium'} onChange={e => handleFieldEdit(item.id, 'riskLevel', e.target.value)}
                               className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                              <option value="High">High</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Low">Low</option>
+                              <option value="high">High</option>
+                              <option value="medium">Medium</option>
+                              <option value="low">Low</option>
                             </select>
                           </div>
                           <div>
                             <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Priority</label>
-                            <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
+                            <select value={item.originalData?.priority || 'medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
                               className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                              <option value="Critical">Critical</option>
-                              <option value="High">High</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Low">Low</option>
+                              <option value="critical">Critical</option>
+                              <option value="high">High</option>
+                              <option value="medium">Medium</option>
+                              <option value="low">Low</option>
                             </select>
                           </div>
                         </div>
@@ -1355,15 +1358,12 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                           </div>
                           <div>
                             <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Priority</label>
-                            <select value={item.originalData?.priority || 'Medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
+                            <select value={item.originalData?.priority || 'medium'} onChange={e => handleFieldEdit(item.id, 'priority', e.target.value)}
                               className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                              <option value="Critical">Critical</option>
-                              <option value="High">High</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Low">Low</option>
-                              <option value="P0">P0</option>
-                              <option value="P1">P1</option>
-                              <option value="P2">P2</option>
+                              <option value="critical">Critical</option>
+                              <option value="high">High</option>
+                              <option value="medium">Medium</option>
+                              <option value="low">Low</option>
                             </select>
                           </div>
                         </div>
@@ -1483,9 +1483,12 @@ export function TestGenDetailPanel({
   runSummary,
   agentLogs,
   onClose,
-  onCheckpointAction,
+  onApprove,
+  onRetry,
+  onToggleReview,
+  onDoneReviewing,
   onCheckpointDataChange,
-  reviewMode
+  isEditing
 }: NodeDetailProps) {
   
   if (!node) {
@@ -1554,6 +1557,45 @@ export function TestGenDetailPanel({
           </div>
         </div>
 
+        {/* Action buttons for checkpoints */}
+        {nodeType === 'checkpoint' && (
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            {node.status === 'waiting' && (
+              <>
+                <button
+                  onClick={onApprove}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
+                >
+                  Approve
+                </button>
+                <button
+                  onClick={onRetry}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-500 text-white hover:bg-slate-600 transition-colors"
+                >
+                  Retry
+                </button>
+              </>
+            )}
+            {(node.status === 'waiting' || node.status === 'auto-passed' || node.status === 'completed') && (
+              isEditing ? (
+                <button
+                  onClick={onDoneReviewing}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  Done Reviewing
+                </button>
+              ) : (
+                <button
+                  onClick={onToggleReview}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Review
+                </button>
+              )
+            )}
+          </div>
+        )}
+
         <button 
           onClick={onClose} 
           className="p-1.5 hover:bg-slate-200/60 rounded-lg transition-colors shrink-0 ml-2"
@@ -1570,7 +1612,7 @@ export function TestGenDetailPanel({
         ) : nodeType === 'preparation' ? (
           <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
         ) : nodeType === 'checkpoint' ? (
-          <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!reviewMode} />
+          <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
         ) : nodeType === 'complete' ? (
           <CompleteNodeView runSummary={runSummary} node={node} />
         ) : (
