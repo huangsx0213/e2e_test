@@ -18,6 +18,7 @@ export interface TestGenRunRow {
   prompt_version: string | null;
   provider_config_name: string | null;
   token_limit: number | null;
+  thread_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -162,6 +163,34 @@ export class TestGenRepository {
 
   setRunRunning(runId: string): void {
     db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?").run(runId);
+  }
+
+  updateThreadId(runId: string, threadId: string): void {
+    db.prepare("UPDATE test_gen_runs SET thread_id = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(threadId, runId);
+  }
+
+  getWaitingRuns(): any[] {
+    const rows = db.prepare(
+      "SELECT id, project_id, status, phase, thread_id, mode, config, checkpoint_data, updated_at FROM test_gen_runs WHERE status = 'WAITING_REVIEW' AND thread_id IS NOT NULL"
+    ).all();
+    return (rows as any[]).map(r => ({
+      ...r,
+      config: r.config ? JSON.parse(r.config) : null,
+      checkpoint_data: r.checkpoint_data ? JSON.parse(r.checkpoint_data) : null,
+    }));
+  }
+
+  getRunWithThreadId(runId: string): any {
+    const row = db.prepare(
+      'SELECT id, project_id, status, phase, thread_id, mode, config, checkpoint_data, current_batch FROM test_gen_runs WHERE id = ?'
+    ).get(runId) as any;
+    if (!row) return null;
+    return {
+      ...row,
+      config: row.config ? JSON.parse(row.config) : null,
+      checkpoint_data: row.checkpoint_data ? JSON.parse(row.checkpoint_data) : null,
+    };
   }
 
   getMonthlyTokenUsage(projectId: string): number {
