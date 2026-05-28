@@ -9,10 +9,9 @@ function mockSSEGateway() {
 }
 
 describe('AutoResolver', () => {
-  it('always returns approve', async () => {
+  it('onInterrupt is a no-op', () => {
     const resolver = new AutoResolver();
-    const result = await resolver.resolve('run-1', 1, 'review-conditions', {});
-    expect(result).toEqual({ action: 'approve' });
+    expect(() => resolver.onInterrupt('run-1', 1, 'review-conditions', {})).not.toThrow();
   });
 });
 
@@ -27,12 +26,9 @@ describe('InteractiveResolver', () => {
     resolver = new InteractiveResolver(saveCheckpoint, sse);
   });
 
-  it('saves checkpoint data and emits SSE event', async () => {
+  it('saves checkpoint data and emits SSE event on interrupt', () => {
     const payload = { conditions: [{ id: 'c1' }] };
-    const resolvePromise = resolver.resolve('run-1', 1, 'review-conditions', payload);
-
-    resolver.resumeRun('run-1', 'approve');
-    await resolvePromise;
+    resolver.onInterrupt('run-1', 1, 'review-conditions', payload);
 
     expect(saveCheckpoint).toHaveBeenCalledWith('run-1', payload, 'review-conditions');
     expect(sse.emit).toHaveBeenCalledWith('run-1', 'checkpoint:waiting', expect.objectContaining({
@@ -41,30 +37,17 @@ describe('InteractiveResolver', () => {
     }));
   });
 
-  it('resumeRun resolves the pending promise', async () => {
-    const resolvePromise = resolver.resolve('run-1', 1, 'review-conditions', { conditions: [] });
-
-    resolver.resumeRun('run-1', 'approve', 'looks good', { conditions: [{ id: 'c1' }] });
-
-    const result = await resolvePromise;
-    expect(result.action).toBe('approve');
-    expect(result.feedback).toBe('looks good');
-    expect(result.edits).toEqual({ conditions: [{ id: 'c1' }] });
+  it('emits correct summary for checkpoint 2', () => {
+    resolver.onInterrupt('run-1', 2, 'review-draft', { cases: [{ id: 'c1' }, { id: 'c2' }] });
+    expect(sse.emit).toHaveBeenCalledWith('run-1', 'checkpoint:waiting', expect.objectContaining({
+      summary: '2 Draft Cases',
+    }));
   });
 
-  it('abortRun rejects the pending promise', async () => {
-    const resolvePromise = resolver.resolve('run-1', 1, 'review-conditions', { conditions: [] });
-
-    resolver.abortRun('run-1');
-
-    await expect(resolvePromise).rejects.toThrow('Test gen aborted');
-  });
-
-  it('resumeRun does nothing if no waiter exists', () => {
-    expect(() => resolver.resumeRun('nonexistent', 'approve')).not.toThrow();
-  });
-
-  it('abortRun does nothing if no waiter exists', () => {
-    expect(() => resolver.abortRun('nonexistent')).not.toThrow();
+  it('emits correct summary for checkpoint 3', () => {
+    resolver.onInterrupt('run-1', 3, 'final-review', {});
+    expect(sse.emit).toHaveBeenCalledWith('run-1', 'checkpoint:waiting', expect.objectContaining({
+      summary: 'Final Review',
+    }));
   });
 });
