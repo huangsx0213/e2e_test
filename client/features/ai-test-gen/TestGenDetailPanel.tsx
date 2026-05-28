@@ -1334,8 +1334,15 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                         </div>
                         <div>
                           <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Primary Technique</label>
-                          <input value={item.originalData?.primaryTechnique || ''} onChange={e => handleFieldEdit(item.id, 'primaryTechnique', e.target.value)}
-                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Primary Technique" />
+                          <select value={item.originalData?.primaryTechnique || ''} onChange={e => handleFieldEdit(item.id, 'primaryTechnique', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="">Select technique…</option>
+                            <option value="equivalence-partitioning">Equivalence Partitioning</option>
+                            <option value="boundary-value-analysis">Boundary Value Analysis</option>
+                            <option value="decision-table">Decision Table</option>
+                            <option value="state-transition">State Transition</option>
+                            <option value="use-case">Use Case</option>
+                          </select>
                         </div>
                       </>
                     ) : (
