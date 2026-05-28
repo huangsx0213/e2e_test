@@ -1,6 +1,6 @@
 import { Command } from '@langchain/langgraph';
 import type { Phase } from './phase-machine.ts';
-import type { CheckpointResolver, CheckpointResolution } from './checkpoint-resolver.ts';
+import type { CheckpointResolver } from './checkpoint-resolver.ts';
 
 export interface SessionOptions {
   mode: 'auto' | 'interactive';
@@ -15,9 +15,16 @@ export interface BatchResult {
   lastState: Record<string, unknown>;
 }
 
+export interface InterruptInfo {
+  threadId: string;
+  checkpointNumber: number;
+  phase: string;
+  payload: Record<string, unknown>;
+}
+
 function buildResumeState(
   checkpointNumber: number,
-  resolution: CheckpointResolution,
+  resolution: { action: string; feedback?: string; edits?: Record<string, unknown> },
   originalPayload: Record<string, unknown>,
 ): Record<string, unknown> {
   if (resolution.action === 'retry') {
@@ -46,97 +53,161 @@ function buildResumeState(
   }
 }
 
+function detectCheckpointNumber(payload: Record<string, unknown>): number {
+  if ('conditions' in payload) return 1;
+  if ('matrix' in payload) return 3;
+  return 2;
+}
+
+function detectPhase(cpNum: number): Phase {
+  switch (cpNum) {
+    case 1: return 'review-conditions';
+    case 2: return 'review-draft';
+    case 3: return 'final-review';
+    default: throw new Error(`Unknown checkpoint: ${cpNum}`);
+  }
+}
+
 export class TestGenSession {
-  private readonly lastStates = new Map<number, Record<string, unknown>>();
   private aborted = false;
 
   constructor(
     private readonly runId: string,
-    private readonly pipeline: any,
+    private readonly pipelineFactory: () => Promise<any>,
     private readonly checkpointResolver: CheckpointResolver,
     private readonly options: SessionOptions,
   ) {}
 
-  async runBatch(
+  /**
+   * Start a batch: run the pipeline until first interrupt or completion.
+   * Returns BatchResult on completion, or InterruptInfo on interrupt.
+   */
+  async startBatch(
     batchIndex: number,
     inputState: Record<string, unknown>,
-  ): Promise<BatchResult | null> {
+    onThreadId?: (threadId: string) => void,
+  ): Promise<{ type: 'complete'; result: BatchResult } | { type: 'interrupt'; interrupt: InterruptInfo }> {
     const threadId = `${this.runId}-batch-${batchIndex}`;
+    onThreadId?.(threadId);
     const config = { configurable: { thread_id: threadId } };
-    const abortSignal = this.options.signal;
 
-    let isResume = false;
+    const pipeline = await this.pipelineFactory();
+    const stream = await pipeline.stream(inputState, { ...config, streamMode: 'values' as const });
+
     let lastState: any = null;
-
-    while (true) {
-      if (this.aborted || abortSignal?.aborted) return null;
-
-      const stream = await this.pipeline.stream(
-        isResume ? new Command({ resume: inputState }) : inputState,
-        { ...config, streamMode: 'values' as const },
-      );
-      isResume = true;
-
-      try {
-        for await (const chunk of stream) {
-          if (this.aborted || abortSignal?.aborted) return null;
-          lastState = chunk;
+    try {
+      for await (const chunk of stream) {
+        if (this.aborted || this.options.signal?.aborted) {
+          return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
         }
-      } catch (err: any) {
-        if (this.aborted || abortSignal?.aborted) return null;
-        throw err;
+        lastState = chunk;
       }
-
-      const interruptValue = (lastState as any)?.__interrupt__;
-      if (interruptValue?.length > 0) {
-        const payload = interruptValue[0].value as Record<string, unknown>;
-
-        console.log('[cpnum] interrupt payload keys:', Object.keys(payload).join(','), '| has conditions:', 'conditions' in payload, '| has matrix:', 'matrix' in payload);
-
-        const cpNum = 'conditions' in payload ? 1
-          : 'matrix' in payload ? 3 : 2;
-
-        const phase = cpNum === 1 ? 'review-conditions' as Phase
-          : cpNum === 2 ? 'review-draft' as Phase
-          : 'final-review' as Phase;
-
-        const resolution = await this.checkpointResolver.resolve(
-          this.runId, cpNum, phase, payload,
-        );
-
-        inputState = buildResumeState(cpNum, resolution, payload);
-
-        this.options.onEvent?.('checkpoint:resolved', {
-          checkpointId: `${this.runId}-cp-${batchIndex}-${cpNum}`,
-          checkpointNumber: cpNum,
-          action: resolution.action,
-          timestamp: Date.now(),
-        });
-
-        continue;
+    } catch (err: any) {
+      if (this.aborted || this.options.signal?.aborted) {
+        return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
       }
-
-      if (lastState) {
-        const result: BatchResult = {
-          batchIndex,
-          cases: (lastState.finalTestCases ?? []) as unknown[],
-          tokenUsage: {
-            input: lastState.tokenUsage?.prompt_tokens ?? 0,
-            output: lastState.tokenUsage?.completion_tokens ?? 0,
-            total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
-          },
-          lastState,
-        };
-        this.lastStates.set(batchIndex, lastState);
-        return result;
-      }
-
-      return null;
+      throw err;
     }
+
+    const interruptValue = (lastState as any)?.__interrupt__;
+    if (interruptValue?.length > 0) {
+      const payload = interruptValue[0].value as Record<string, unknown>;
+      const cpNum = detectCheckpointNumber(payload);
+      const phase = detectPhase(cpNum);
+
+      this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, payload);
+
+      return {
+        type: 'interrupt',
+        interrupt: { threadId, checkpointNumber: cpNum, phase, payload },
+      };
+    }
+
+    if (lastState) {
+      const result: BatchResult = {
+        batchIndex,
+        cases: (lastState.finalTestCases ?? []) as unknown[],
+        tokenUsage: {
+          input: lastState.tokenUsage?.prompt_tokens ?? 0,
+          output: lastState.tokenUsage?.completion_tokens ?? 0,
+          total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
+        },
+        lastState,
+      };
+      return { type: 'complete', result };
+    }
+
+    return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
   }
 
-  getLastState(batchIndex: number): Record<string, unknown> | null {
-    return this.lastStates.get(batchIndex) ?? null;
+  /**
+   * Resume a batch from an interrupt. Uses the stored thread_id.
+   * Returns BatchResult on completion, or InterruptInfo on next interrupt.
+   */
+  async resumeBatch(
+    batchIndex: number,
+    threadId: string,
+    resolution: { action: string; feedback?: string; edits?: Record<string, unknown> },
+    originalPayload: Record<string, unknown>,
+  ): Promise<{ type: 'complete'; result: BatchResult } | { type: 'interrupt'; interrupt: InterruptInfo }> {
+    const config = { configurable: { thread_id: threadId } };
+
+    const resumeState = buildResumeState(
+      detectCheckpointNumber(originalPayload),
+      resolution,
+      originalPayload,
+    );
+
+    const pipeline = await this.pipelineFactory();
+    const stream = await pipeline.stream(
+      new Command({ resume: resumeState }),
+      { ...config, streamMode: 'values' as const },
+    );
+
+    let lastState: any = null;
+    try {
+      for await (const chunk of stream) {
+        if (this.aborted || this.options.signal?.aborted) {
+          return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
+        }
+        lastState = chunk;
+      }
+    } catch (err: any) {
+      if (this.aborted || this.options.signal?.aborted) {
+        return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
+      }
+      throw err;
+    }
+
+    const interruptValue = (lastState as any)?.__interrupt__;
+    if (interruptValue?.length > 0) {
+      const payload = interruptValue[0].value as Record<string, unknown>;
+      const cpNum = detectCheckpointNumber(payload);
+      const phase = detectPhase(cpNum);
+
+      this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, payload);
+
+      return {
+        type: 'interrupt',
+        interrupt: { threadId, checkpointNumber: cpNum, phase, payload },
+      };
+    }
+
+    if (lastState) {
+      const result: BatchResult = {
+        batchIndex,
+        cases: (lastState.finalTestCases ?? []) as unknown[],
+        tokenUsage: {
+          input: lastState.tokenUsage?.prompt_tokens ?? 0,
+          output: lastState.tokenUsage?.completion_tokens ?? 0,
+          total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
+        },
+        lastState,
+      };
+      return { type: 'complete', result };
+    }
+
+    return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
   }
 
   abort(): void {
