@@ -78,9 +78,47 @@ export class TestGenSession {
     private readonly options: SessionOptions,
   ) {}
 
+  private isAborted(): boolean {
+    return this.aborted || this.options.signal?.aborted;
+  }
+
+  private buildBatchResult(batchIndex: number, lastState: any): BatchResult {
+    return {
+      batchIndex,
+      cases: (lastState.finalTestCases ?? []) as unknown[],
+      tokenUsage: {
+        input: lastState.tokenUsage?.prompt_tokens ?? 0,
+        output: lastState.tokenUsage?.completion_tokens ?? 0,
+        total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
+      },
+      lastState,
+    };
+  }
+
+  private async streamPipeline(
+    input: Record<string, unknown> | ReturnType<typeof Command.prototype>,
+    config: Record<string, unknown>,
+  ): Promise<{ lastState: any; interruptPayload: Record<string, unknown> | null }> {
+    const pipeline = await this.pipelineFactory();
+    const stream = await pipeline.stream(input, { ...config, streamMode: 'values' as const });
+
+    let lastState: any = null;
+    for await (const chunk of stream) {
+      if (this.isAborted()) break;
+      lastState = chunk;
+    }
+
+    const interruptValue = (lastState as any)?.__interrupt__;
+    if (interruptValue?.length > 0) {
+      return { lastState, interruptPayload: interruptValue[0].value as Record<string, unknown> };
+    }
+    return { lastState, interruptPayload: null };
+  }
+
   /**
-   * Start a batch: run the pipeline until first interrupt or completion.
-   * Returns BatchResult on completion, or InterruptInfo on interrupt.
+   * Start a batch: run the pipeline until completion.
+   * In auto mode, automatically resumes through all checkpoints.
+   * In interactive mode, returns interrupt info at the first checkpoint.
    */
   async startBatch(
     batchIndex: number,
@@ -91,58 +129,62 @@ export class TestGenSession {
     onThreadId?.(threadId);
     const config = { configurable: { thread_id: threadId } };
 
-    const pipeline = await this.pipelineFactory();
-    const stream = await pipeline.stream(inputState, { ...config, streamMode: 'values' as const });
+    let currentState: Record<string, unknown> = inputState;
+    let isResume = false;
 
-    let lastState: any = null;
-    try {
-      for await (const chunk of stream) {
-        if (this.aborted || this.options.signal?.aborted) {
-          return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
-        }
-        lastState = chunk;
-      }
-    } catch (err: any) {
-      if (this.aborted || this.options.signal?.aborted) {
+    while (true) {
+      if (this.isAborted()) {
         return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
       }
-      throw err;
+
+      const input = isResume
+        ? new Command({ resume: currentState })
+        : currentState;
+
+      const { lastState, interruptPayload } = await this.streamPipeline(input, config);
+      isResume = true;
+
+      if (this.isAborted()) {
+        return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
+      }
+
+      if (interruptPayload) {
+        const cpNum = detectCheckpointNumber(interruptPayload);
+        const phase = detectPhase(cpNum);
+
+        this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, interruptPayload);
+
+        if (this.options.mode === 'auto') {
+          // Auto mode: approve and continue
+          currentState = buildResumeState(cpNum, { action: 'approve' }, interruptPayload);
+          this.options.onEvent?.('checkpoint:auto-resolved', {
+            checkpointNumber: cpNum,
+            action: 'approve',
+            timestamp: Date.now(),
+          });
+          continue;
+        }
+
+        // Interactive mode: return interrupt for human review
+        return {
+          type: 'interrupt',
+          interrupt: { threadId, checkpointNumber: cpNum, phase, payload: interruptPayload },
+        };
+      }
+
+      // No interrupt — graph completed
+      if (lastState) {
+        return { type: 'complete', result: this.buildBatchResult(batchIndex, lastState) };
+      }
+
+      return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
     }
-
-    const interruptValue = (lastState as any)?.__interrupt__;
-    if (interruptValue?.length > 0) {
-      const payload = interruptValue[0].value as Record<string, unknown>;
-      const cpNum = detectCheckpointNumber(payload);
-      const phase = detectPhase(cpNum);
-
-      this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, payload);
-
-      return {
-        type: 'interrupt',
-        interrupt: { threadId, checkpointNumber: cpNum, phase, payload },
-      };
-    }
-
-    if (lastState) {
-      const result: BatchResult = {
-        batchIndex,
-        cases: (lastState.finalTestCases ?? []) as unknown[],
-        tokenUsage: {
-          input: lastState.tokenUsage?.prompt_tokens ?? 0,
-          output: lastState.tokenUsage?.completion_tokens ?? 0,
-          total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
-        },
-        lastState,
-      };
-      return { type: 'complete', result };
-    }
-
-    return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
   }
 
   /**
    * Resume a batch from an interrupt. Uses the stored thread_id.
-   * Returns BatchResult on completion, or InterruptInfo on next interrupt.
+   * In auto mode, automatically resumes through remaining checkpoints.
+   * In interactive mode, returns interrupt info at the next checkpoint.
    */
   async resumeBatch(
     batchIndex: number,
@@ -152,62 +194,57 @@ export class TestGenSession {
   ): Promise<{ type: 'complete'; result: BatchResult } | { type: 'interrupt'; interrupt: InterruptInfo }> {
     const config = { configurable: { thread_id: threadId } };
 
-    const resumeState = buildResumeState(
+    let resumeState = buildResumeState(
       detectCheckpointNumber(originalPayload),
       resolution,
       originalPayload,
     );
 
-    const pipeline = await this.pipelineFactory();
-    const stream = await pipeline.stream(
-      new Command({ resume: resumeState }),
-      { ...config, streamMode: 'values' as const },
-    );
+    let isResume = true;
 
-    let lastState: any = null;
-    try {
-      for await (const chunk of stream) {
-        if (this.aborted || this.options.signal?.aborted) {
-          return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
-        }
-        lastState = chunk;
-      }
-    } catch (err: any) {
-      if (this.aborted || this.options.signal?.aborted) {
+    while (true) {
+      if (this.isAborted()) {
         return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
       }
-      throw err;
+
+      const input = new Command({ resume: resumeState });
+      const { lastState, interruptPayload } = await this.streamPipeline(input, config);
+
+      if (this.isAborted()) {
+        return { type: 'interrupt', interrupt: { threadId, checkpointNumber: 0, phase: 'aborted', payload: {} } };
+      }
+
+      if (interruptPayload) {
+        const cpNum = detectCheckpointNumber(interruptPayload);
+        const phase = detectPhase(cpNum);
+
+        this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, interruptPayload);
+
+        if (this.options.mode === 'auto') {
+          // Auto mode: approve and continue
+          resumeState = buildResumeState(cpNum, { action: 'approve' }, interruptPayload);
+          this.options.onEvent?.('checkpoint:auto-resolved', {
+            checkpointNumber: cpNum,
+            action: 'approve',
+            timestamp: Date.now(),
+          });
+          continue;
+        }
+
+        // Interactive mode: return interrupt for human review
+        return {
+          type: 'interrupt',
+          interrupt: { threadId, checkpointNumber: cpNum, phase, payload: interruptPayload },
+        };
+      }
+
+      // No interrupt — graph completed
+      if (lastState) {
+        return { type: 'complete', result: this.buildBatchResult(batchIndex, lastState) };
+      }
+
+      return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
     }
-
-    const interruptValue = (lastState as any)?.__interrupt__;
-    if (interruptValue?.length > 0) {
-      const payload = interruptValue[0].value as Record<string, unknown>;
-      const cpNum = detectCheckpointNumber(payload);
-      const phase = detectPhase(cpNum);
-
-      this.checkpointResolver.onInterrupt(this.runId, cpNum, phase, payload);
-
-      return {
-        type: 'interrupt',
-        interrupt: { threadId, checkpointNumber: cpNum, phase, payload },
-      };
-    }
-
-    if (lastState) {
-      const result: BatchResult = {
-        batchIndex,
-        cases: (lastState.finalTestCases ?? []) as unknown[],
-        tokenUsage: {
-          input: lastState.tokenUsage?.prompt_tokens ?? 0,
-          output: lastState.tokenUsage?.completion_tokens ?? 0,
-          total: (lastState.tokenUsage?.prompt_tokens ?? 0) + (lastState.tokenUsage?.completion_tokens ?? 0),
-        },
-        lastState,
-      };
-      return { type: 'complete', result };
-    }
-
-    return { type: 'complete', result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
   }
 
   abort(): void {

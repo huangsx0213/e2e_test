@@ -51,13 +51,13 @@ describe('TestGenSession', () => {
       }
     });
 
-    it('startBatch handles checkpoint interruption', async () => {
+    it('startBatch handles checkpoint interruption in interactive mode', async () => {
       const factory = createPipelineFactory([
         { phase: 'analysis' },
         { phase: 'review-conditions', __interrupt__: [{ value: { conditions: [] } }] },
       ]);
       const resolver = mockResolver();
-      const session = new TestGenSession(runId, factory, resolver, { mode: 'auto' });
+      const session = new TestGenSession(runId, factory, resolver, { mode: 'interactive' });
 
       const outcome = await session.startBatch(0, { phase: 'analysis' });
 
@@ -68,6 +68,26 @@ describe('TestGenSession', () => {
         expect(outcome.interrupt.payload).toEqual({ conditions: [] });
       }
       expect(resolver.onInterrupt).toHaveBeenCalledWith(runId, 1, 'review-conditions', { conditions: [] });
+    });
+
+    it('startBatch auto-resumes through checkpoints in auto mode', async () => {
+      const factory = createPipelineFactory([
+        { phase: 'analysis' },
+        { phase: 'review-conditions', __interrupt__: [{ value: { conditions: [{ id: 'c1' }] } }] },
+        { phase: 'design' },
+        { phase: 'review-draft', __interrupt__: [{ value: { cases: [{ id: 'tc1' }] } }] },
+        { finalTestCases: [{ id: 'tc1' }], tokenUsage: { prompt_tokens: 10, completion_tokens: 5 } },
+      ]);
+      const resolver = mockResolver();
+      const session = new TestGenSession(runId, factory, resolver, { mode: 'auto' });
+
+      const outcome = await session.startBatch(0, { phase: 'analysis' });
+
+      expect(outcome.type).toBe('complete');
+      if (outcome.type === 'complete') {
+        expect(outcome.result.cases).toEqual([{ id: 'tc1' }]);
+      }
+      expect(resolver.onInterrupt).toHaveBeenCalledTimes(2);
     });
 
     it('startBatch returns interrupt on abort signal', async () => {
