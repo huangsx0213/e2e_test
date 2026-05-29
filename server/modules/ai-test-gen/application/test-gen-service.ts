@@ -82,6 +82,8 @@ export class TestGenService {
     console.log(`[TestGenService] Found ${waitingRuns.length} WAITING_REVIEW run(s) to expose for resume`);
 
     for (const run of waitingRuns) {
+      pipelineRepo.touchRun(run.id);
+
       this.sseGateway.emit(run.id, 'checkpoint:waiting', {
         checkpointId: `${run.id}-cp-${run.phase}`,
         type: run.phase,

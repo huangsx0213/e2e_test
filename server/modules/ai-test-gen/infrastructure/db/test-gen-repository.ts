@@ -165,6 +165,10 @@ export class TestGenRepository {
     db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?").run(runId);
   }
 
+  touchRun(runId: string): void {
+    db.prepare("UPDATE test_gen_runs SET updated_at = datetime('now') WHERE id = ?").run(runId);
+  }
+
   updateThreadId(runId: string, threadId: string): void {
     db.prepare("UPDATE test_gen_runs SET thread_id = ?, updated_at = datetime('now') WHERE id = ?")
       .run(threadId, runId);
