@@ -1,14 +1,14 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TestGenSession } from '../application/test-gen-session.ts';
 import type { CheckpointResolver } from '../application/checkpoint-resolver.ts';
 
 function mockResolver(): CheckpointResolver {
-  return { resolve: vi.fn().mockResolvedValue({ action: 'approve' }) };
+  return { onInterrupt: vi.fn() };
 }
 
-function createPipeline(states: Array<Record<string, unknown>>) {
+function createPipelineFactory(states: Array<Record<string, unknown>>) {
   let index = 0;
-  return {
+  return async () => ({
     stream: vi.fn(async function* () {
       while (index < states.length) {
         const state = states[index++];
@@ -16,84 +16,77 @@ function createPipeline(states: Array<Record<string, unknown>>) {
         if (state.__interrupt__) return;
       }
     }),
-  };
+  });
 }
 
 describe('TestGenSession', () => {
   const runId = 'test-run-1';
 
   describe('abort', () => {
-    it('causes runBatch to return null', async () => {
-      const session = new TestGenSession(runId, createPipeline([{ finalTestCases: [] }]), mockResolver(), {
+    it('causes startBatch to return interrupt', async () => {
+      const session = new TestGenSession(runId, createPipelineFactory([{ finalTestCases: [] }]), mockResolver(), {
         mode: 'auto',
       });
       session.abort();
-      const result = await session.runBatch(0, { phase: 'analysis' });
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('getLastState', () => {
-    it('returns null for unknown batch', () => {
-      const session = new TestGenSession(runId, createPipeline([]), mockResolver(), { mode: 'auto' });
-      expect(session.getLastState(99)).toBeNull();
+      const outcome = await session.startBatch(0, { phase: 'analysis' });
+      expect(outcome.type).toBe('interrupt');
+      if (outcome.type === 'interrupt') {
+        expect(outcome.interrupt.phase).toBe('aborted');
+      }
     });
   });
 
   describe('with mock pipeline', () => {
-    it('runBatch streams no-interrupt pipeline once and returns result', async () => {
+    it('startBatch streams no-interrupt pipeline once and returns result', async () => {
       const lastState = { finalTestCases: [{ id: 'tc-1' }], tokenUsage: { prompt_tokens: 10, completion_tokens: 5 } };
-      const pipeline = createPipeline([{ phase: 'analysis' }, lastState]);
-      const session = new TestGenSession(runId, pipeline, mockResolver(), { mode: 'auto' });
+      const factory = createPipelineFactory([{ phase: 'analysis' }, lastState]);
+      const session = new TestGenSession(runId, factory, mockResolver(), { mode: 'auto' });
 
-      const result = await session.runBatch(0, { phase: 'analysis' });
+      const outcome = await session.startBatch(0, { phase: 'analysis' });
 
-      expect(result).not.toBeNull();
-      expect(result!.batchIndex).toBe(0);
-      expect(result!.cases).toEqual([{ id: 'tc-1' }]);
-      expect(pipeline.stream).toHaveBeenCalledTimes(1);
+      expect(outcome.type).toBe('complete');
+      if (outcome.type === 'complete') {
+        expect(outcome.result.batchIndex).toBe(0);
+        expect(outcome.result.cases).toEqual([{ id: 'tc-1' }]);
+      }
     });
 
-    it('runBatch handles checkpoint interruption and resume', async () => {
-      const pipeline = createPipeline([
+    it('startBatch handles checkpoint interruption', async () => {
+      const factory = createPipelineFactory([
         { phase: 'analysis' },
         { phase: 'review-conditions', __interrupt__: [{ value: { conditions: [] } }] },
-        { phase: 'design', testConditions: [] },
-        { phase: 'review-draft', __interrupt__: [{ value: { cases: [] } }] },
-        { phase: 'quality', draftTestCases: [] },
-        { finalTestCases: [{ id: 'tc-1' }], tokenUsage: {} },
       ]);
       const resolver = mockResolver();
-      const session = new TestGenSession(runId, pipeline, resolver, { mode: 'auto' });
+      const session = new TestGenSession(runId, factory, resolver, { mode: 'auto' });
 
-      const result = await session.runBatch(0, { phase: 'analysis' });
+      const outcome = await session.startBatch(0, { phase: 'analysis' });
 
-      expect(result).not.toBeNull();
-      expect(result!.cases).toEqual([{ id: 'tc-1' }]);
-      expect(pipeline.stream).toHaveBeenCalledTimes(3);
-      expect(resolver.resolve).toHaveBeenCalledTimes(2);
-      expect(resolver.resolve).toHaveBeenNthCalledWith(
-        1, runId, 1, 'review-conditions', { conditions: [] },
-      );
-      expect(resolver.resolve).toHaveBeenNthCalledWith(
-        2, runId, 2, 'review-draft', { cases: [] },
-      );
+      expect(outcome.type).toBe('interrupt');
+      if (outcome.type === 'interrupt') {
+        expect(outcome.interrupt.checkpointNumber).toBe(1);
+        expect(outcome.interrupt.phase).toBe('review-conditions');
+        expect(outcome.interrupt.payload).toEqual({ conditions: [] });
+      }
+      expect(resolver.onInterrupt).toHaveBeenCalledWith(runId, 1, 'review-conditions', { conditions: [] });
     });
 
-    it('runBatch returns null on abort signal', async () => {
+    it('startBatch returns interrupt on abort signal', async () => {
       const controller = new AbortController();
-      const pipeline = createPipeline([
+      const factory = createPipelineFactory([
         { phase: 'analysis' },
         { phase: 'review-conditions', __interrupt__: [{ value: { conditions: [] } }] },
       ]);
-      const session = new TestGenSession(runId, pipeline, mockResolver(), {
+      const session = new TestGenSession(runId, factory, mockResolver(), {
         mode: 'auto',
         signal: controller.signal,
       });
 
       controller.abort();
-      const result = await session.runBatch(0, { phase: 'analysis' });
-      expect(result).toBeNull();
+      const outcome = await session.startBatch(0, { phase: 'analysis' });
+      expect(outcome.type).toBe('interrupt');
+      if (outcome.type === 'interrupt') {
+        expect(outcome.interrupt.phase).toBe('aborted');
+      }
     });
   });
 });
