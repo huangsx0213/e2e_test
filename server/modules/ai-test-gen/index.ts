@@ -84,12 +84,30 @@ router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
 
   const run = pipelineRepo.getRunWithThreadId(p(req.params.runId));
   if (run?.checkpoint_data) {
-    const merged = { ...run.checkpoint_data, ...editedData };
+    const normalizedEdits = normalizeCheckpointEdits(editedData as Record<string, unknown>, run.phase);
+    const merged = { ...run.checkpoint_data, ...normalizedEdits };
     pipelineRepo.updateCheckpointData(p(req.params.runId), merged);
   }
 
   res.json({ success: true });
 }));
+
+const FIELD_ALIASES: Record<string, string> = {
+  testConditions: 'conditions',
+  requirementAnalysis: 'analysis',
+  draftTestCases: 'cases',
+  finalTestCases: 'cases',
+  coverageMatrix: 'matrix',
+};
+
+function normalizeCheckpointEdits(edits: Record<string, unknown>, phase: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(edits)) {
+    const normalizedKey = FIELD_ALIASES[key] ?? key;
+    result[normalizedKey] = value;
+  }
+  return result;
+}
 
 // --- Start Test Gen ---
 router.post('/:projectId/start', withErrorHandling((req, res) => {
