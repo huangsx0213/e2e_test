@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { BatchOrchestrator } from '../application/batch-orchestrator.ts';
 import type { BatchResult } from '../application/test-gen-session.ts';
 
-function mockSession(results: Array<BatchResult | null>) {
+function mockSession(results: Array<BatchResult>) {
   let calls = 0;
   return {
-    runBatch: vi.fn(async (_batchIndex: number, _inputState: Record<string, unknown>) => {
+    startBatch: vi.fn(async (_batchIndex: number, _inputState: Record<string, unknown>) => {
       const r = results[calls++];
-      return r ?? null;
+      return { type: 'complete' as const, result: r };
     }),
   } as any;
 }
@@ -29,17 +29,15 @@ describe('BatchOrchestrator', () => {
     expect(results).toHaveLength(2);
     expect(results[0].cases).toEqual([{ id: 'a' }]);
     expect(results[1].cases).toEqual([{ id: 'b' }]);
-    expect(session.runBatch).toHaveBeenCalledTimes(2);
-    expect(session.runBatch).toHaveBeenNthCalledWith(1, 0, {});
-    expect(session.runBatch).toHaveBeenNthCalledWith(2, 1, {});
+    expect(session.startBatch).toHaveBeenCalledTimes(2);
+    expect(session.startBatch).toHaveBeenNthCalledWith(1, 0, {});
+    expect(session.startBatch).toHaveBeenNthCalledWith(2, 1, {});
   });
 
   it('stops early when aborted', async () => {
     let aborted = false;
     const session = mockSession([
       { batchIndex: 0, cases: [{ id: 'a' }], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} },
-      null,
-      { batchIndex: 2, cases: [{ id: 'c' }], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} },
     ]);
     const orchestrator = new BatchOrchestrator(session, {
       isAborted: () => aborted,
@@ -54,14 +52,14 @@ describe('BatchOrchestrator', () => {
 
     expect(results).toHaveLength(0);
     expect(actualBatches).toBe(0);
-    expect(session.runBatch).not.toHaveBeenCalled();
+    expect(session.startBatch).not.toHaveBeenCalled();
   });
 
   it('continues past failed batches', async () => {
     const session = {
-      runBatch: vi.fn(async (batchIndex: number) => {
+      startBatch: vi.fn(async (batchIndex: number) => {
         if (batchIndex === 1) throw new Error('batch failed');
-        return { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} };
+        return { type: 'complete' as const, result: { batchIndex, cases: [], tokenUsage: { input: 0, output: 0, total: 0 }, lastState: {} } };
       }),
     } as any;
 

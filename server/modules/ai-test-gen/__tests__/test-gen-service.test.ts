@@ -10,14 +10,45 @@ const mockRepo = vi.hoisted(() => ({
   })),
   markRunFailed: vi.fn(),
   getRun: vi.fn(),
+  getRunWithThreadId: vi.fn(),
   insertAuditLog: vi.fn(),
   setRunRunning: vi.fn(),
   deleteRun: vi.fn(),
+  updateThreadId: vi.fn(),
+  setCheckpointData: vi.fn(),
 }));
 
 vi.mock('../infrastructure/db/test-gen-repository.ts', () => ({
   pipelineRepo: mockRepo,
   decryptApiKey: vi.fn((key: string) => key),
+}));
+
+vi.mock('../application/batch-orchestrator.ts', () => ({
+  BatchOrchestrator: vi.fn(),
+}));
+
+vi.mock('../../../../shared/ai/provider.ts', () => ({
+  createAIProviderWithFallback: vi.fn(),
+}));
+
+vi.mock('../../../../shared/ai-test-gen/test-generation.ts', () => ({
+  createTestGenerationPipeline: vi.fn(),
+}));
+
+vi.mock('../../requirements/repository.ts', () => ({
+  requirementRepo: { listByProject: vi.fn(() => []) },
+}));
+
+vi.mock('../../requirements/index-generator.ts', () => ({
+  buildRequirementIndex: vi.fn(() => []),
+}));
+
+vi.mock('../../business-flows/repository.ts', () => ({
+  businessFlowRepo: { listByProject: vi.fn(() => []) },
+}));
+
+vi.mock('../../nl-cases/repository.ts', () => ({
+  nlCaseRepo: { save: vi.fn() },
 }));
 
 import { TestGenService } from '../application/test-gen-service.ts';
@@ -49,12 +80,21 @@ describe('TestGenService', () => {
 
   describe('resumeRun', () => {
     it('throws if run is not WAITING_REVIEW', () => {
-      mockRepo.getRun.mockReturnValue({ status: 'RUNNING' });
+      mockRepo.getRunWithThreadId.mockReturnValue({ status: 'RUNNING' });
       expect(() => service.resumeRun('run-1', 'approve')).toThrow('not waiting for review');
     });
 
     it('inserts audit log and sets run to RUNNING', () => {
-      mockRepo.getRun.mockReturnValue({ status: 'WAITING_REVIEW', phase: 'review-conditions' });
+      mockRepo.getRunWithThreadId.mockReturnValue({
+        status: 'WAITING_REVIEW',
+        phase: 'review-conditions',
+        thread_id: 'thread-1',
+        checkpoint_data: {},
+        config: {},
+        project_id: 'proj-1',
+        mode: 'auto',
+        current_batch: 0,
+      });
       service.resumeRun('run-1', 'approve', 'looks good', { conditions: [] });
       expect(mockRepo.insertAuditLog).toHaveBeenCalledWith(
         'run-1', 'review-conditions', 'approve', { conditions: [] },
