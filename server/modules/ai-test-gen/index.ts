@@ -80,14 +80,6 @@ router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
     agentName: z.string(),
   }), req.body);
 
-  const agentFieldMap: Record<string, string> = {
-    test_analyst: 'testConditions',
-    test_designer: 'draftTestCases',
-    quality_manager: 'finalTestCases',
-  };
-  const agentField = agentFieldMap[agentName];
-  const agentLogData = agentField ? { [agentField]: editedData[agentFieldMap[agentName]] || editedData.conditions || editedData.cases } : editedData;
-  pipelineRepo.updateAgentLogOutput(p(req.params.runId), agentName, agentLogData);
   pipelineRepo.insertAuditLog(p(req.params.runId), agentName, 'save-edits', editedData);
 
   const run = pipelineRepo.getRunWithThreadId(p(req.params.runId));
