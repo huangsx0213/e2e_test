@@ -157,6 +157,11 @@ export class TestGenRepository {
       .run(JSON.stringify(data), phase, runId);
   }
 
+  updateCheckpointData(runId: string, data: unknown): void {
+    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
+      .run(JSON.stringify(data), runId);
+  }
+
   markRunFailed(runId: string): void {
     db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }

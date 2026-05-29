@@ -81,6 +81,13 @@ router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
   }), req.body);
   pipelineRepo.updateAgentLogOutput(p(req.params.runId), agentName, editedData as Record<string, unknown>);
   pipelineRepo.insertAuditLog(p(req.params.runId), agentName, 'save-edits', editedData);
+
+  const run = pipelineRepo.getRunWithThreadId(p(req.params.runId));
+  if (run?.checkpoint_data) {
+    const merged = { ...run.checkpoint_data, ...editedData };
+    pipelineRepo.updateCheckpointData(p(req.params.runId), merged);
+  }
+
   res.json({ success: true });
 }));
 
