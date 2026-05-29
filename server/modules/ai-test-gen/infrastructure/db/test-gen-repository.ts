@@ -153,24 +153,24 @@ export class TestGenRepository {
   }
 
   setCheckpointData(runId: string, data: unknown, phase: string): void {
-    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') WHERE id = ?")
+    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
       .run(JSON.stringify(data), phase, runId);
   }
 
   markRunFailed(runId: string): void {
-    db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') WHERE id = ?").run(runId);
+    db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
   setRunRunning(runId: string): void {
-    db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') WHERE id = ?").run(runId);
+    db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
   touchRun(runId: string): void {
-    db.prepare("UPDATE test_gen_runs SET updated_at = datetime('now') WHERE id = ?").run(runId);
+    db.prepare("UPDATE test_gen_runs SET updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
   updateThreadId(runId: string, threadId: string): void {
-    db.prepare("UPDATE test_gen_runs SET thread_id = ?, updated_at = datetime('now') WHERE id = ?")
+    db.prepare("UPDATE test_gen_runs SET thread_id = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
       .run(threadId, runId);
   }
 
