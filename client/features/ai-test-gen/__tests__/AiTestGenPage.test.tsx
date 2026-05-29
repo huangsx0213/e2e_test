@@ -32,6 +32,8 @@ vi.mock('@/shared/hooks/useQueryHooks', () => ({
   useProviderConfigs: vi.fn().mockReturnValue({ data: [] }),
 }));
 
+const mockSaveCheckpointEdits = vi.hoisted(() => vi.fn().mockResolvedValue({ success: true }));
+
 vi.mock('@/shared/services/api', () => ({
   api: {
     pipeline: {
@@ -41,6 +43,9 @@ vi.mock('@/shared/services/api', () => ({
       delete: vi.fn().mockResolvedValue({ success: true }),
       active: vi.fn().mockResolvedValue(null),
       runs: vi.fn().mockResolvedValue([]),
+    },
+    testGen: {
+      saveCheckpointEdits: mockSaveCheckpointEdits,
     },
   },
 }));

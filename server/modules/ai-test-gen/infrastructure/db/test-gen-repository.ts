@@ -114,6 +114,7 @@ export class TestGenRepository {
     const row = db.prepare('SELECT * FROM test_gen_runs WHERE id = ?').get(runId) as any;
     if (!row) return null;
     return {
+      id: row.id,
       status: row.status,
       phase: row.phase,
       current_batch: row.current_batch,
