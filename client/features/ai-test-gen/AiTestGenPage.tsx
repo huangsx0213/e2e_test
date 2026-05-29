@@ -99,33 +99,21 @@ const handleRefresh = useCallback(async () => {
   }, []);
 
   const handleDoneReviewing = useCallback(async () => {
-    // If auto + completed, save to DB
-    if (pipeline.selectedNode?.kind === 'checkpoint') {
-      const isAutoCompleted = pipeline.nodes.some(
-        n => n.id === pipeline.selectedNode?.id && n.status === 'auto-passed'
-      );
-      if (isAutoCompleted && checkpointEditedData.current && pipeline.runId) {
-        const { api } = await import('@/shared/services/api');
-        const nodeId = pipeline.selectedNode.id;
-        const agentMap: Record<string, string> = {
-          checkpoint_1: 'test_analyst',
-          checkpoint_2: 'test_designer',
-          checkpoint_3: 'quality_manager',
-        };
-        const fieldMap: Record<string, string> = {
-          checkpoint_1: 'testConditions',
-          checkpoint_2: 'draftTestCases',
-          checkpoint_3: 'finalTestCases',
-        };
-        const agentName = agentMap[nodeId];
-        const field = fieldMap[nodeId];
-        if (agentName && field) {
-          await api.testGen.saveCheckpointEdits(
-            pipeline.runId,
-            checkpointEditedData.current,
-            agentName
-          );
-        }
+    if (pipeline.selectedNode?.kind === 'checkpoint' && checkpointEditedData.current && pipeline.runId) {
+      const { api } = await import('@/shared/services/api');
+      const nodeId = pipeline.selectedNode.id;
+      const agentMap: Record<string, string> = {
+        checkpoint_1: 'test_analyst',
+        checkpoint_2: 'test_designer',
+        checkpoint_3: 'quality_manager',
+      };
+      const agentName = agentMap[nodeId];
+      if (agentName) {
+        await api.testGen.saveCheckpointEdits(
+          pipeline.runId,
+          checkpointEditedData.current,
+          agentName
+        );
       }
     }
     setReviewMode(false);
