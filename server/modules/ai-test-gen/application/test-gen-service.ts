@@ -494,6 +494,11 @@ export class TestGenService {
         signal: abortSignal,
       });
 
+      if (editedData && action === 'approve') {
+        const merged = { ...runRow.checkpoint_data, ...(editedData as Record<string, unknown>) };
+        pipelineRepo.setCheckpointData(runId, merged, runRow.phase);
+      }
+
       const outcome = await session.resumeBatch(
         runRow.current_batch || 0,
         runRow.thread_id,
