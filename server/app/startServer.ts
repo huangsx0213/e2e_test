@@ -9,6 +9,7 @@ import { registerExecutionWsHandlers } from '../modules/execution/ws-handlers.ts
 import { registerRecordingWsHandlers } from '../modules/recording/ws-handlers.ts';
 
 import { getInternalIp } from '../modules/agent/index.ts';
+import { recoverInterruptedTestGenRuns } from '../modules/ai-test-gen/index.ts';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -68,4 +69,9 @@ export async function startServer() {
   registerAgentWsHandlers();
   registerExecutionWsHandlers();
   registerRecordingWsHandlers();
+
+  // Recover any HITL runs that were waiting before restart
+  recoverInterruptedTestGenRuns().catch(err => {
+    console.error('[Server] Failed to recover interrupted test gen runs:', err);
+  });
 }

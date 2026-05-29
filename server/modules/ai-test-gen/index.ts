@@ -116,4 +116,9 @@ router.get('/:runId/stream', (req, res) => {
   sseGateway.attachStream(p(req.params.runId), res);
 });
 
+export async function recoverInterruptedTestGenRuns(): Promise<void> {
+  await pipelineService.recoverInterruptedRuns();
+  pipelineService.startCheckpointTimeoutMonitor();
+}
+
 export const aiTestGenModule = { basePath: '/api/test-gen', router };
