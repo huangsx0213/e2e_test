@@ -79,35 +79,25 @@ router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
     editedData: z.record(z.string(), z.unknown()),
     agentName: z.string(),
   }), req.body);
-  pipelineRepo.updateAgentLogOutput(p(req.params.runId), agentName, editedData as Record<string, unknown>);
+
+  const agentFieldMap: Record<string, string> = {
+    test_analyst: 'testConditions',
+    test_designer: 'draftTestCases',
+    quality_manager: 'finalTestCases',
+  };
+  const agentField = agentFieldMap[agentName];
+  const agentLogData = agentField ? { [agentField]: editedData[agentFieldMap[agentName]] || editedData.conditions || editedData.cases } : editedData;
+  pipelineRepo.updateAgentLogOutput(p(req.params.runId), agentName, agentLogData);
   pipelineRepo.insertAuditLog(p(req.params.runId), agentName, 'save-edits', editedData);
 
   const run = pipelineRepo.getRunWithThreadId(p(req.params.runId));
   if (run?.checkpoint_data) {
-    const normalizedEdits = normalizeCheckpointEdits(editedData as Record<string, unknown>, run.phase);
-    const merged = { ...run.checkpoint_data, ...normalizedEdits };
+    const merged = { ...run.checkpoint_data, ...editedData };
     pipelineRepo.updateCheckpointData(p(req.params.runId), merged);
   }
 
   res.json({ success: true });
 }));
-
-const FIELD_ALIASES: Record<string, string> = {
-  testConditions: 'conditions',
-  requirementAnalysis: 'analysis',
-  draftTestCases: 'cases',
-  finalTestCases: 'cases',
-  coverageMatrix: 'matrix',
-};
-
-function normalizeCheckpointEdits(edits: Record<string, unknown>, phase: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(edits)) {
-    const normalizedKey = FIELD_ALIASES[key] ?? key;
-    result[normalizedKey] = value;
-  }
-  return result;
-}
 
 // --- Start Test Gen ---
 router.post('/:projectId/start', withErrorHandling((req, res) => {

@@ -122,7 +122,7 @@ const handleRefresh = useCallback(async () => {
         if (agentName && field) {
           await api.testGen.saveCheckpointEdits(
             pipeline.runId,
-            { [field]: checkpointEditedData.current },
+            checkpointEditedData.current,
             agentName
           );
         }
