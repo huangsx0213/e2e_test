@@ -7,6 +7,7 @@ export interface AgentObserver {
   onThinking?: (agentName: string, text: string) => void;
   onStart?: (agentName: string, inputPrompt?: ChatMessage[]) => void;
   onComplete?: (agentName: string, tokenUsage: { input: number; output: number; reasoning: number }, latencyMs: number, inputPrompt?: ChatMessage[], outputData?: unknown) => void;
+  onError?: (agentName: string, error: Error, rawResponse?: string) => void;
 }
 
 export function createAgentNode(
@@ -27,13 +28,19 @@ export function createAgentNode(
     logEnter?.(state);
     observer?.onStart?.(agentName);
     observer?.onStep?.(agentName, preStep.index, preStep.name);
-    const raw = await runAgent(ctx, buildInput(state), {
-      timeoutMs,
-      useCache,
-      signal,
-      onStep: (idx, name) => observer?.onStep?.(agentName, idx, name),
-      onThinking: (text) => observer?.onThinking?.(agentName, text),
-    });
+    let raw;
+    try {
+      raw = await runAgent(ctx, buildInput(state), {
+        timeoutMs,
+        useCache,
+        signal,
+        onStep: (idx, name) => observer?.onStep?.(agentName, idx, name),
+        onThinking: (text) => observer?.onThinking?.(agentName, text),
+      });
+    } catch (err: any) {
+      observer?.onError?.(agentName, err, err.rawResponse);
+      throw err;
+    }
     logExit?.(raw);
     observer?.onComplete?.(agentName, raw.tokenUsage, raw.latencyMs, raw.inputPrompt, raw.result);
     for (const s of postSteps) {

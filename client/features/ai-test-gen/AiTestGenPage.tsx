@@ -17,6 +17,8 @@ interface AiTestGenPageProps {
 export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [view, setView] = useState<'config' | 'history'>('config');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
+  const [showRetryConfirm, setShowRetryConfirm] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const pipeline = useTestGenRun(currentProjectId);
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
@@ -88,10 +90,18 @@ const handleRefresh = useCallback(async () => {
     setReviewMode(false);
   }, [pipeline]);
 
-  const handleRetry = useCallback(() => {
+  const handleRetry = useCallback(async () => {
     if (!pipeline.runId) return;
-    pipeline.resume('retry');
-    setReviewMode(false);
+    setRetrying(true);
+    checkpointEditedData.current = null;
+    try {
+      await pipeline.resume('retry');
+    } catch {
+      // error surfaced via SSE pipeline:error
+    } finally {
+      setRetrying(false);
+      setReviewMode(false);
+    }
   }, [pipeline]);
 
   const handleToggleReview = useCallback(() => {
@@ -112,6 +122,7 @@ const handleRefresh = useCallback(async () => {
           checkpointEditedData.current,
           cpNum,
         );
+        await pipeline.refreshCheckpointData();
       }
     }
     setReviewMode(false);
@@ -225,6 +236,7 @@ const handleRefresh = useCallback(async () => {
             />
             <div className="flex-1 overflow-hidden">
         <TestGenDetailPanel
+          runId={pipeline.runId}
           node={pipeline.selectedNode as any ?? null}
           agentLog={selectedAgentLog}
           checkpointData={pipeline.checkpointData}
@@ -233,11 +245,12 @@ const handleRefresh = useCallback(async () => {
           agentLogs={pipeline.agentLogs}
           onClose={handleCloseDetail}
           onApprove={handleApprove}
-          onRetry={handleRetry}
+          onRetry={() => setShowRetryConfirm(true)}
           onToggleReview={handleToggleReview}
           onDoneReviewing={handleDoneReviewing}
           onCheckpointDataChange={handleCheckpointDataChange}
           isEditing={reviewMode}
+          retrying={retrying}
         />
             </div>
           </div>
@@ -252,6 +265,17 @@ const handleRefresh = useCallback(async () => {
         message="This will stop the current test generation run. Generated test cases from completed batches will be preserved. This action cannot be undone."
         confirmLabel="Abort Test Gen"
         type="warning"
+      />
+
+      <ConfirmModal
+        isOpen={showRetryConfirm}
+        onClose={() => setShowRetryConfirm(false)}
+        onConfirm={handleRetry}
+        title="Retry this Agent?"
+        message="The current output will be discarded and the agent will re-run from scratch with the same inputs. Any edits made during review will be lost."
+        confirmLabel="Retry Agent"
+        type="warning"
+        loading={retrying}
       />
     </div>
   );

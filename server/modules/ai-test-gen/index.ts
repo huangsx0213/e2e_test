@@ -78,6 +78,11 @@ router.post('/:runId/checkpoint-update', withErrorHandling(async (req, res) => {
     res.json({ success: true });
 }));
 
+// --- Audit Log ---
+router.get('/:runId/audit', withErrorHandling((req, res) => {
+  res.json(pipelineRepo.getAuditLogs(p(req.params.runId)));
+}));
+
 // --- Get checkpoint state from LangGraph checkpointer ---
 router.get('/:runId/checkpoint-state', withErrorHandling(async (req, res) => {
   const runId = p(req.params.runId);

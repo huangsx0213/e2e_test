@@ -17,6 +17,8 @@ export interface AgentRunSnapshot {
   latencyMs: number;
   rawTrace: TraceEntry[];
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  errorMessage?: string;
+  errorRawResponse?: string;
 }
 
 export class TestGenRunState {
@@ -76,6 +78,17 @@ export class TestGenRunState {
     this.totalReasoningTokens += params.tokenUsage.reasoning;
     this.totalLatencyMs += params.latencyMs;
     return snap;
+  }
+
+  recordAgentError(agentName: string, batch: number, errorMessage: string, errorRawResponse?: string): AgentRunSnapshot | null {
+    const key = this.stateKey(agentName, batch);
+    const snap = this.agentStates.get(key);
+    if (snap) {
+      snap.status = 'FAILED';
+      snap.errorMessage = errorMessage;
+      if (errorRawResponse) snap.errorRawResponse = errorRawResponse;
+    }
+    return snap ?? null;
   }
 
   recordAgentStep(agentName: string, batch: number, stepIndex: number, stepName: string): void {

@@ -230,6 +230,8 @@ export class TestGenRepository {
       output_data: r.output_data ? JSON.parse(r.output_data) : null,
       token_usage: r.token_usage ? JSON.parse(r.token_usage) : null,
       raw_trace: r.raw_trace ? JSON.parse(r.raw_trace) : [],
+      error_message: r.error_message ?? null,
+      error_raw_response: r.error_raw_response ?? null,
     }));
   }
 
@@ -249,6 +251,16 @@ export class TestGenRepository {
   }
 
   // --- Audit Log ---
+  getAuditLogs(runId: string): any[] {
+    return db.prepare(
+      'SELECT * FROM test_gen_audit_log WHERE run_id = ? ORDER BY created_at DESC'
+    ).all(runId).map((r: any) => ({
+      ...r,
+      snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
+      created_at: r.created_at ? new Date(r.created_at + 'Z').toISOString() : r.created_at,
+    }));
+  }
+
   insertAuditLog(runId: string, checkpointId: string, action: string, editedData: unknown): void {
     const logId = randomId('audit');
     db.prepare(`

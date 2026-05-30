@@ -152,6 +152,8 @@ businessFlows: {
       apiFetch<{ checkpointData: any }>(`test-gen/${runId}/checkpoint-state`),
     logs: (runId: string, agentName?: string) =>
       apiFetch<any[]>(`test-gen/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
+    audit: (runId: string) =>
+      apiFetch<any[]>(`test-gen/${runId}/audit`),
     abort: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/abort`, { method: 'POST' }),
     delete: (runId: string) =>

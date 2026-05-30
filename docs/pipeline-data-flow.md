@@ -646,16 +646,21 @@ startPipeline/resumePipeline finally:
 └────────────────────────────────────────────────────────────┘
 ```
 
-### 编辑保存时的双写机制
+### 编辑保存时的双写机制（async await）
+
+> **v2 变更**：旧版是 `.then()` fire-and-forget，HTTP 响应在 DB 写完前就返回。
+> 客户端随后调 `refresh()` 读到的可能是旧数据。新版用 `async await` 串行等待全部落盘后才返回。
 
 ```
 saveCheckpointEdits(runId, editedData, checkpointNumber):
 
-  1. applyStateUpdate(threadId, stateKeys)
+  [验证 runId, thread_id, 映射 stateKeys]
+
+  1. await applyStateUpdate(threadId, stateKeys)
      → graph.updateState({ configurable: { thread_id } }, stateKeys)
      → 写入 LangGraph checkpointer (SQLite)
 
-  2. On success (async):
+  2. [成功后仍在此 async 函数内]:
      a. getCheckpointState() → 读取回最新状态
      b. SSE emit checkpoint:waiting → 更新 lastEvents
      c. pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys)
@@ -665,12 +670,80 @@ saveCheckpointEdits(runId, editedData, checkpointNumber):
            ORDER BY batch DESC LIMIT 1
         → merged = { ...existing_output_data, ...stateKeys }
         → UPDATE SET output_data = JSON.stringify(merged)
+
+  [所有写入完成 → HTTP 200 返回]
 ```
 
 为什么需要双写：
 - Auto/Interactive 运行时：从 graph state 读取（通过 `getCheckpointState`）
 - 已完成运行加载历史：从 agent log 读取（因为 `getCheckpointState` 对 phase='complete' 返回 null）
 - 编辑要同时反映在两种场景中
+
+### Done Reviewing 后的数据刷新
+
+> **关键优化**：旧版用 `refresh()`（内含 `RESTORE_RUN` → 清空 `checkpointData/agentLogs` → 再通过 API
+> 恢复），存在空窗期，组件渲染为 "No checkpoint data available"。
+> 新版改用 `refreshCheckpointData()`，不重置 reducer 状态，只并行补充数据。
+
+```
+handleDoneReviewing (AiTestGenPage.tsx):
+
+  1. await api.testGen.saveCheckpointEdits(runId, editedData, cpNum)
+     [服务器 async await 写完 DB 才返回]
+
+  2. await pipeline.refreshCheckpointData()  ← 取代旧的 refresh()
+     ┌──────────────────────────────────────────────────────┐
+     │ refreshCheckpointData():                             │
+     │   Promise.all([                                      │
+     │     api.logs(runId),               → 拉取 agent logs │
+     │     api.testGen.getCheckpointState(runId) → 拉取 graph state   │
+     │   ])                                                  │
+     │                                                       │
+     │   a. dispatch MERGE_AGENT_LOGS (logs)                │
+     │                                                       │
+     │   b. if (cpState?.checkpointData):                   │
+     │        → dispatch SET_CHECKPOINT_DATA (WAITING_REVIEW)│
+     │        → return                                      │
+     │                                                       │
+     │   c. [COMPLETED fallback]:                           │
+     │       从 logs 中过滤当前 agent 的 output_data        │
+     │       → mergeOutputData(agentLogs)                   │
+     │       → 映射为 display 格式                           │
+     │       → dispatch SET_CHECKPOINT_DATA                 │
+     │         (state.checkpointData 保持设置，不经过 agent │
+     │           log fallback，避免竞态)                     │
+     └──────────────────────────────────────────────────────┘
+
+  3. setReviewMode(false) → isEditing = false → readOnly
+```
+
+**关键差异** vs `refresh()`：
+
+| 方面 | `refresh()` | `refreshCheckpointData()` |
+|------|------------|--------------------------|
+| `RESTORE_RUN` | ✅ 重置节点状态 | ❌ 不重置 |
+| `checkpointData` | 清空 → 恢复 | 直接设置，不清空 |
+| `agentLogs` | 清空 → 恢复 | 增量更新 |
+| 适用场景 | 手动 Refresh、恢复中断 | Done Reviewing 后刷新数据 |
+
+### 编辑可用性 (COMPLETED 运行也支持编辑)
+
+`saveCheckpointEdits` 不再限制 `status === 'WAITING_REVIEW'`。COMPLETED 运行同样可以编辑 checkpoint：
+
+```
+检查 → 有无 row?          → 无: return error
+     → 有无 thread_id?    → 无: return error
+     → 任何 status        → 允许编辑（COMPLETED 也放行）
+     → 写 graph state + agent log
+```
+
+前端 `TestGenDetailPanel.tsx:1586` ⬇
+```
+node.status === 'waiting' || 'auto-passed' || 'completed'
+  → 显示 Review / Done Reviewing 按钮
+```
+
+COMPLETED 时只有 Review 按钮（没有 Approve/Retry），因为 pipeline 不会再恢复执行。编辑只更新已持久化的数据。不支持编辑的运行：无 thread_id 的运行（如失败未创建 checkpoint 的）。
 
 ---
 
@@ -692,6 +765,9 @@ loadRun(runId):
   → api.logs(runId) → 返回所有 agent_logs (with parsed output_data)
   → dispatch MERGE_AGENT_LOGS
       → state.agentLogs = logs
+  → queryClient.setQueryData(queryKeys.testGen.logs(runId), logs)
+      → 同步 React Query 缓存，防止 useAgentLogs effect
+        用过期数据覆盖刚刷新的 agentLogs
 
 用户点击 checkpoint_1 节点:
   → selectedCheckpointData()
@@ -743,3 +819,26 @@ loadRun(runId):
 3. 重连时 `lastEvents` 重放的是编辑后的数据
 
 同时 agent_log 也被更新，已完成运行加载历史时读到编辑后的数据。两个路径都保证用户看到编辑内容。
+
+### 防止 React Query 缓存覆盖 (C→R 竞态)
+
+> 问题：`saveCheckpointEdits` 更新了 agent_log 的 `output_data`。随后 `refresh()` 或 `loadRun()`
+> 调用 `api.logs()` 读到最新数据并 `dispatch MERGE_AGENT_LOGS`。但紧接着 `useAgentLogs` 的
+> `useEffect` 从 React Query 缓存返回过期数据，再次 `dispatch MERGE_AGENT_LOGS` 覆盖掉刚刷新的数据。
+
+**解法**：在 `dispatch MERGE_AGENT_LOGS` 后同步 React Query 缓存：
+
+```
+queryClient.setQueryData(queryKeys.testGen.logs(runId), logs)
+```
+
+这样 `useAgentLogs` 返回的是同一份最新数据，effect 的 dispatch 是幂等的。
+
+### 避免 done-reviewing 空窗期 (RESTORE_RUN 竞态)
+
+> 问题：`refresh()` 内 `RESTORE_RUN` 清空 `checkpointData: null` 和 `agentLogs: []`，
+> 组件立即渲染为 "No checkpoint data available"。后续 API 完成后才恢复数据。
+
+**解法**：`handleDoneReviewing` 不再调用 `refresh()`，改用 `refreshCheckpointData()`，
+它跳过 `RESTORE_RUN`，只并行拉取 checkpoint state + agent logs 并 dispatch。
+`state.checkpointData` 在刷新过程中始终不为 null。

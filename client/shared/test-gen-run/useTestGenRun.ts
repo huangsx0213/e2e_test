@@ -42,6 +42,7 @@ export interface UseTestGenRunAPI {
   resume: (action: CheckpointAction, data?: { feedback?: string; editedData?: unknown }) => Promise<void>;
   abort: () => Promise<void>;
   refresh: () => Promise<void>;
+  refreshCheckpointData: () => Promise<void>;
   reset: () => void;
   loadRun: (runId: string) => Promise<void>;
   isStarting: boolean;
@@ -161,10 +162,76 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
             dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
           }
         }
+        const logs = await api.logs(state.runId);
+        if (logs.length > 0) {
+          dispatch({ type: 'MERGE_AGENT_LOGS', logs });
+        }
+        queryClient.setQueryData([...queryKeys.testGen.logs(state.runId), 'all'], logs);
+
+        // For completed runs, set checkpoint data from fresh logs so it survives
+        // the RESTORE_RUN → MERGE_AGENT_LOGS gap (race with useAgentLogs effect)
+        const cpNodeId = state.selectedNodeId;
+        const cpAgentName = cpNodeId ? CHECKPOINT_AGENT_MAP[cpNodeId] : undefined;
+        if (!state.isRunning && cpAgentName) {
+          const agentLogs = logs.filter((l: any) => l.agent_name === cpAgentName);
+          if (agentLogs.length > 0) {
+            const od = mergeOutputData(agentLogs);
+            let cpData: Record<string, any> | null = null;
+            if (cpNodeId === 'checkpoint_1') {
+              cpData = { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
+            } else if (cpNodeId === 'checkpoint_2') {
+              cpData = { cases: od.draftTestCases || [] };
+            } else if (cpNodeId === 'checkpoint_3') {
+              cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+            }
+            if (cpData) {
+              dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpData, phase: runInfo.phase });
+            }
+          }
+        }
       }
     } catch {
     }
-  }, [state.runId, state.mode, api]);
+  }, [state.runId, state.mode, api, queryClient, state.isRunning, state.selectedNodeId]);
+
+  const refreshCheckpointData = useCallback(async () => {
+    if (!state.runId) return;
+    try {
+      const [logs, cpState] = await Promise.all([
+        api.logs(state.runId),
+        api.testGen.getCheckpointState(state.runId),
+      ]);
+      const logsArr = logs ?? [];
+      if (logsArr.length > 0) {
+        dispatch({ type: 'MERGE_AGENT_LOGS', logs: logsArr });
+      }
+      if (cpState?.checkpointData) {
+        dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: '' });
+        return;
+      }
+      // Completed run: compute checkpoint data from agent logs
+      const cpNodeId = state.selectedNodeId;
+      const cpAgentName = cpNodeId ? CHECKPOINT_AGENT_MAP[cpNodeId] : undefined;
+      if (!state.isRunning && cpAgentName && logsArr.length > 0) {
+        const agentLogs = logsArr.filter((l: any) => l.agent_name === cpAgentName);
+        if (agentLogs.length > 0) {
+          const od = mergeOutputData(agentLogs);
+          let cpData: Record<string, any> | null = null;
+          if (cpNodeId === 'checkpoint_1') {
+            cpData = { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
+          } else if (cpNodeId === 'checkpoint_2') {
+            cpData = { cases: od.draftTestCases || [] };
+          } else if (cpNodeId === 'checkpoint_3') {
+            cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+          }
+          if (cpData) {
+            dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpData, phase: '' });
+          }
+        }
+      }
+    } catch {
+    }
+  }, [state.runId, state.isRunning, state.selectedNodeId, api]);
 
   const loadRun = useCallback(async (runId: string) => {
     try {
@@ -207,9 +274,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           },
         });
       }
+      queryClient.setQueryData([...queryKeys.testGen.logs(runId), 'all'], logs);
     } catch {
     }
-  }, [api]);
+  }, [api, queryClient]);
 
   const setAutoFollowEnabled = useCallback((enabled: boolean) => {
     if (state.isRunning) {
@@ -337,6 +405,7 @@ return {
     resume,
     abort,
     refresh,
+    refreshCheckpointData,
     reset,
     loadRun,
     isStarting: false,

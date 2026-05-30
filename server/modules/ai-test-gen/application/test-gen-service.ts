@@ -48,15 +48,18 @@ export class TestGenService {
     pipelineRepo.markRunFailed(runId);
   }
 
-  saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): void {
+  async saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): Promise<void> {
     const row = pipelineRepo.getRunWithThreadId(runId);
-    if (!row || row.status !== 'WAITING_REVIEW') {
-      if (row?.status === 'COMPLETED') {
-        console.warn(`[TestGenService] Ignoring edit for completed run ${runId}`);
-      } else if (!row?.thread_id) {
-        console.error(`[TestGenService] No thread_id for run ${runId}, status: ${row?.status}, cannot save edits`);
-      }
+    if (!row) {
+      console.error(`[TestGenService] Run ${runId} not found, cannot save edits`);
       return;
+    }
+    if (!row.thread_id) {
+      console.error(`[TestGenService] No thread_id for run ${runId}, status: ${row.status}, cannot save edits`);
+      return;
+    }
+    if (row.status === 'COMPLETED') {
+      console.log(`[TestGenService] Saving edits for completed run ${runId}`);
     }
 
     // Map frontend payload keys → graph state keys
@@ -73,33 +76,28 @@ export class TestGenService {
 
     if (Object.keys(stateKeys).length === 0) return;
 
-    // Execute updateState asynchronously, then update lastEvents + agent log
-    this.applyStateUpdate(row.thread_id, stateKeys)
-      .then(async () => {
-        try {
-          const updatedPayload = await this.getCheckpointState(runId);
-          if (updatedPayload) {
-            this.sseGateway.emit(runId, 'checkpoint:waiting', {
-              checkpointNumber,
-              type: row.phase,
-              summary: 'Awaiting Review',
-              payload: updatedPayload,
-            });
-          }
+    await this.applyStateUpdate(row.thread_id, stateKeys);
 
-          // Persist edits to agent log so completed-run history loads edited data
-          const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
-          const agentName = AGENT_NAMES[checkpointNumber];
-          if (agentName) {
-            pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
-          }
-        } catch (err) {
-          console.error(`[TestGenService] Failed to refresh checkpoint state after edit for ${runId}:`, err);
-        }
-      })
-      .catch(err => {
-        console.error(`[TestGenService] Failed to save checkpoint edits for ${runId}:`, err);
-      });
+    try {
+      const updatedPayload = await this.getCheckpointState(runId);
+      if (updatedPayload) {
+        this.sseGateway.emit(runId, 'checkpoint:waiting', {
+          checkpointNumber,
+          type: row.phase,
+          summary: 'Awaiting Review',
+          payload: updatedPayload,
+        });
+      }
+
+      // Persist edits to agent log so completed-run history loads edited data
+      const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
+      const agentName = AGENT_NAMES[checkpointNumber];
+      if (agentName) {
+        pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
+      }
+    } catch (err) {
+      console.error(`[TestGenService] Failed to refresh checkpoint state after edit for ${runId}:`, err);
+    }
   }
 
   private async applyStateUpdate(threadId: string, stateKeys: Record<string, unknown>): Promise<void> {
@@ -339,6 +337,9 @@ export class TestGenService {
         },
         onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any) => {
           scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData });
+        },
+        onError: (agentName: string, error: Error) => {
+          scope.recordAgentError(agentName, scope.currentBatch, error);
         },
       };
 
@@ -586,6 +587,7 @@ export class TestGenService {
         onThinking: (agentName: string, text: string) => scope.recordAgentThinking(agentName, text),
         onStart: (agentName: string, inputPrompt?: any) => scope.recordAgentStart(agentName, scope.currentBatch, inputPrompt),
         onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any) => scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData }),
+        onError: (agentName: string, error: Error) => scope.recordAgentError(agentName, scope.currentBatch, error),
       };
 
       const agentOpts = {

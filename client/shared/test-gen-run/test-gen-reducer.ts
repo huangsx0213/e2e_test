@@ -88,12 +88,16 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'agent:start': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
+          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: '' };
           nodes = markPrecedingDone(nodes, nodeId);
           nodes = nodes.map(n =>
             n.id === nodeId
               ? { ...n, status: 'running' as const, subSteps: n.subSteps?.map(s => ({ ...s, done: false, running: false })) }
               : n,
           );
+          if (state.autoFollowEnabled) {
+            return { ...state, nodes, thinkingTextByNode, selectedNodeId: nodeId, batchProgress, runSummary };
+          }
           break;
         }
         case 'agent:complete': {
@@ -127,6 +131,14 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
                   ...s, done: i < data.stepIndex, running: i === data.stepIndex,
                 })) }
               : n,
+          );
+          break;
+        }
+        case 'agent:error': {
+          const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
+          if (!nodeId) return state;
+          nodes = nodes.map(n =>
+            n.id === nodeId ? { ...n, status: 'error' as const } : n,
           );
           break;
         }
@@ -298,7 +310,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
           totalLatencyMs += log.latency_ms ?? 0;
         }
-        const status = latest.status === 'COMPLETED' ? 'completed' as const :
+        const status = n.status === 'running' ? 'running' as const :
+                       latest.status === 'COMPLETED' ? 'completed' as const :
                        latest.status === 'FAILED' ? 'error' as const :
                        n.status;
         return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };

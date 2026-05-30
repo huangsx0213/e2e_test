@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   X,
   Brain,
@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   Plus,
   Trash2,
+  ChevronDown,
+  ChevronRight,
   Edit3,
   Save,
   Zap,
@@ -24,12 +26,11 @@ import {
   RefreshCw,
   Search,
   Filter,
-  ChevronDown,
-  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface NodeDetailProps {
+  runId?: string;
   node: {
     id: string;
     kind?: string;
@@ -52,6 +53,18 @@ interface NodeDetailProps {
   onDoneReviewing?: () => void;
   onCheckpointDataChange?: (data: any) => void;
   isEditing?: boolean;
+  retrying?: boolean;
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
 }
 
 function formatMs(ms: number) { 
@@ -671,14 +684,63 @@ type TabId = 'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors';
 
 function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog: any; node: any; thinkingText: string | null; agentLogs?: any[] }) {
   const [activeTab, setActiveTab] = useState<TabId>('summary');
+  const [activePromptTab, setActivePromptTab] = useState(0);
   const [copied, setCopied] = useState(false);
   const isRunning = node?.status === 'running';
   const autoScroll = isRunning;
 
+  const traceGroups = useMemo(() => {
+    if (!agentLogs?.length) {
+      return agentLog ? [agentLog] : [];
+    }
+    const grouped: Record<string, any[]> = {};
+    for (const l of agentLogs) {
+      if (l.agent_name === 'preparation') continue;
+      if (!grouped[l.agent_name]) grouped[l.agent_name] = [];
+      grouped[l.agent_name].push(l);
+    }
+    return Object.entries(grouped).map(([, logs]) => {
+      const latest = logs.reduce((a, b) => (((a.batch ?? 0) > (b.batch ?? 0)) ? a : b));
+      let totalTokens = 0;
+      let totalLatency = 0;
+      const mergedOutput: Record<string, any> = {};
+      const mergedTrace: any[] = [];
+      let errorMessage: string | null = null;
+      let errorRawResponse: string | null = null;
+      for (const l of logs) {
+        const tu = l.token_usage;
+        if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+        totalLatency += l.latency_ms ?? 0;
+        if (l.output_data) Object.assign(mergedOutput, l.output_data);
+        if (l.raw_trace) mergedTrace.push(...l.raw_trace);
+        if (l.error_message) errorMessage = l.error_message;
+        if (l.error_raw_response) errorRawResponse = l.error_raw_response;
+      }
+      mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
+      const allCompleted = logs.every(l => l.status === 'COMPLETED');
+      const anyFailed = logs.some(l => l.status === 'FAILED');
+      return {
+        id: latest.id || logs[0].id,
+        agent_name: latest.agent_name,
+        status: anyFailed ? 'FAILED' : allCompleted ? 'COMPLETED' : latest.status,
+        raw_trace: mergedTrace,
+        output_data: mergedOutput,
+        latency_ms: totalLatency,
+        total_tokens: totalTokens,
+        error_message: errorMessage,
+        error_raw_response: errorRawResponse,
+      };
+    });
+  }, [agentLogs, agentLog]);
+
   useEffect(() => {
     if (node?.status === 'running') setActiveTab('thinking');
     if (node?.status === 'completed' || node?.status === 'done') setActiveTab('summary');
-  }, [node?.status]);
+  }, [node?.id, node?.status]);
+
+  useEffect(() => {
+    setActivePromptTab(0);
+  }, [agentLog?.id]);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'summary', label: 'Summary' },
@@ -768,37 +830,64 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
               </div>
             )}
             
-            {activeTab === 'input' && (
-              <div className="p-4 h-full flex flex-col overflow-hidden">
-                {Array.isArray(agentLog?.input_prompt) ? (
-                  <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-                    {agentLog.input_prompt.map((msg: any, i: number) => (
-                      <div key={i} className="flex-1 flex flex-col min-h-0 space-y-1">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">{msg.role} Prompt Context</div>
-                        <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
-                          {msg.content || 'N/A'}
-                        </pre>
-                      </div>
+            {activeTab === 'input' && (() => {
+              const messages: { role: string; content: string }[] = Array.isArray(agentLog?.input_prompt)
+                ? agentLog.input_prompt
+                : agentLog?.input_prompt
+                  ? [
+                      ...(agentLog.input_prompt.systemPrompt ? [{ role: 'system', content: agentLog.input_prompt.systemPrompt }] : []),
+                      ...(agentLog.input_prompt.userMessage ? [{ role: 'user', content: agentLog.input_prompt.userMessage }] : []),
+                    ]
+                  : [];
+
+              if (messages.length === 0) {
+                return (
+                  <div className="p-4 text-center text-xs text-slate-400 italic py-10">No prompts available.</div>
+                );
+              }
+
+              const roleCounts: Record<string, number> = {};
+              const labeled = messages.map((m) => {
+                roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
+                return { ...m, label: m.role };
+              });
+              const seen: Record<string, number> = {};
+              for (const m of labeled) {
+                if (roleCounts[m.role] > 1) {
+                  seen[m.role] = (seen[m.role] || 0) + 1;
+                  m.label = `${m.role} ${seen[m.role]}`;
+                } else {
+                  m.label = m.role;
+                }
+              }
+
+              const safeIndex = Math.min(activePromptTab, labeled.length - 1);
+
+              return (
+                <div className="h-full flex flex-col">
+                  <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto scrollbar-none shrink-0">
+                    {labeled.map((m, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActivePromptTab(i)}
+                        className={`px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all shrink-0 -mb-px ${
+                          safeIndex === i
+                            ? 'border-blue-600 text-blue-700 bg-white'
+                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
                     ))}
                   </div>
-                ) : (
-                  <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
-                    <div className="flex-1 flex flex-col min-h-0 space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase shrink-0">System Instructions</div>
-                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
-                        {agentLog?.input_prompt?.systemPrompt || 'N/A'}
-                      </pre>
-                    </div>
-                    <div className="flex-1 flex flex-col min-h-0 space-y-1">
-                      <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase shrink-0">User Request Variables</div>
-                      <pre className="text-xs bg-slate-950 text-slate-300 p-3 rounded-xl flex-1 overflow-y-auto whitespace-pre-wrap border border-slate-800 font-mono min-h-0">
-                        {agentLog?.input_prompt?.userMessage || 'N/A'}
-                      </pre>
-                    </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                    <pre className="text-xs bg-slate-950 text-slate-300 p-3.5 rounded-xl whitespace-pre-wrap border border-slate-800 font-mono">
+                      {labeled[safeIndex]?.content || 'N/A'}
+                    </pre>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
             {activeTab === 'output' && (
               <div className="p-4 space-y-3">
@@ -826,39 +915,123 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             )}
 
             {activeTab === 'trace' && (
-              <div className="p-4">
-                <div className="border-l-2 border-slate-150 pl-4 py-1 space-y-4">
-                  {agentLog?.raw_trace?.map((entry: any, i: number) => (
-                    <div key={i} className="relative group flex items-start gap-3">
-                      {/* Timeline Node dot */}
-                      <div className="absolute -left-[21px] mt-1.5 h-2 w-2 rounded-full border border-blue-500 bg-white shadow-sm ring-4 ring-blue-50 group-hover:bg-blue-500 transition-colors" />
-                      
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-mono text-slate-400 font-bold">
-                          {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
-                        </span>
-                        <span className="text-xs font-semibold text-slate-700 mt-0.5">
-                          {entry.message || entry.name || `Invoked Step: [${entry.step}]`}
-                        </span>
+              <div className="h-full flex flex-col">
+                {agentLog ? (() => {
+                  const steps = agentLog.raw_trace || [];
+                  const tokens = agentLog.token_usage;
+                  const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) : 0;
+                  const statusBadge = agentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    agentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                    'bg-amber-50 text-amber-700 border-amber-200';
+
+                  return (
+                    <div className="flex flex-col flex-1 min-h-0">
+                      {/* Agent header — fixed */}
+                      <div className="px-4 py-2.5 shrink-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${agentLog.status === 'COMPLETED' ? 'bg-emerald-500' : agentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                            <span className="text-sm font-bold text-slate-700">{agentLog.agent_name}</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${statusBadge}`}>
+                              {agentLog.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
+                            {agentLog.latency_ms > 0 && (
+                              <span>{agentLog.latency_ms >= 1000 ? `${(agentLog.latency_ms / 1000).toFixed(1)}s` : `${agentLog.latency_ms}ms`}</span>
+                            )}
+                            {totalTokens > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Zap size={10} />
+                                {totalTokens.toLocaleString()} tk
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* Steps — fixed */}
+                      {steps.length > 0 && (
+                        <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+                          <div className="border-l-2 border-slate-200 pl-3 space-y-2">
+                            {steps.map((entry: any, i: number) => {
+                              const prevTs = i > 0 ? steps[i - 1].timestamp : null;
+                              const stepDur = prevTs ? entry.timestamp - prevTs : 0;
+                              return (
+                                <div key={i} className="relative flex items-start gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-blue-100 mt-1.5 shrink-0" />
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
+                                      {stepDur > 0 && <span className="text-slate-300 ml-1">(+{stepDur}ms)</span>}
+                                    </span>
+                                    <span className="text-xs font-semibold text-slate-700">{entry.name || `Step ${entry.step}`}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Output — fills remaining, scrolls */}
+                      {agentLog.output_data && Object.keys(agentLog.output_data).length > 0 && (
+                        <div className="flex-1 min-h-0 flex flex-col border-t border-slate-100 min-h-0">
+                          <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                            Output
+                          </div>
+                          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
+                            <pre className="text-[10px] font-mono bg-slate-50 text-slate-600 p-3 rounded-lg whitespace-pre-wrap border border-slate-100">
+                              {JSON.stringify(agentLog.output_data, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Thinking — fixed bottom */}
+                      {thinkingText && (
+                        <div className="border-t border-slate-100 shrink-0">
+                          <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Thinking
+                          </div>
+                          <div className="px-4 pb-3 max-h-40 overflow-y-auto">
+                            <pre className="text-[10px] font-mono bg-slate-950 text-slate-300 p-2 rounded-lg whitespace-pre-wrap">
+                              {thinkingText}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )) || (
-                    <div className="text-center text-xs text-slate-400 italic py-10">No low-level trace stack output recorded.</div>
-                  )}
-                </div>
+                  );
+                })() : (
+                  <div className="text-center text-xs text-slate-400 italic py-10">Select an agent node to view its execution trace.</div>
+                )}
               </div>
             )}
 
             {activeTab === 'errors' && (
               <div className="p-4">
-                {agentLog?.status === 'FAILED' ? (
-                  <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-start gap-3 text-red-700">
-                    <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
-                    <div>
-                      <h5 className="font-bold text-sm">Execution Interrupted</h5>
-                      <p className="text-xs text-red-600 mt-1 leading-normal">
-                        The agent encountered a configuration or token limits boundary exception. You can review prompt settings or click "Retry Agent" in the Review section.
+                {agentLog?.error_message ? (
+                  <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
+                    <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
+                      <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                      <span className="text-sm font-bold text-red-700">{agentLog.agent_name}</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
+                    </div>
+                    <div className="px-4 py-3 space-y-2">
+                      <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">
+                        {agentLog.error_message}
                       </p>
+                      {agentLog.error_raw_response && (
+                        <details className="group">
+                          <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
+                            <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
+                          </summary>
+                          <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">
+                            {agentLog.error_raw_response}
+                          </pre>
+                        </details>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -1474,6 +1647,104 @@ function getNodeIcon(nodeId: string) {
   }
 }
 
+function AuditLogView({ logs, onClose }: { logs: any[]; onClose?: () => void }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (logs.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center text-sm text-slate-400 italic">No audit records</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {logs.map((log: any) => (
+        <div key={log.id} className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+          {/* header */}
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50/80 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                log.action === 'approve' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+                log.action === 'retry' ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                'text-blue-700 bg-blue-50 border-blue-200'
+              }`}>
+                {log.action === 'approve' ? 'Approved' : log.action === 'retry' ? 'Retry' : 'Edited'}
+              </span>
+              <span className="text-xs text-slate-400">{formatRelativeTime(log.created_at)}</span>
+            </div>
+            <span className="text-[10px] text-slate-400">{log.user_id}</span>
+          </div>
+          {/* snapshot */}
+          {log.snapshot && (
+            <div className="px-3.5 py-2.5">
+              <button
+                onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 mb-1"
+              >
+                {expandedId === log.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                <span className="font-medium">Snapshot</span>
+              </button>
+              {expandedId === log.id && (
+                <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto border border-slate-100">
+                  {JSON.stringify(log.snapshot, null, 2)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CheckpointViewWithAudit({ runId, nodeId, isEditing, children }: { runId?: string; nodeId: string; isEditing: boolean; children: React.ReactNode }) {
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'review' | 'audit'>('review');
+
+  useEffect(() => {
+    if (!runId) { setAuditLogs([]); return; }
+    (async () => {
+      try {
+        const { api } = await import('@/shared/services/api');
+        const logs = await api.testGen.audit(runId);
+        setAuditLogs(logs);
+      } catch {}
+    })();
+  }, [runId, nodeId]);
+
+  const tabs = isEditing
+    ? [{ id: 'review' as const, label: 'Review' }]
+    : [{ id: 'review' as const, label: 'Review' }, { id: 'audit' as const, label: 'Activity' }];
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto scrollbar-none shrink-0 px-2">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all -mb-px text-[10px] shrink-0 ${
+              activeTab === tab.id
+                ? 'border-blue-600 text-blue-700 bg-white'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {tab.label}
+            {tab.id === 'audit' && auditLogs.length > 0 && (
+              <span className="ml-1.5 text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">{auditLogs.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+        {activeTab === 'review' ? children : <AuditLogView logs={auditLogs} />}
+      </div>
+    </div>
+  );
+}
+
 const statusColors: Record<string, { badge: string; label: string }> = {
   running: { badge: 'text-blue-700 bg-blue-50 border-blue-200 shadow-[0_0_8px_rgba(59,130,246,0.1)]', label: 'In Progress' },
   waiting: { badge: 'text-amber-700 bg-amber-50 border-amber-200 shadow-[0_0_8px_rgba(245,158,11,0.1)] animate-pulse', label: 'Action Required' },
@@ -1483,6 +1754,7 @@ const statusColors: Record<string, { badge: string; label: string }> = {
 };
 
 export function TestGenDetailPanel({
+  runId,
   node,
   agentLog,
   checkpointData,
@@ -1495,7 +1767,8 @@ export function TestGenDetailPanel({
   onToggleReview,
   onDoneReviewing,
   onCheckpointDataChange,
-  isEditing
+  isEditing,
+  retrying
 }: NodeDetailProps) {
   
   if (!node) {
@@ -1540,7 +1813,7 @@ export function TestGenDetailPanel({
               </span>
             </div>
             
-            {(node.meta?.latencyMs || node.meta?.tokenUsage || node.meta?.outputCount) ? (
+            {(node.meta?.latencyMs || node.meta?.tokenUsage || node.meta?.outputCount) && (
               <div className="flex items-center gap-2 text-sm text-slate-400 font-medium mt-0.5">
                 {node.meta?.latencyMs && (
                   <span className="flex items-center">
@@ -1558,28 +1831,28 @@ export function TestGenDetailPanel({
                   </span>
                 )}
               </div>
-            ) : (
-              <p className="text-sm text-slate-400 select-none">No immediate telemetry metrics generated yet.</p>
             )}
           </div>
         </div>
 
         {/* Action buttons for checkpoints */}
         {nodeType === 'checkpoint' && (
-          <div className="flex items-center gap-2 shrink-0 ml-2">
+          <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
             {node.status === 'waiting' && (
               <>
                 <button
                   onClick={onApprove}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Approve
                 </button>
                 <button
                   onClick={onRetry}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-500 text-white hover:bg-slate-600 transition-colors"
+                  disabled={retrying}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                 >
-                  Retry
+                  {retrying && <Loader2 size={12} className="animate-spin" />}
+                  {retrying ? 'Retrying...' : 'Retry'}
                 </button>
               </>
             )}
@@ -1587,7 +1860,7 @@ export function TestGenDetailPanel({
               isEditing ? (
                 <button
                   onClick={onDoneReviewing}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Done Reviewing
                 </button>
@@ -1619,7 +1892,13 @@ export function TestGenDetailPanel({
         ) : nodeType === 'preparation' ? (
           <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
         ) : nodeType === 'checkpoint' ? (
-          <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+          <CheckpointViewWithAudit
+            runId={runId}
+            nodeId={node?.id ?? ''}
+            isEditing={isEditing ?? false}
+          >
+            <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+          </CheckpointViewWithAudit>
         ) : nodeType === 'complete' ? (
           <CompleteNodeView runSummary={runSummary} node={node} />
         ) : (

@@ -61,6 +61,12 @@ export class TestGenExecutionScope {
     });
   }
 
+  recordAgentError(agentName: string, batch: number, error: Error): void {
+    const snap = this.state.recordAgentError(agentName, batch, error.message, (error as any).rawResponse);
+    if (snap) this.persister.saveAgentLog(snap, this.runId);
+    this.emit('agent:error', { agentName, batch, message: error.message, timestamp: Date.now() });
+  }
+
   recordAgentStep(agentName: string, batch: number, stepIndex: number, stepName: string): void {
     this.state.recordAgentStep(agentName, batch, stepIndex, stepName);
     this.emit('agent:step', { agentName, stepIndex, stepName, timestamp: Date.now() });

@@ -22,6 +22,8 @@ import { migration018RequirementDependenciesAndBusinessFlows } from './018_requi
 import { migration021ProviderConfigFix } from './021_provider_config_fix.ts';
 import { migration022ThreadId } from './022_add_thread_id.ts';
 import { migration023DropCheckpointData } from './023_drop_checkpoint_data.ts';
+import { migration024DropRedundantTables } from './024_drop_redundant_tables.ts';
+import { migration025AddAgentErrorColumns } from './025_add_agent_error_columns.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -49,6 +51,8 @@ migration018RequirementDependenciesAndBusinessFlows,
 migration021ProviderConfigFix,
   migration022ThreadId,
   migration023DropCheckpointData,
+  migration024DropRedundantTables,
+  migration025AddAgentErrorColumns,
 ];
 
 function appliedMigrationIds(): Set<string> {
