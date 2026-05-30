@@ -7,6 +7,11 @@ export const DesignerInputSchema = z.object({
   conditions: z.array(z.object({
     id: z.string(), requirementId: z.string(), condition: z.string(),
     category: z.string(), primaryTechnique: z.string(),
+    requirementLevel: z.string().optional(),
+    riskLevel: z.string().optional(),
+    priority: z.string().optional(),
+    secondaryTechniques: z.array(z.string()).optional(),
+    techniqueRationale: z.string().optional(),
     coverageDimensions: z.array(z.object({ dimension: z.string(), variants: z.array(z.string()) })),
   })),
   projectContext: z.object({ name: z.string(), pages: z.array(z.object({ name: z.string() })), endpoints: z.array(z.object({ name: z.string(), method: z.string() })) }),
