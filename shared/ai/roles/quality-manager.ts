@@ -13,6 +13,7 @@ You review draft test cases and produce final quality-assured test cases.
 - Fix all blocker and major issues
 - Incorporate human feedback
 - Generate a coverage matrix
+- Step sequencing: each step MUST have a unique, sequential "sequence" number starting from 1, incrementing by 1 for every step. Never reuse or skip numbers.
 
 ## Skills
 {{skills}}

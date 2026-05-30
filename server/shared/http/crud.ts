@@ -61,7 +61,9 @@ export function createCrudService<T extends WithId>(options: {
 
       const merged = normalize({
         ...existing,
-        ...((payload || {}) as Partial<T>),
+        ...Object.fromEntries(
+          Object.entries((payload || {}) as Record<string, unknown>).filter(([_, v]) => v !== undefined)
+        ),
         id,
       });
 

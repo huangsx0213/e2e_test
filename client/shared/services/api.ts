@@ -154,6 +154,8 @@ businessFlows: {
       apiFetch<any[]>(`test-gen/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
     audit: (runId: string) =>
       apiFetch<any[]>(`test-gen/${runId}/audit`),
+    saveCases: (runId: string) =>
+      apiFetch<{ saved: number; removed: number }>(`test-gen/${runId}/save-cases`, { method: 'POST' }),
     abort: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/abort`, { method: 'POST' }),
     delete: (runId: string) =>

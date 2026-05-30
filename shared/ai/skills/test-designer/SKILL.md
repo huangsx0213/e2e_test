@@ -79,7 +79,7 @@ Each flow case step maps to one flow step:
 ```
 flow.steps[i].actionSummary          → test step action (made concrete with specific data)
 flow.steps[i].acceptanceCriteria[j]  → test step expected (made measurable and observable)
-flow.steps[i].sequence               → test step sequence (must respect flow ordering)
+Each test step MUST have a unique, sequential sequence number (1, 2, 3, ...). Never reuse or skip numbers.
 ```
 
 Example flow step → test step:

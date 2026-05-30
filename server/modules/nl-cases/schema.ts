@@ -27,4 +27,17 @@ export const nlCasePayloadSchema = z.object({
   status: z.enum(['DRAFT', 'APPROVED', 'FINAL']).optional().default('DRAFT'),
 });
 
-export const nlCasePatchSchema = nlCasePayloadSchema.partial();
+export const nlCasePatchSchema = z.object({
+  title: z.string().min(1).optional(),
+  requirementId: z.string().optional(),
+  conditionId: z.string().optional(),
+  techniqueApplied: z.string().optional(),
+  priority: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  category: z.string().optional(),
+  preconditions: z.array(z.string()).optional(),
+  testData: z.array(testDataSchema).optional(),
+  steps: z.array(nlStepSchema).optional(),
+  postconditions: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(['DRAFT', 'APPROVED', 'FINAL']).optional(),
+});

@@ -6,6 +6,9 @@ import { pipelineRepo } from './infrastructure/db/test-gen-repository.ts';
 import { SSEGateway } from './infrastructure/sse/sse-gateway.ts';
 import { TestGenService } from './application/test-gen-service.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
+import { deduplicateTestCases } from './application/result-deduplicator.ts';
+import { nlCaseRepo } from '../nl-cases/repository.ts';
+
 const router = Router();
 const sseGateway = new SSEGateway();
 const pipelineService = new TestGenService(sseGateway);
@@ -76,6 +79,28 @@ router.post('/:runId/checkpoint-update', withErrorHandling(async (req, res) => {
     const { editedData, checkpointNumber } = validateWithSchema(checkpointUpdateSchema, req.body);
     await pipelineService.saveCheckpointEdits(p(req.params.runId), editedData, checkpointNumber);
     res.json({ success: true });
+}));
+
+// --- Export test cases to NL Cases table ---
+router.post('/:runId/save-cases', withErrorHandling((req, res) => {
+  const runId = p(req.params.runId);
+  const run = pipelineRepo.getRun(runId);
+  if (!run) { res.status(404).json({ error: 'Run not found' }); return; }
+
+  const logs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+  const allCases: any[] = [];
+  for (const log of logs) {
+    if (log.output_data?.finalTestCases) {
+      allCases.push(...log.output_data.finalTestCases);
+    }
+  }
+  if (allCases.length === 0) { res.status(400).json({ error: 'No test cases found to export' }); return; }
+
+  const { allCases: deduped, removedCount } = deduplicateTestCases(allCases);
+  for (const tc of deduped) {
+    nlCaseRepo.save({ ...tc, projectId: run.project_id });
+  }
+  res.json({ saved: deduped.length, removed: removedCount });
 }));
 
 // --- Audit Log ---

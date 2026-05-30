@@ -181,7 +181,8 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
         throw new Error(`Token limit exceeded (${totalTokens} > ${context.tokenLimit}). Run aborted.`);
       }
       console.log(`[agent] ${role.name}: parsing JSON response...`);
-      const parsed = JSON.parse(fullContent);
+      const cleaned = fullContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
       console.log(`[agent] ${role.name}: validating against schema...`);
       const validated = role.outputSchema.parse(parsed);
       const tcCount = Array.isArray((validated as any).testConditions) ? (validated as any).testConditions.length
@@ -312,7 +313,8 @@ export async function* streamAgent(context: AgentContext, input: unknown, option
 
   try {
     console.log(`[agent:stream] ${role.name}: parsing and validating response...`);
-    const parsed = JSON.parse(fullContent);
+    const cleaned = fullContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
     const validated = role.outputSchema.parse(parsed);
     const tcCount = Array.isArray((validated as any).testConditions) ? (validated as any).testConditions.length
       : Array.isArray((validated as any).draftTestCases) ? (validated as any).draftTestCases.length

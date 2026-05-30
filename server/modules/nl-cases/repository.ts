@@ -74,8 +74,7 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
         updated_at = datetime('now')
     `).run(
       id,
-      '',
-      record.title || '',
+      record.projectId || '',      record.title || '',
       record.requirementId || null,
       record.conditionId || null,
       record.techniqueApplied || null,

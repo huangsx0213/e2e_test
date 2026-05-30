@@ -15,7 +15,6 @@ import { buildRequirementIndex } from '../../requirements/index-generator.ts';
 import { groupRequirementsByEpic } from './requirement-grouper.ts';
 import { deduplicateTestCases } from './result-deduplicator.ts';
 import { buildFallbackConfigs } from './fallback-config-builder.ts';
-import { nlCaseRepo } from '../../nl-cases/repository.ts';
 import { buildBusinessFlowBlueprints } from '../business-flow-blueprint.ts';
 import { businessFlowRepo } from '../../business-flows/repository.ts';
 import { pipelineRepo, decryptApiKey } from '../infrastructure/db/test-gen-repository.ts';
@@ -515,10 +514,6 @@ export class TestGenService {
           sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length, conflicts });
         }
 
-        for (const tc of allCases) {
-          nlCaseRepo.save({ ...tc, projectId });
-        }
-
         scope.markComplete({ totalCases: allCases.length, totalBatches: actualBatches || totalBatches });
       }
     } catch (err: any) {
@@ -630,9 +625,6 @@ export class TestGenService {
           const { allCases } = deduplicateTestCases(
             (outcome.result.lastState.finalTestCases || []) as any[]
           );
-          for (const tc of allCases) {
-            nlCaseRepo.save({ ...tc, projectId: runRow.project_id });
-          }
           scope.markComplete({ totalCases: allCases.length, totalBatches: 1 });
         } else {
           scope.markComplete({ totalCases: 0, totalBatches: 1 });

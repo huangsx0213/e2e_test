@@ -202,7 +202,8 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
       messages,
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
-    }),
+      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+    } as any),
   });
 }
 
@@ -216,7 +217,8 @@ function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' 
       messages,
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
-    }),
+      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+    } as any),
   });
 }
 

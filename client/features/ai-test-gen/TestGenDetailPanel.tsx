@@ -1583,7 +1583,7 @@ function CompleteNodeView({ runSummary, node }: { runSummary: any; node: any }) 
   const tokens = runSummary?.totalTokens ?? meta.totalTokens ?? meta.tokenUsage ?? 0;
   const latency = runSummary?.totalLatencyMs ?? meta.totalLatencyMs ?? meta.latencyMs ?? 0;
   const batches = runSummary?.totalBatches ?? meta.totalBatches ?? 0;
-  
+
   return (
     <div className="p-6 space-y-6 text-center h-full flex flex-col items-center justify-center overflow-y-auto">
       {/* Radiant Sparkle Success check */}
@@ -1795,6 +1795,24 @@ export function TestGenDetailPanel({
   const activeStatus = statusColors[node.status] || { badge: 'text-slate-600 bg-slate-50 border-slate-200', label: node.status };
 
   const nodeType = node.kind || node.type || '';
+  const [savingCases, setSavingCases] = useState(false);
+  const [casesSaved, setCasesSaved] = useState(false);
+  const [saveCasesError, setSaveCasesError] = useState<string | null>(null);
+
+  const handleSaveCases = useCallback(async () => {
+    if (!runId) return;
+    setSavingCases(true);
+    setSaveCasesError(null);
+    try {
+      const { api } = await import('@/shared/services/api');
+      await api.testGen.saveCases(runId);
+      setCasesSaved(true);
+    } catch (err: any) {
+      setSaveCasesError(err?.message || 'Failed to save test cases');
+    } finally {
+      setSavingCases(false);
+    }
+  }, [runId]);
 
   return (
     <div className="w-full h-full flex flex-col bg-white overflow-hidden shadow-inner">
@@ -1873,6 +1891,25 @@ export function TestGenDetailPanel({
                 </button>
               )
             )}
+          </div>
+        )}
+
+        {nodeType === 'complete' && !casesSaved && (
+          <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
+            {saveCasesError && <span className="text-xs text-red-500">{saveCasesError}</span>}
+            <button
+              onClick={handleSaveCases}
+              disabled={savingCases}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            >
+              {savingCases && <Loader2 size={12} className="animate-spin" />}
+              {savingCases ? 'Saving...' : 'Save to NL Cases'}
+            </button>
+          </div>
+        )}
+        {casesSaved && (
+          <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
+            <span className="text-xs text-emerald-600 font-medium">Saved to NL Test Cases</span>
           </div>
         )}
 

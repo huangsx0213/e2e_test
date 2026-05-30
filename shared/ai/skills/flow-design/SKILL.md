@@ -34,7 +34,7 @@ A `PipelineBusinessFlowBlueprint` represents one end-to-end business process:
 Key mappings:
 - **flow.steps[].actionSummary** → the `action` in test steps (WHAT the user/system does)
 - **flow.steps[].acceptanceCriteria** → the `expected` in test steps (what should be observable)
-- **flow.steps[].sequence** → temporal order (the flow ordering constraint). In test case steps, `sequence` references which flow step the test step validates; multiple test steps may share the same `sequence` when one flow step requires multiple assertions.
+- **flow.steps[].sequence** → temporal order (the flow ordering constraint). In test case steps, `sequence` is a unique, sequential number starting from 1, incrementing by 1 for every step. Never reuse or skip numbers. Steps are ordered by their sequence value.
 - **flow.steps[].requirementId** → links to the functional requirement that step exercises
 
 ## Flow Test Case Taxonomy
@@ -76,8 +76,7 @@ A flow test case follows standard ISTQB format but with flow-aware semantics:
 - Step `action` is derived from `actionSummary`, made concrete
 - Step `expected` is derived from `acceptanceCriteria`, made observable and measurable
 - Additional intermediate assertions can be added (for state verification between flow steps)
-- The test step's `sequence` must match the `sequence` of the flow step it validates (one flow step can produce multiple test steps, all sharing that flow step's sequence value)
-- Test steps within the same test case must be ordered by their flow step sequence (ascending)
+- Each test step MUST have a unique, sequential `sequence` number starting from 1, incrementing by 1 for every step. Never reuse or skip numbers. Steps are ordered by their sequence value.
 
 Example mapping for purchase flow Step 1:
 ```json

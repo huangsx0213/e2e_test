@@ -40,7 +40,7 @@ function AppShell() {
     AGENTS: queryKeys.agents,
     REQUIREMENTS: queryKeys.requirements,
 BUSINESS_FLOWS: queryKeys.businessFlows,
-    NL_CASES: [],
+    NL_CASES: ['nl-cases'],
     AI_TEST_GEN: [],
   };
 
