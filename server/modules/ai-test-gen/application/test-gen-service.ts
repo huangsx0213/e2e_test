@@ -48,14 +48,117 @@ export class TestGenService {
     pipelineRepo.markRunFailed(runId);
   }
 
-  resumeRun(runId: string, action: string, feedback?: string, editedData?: unknown): void {
+  saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): void {
+    const row = pipelineRepo.getRunWithThreadId(runId);
+    if (!row || row.status !== 'WAITING_REVIEW') {
+      if (row?.status === 'COMPLETED') {
+        console.warn(`[TestGenService] Ignoring edit for completed run ${runId}`);
+      } else if (!row?.thread_id) {
+        console.error(`[TestGenService] No thread_id for run ${runId}, status: ${row?.status}, cannot save edits`);
+      }
+      return;
+    }
+
+    // Map frontend payload keys → graph state keys
+    const stateKeys: Record<string, unknown> = {};
+    if (checkpointNumber === 1) {
+      if (editedData.conditions) stateKeys.testConditions = editedData.conditions as any;
+      if (editedData.analysis) stateKeys.requirementAnalysis = editedData.analysis as any;
+    } else if (checkpointNumber === 2) {
+      if (editedData.cases) stateKeys.draftTestCases = editedData.cases as any;
+    } else if (checkpointNumber === 3) {
+      if (editedData.cases) stateKeys.finalTestCases = editedData.cases as any;
+      if (editedData.matrix) stateKeys.coverageMatrix = editedData.matrix as any;
+    }
+
+    if (Object.keys(stateKeys).length === 0) return;
+
+    // Execute updateState asynchronously, then update lastEvents + agent log
+    this.applyStateUpdate(row.thread_id, stateKeys)
+      .then(async () => {
+        try {
+          const updatedPayload = await this.getCheckpointState(runId);
+          if (updatedPayload) {
+            this.sseGateway.emit(runId, 'checkpoint:waiting', {
+              checkpointNumber,
+              type: row.phase,
+              summary: 'Awaiting Review',
+              payload: updatedPayload,
+            });
+          }
+
+          // Persist edits to agent log so completed-run history loads edited data
+          const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
+          const agentName = AGENT_NAMES[checkpointNumber];
+          if (agentName) {
+            pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
+          }
+        } catch (err) {
+          console.error(`[TestGenService] Failed to refresh checkpoint state after edit for ${runId}:`, err);
+        }
+      })
+      .catch(err => {
+        console.error(`[TestGenService] Failed to save checkpoint edits for ${runId}:`, err);
+      });
+  }
+
+  private async applyStateUpdate(threadId: string, stateKeys: Record<string, unknown>): Promise<void> {
+    const dummyProvider = {
+      chat: async () => ({ content: '', tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, reasoning_tokens: 0 } }),
+      getModelName: () => 'dummy',
+      getProviderType: () => 'dummy',
+    } as any;
+    const graph = await this.createPipelineFactory(dummyProvider, {}, {})();
+    await graph.updateState(
+      { configurable: { thread_id: threadId } },
+      stateKeys,
+    );
+  }
+
+  async getCheckpointState(runId: string): Promise<any> {
+    const run = pipelineRepo.getRunWithThreadId(runId);
+    if (!run?.thread_id) return null;
+
+    pipelineRepo.touchRun(runId);
+
+    const dummyProvider = {
+      chat: async () => ({ content: '', tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, reasoning_tokens: 0 } }),
+      getModelName: () => 'dummy',
+      getProviderType: () => 'dummy',
+    } as any;
+    const graph = await this.createPipelineFactory(dummyProvider, {}, {})();
+    const snapshot = await graph.getState({ configurable: { thread_id: run.thread_id } });
+
+    const state = snapshot?.values;
+    if (!state) return null;
+
+    switch (run.phase) {
+      case 'review-conditions':
+        return { conditions: state.testConditions ?? [], analysis: state.requirementAnalysis ?? null };
+      case 'review-draft':
+        return { cases: state.draftTestCases ?? [] };
+      case 'final-review':
+        return { cases: state.finalTestCases ?? [], matrix: state.coverageMatrix ?? null };
+      default:
+        return null;
+    }
+  }
+
+  resumeRun(runId: string, action: string, feedback?: string, editedData?: any): void {
     const row = pipelineRepo.getRunWithThreadId(runId);
     if (!row || row.status !== 'WAITING_REVIEW') {
       throw new Error('Test gen is not waiting for review');
     }
 
-    pipelineRepo.insertAuditLog(runId, row.phase, action, editedData);
+    pipelineRepo.insertAuditLog(runId, row.phase, action, editedData ?? null);
     pipelineRepo.setRunRunning(runId);
+
+    // Notify client that checkpoint is resolved so checkpointData is cleared
+    const PHASE_TO_NUM: Record<string, number> = { 'review-conditions': 1, 'review-draft': 2, 'final-review': 3 };
+    const cpNum = PHASE_TO_NUM[row.phase] || 0;
+    if (cpNum > 0) {
+      this.sseGateway.emit(runId, 'checkpoint:resolved', { checkpointNumber: cpNum, action });
+    }
 
     this.resumePipeline(runId, row, action, feedback, editedData).catch(err => {
       console.error(`[TestGenService] Resume failed for ${runId}:`, err);
@@ -79,22 +182,27 @@ export class TestGenService {
     const waitingRuns = pipelineRepo.getWaitingRuns();
     if (waitingRuns.length === 0) return;
 
+    const PHASE_TO_NUM: Record<string, number> = {
+      'review-conditions': 1, 'review-draft': 2, 'final-review': 3,
+    };
+
     console.log(`[TestGenService] Found ${waitingRuns.length} WAITING_REVIEW run(s) to expose for resume`);
 
     for (const run of waitingRuns) {
       pipelineRepo.touchRun(run.id);
 
+      const cpNum = PHASE_TO_NUM[run.phase] || 1;
+      let payload: Record<string, unknown> | null = null;
+      try {
+        const cpState = await this.getCheckpointState(run.id);
+        if (cpState) payload = cpState;
+      } catch { /* fallback to null payload */ }
+
       this.sseGateway.emit(run.id, 'checkpoint:waiting', {
-        checkpointId: `${run.id}-cp-${run.phase}`,
+        checkpointNumber: cpNum,
         type: run.phase,
-        summary: run.checkpoint_data
-          ? ('conditions' in run.checkpoint_data
-              ? `${(run.checkpoint_data as any).conditions?.length || 0} Test Conditions`
-              : 'cases' in run.checkpoint_data
-                ? `${(run.checkpoint_data as any).cases?.length || 0} Draft Cases`
-                : 'Final Review')
-          : 'Awaiting Review',
-        payload: run.checkpoint_data,
+        summary: 'Awaiting Review',
+        payload,
         recovered: true,
       });
     }
@@ -144,6 +252,7 @@ export class TestGenService {
 
     let initCompleted = false;
     let initTimer: ReturnType<typeof setTimeout> | undefined;
+    let keepSse = false;
 
     try {
       await this.concurrencySlot.acquire();
@@ -291,10 +400,7 @@ export class TestGenService {
       `).run(preparationLogId, runId, JSON.stringify(preparationOutput));
 
       const resolver = runMode === 'interactive'
-        ? new InteractiveResolver(
-            (rid, data, phase) => pipelineRepo.setCheckpointData(rid, data, phase),
-            this.sseGateway,
-          )
+        ? new InteractiveResolver(this.sseGateway)
         : new AutoResolver();
 
       const session = new TestGenSession(runId, pipelineFactory, resolver, {
@@ -333,6 +439,8 @@ export class TestGenService {
 
         sendEvent('phase:start', { phase: 'flow-batch', message: `Processing ${businessFlows.length} flow(s) with ${flowRequirements.length} expanded requirements` });
 
+        pipelineRepo.updateThreadId(runId, `${runId}-batch-0`);
+
         const outcome = await session.startBatch(0, {
           projectId,
           requirementIds: Array.from(expandedIds),
@@ -345,8 +453,8 @@ export class TestGenService {
         });
 
         if (outcome.type === 'interrupt') {
-          pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
-          pipelineRepo.setCheckpointData(runId, outcome.interrupt.payload, outcome.interrupt.phase);
+          pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
+          keepSse = true;
           return;
         }
 
@@ -358,6 +466,8 @@ export class TestGenService {
           onBatchStart: (batchIndex) => {
             scope.setBatch(batchIndex + 1, totalBatches);
             pipelineRepo.updateCurrentBatch(runId, batchIndex + 1);
+            // Save thread_id before startBatch fires SSE events
+            pipelineRepo.updateThreadId(runId, `${runId}-batch-${batchIndex}`);
           },
           onBatchComplete: (batchIndex, result) => {
             if (result?.lastState) allResults.push(result.lastState);
@@ -368,8 +478,8 @@ export class TestGenService {
             sendEvent('pipeline:error', { phase: 'batch', batch: batchIndex + 1, message: err.message, recoverable: true });
           },
           onBatchInterrupt: (batchIndex, interrupt) => {
+            // Safety net — thread_id already saved in onBatchStart
             pipelineRepo.updateThreadId(runId, interrupt.threadId);
-            pipelineRepo.setCheckpointData(runId, interrupt.payload, interrupt.phase);
           },
           isAborted: aborted,
         });
@@ -392,6 +502,8 @@ export class TestGenService {
         actualBatches = summary.actualBatches;
 
         if (summary.interruptedBatch) {
+          pipelineRepo.setRunWaiting(runId, summary.interruptedBatch.phase);
+          keepSse = true;
           return;
         }
       }
@@ -417,16 +529,18 @@ export class TestGenService {
       this.concurrencySlot.release();
       this.abortedRuns.delete(runId);
       this.abortControllers.delete(runId);
-      this.sseGateway.cleanup(runId);
+      if (!keepSse) {
+        this.sseGateway.cleanup(runId);
+      }
     }
   }
 
   private async resumePipeline(
     runId: string,
-    runRow: { thread_id: string; phase: string; checkpoint_data: any; config: any; project_id: string; mode: string; current_batch: number },
+    runRow: { thread_id: string; phase: string; config: any; project_id: string; mode: string; current_batch: number },
     action: string,
     feedback?: string,
-    editedData?: unknown,
+    editedData?: any,
   ): Promise<void> {
     const sendEvent = (event: string, data: unknown) => this.sseGateway.emit(runId, event, data);
     const aborted = () => this.abortedRuns.has(runId);
@@ -435,6 +549,8 @@ export class TestGenService {
     const runAbortController = new AbortController();
     this.abortControllers.set(runId, runAbortController);
     const abortSignal = runAbortController.signal;
+
+    let keepSse = false;
 
     try {
       await this.concurrencySlot.acquire();
@@ -483,10 +599,7 @@ export class TestGenService {
 
       const pipelineFactory = this.createPipelineFactory(provider, pipelineCallbacks, agentOpts);
 
-      const resolver = new InteractiveResolver(
-        (rid, data, phase) => pipelineRepo.setCheckpointData(rid, data, phase),
-        this.sseGateway,
-      );
+      const resolver = new InteractiveResolver(this.sseGateway);
 
       const session = new TestGenSession(runId, pipelineFactory, resolver, {
         mode: runMode,
@@ -494,21 +607,16 @@ export class TestGenService {
         signal: abortSignal,
       });
 
-      if (editedData && action === 'approve') {
-        const merged = { ...runRow.checkpoint_data, ...(editedData as Record<string, unknown>) };
-        pipelineRepo.setCheckpointData(runId, merged, runRow.phase);
-      }
-
       const outcome = await session.resumeBatch(
         runRow.current_batch || 0,
         runRow.thread_id,
-        { action, feedback, edits: editedData as Record<string, unknown> | undefined },
-        runRow.checkpoint_data || {},
+        { action, feedback, edits: editedData },
       );
 
       if (outcome.type === 'interrupt') {
         pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
-        pipelineRepo.setCheckpointData(runId, outcome.interrupt.payload, outcome.interrupt.phase);
+        pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
+        keepSse = true;
         sendEvent('checkpoint:waiting', {
           checkpointId: `${runId}-cp-${outcome.interrupt.checkpointNumber}`,
           checkpointNumber: outcome.interrupt.checkpointNumber,
@@ -532,7 +640,9 @@ export class TestGenService {
       this.concurrencySlot.release();
       this.abortedRuns.delete(runId);
       this.abortControllers.delete(runId);
-      this.sseGateway.cleanup(runId);
+      if (!keepSse) {
+        this.sseGateway.cleanup(runId);
+      }
     }
   }
 }

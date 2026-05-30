@@ -84,7 +84,7 @@ const handleRefresh = useCallback(async () => {
 
   const handleApprove = useCallback(() => {
     if (!pipeline.runId) return;
-    pipeline.resume('approve', { editedData: checkpointEditedData.current });
+    pipeline.resume('approve', { editedData: checkpointEditedData.current ?? undefined });
     setReviewMode(false);
   }, [pipeline]);
 
@@ -102,17 +102,15 @@ const handleRefresh = useCallback(async () => {
     if (pipeline.selectedNode?.kind === 'checkpoint' && checkpointEditedData.current && pipeline.runId) {
       const { api } = await import('@/shared/services/api');
       const nodeId = pipeline.selectedNode.id;
-      const agentMap: Record<string, string> = {
-        checkpoint_1: 'test_analyst',
-        checkpoint_2: 'test_designer',
-        checkpoint_3: 'quality_manager',
+      const cpMap: Record<string, number> = {
+        checkpoint_1: 1, checkpoint_2: 2, checkpoint_3: 3,
       };
-      const agentName = agentMap[nodeId];
-      if (agentName) {
+      const cpNum = cpMap[nodeId];
+      if (cpNum) {
         await api.testGen.saveCheckpointEdits(
           pipeline.runId,
           checkpointEditedData.current,
-          agentName
+          cpNum,
         );
       }
     }

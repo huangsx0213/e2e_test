@@ -8,7 +8,6 @@ const mockPipelineRepo = vi.hoisted(() => ({
   getMonthlyTokenUsage: vi.fn(() => 0),
   updateProviderInfo: vi.fn(),
   updateCurrentBatch: vi.fn(),
-  setCheckpointData: vi.fn(),
   getRun: vi.fn(),
   getProviderConfig: vi.fn(),
   markRunFailed: vi.fn(),

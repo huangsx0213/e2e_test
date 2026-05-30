@@ -11,7 +11,6 @@ export interface TestGenRunRow {
   total_batches: number;
   mode: string;
   config: string | null;
-  checkpoint_data: string | null;
   token_usage: string | null;
   provider_type: string | null;
   model_name: string | null;
@@ -96,13 +95,12 @@ export class TestGenRepository {
 
   getActiveRun(projectId: string): any {
     const row = db.prepare(
-      "SELECT id, status, phase, current_batch, total_batches, mode, config, checkpoint_data, created_at, updated_at FROM test_gen_runs WHERE project_id = ? AND status IN ('RUNNING', 'WAITING_REVIEW') ORDER BY created_at DESC LIMIT 1"
+      "SELECT id, status, phase, current_batch, total_batches, mode, config, created_at, updated_at FROM test_gen_runs WHERE project_id = ? AND status IN ('RUNNING', 'WAITING_REVIEW') ORDER BY created_at DESC LIMIT 1"
     ).get(projectId) as any;
     if (!row) return null;
     return {
       ...row,
       config: row.config ? JSON.parse(row.config) : null,
-      checkpoint_data: row.checkpoint_data ? JSON.parse(row.checkpoint_data) : null,
     };
   }
 
@@ -121,7 +119,7 @@ export class TestGenRepository {
       total_batches: row.total_batches,
       token_usage: row.token_usage ? JSON.parse(row.token_usage) : null,
       created_by: row.created_by,
-      checkpoint_data: row.checkpoint_data ? JSON.parse(row.checkpoint_data) : null,
+      thread_id: row.thread_id,
       mode: row.mode,
       config: row.config ? JSON.parse(row.config) : null,
       provider_type: row.provider_type,
@@ -153,22 +151,17 @@ export class TestGenRepository {
     );
   }
 
-  setCheckpointData(runId: string, data: unknown, phase: string): void {
-    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
-      .run(JSON.stringify(data), phase, runId);
-  }
-
-  updateCheckpointData(runId: string, data: unknown): void {
-    db.prepare("UPDATE test_gen_runs SET checkpoint_data = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
-      .run(JSON.stringify(data), runId);
-  }
-
   markRunFailed(runId: string): void {
     db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
   setRunRunning(runId: string): void {
     db.prepare("UPDATE test_gen_runs SET status = 'RUNNING', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
+  }
+
+  setRunWaiting(runId: string, phase: string): void {
+    db.prepare("UPDATE test_gen_runs SET status = 'WAITING_REVIEW', phase = ?, updated_at = datetime('now') || 'Z' WHERE id = ?")
+      .run(phase, runId);
   }
 
   touchRun(runId: string): void {
@@ -182,24 +175,22 @@ export class TestGenRepository {
 
   getWaitingRuns(): any[] {
     const rows = db.prepare(
-      "SELECT id, project_id, status, phase, thread_id, mode, config, checkpoint_data, updated_at FROM test_gen_runs WHERE status = 'WAITING_REVIEW' AND thread_id IS NOT NULL"
+      "SELECT id, project_id, status, phase, thread_id, mode, config, updated_at FROM test_gen_runs WHERE status = 'WAITING_REVIEW' AND thread_id IS NOT NULL"
     ).all();
     return (rows as any[]).map(r => ({
       ...r,
       config: r.config ? JSON.parse(r.config) : null,
-      checkpoint_data: r.checkpoint_data ? JSON.parse(r.checkpoint_data) : null,
     }));
   }
 
   getRunWithThreadId(runId: string): any {
     const row = db.prepare(
-      'SELECT id, project_id, status, phase, thread_id, mode, config, checkpoint_data, current_batch FROM test_gen_runs WHERE id = ?'
+      'SELECT id, project_id, status, phase, thread_id, mode, config, current_batch FROM test_gen_runs WHERE id = ?'
     ).get(runId) as any;
     if (!row) return null;
     return {
       ...row,
       config: row.config ? JSON.parse(row.config) : null,
-      checkpoint_data: row.checkpoint_data ? JSON.parse(row.checkpoint_data) : null,
     };
   }
 

@@ -13,6 +13,7 @@ export class SSEGateway {
   private readonly streams = new Map<string, SseStream>();
   private readonly eventBuffers = new Map<string, Array<{ event: string; data: unknown }>>();
   private readonly bufferTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly lastEvents = new Map<string, { event: string; data: unknown }>();
 
   getEmitter(runId: string): EventEmitter {
     let ee = this.emitters.get(runId);
@@ -25,9 +26,16 @@ export class SSEGateway {
   }
 
   emit(runId: string, event: string, data: unknown): void {
+    // Store sticky events for reconnect replay
+    if (event === 'checkpoint:waiting') {
+      this.lastEvents.set(runId, { event, data });
+    }
+    if (event === 'pipeline:complete' || event === 'pipeline:error') {
+      this.lastEvents.delete(runId);
+    }
+
     const emitter = this.getEmitter(runId);
     if (emitter.listenerCount('sse') === 0) {
-      // No stream attached yet — buffer events to replay later
       let buf = this.eventBuffers.get(runId);
       if (!buf) {
         buf = [];
@@ -67,7 +75,7 @@ export class SSEGateway {
 
     emitter.on('sse', onSse);
 
-    // Replay any buffered events that were emitted before the stream was attached
+    // Replay buffered events that were emitted before stream attached
     const buffer = this.eventBuffers.get(runId);
     if (buffer) {
       this.eventBuffers.delete(runId);
@@ -77,12 +85,17 @@ export class SSEGateway {
         this.bufferTimers.delete(runId);
       }
       for (const { event, data } of buffer) {
-        const sseLine = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-        res.write(sseLine);
+        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
         if (event === 'pipeline:complete' || event === 'pipeline:error') {
           cleanup();
           return;
         }
+      }
+    } else {
+      // No buffered events — replay the last sticky event on reconnect
+      const last = this.lastEvents.get(runId);
+      if (last) {
+        res.write(`event: ${last.event}\ndata: ${JSON.stringify(last.data)}\n\n`);
       }
     }
 
@@ -102,8 +115,6 @@ export class SSEGateway {
       this.streams.delete(runId);
     }
     this.emitters.delete(runId);
-    // Pipeline finished before client connected — keep buffer so attachStream()
-    // can replay missed events. Schedule eventual cleanup to prevent leaks.
     if (this.eventBuffers.has(runId) && !this.bufferTimers.has(runId)) {
       const timer = setTimeout(() => {
         this.eventBuffers.delete(runId);
@@ -111,6 +122,7 @@ export class SSEGateway {
       }, 300_000).unref();
       this.bufferTimers.set(runId, timer);
     }
+    // Keep lastEvents for reconnect replay; cleared on pipeline:complete/:error
   }
 }
 

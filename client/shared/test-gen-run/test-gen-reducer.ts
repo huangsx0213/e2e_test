@@ -212,8 +212,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
       };
 
     case 'RESTORE_RUN': {
-      const { nodes: restoredNodes, checkpointDataResult } = buildRestoredNodes(
-        action.phase, action.status, action.checkpointData, action.totalBatches,
+      const restoredNodes = buildRestoredNodes(
+        action.phase, action.status, action.totalBatches,
       );
       const isRunning = action.status !== 'COMPLETED' && action.status !== 'FAILED';
       return {
@@ -222,10 +222,17 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         mode: action.mode ?? state.mode,
         nodes: restoredNodes,
         isRunning,
-        checkpointData:         checkpointDataResult,
+        checkpointData: null,
         thinkingTextByNode: {},
         error: null,
         agentLogs: [],
+      };
+    }
+
+    case 'SET_CHECKPOINT_DATA': {
+      return {
+        ...state,
+        checkpointData: action.checkpointData,
       };
     }
 

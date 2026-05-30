@@ -21,6 +21,7 @@ import { migration017SuitePosition } from './017_suite_position.ts';
 import { migration018RequirementDependenciesAndBusinessFlows } from './018_requirement_dependencies_and_business_flows.ts';
 import { migration021ProviderConfigFix } from './021_provider_config_fix.ts';
 import { migration022ThreadId } from './022_add_thread_id.ts';
+import { migration023DropCheckpointData } from './023_drop_checkpoint_data.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -47,6 +48,7 @@ export const migrations: Migration[] = [
 migration018RequirementDependenciesAndBusinessFlows,
 migration021ProviderConfigFix,
   migration022ThreadId,
+  migration023DropCheckpointData,
 ];
 
 function appliedMigrationIds(): Set<string> {

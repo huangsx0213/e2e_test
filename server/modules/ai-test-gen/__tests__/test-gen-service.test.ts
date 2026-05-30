@@ -15,7 +15,7 @@ const mockRepo = vi.hoisted(() => ({
   setRunRunning: vi.fn(),
   deleteRun: vi.fn(),
   updateThreadId: vi.fn(),
-  setCheckpointData: vi.fn(),
+
 }));
 
 vi.mock('../infrastructure/db/test-gen-repository.ts', () => ({
@@ -89,15 +89,14 @@ describe('TestGenService', () => {
         status: 'WAITING_REVIEW',
         phase: 'review-conditions',
         thread_id: 'thread-1',
-        checkpoint_data: {},
         config: {},
         project_id: 'proj-1',
         mode: 'auto',
         current_batch: 0,
       });
-      service.resumeRun('run-1', 'approve', 'looks good', { conditions: [] });
+      service.resumeRun('run-1', 'approve', 'looks good');
       expect(mockRepo.insertAuditLog).toHaveBeenCalledWith(
-        'run-1', 'review-conditions', 'approve', { conditions: [] },
+        'run-1', 'review-conditions', 'approve', null,
       );
       expect(mockRepo.setRunRunning).toHaveBeenCalledWith('run-1');
     });

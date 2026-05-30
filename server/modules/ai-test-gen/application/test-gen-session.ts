@@ -190,17 +190,12 @@ export class TestGenSession {
     batchIndex: number,
     threadId: string,
     resolution: { action: string; feedback?: string; edits?: Record<string, unknown> },
-    originalPayload: Record<string, unknown>,
   ): Promise<{ type: 'complete'; result: BatchResult } | { type: 'interrupt'; interrupt: InterruptInfo }> {
     const config = { configurable: { thread_id: threadId } };
 
-    let resumeState = buildResumeState(
-      detectCheckpointNumber(originalPayload),
-      resolution,
-      originalPayload,
-    );
-
-    let isResume = true;
+    let resumeState: Record<string, unknown> = resolution.action === 'retry'
+      ? { retry: true, feedback: resolution.feedback ?? '' }
+      : (resolution.edits as Record<string, unknown>) ?? { resume: true };
 
     while (true) {
       if (this.isAborted()) {

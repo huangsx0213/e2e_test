@@ -7,7 +7,7 @@ export interface CheckpointResolution {
 }
 
 export interface CheckpointResolver {
-  /** Called when graph hits interrupt. Persists checkpoint and emits SSE notification. */
+  /** Called when graph hits interrupt. Emits SSE notification. */
   onInterrupt(
     runId: string,
     checkpointNumber: number,
@@ -23,13 +23,11 @@ export class AutoResolver implements CheckpointResolver {
     _phase: string,
     _payload: Record<string, unknown>,
   ): void {
-    // Auto-approve: no-op, caller handles auto-resume
   }
 }
 
 export class InteractiveResolver implements CheckpointResolver {
   constructor(
-    private readonly saveCheckpoint: (runId: string, data: unknown, phase: string) => void,
     private readonly sseGateway: SSEGateway,
   ) {}
 
@@ -39,8 +37,6 @@ export class InteractiveResolver implements CheckpointResolver {
     phase: string,
     payload: Record<string, unknown>,
   ): void {
-    this.saveCheckpoint(runId, payload, phase);
-
     this.sseGateway.emit(runId, 'checkpoint:waiting', {
       checkpointId: `${runId}-cp-${checkpointNumber}`,
       checkpointNumber,

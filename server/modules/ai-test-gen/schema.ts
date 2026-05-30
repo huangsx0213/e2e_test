@@ -11,7 +11,12 @@ export const startPipelineSchema = z.object({
 });
 
 export const resumePipelineSchema = z.object({
-  action: z.string().min(1, 'Action is required'),
+  action: z.enum(['approve', 'retry']),
   feedback: z.string().optional(),
-  editedData: z.unknown().optional(),
+  editedData: z.any().optional(),
+});
+
+export const checkpointUpdateSchema = z.object({
+  editedData: z.record(z.string(), z.unknown()),
+  checkpointNumber: z.number().min(1).max(3),
 });

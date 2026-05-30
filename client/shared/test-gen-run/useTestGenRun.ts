@@ -126,7 +126,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     }
   }, [currentProjectId, api]);
 
-  const resume = useCallback(async (action: CheckpointAction, data?: { feedback?: string; editedData?: unknown }) => {
+  const resume = useCallback(async (action: CheckpointAction, data?: { feedback?: string; editedData?: any }) => {
     if (!state.runId) throw new Error('No active run');
     await api.resume(state.runId, { action, feedback: data?.feedback, editedData: data?.editedData });
   }, [state.runId, api]);
@@ -138,6 +138,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     dispatch({ type: 'RUN_ABORTED' });
   }, [state.runId, api, sse]);
 
+  const PHASE_TO_CP: Record<string, number> = {
+    'review-conditions': 1, 'review-draft': 2, 'final-review': 3,
+  };
+
   const refresh = useCallback(async () => {
     if (!state.runId) return;
     try {
@@ -148,10 +152,15 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           runId: runInfo.id,
           phase: runInfo.phase,
           status: runInfo.status,
-          checkpointData: runInfo.checkpoint_data,
           mode: runInfo.mode ?? state.mode,
           totalBatches: runInfo.total_batches,
         });
+        if (runInfo.thread_id) {
+          const cpState = await api.testGen.getCheckpointState(state.runId);
+          if (cpState?.checkpointData) {
+            dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
+          }
+        }
       }
     } catch {
     }
@@ -166,10 +175,15 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           runId: runInfo.id,
           phase: runInfo.phase,
           status: runInfo.status,
-          checkpointData: runInfo.checkpoint_data,
           mode: runInfo.mode ?? 'auto',
           totalBatches: runInfo.total_batches,
         });
+        if (runInfo.thread_id) {
+          const cpState = await api.testGen.getCheckpointState(runId);
+          if (cpState?.checkpointData) {
+            dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
+          }
+        }
         const logs = await api.logs(runId);
         if (logs.length > 0) {
           dispatch({ type: 'MERGE_AGENT_LOGS', logs });
@@ -284,18 +298,21 @@ const selectedAgentLog = selectedNode?.agentName
   const selectedCheckpointData = (() => {
     if (selectedNode?.kind !== 'checkpoint') return null;
     if (state.checkpointData) return state.checkpointData;
-    const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
-    if (!agentName) return null;
-    const log = getMergedAgentLog(agentName);
-    if (!log?.output_data) return null;
-    const od = log.output_data;
-    if (selectedNode.id === 'checkpoint_1') {
-      return { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
+    if (!state.isRunning) {
+      const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
+      if (!agentName) return null;
+      const log = getMergedAgentLog(agentName);
+      if (!log?.output_data) return null;
+      const od = log.output_data;
+      if (selectedNode.id === 'checkpoint_1') {
+        return { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
+      }
+      if (selectedNode.id === 'checkpoint_2') {
+        return { cases: od.draftTestCases || [] };
+      }
+      return { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
     }
-    if (selectedNode.id === 'checkpoint_2') {
-      return { cases: od.draftTestCases || [] };
-    }
-    return { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+    return null;
   })();
 
 return {

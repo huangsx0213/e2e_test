@@ -112,7 +112,7 @@ export async function createTestGenerationPipeline(provider: AIProvider, roles: 
   const node_checkpoint1 = createCheckpointNode<Checkpoint1Response>(
     (state) => ({ conditions: state.testConditions, analysis: state.requirementAnalysis }),
     (state, response) => ({
-      approvedConditions: response?.conditions ?? state.testConditions,
+      approvedConditions: response?.conditions ?? state.testConditions ?? [],
       humanReviewFeedback: response?.feedback ?? '',
       phase: 'design',
     }),
@@ -165,7 +165,7 @@ export async function createTestGenerationPipeline(provider: AIProvider, roles: 
   const node_checkpoint2 = createCheckpointNode<Checkpoint2Response>(
     (state) => ({ cases: state.draftTestCases }),
     (state, response) => ({
-      approvedDraftCases: response?.cases ?? state.draftTestCases,
+      approvedDraftCases: response?.cases ?? state.draftTestCases ?? [],
       humanReviewFeedback: response?.feedback ?? '',
       phase: 'quality',
     }),

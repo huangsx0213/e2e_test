@@ -93,7 +93,8 @@ export type TestGenReducerAction =
   | { type: 'SSE_EVENT'; event: TestGenEvent }
   | { type: 'RUN_STARTED'; runId: string; config: StartConfig }
   | { type: 'RUN_ABORTED' }
-  | { type: 'RESTORE_RUN'; runId: string; phase: string; status: string; checkpointData?: any; mode?: RunMode; totalBatches?: number }
+  | { type: 'RESTORE_RUN'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number }
+  | { type: 'SET_CHECKPOINT_DATA'; checkpointData: any; phase: string }
   | { type: 'MERGE_AGENT_LOGS'; logs: any[] }
   | { type: 'SET_RUN_SUMMARY'; summary: RunSummary }
   | { type: 'SELECT_NODE'; nodeId: NodeId | null }
@@ -161,28 +162,14 @@ export function createFreshNodes(): TestGenNode[] {
 export function buildRestoredNodes(
   phase: string,
   status: string,
-  checkpointData?: any,
   totalBatches?: number,
-): { nodes: TestGenNode[]; checkpointDataResult: any | null } {
+): TestGenNode[] {
   const isWaiting = status === 'WAITING_REVIEW';
   const isCompleted = status === 'COMPLETED';
   const doneNodes = PHASE_TO_DONE[phase] || (isCompleted ? ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'] : []);
   const currentNodeId = PHASE_TO_CURRENT[phase];
   
-  let checkpointDataResult: any | null = null;
-  if (isWaiting) {
-    checkpointDataResult = checkpointData ?? null;
-  } else if (isCompleted && checkpointData) {
-    if (phase === 'review-conditions') {
-      checkpointDataResult = checkpointData;
-    } else if (phase === 'review-draft') {
-      checkpointDataResult = checkpointData;
-    } else if (phase === 'final-review') {
-      checkpointDataResult = checkpointData;
-    }
-  }
-  
-  const nodes = createFreshNodes().map(n => ({
+  return createFreshNodes().map(n => ({
     ...n,
     status: doneNodes.includes(n.id) ? 'completed' as const
       : n.id === currentNodeId
@@ -195,5 +182,4 @@ export function buildRestoredNodes(
       ? { ...n.meta, totalBatches }
       : n.meta,
   }));
-  return { nodes, checkpointDataResult };
 }

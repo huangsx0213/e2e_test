@@ -16,21 +16,18 @@ describe('AutoResolver', () => {
 });
 
 describe('InteractiveResolver', () => {
-  let saveCheckpoint: ReturnType<typeof vi.fn>;
   let sse: ReturnType<typeof mockSSEGateway>;
   let resolver: InteractiveResolver;
 
   beforeEach(() => {
-    saveCheckpoint = vi.fn();
     sse = mockSSEGateway();
-    resolver = new InteractiveResolver(saveCheckpoint, sse);
+    resolver = new InteractiveResolver(sse);
   });
 
-  it('saves checkpoint data and emits SSE event on interrupt', () => {
+  it('emits SSE event on interrupt', () => {
     const payload = { conditions: [{ id: 'c1' }] };
     resolver.onInterrupt('run-1', 1, 'review-conditions', payload);
 
-    expect(saveCheckpoint).toHaveBeenCalledWith('run-1', payload, 'review-conditions');
     expect(sse.emit).toHaveBeenCalledWith('run-1', 'checkpoint:waiting', expect.objectContaining({
       checkpointNumber: 1,
       summary: '1 Test Conditions',

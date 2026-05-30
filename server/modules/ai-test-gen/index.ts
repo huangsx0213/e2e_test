@@ -5,9 +5,7 @@ import { validateWithSchema } from '../../shared/validation/validate.ts';
 import { pipelineRepo } from './infrastructure/db/test-gen-repository.ts';
 import { SSEGateway } from './infrastructure/sse/sse-gateway.ts';
 import { TestGenService } from './application/test-gen-service.ts';
-import { startPipelineSchema, resumePipelineSchema } from './schema.ts';
-import { z } from 'zod';
-
+import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
 const router = Router();
 const sseGateway = new SSEGateway();
 const pipelineService = new TestGenService(sseGateway);
@@ -68,27 +66,23 @@ router.post('/:runId/abort', withErrorHandling((req, res) => {
 
 // --- Resume (Interactive mode) ---
 router.post('/:runId/resume', withErrorHandling((req, res) => {
-  const { action, feedback, editedData } = validateWithSchema(resumePipelineSchema, req.body);
-  pipelineService.resumeRun(p(req.params.runId), action, feedback, editedData);
-  res.json({ success: true, action });
+    const { action, feedback, editedData } = validateWithSchema(resumePipelineSchema, req.body);
+    pipelineService.resumeRun(p(req.params.runId), action, feedback, editedData);
+    res.json({ success: true, action });
 }));
 
-// --- Save edits for passed checkpoint ---
-router.patch('/:runId/checkpoint-data', withErrorHandling((req, res) => {
-  const { editedData, agentName } = validateWithSchema(z.object({
-    editedData: z.record(z.string(), z.unknown()),
-    agentName: z.string(),
-  }), req.body);
+// --- Save edits via updateState ---
+router.post('/:runId/checkpoint-update', withErrorHandling(async (req, res) => {
+    const { editedData, checkpointNumber } = validateWithSchema(checkpointUpdateSchema, req.body);
+    await pipelineService.saveCheckpointEdits(p(req.params.runId), editedData, checkpointNumber);
+    res.json({ success: true });
+}));
 
-  pipelineRepo.insertAuditLog(p(req.params.runId), agentName, 'save-edits', editedData);
-
-  const run = pipelineRepo.getRunWithThreadId(p(req.params.runId));
-  if (run?.checkpoint_data) {
-    const merged = { ...run.checkpoint_data, ...editedData };
-    pipelineRepo.updateCheckpointData(p(req.params.runId), merged);
-  }
-
-  res.json({ success: true });
+// --- Get checkpoint state from LangGraph checkpointer ---
+router.get('/:runId/checkpoint-state', withErrorHandling(async (req, res) => {
+  const runId = p(req.params.runId);
+  const result = await pipelineService.getCheckpointState(runId);
+  res.json({ checkpointData: result });
 }));
 
 // --- Start Test Gen ---
