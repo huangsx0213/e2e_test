@@ -25,6 +25,7 @@ export function createAgentNode(
   signal?: AbortSignal,
   logEnter?: (state: any) => void,
   logExit?: (raw: any) => void,
+  useReActLoop?: boolean,
 ) {
   return async (state: any) => {
     logEnter?.(state);
@@ -36,6 +37,7 @@ export function createAgentNode(
         timeoutMs,
         useCache,
         signal,
+        useReActLoop,
         onStep: (idx, name) => observer?.onStep?.(agentName, idx, name),
         onThinking: (text) => observer?.onThinking?.(agentName, text),
       });

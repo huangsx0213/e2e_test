@@ -93,4 +93,5 @@ Any other value (like "error-guessing", "exploratory-testing", etc.) will be rej
   inputSchema: BatchAnalystInputSchema,
   outputSchema: AnalystOutputSchema,
   options: { maxTokens: 128000 },
+  allowedTools: ['execute_skill_module'],
 };

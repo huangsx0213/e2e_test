@@ -3,7 +3,8 @@ import type { AIProvider, ChatMessage, ToolCall } from './provider.ts';
 import type { AgentRole, AgentContext, AgentRunOptions } from './agent.ts';
 import { createAgentContext, runAgent } from './agent.ts';
 import { zodToJsonSchema } from './tool-converter.ts';
-import { runReactLoop, type ToolExecutor } from './react-loop.ts';
+import { type ToolExecutor } from './react-loop.ts';
+import type { SerializedReactLoopState } from './react-loop-state.ts';
 import { globalSkillRegistry } from './skill-registry.ts';
 import {
   createSearchSkillsTool,
@@ -42,6 +43,9 @@ export interface ToolContext {
   tokenLimit?: number | null;
   onStep?: (stepIndex: number, stepName: string) => void;
   onThinking?: (text: string) => void;
+  useReActLoop?: boolean;
+  resumeState?: SerializedReactLoopState | null;
+  deps?: { db?: any; toolRegistry?: any };
 }
 
 export type ToolResult<T = unknown> =
@@ -126,62 +130,17 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
 
   async execute(input: TInput, ctx: ToolContext = {}): Promise<ToolResult<TOutput>> {
     const provider = this.providerFactory();
+    await globalSkillRegistry.initialize();
     const agentCtx = createAgentContext(provider, this.role, {
       promptVersion: ctx.promptVersion ?? this.getPromptVersion(),
       modelName: ctx.modelName ?? this.getModelName(),
       tokenLimit: ctx.tokenLimit,
     });
 
-    const useReAct = (ctx as any).useReActLoop ?? false;
-
-    if (useReAct) {
-      const startTime = Date.now();
-      try {
-        await globalSkillRegistry.initialize();
-        const toolExecutor = this.createReActToolExecutor();
-        const result = await runReactLoop(
-          agentCtx.provider,
-          agentCtx.skillContext.systemPrompt,
-          { role: 'user', content: JSON.stringify(input) },
-          toolExecutor,
-          globalSkillRegistry,
-          {
-            signal: ctx.signal,
-            tokenLimit: agentCtx.tokenLimit,
-            promptVersion: agentCtx.promptVersion,
-            modelName: agentCtx.modelName,
-            useCache: ctx.useCache,
-          },
-          (ctx as any).resumeState
-        );
-
-        return {
-          success: true,
-          data: {
-            result: result.result,
-            tokenUsage: result.tokenUsage,
-            toolHistory: result.toolHistory,
-            requestedReview: result.requestedReview,
-            currentReactLoopState: result.currentReactLoopState,
-          } as any,
-          metadata: {
-            toolName: this.name,
-            latencyMs: Date.now() - startTime,
-            tokenUsage: result.tokenUsage,
-          },
-        };
-      } catch (err: any) {
-        const code = resolveToolErrorCode(err);
-        return {
-          success: false,
-          error: {
-            code,
-            message: err?.message ?? String(err),
-            details: err?.issues,
-          },
-        };
-      }
-    }
+    const useReAct = ctx.useReActLoop ?? false;
+    const toolExecutor = useReAct ? this.createReActToolExecutor() : undefined;
+    const deps = ctx.deps;
+    const resumeState = ctx.resumeState;
 
     const startTime = Date.now();
     try {
@@ -191,11 +150,23 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
         signal: ctx.signal,
         onStep: ctx.onStep,
         onThinking: ctx.onThinking,
+        useReActLoop: useReAct,
+        toolExecutor,
+        deps,
+        resumeState,
       });
 
       return {
         success: true,
-        data: raw.result as TOutput,
+        data: useReAct
+          ? {
+              result: raw.result,
+              tokenUsage: raw.tokenUsage,
+              toolHistory: raw.toolHistory,
+              requestedReview: raw.requestedReview,
+              currentReactLoopState: raw.currentReactLoopState,
+            } as any
+          : raw.result as TOutput,
         metadata: {
           toolName: this.name,
           latencyMs: raw.latencyMs,
@@ -250,7 +221,7 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
         if (!subRole) throw new Error(`Unknown sub-agent role: ${args.role}. Available: ${Object.keys(roleLookup).join(', ')}`);
         const subAgent = new AgentTool(subRole, this.providerFactory, this.getPromptVersion, this.getModelName);
         (subAgent as any)._isSubagent = true;
-        const result = await subAgent.execute(args.input, { useReActLoop: true } as any);
+        const result = await subAgent.execute(args.input, { useReActLoop: true });
         const r = result as any;
         if (!r.success) throw new Error(`Sub-agent ${args.role} failed: ${r.error?.message ?? 'unknown error'}`);
         return r.data;

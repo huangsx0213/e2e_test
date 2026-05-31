@@ -12,6 +12,7 @@ export interface ReactLoopOptions {
   signal?: AbortSignal;
   promptVersion?: string;
   modelName?: string;
+  deps?: { db?: any; toolRegistry?: any };
 }
 
 export interface ReactLoopResult {
@@ -55,7 +56,7 @@ export async function runReactLoop(
           { role: 'system', content: fullSystemPrompt } as ChatMessage,
           { role: 'user', content: 'Resuming from previous state.' } as ChatMessage,
         ],
-        loadedSkills: new Set(resumeState.loadedSkills),
+        loadedSkills: new Set<string>(),
         iteration: resumeState.iteration,
         toolHistory: [...resumeState.toolHistory],
         totalTokenUsage: { ...resumeState.totalTokenUsage },
@@ -99,8 +100,12 @@ export async function runReactLoop(
       state.messages.push({
         role: 'assistant',
         content: response.content ?? '',
-        toolCalls: response.toolCalls,
-      } as any);
+        toolCalls: response.toolCalls.map(tc => ({
+          type: 'function' as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          id: tc.id,
+        })),
+      });
 
       for (const call of response.toolCalls) {
         if (toolExecutor.isSpecialTool(call.name)) {
@@ -160,7 +165,7 @@ export async function runReactLoop(
               const mod = await skillRegistry.loadModule(args.skillName);
               let fnResult: unknown;
               if (mod.createService) {
-                const service = mod.createService({});
+                const service = mod.createService(options.deps ?? {});
                 if (typeof service[args.functionName] === 'function') {
                   fnResult = await service[args.functionName](...(args.args ?? []));
                 } else if (typeof mod[args.functionName] === 'function') {
@@ -289,7 +294,7 @@ export async function streamReactLoop(
           { role: 'system', content: fullSystemPrompt } as ChatMessage,
           { role: 'user', content: 'Resuming from previous state.' } as ChatMessage,
         ],
-        loadedSkills: new Set(resumeState.loadedSkills),
+        loadedSkills: new Set<string>(),
         iteration: resumeState.iteration,
         toolHistory: [...resumeState.toolHistory],
         totalTokenUsage: { ...resumeState.totalTokenUsage },
@@ -351,8 +356,12 @@ export async function streamReactLoop(
       state.messages.push({
         role: 'assistant',
         content: responseContent,
-        toolCalls: responseToolCalls,
-      } as any);
+        toolCalls: responseToolCalls.map((tc: any) => ({
+          type: 'function' as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          id: tc.id,
+        })),
+      });
 
       for (const call of responseToolCalls) {
         if (toolExecutor.isSpecialTool(call.name)) {
@@ -412,7 +421,7 @@ export async function streamReactLoop(
               const mod = await skillRegistry.loadModule(args.skillName);
               let fnResult: unknown;
               if (mod.createService) {
-                const service = mod.createService({});
+                const service = mod.createService(options.deps ?? {});
                 if (typeof service[args.functionName] === 'function') {
                   fnResult = await service[args.functionName](...(args.args ?? []));
                 } else if (typeof mod[args.functionName] === 'function') {

@@ -126,6 +126,7 @@ function createPipelineDirect(provider: AIProvider, roles: {
       const tcCount = result.testConditions?.length ?? 0;
       console.log(`[test-gen:graph] [agent_test_analyst] EXIT, ${tcCount} test conditions generated, latency=${raw.latencyMs}ms`);
     },
+    true,
   );
 
   const node_checkpoint1 = createCheckpointNode<Checkpoint1Response>(
@@ -179,6 +180,7 @@ function createPipelineDirect(provider: AIProvider, roles: {
       const draftCount = result.draftTestCases?.length ?? 0;
       console.log(`[test-gen:graph] [agent_test_designer] EXIT, ${draftCount} draft test cases, latency=${raw.latencyMs}ms`);
     },
+    true,
   );
 
   const node_checkpoint2 = createCheckpointNode<Checkpoint2Response>(
@@ -228,6 +230,7 @@ function createPipelineDirect(provider: AIProvider, roles: {
       const matrixRows = result.coverageMatrix?.rows?.length ?? 0;
       console.log(`[test-gen:graph] [agent_quality_manager] EXIT, ${finalCount} final test cases, ${matrixRows} coverage rows, latency=${raw.latencyMs}ms`);
     },
+    true,
   );
 
   const node_checkpoint3 = createCheckpointNode<Checkpoint3Response>(
@@ -315,6 +318,7 @@ export function createOrchestratedPipeline(provider: AIProvider, roles: {
   timeoutMs?: number;
   useCache?: boolean;
   signal?: AbortSignal;
+  useReActLoop?: boolean;
 }, checkpointer?: BaseCheckpointSaver) {
   const registry = createToolRegistry(provider, roles, {
     promptVersion: agentOpts?.promptVersion,
@@ -332,6 +336,7 @@ export function createOrchestratedPipeline(provider: AIProvider, roles: {
       timeoutMs: agentOpts?.timeoutMs,
       useCache: agentOpts?.useCache,
       signal: agentOpts?.signal,
+      useReActLoop: agentOpts?.useReActLoop ?? true,
     },
     stateAnnotation: TestGenStateAnnotation,
     agentStepConfig: {

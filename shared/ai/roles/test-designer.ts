@@ -57,4 +57,5 @@ All fields inside each test case are required. Never omit any field.`,
   requiredSkills: ['test-designer', 'flow-design'],
   inputSchema: DesignerInputSchema,
   outputSchema: DesignerOutputSchema,
+  allowedTools: ['execute_skill_module'],
 };

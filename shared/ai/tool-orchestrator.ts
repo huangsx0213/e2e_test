@@ -35,6 +35,7 @@ export interface PipelineConfig {
     timeoutMs?: number;
     useCache?: boolean;
     signal?: AbortSignal;
+    useReActLoop?: boolean;
   };
   stateAnnotation?: any;
   buildToolInput?: Record<string, (state: any) => unknown>;
@@ -111,7 +112,10 @@ export class ToolOrchestrator {
         preStep,
         postSteps,
         config.callbacks,
-        { useCache: config.agentOpts?.useCache },
+        {
+          useCache: config.agentOpts?.useCache,
+          useReActLoop: config.agentOpts?.useReActLoop,
+        },
         config.agentOpts?.timeoutMs,
         config.agentOpts?.signal,
         config.agentLogEnter?.[toolName],

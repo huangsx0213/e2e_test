@@ -30,4 +30,5 @@ Both fields are required. Never omit either field.`,
   requiredSkills: ['quality-manager', 'flow-design'],
   inputSchema: QMInputSchema,
   outputSchema: QMOutputSchema,
+  allowedTools: ['execute_skill_module'],
 };

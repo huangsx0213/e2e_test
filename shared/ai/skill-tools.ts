@@ -44,7 +44,7 @@ export function createExecuteSkillModuleTool(registry: SkillRegistry, deps?: { d
       properties: {
         skillName: { type: 'string' as const, description: 'Name of the skill whose module to call' },
         functionName: { type: 'string' as const, description: 'Name of the exported function to call' },
-        args: { type: 'array' as const, description: 'Array of arguments to pass to the function' },
+        args: { type: 'array' as const, description: 'Array of arguments to pass to the function', items: { type: 'string' as const } },
       },
       required: ['skillName', 'functionName', 'args'],
     } satisfies JsonSchema,

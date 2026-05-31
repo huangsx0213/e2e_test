@@ -6,6 +6,9 @@ import { TokenTracker } from './token-tracker.ts';
 import { getCached, setCache } from './cache.ts';
 import { inspectUserInput } from './guard.ts';
 import { globalSkillRegistry } from './skill-registry.ts';
+import { runReactLoop, type ToolExecutor } from './react-loop.ts';
+import type { SerializedReactLoopState } from './react-loop-state.ts';
+import type { ToolCallRecord } from './tool-orchestrator.ts';
 
 export interface AgentRole {
   name: string;
@@ -122,15 +125,76 @@ export interface AgentRunOptions {
   onStep?: (stepIndex: number, stepName: string) => void;
   onThinking?: (text: string) => void;
   useReActLoop?: boolean;
-  resumeState?: import('./react-loop-state.ts').SerializedReactLoopState | null;
+  resumeState?: SerializedReactLoopState | null;
+  toolExecutor?: ToolExecutor;
+  deps?: { db?: any; toolRegistry?: any };
 }
 
-export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<{ result: unknown; tokenUsage: { input: number; output: number; reasoning: number }; latencyMs: number; inputPrompt: ChatMessage[]; rawOutput: string; toolHistory?: import('./tool-orchestrator.ts').ToolCallRecord[] }> {
+export interface AgentRunResult {
+  result: unknown;
+  tokenUsage: { input: number; output: number; reasoning: number };
+  latencyMs: number;
+  inputPrompt: ChatMessage[];
+  rawOutput: string;
+  toolHistory?: ToolCallRecord[];
+  requestedReview?: { phase: string; data: unknown };
+  currentReactLoopState?: SerializedReactLoopState;
+}
+
+export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<AgentRunResult> {
   const { provider, role, skillContext, tokenTracker, promptVersion, modelName } = context;
   const maxRetries = options.maxRetries ?? RETRY_DELAYS.length;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
 
   const { parsedInput, inputJson, messages } = prepareAgentRun(context, input);
+
+  if (options.useReActLoop) {
+    console.log(`[agent] ${role.name}: entering ReAct Loop mode...`);
+    const toolExecutor = options.toolExecutor ?? createDefaultToolExecutor(role.allowedTools);
+    const reactResult = await runReactLoop(
+      provider,
+      skillContext.systemPrompt,
+      { role: 'user', content: inputJson },
+      toolExecutor,
+      globalSkillRegistry,
+      {
+        maxIterations: 15,
+        tokenLimit: context.tokenLimit,
+        useCache: options.useCache,
+        signal: options.signal,
+        promptVersion,
+        modelName,
+        deps: options.deps,
+      },
+      options.resumeState,
+    );
+    let parsedResult: unknown = reactResult.result;
+    if (typeof parsedResult === 'string') {
+      const extracted = extractJsonFromText(parsedResult);
+      if (extracted !== undefined) {
+        try {
+          parsedResult = role.outputSchema.parse(extracted);
+          console.log(`[agent] ${role.name}: ReAct result parsed and validated against outputSchema`);
+        } catch (err: any) {
+          console.warn(`[agent] ${role.name}: ReAct result schema validation failed (${err.message}), using raw extracted JSON`);
+          parsedResult = extracted;
+        }
+      } else {
+        console.warn(`[agent] ${role.name}: ReAct result is string but no JSON found, using raw text`);
+      }
+    }
+
+    return {
+      result: parsedResult,
+      tokenUsage: reactResult.tokenUsage,
+      latencyMs: reactResult.latencyMs,
+      inputPrompt: reactResult.inputPrompt,
+      rawOutput: reactResult.rawOutput,
+      toolHistory: reactResult.toolHistory,
+      requestedReview: reactResult.requestedReview,
+      currentReactLoopState: reactResult.currentReactLoopState,
+    };
+  }
 
   // Force cache bypass when human feedback is present
   const hasFeedback = parsedInput && typeof parsedInput === 'object' && 'humanFeedback' in parsedInput && !!(parsedInput as any).humanFeedback;
@@ -365,4 +429,82 @@ function summarizeError(err: Error | undefined | null): string {
   }
   const msg = err.message || String(err);
   return msg.length > MAX_ERROR_LENGTH ? msg.slice(0, MAX_ERROR_LENGTH) + '...' : msg;
+}
+
+function createDefaultToolExecutor(allowedTools?: string[]): ToolExecutor {
+  const allTools = [
+    {
+      name: 'search_skills',
+      description: 'Search available skills by name, description, or tags. Returns metadata for matching skills.',
+      parameters: {
+        type: 'object' as const,
+        properties: { query: { type: 'string' as const, description: 'Search query' } },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'load_skill',
+      description: 'Load the full SKILL.md content for a skill by name. Injects instructions into the agent context.',
+      parameters: {
+        type: 'object' as const,
+        properties: { name: { type: 'string' as const, description: 'Skill name to load' } },
+        required: ['name'],
+      },
+    },
+    {
+      name: 'execute_skill_module',
+      description: 'Execute a function from a skill executable module (index.ts). Calls the exported function with provided arguments.',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          skillName: { type: 'string' as const, description: 'Name of the skill whose module to call' },
+          functionName: { type: 'string' as const, description: 'Name of the exported function to call' },
+          args: { type: 'array' as const, description: 'Array of arguments to pass to the function', items: { type: 'string' as const } },
+        },
+        required: ['skillName', 'functionName', 'args'],
+      },
+    },
+    {
+      name: 'request_review',
+      description: 'Request human review of intermediate results. Pauses execution until user provides feedback.',
+      parameters: {
+        type: 'object' as const,
+        properties: {
+          phase: { type: 'string' as const, description: 'Label for the review phase' },
+          data: { type: 'object' as const, description: 'Data to present for review' },
+        },
+        required: ['phase', 'data'],
+      },
+    },
+  ];
+
+  const filtered = allowedTools
+    ? allTools.filter(t => allowedTools.includes(t.name))
+    : allTools;
+
+  const specialToolNames = ['search_skills', 'load_skill', 'execute_skill_module', 'request_review'];
+
+  return {
+    executeTool: async (call: import('./provider.ts').ToolCall) => {
+      throw new Error(`Unknown tool: ${call.name}`);
+    },
+    getAgentTools: () => filtered,
+    isSpecialTool: (name: string) => specialToolNames.includes(name),
+  };
+}
+
+function extractJsonFromText(text: string): unknown {
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (codeBlockMatch) {
+    try { return JSON.parse(codeBlockMatch[1]); } catch {}
+  }
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    try { return JSON.parse(braceMatch[0]); } catch {}
+  }
+  const bracketMatch = text.match(/\[[\s\S]*\]/);
+  if (bracketMatch) {
+    try { return JSON.parse(bracketMatch[0]); } catch {}
+  }
+  return undefined;
 }

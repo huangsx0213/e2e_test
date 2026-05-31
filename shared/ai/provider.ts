@@ -10,6 +10,7 @@ export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   toolCallId?: string;
+  toolCalls?: Array<{ type: 'function'; function: { name: string; arguments: string }; id: string }>;
 }
 
 export interface ChatOptions {
@@ -23,6 +24,18 @@ export interface ChatOptions {
     description: string;
     parameters: import('./tool.ts').JsonSchema;
   }>;
+}
+
+function formatToolsForApi(tools: ChatOptions['tools']): Array<{ type: 'function'; function: { name: string; description: string; parameters: import('./tool.ts').JsonSchema } }> | undefined {
+  if (!tools || tools.length === 0) return undefined;
+  return tools.map(t => ({
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    },
+  }));
 }
 
 export interface ChatResponse {
@@ -135,7 +148,27 @@ interface ProviderStrategy {
   name: string;
   buildUrl(): string;
   buildHeaders(): Record<string, string>;
-  buildBody(messages: ChatMessage[], options?: ChatOptions, stream?: boolean): Record<string, unknown>;
+  buildBody(messages: unknown[], options?: ChatOptions, stream?: boolean): Record<string, unknown>;
+}
+
+function serializeMessages(messages: ChatMessage[]): unknown[] {
+  return messages.map(m => {
+    if (m.role === 'assistant' && m.toolCalls) {
+      return {
+        role: 'assistant',
+        content: m.content || null,
+        tool_calls: m.toolCalls,
+      };
+    }
+    if (m.role === 'tool' && m.toolCallId) {
+      return {
+        role: 'tool',
+        content: m.content,
+        tool_call_id: m.toolCallId,
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
 }
 
 function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger): AIProvider {
@@ -148,7 +181,7 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
     const response = await fetch(strategy.buildUrl(), {
       method: 'POST',
       headers: strategy.buildHeaders(),
-      body: JSON.stringify(strategy.buildBody(messages, options)),
+      body: JSON.stringify(strategy.buildBody(serializeMessages(messages), options)),
       signal,
     });
     return parseChatResponse(response, strategy.name, fetchStart, agentTag);
@@ -157,7 +190,7 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     const l = logger ?? consoleLogger;
-    const body = { ...strategy.buildBody(messages, options, true), stream: true, stream_options: { include_usage: true } };
+    const body = { ...strategy.buildBody(serializeMessages(messages), options, true), stream: true, stream_options: { include_usage: true } };
     const response = await fetch(strategy.buildUrl(), {
       method: 'POST',
       headers: strategy.buildHeaders(),
@@ -203,7 +236,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       temperature: options?.temperature ?? 0.3,
       max_completion_tokens: options?.maxTokens ?? 128000,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(options?.tools ? { tools: options.tools } : {}),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
     }),
   });
 }
@@ -219,7 +252,7 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(options?.tools ? { tools: options.tools } : {}),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
     } as any),
   });
 }
@@ -235,7 +268,7 @@ function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(options?.tools ? { tools: options.tools } : {}),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
     } as any),
   });
 }
@@ -251,7 +284,7 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(options?.tools ? { tools: options.tools } : {}),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
     }),
   });
 }
