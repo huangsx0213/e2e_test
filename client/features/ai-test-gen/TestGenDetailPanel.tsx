@@ -253,7 +253,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
     );
   }
 
-  if (agentName === 'test_analyst') {
+  if (agentName === 'test_analyst' || agentName === 'test-analyst') {
     const conditions = output.testConditions || [];
     const filteredConditions = conditions.filter((c: any) => 
       String(c.condition || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -336,7 +336,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
     );
   }
 
-  if (agentName === 'test_designer') {
+  if (agentName === 'test_designer' || agentName === 'test-designer') {
     const cases = output.draftTestCases || [];
     const filteredCases = cases.filter((tc: any) => 
       String(tc.title || tc.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -464,7 +464,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
     );
   }
 
-  if (agentName === 'quality_manager') {
+  if (agentName === 'quality_manager' || agentName === 'quality-manager') {
     const cases = output.finalTestCases || [];
     const matrix = output.coverageMatrix;
     const matrixRows = matrix?.rows || [];

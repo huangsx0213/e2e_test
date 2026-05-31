@@ -1,3 +1,10 @@
+---
+name: requirement-query
+description: Progressively load and filter requirements from the project index
+tags: [requirements, query, retrieval]
+module: ./index.ts
+allowedTools: [query_requirements]
+---
 # Requirement Query Skill
 Use this skill BEFORE reading any requirement details. Never read all requirements at once — always query for a relevant subset first.
 

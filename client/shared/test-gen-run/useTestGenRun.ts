@@ -309,9 +309,9 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     : undefined;
 
   const CHECKPOINT_AGENT_MAP: Record<string, string> = {
-    checkpoint_1: 'test_analyst',
-    checkpoint_2: 'test_designer',
-    checkpoint_3: 'quality_manager',
+    checkpoint_1: 'test-analyst',
+    checkpoint_2: 'test-designer',
+    checkpoint_3: 'quality-manager',
   };
 
   const mergeOutputData = (logs: any[]): any => {
@@ -332,7 +332,9 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   };
 
   const getMergedAgentLog = (agentName: string): any => {
-    const logs = state.agentLogs.filter((l: any) => l.agent_name === agentName);
+    const normalize = (n: string) => n.replace(/_/g, '-');
+    const target = normalize(agentName);
+    const logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
     if (logs.length === 0) return null;
     const latest = logs.reduce((best: any, l: any) =>
       (l.batch || 0) > (best?.batch || 0) ? l : best, logs[0]);

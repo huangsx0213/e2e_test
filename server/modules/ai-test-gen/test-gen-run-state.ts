@@ -19,7 +19,10 @@ export interface AgentRunSnapshot {
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
   errorMessage?: string;
   errorRawResponse?: string;
+  toolHistory?: ToolCallRecord[];
 }
+
+import type { ToolCallRecord } from '../../../shared/ai/tool-orchestrator.ts';
 
 export class TestGenRunState {
   private readonly agentStates = new Map<string, AgentRunSnapshot>();
@@ -50,11 +53,21 @@ export class TestGenRunState {
     return snap;
   }
 
+  recordAgentToolCall(agentName: string, batch: number, toolCall: ToolCallRecord): void {
+    const key = this.stateKey(agentName, batch);
+    const snap = this.agentStates.get(key);
+    if (snap) {
+      if (!snap.toolHistory) snap.toolHistory = [];
+      snap.toolHistory.push(toolCall);
+    }
+  }
+
   recordAgentComplete(agentName: string, batch: number, params: {
     tokenUsage: { input: number; output: number; reasoning: number };
     latencyMs: number;
     inputPrompt?: ChatMessage[];
     outputData?: unknown;
+    toolHistory?: ToolCallRecord[];
   }): AgentRunSnapshot | null {
     const key = this.stateKey(agentName, batch);
     let snap = this.agentStates.get(key);
@@ -72,6 +85,7 @@ export class TestGenRunState {
     snap.latencyMs = params.latencyMs;
     if (params.inputPrompt) snap.inputPrompt = params.inputPrompt;
     if (params.outputData) snap.outputData = params.outputData;
+    if (params.toolHistory) snap.toolHistory = params.toolHistory;
 
     this.totalPromptTokens += params.tokenUsage.input;
     this.totalCompletionTokens += params.tokenUsage.output;

@@ -1,3 +1,10 @@
+---
+name: requirement-analysis
+description: Analyze requirements for completeness, testability, and consistency
+tags: [requirements, analysis, testability]
+module: ./index.ts
+allowedTools: [analyze_requirements]
+---
 # Requirement Analysis Skill
 Use this skill when analyzing requirements for completeness and testability.
 

@@ -2,7 +2,8 @@ import { SqliteSaver } from '@langchain/langgraph-checkpoint-sqlite';
 import { Semaphore } from '../../../../shared/ai/semaphore.ts';
 import { createAIProviderWithFallback } from '../../../../shared/ai/provider.ts';
 import { computePromptVersion } from '../../../../shared/ai/prompt-version.ts';
-import { createTestGenerationPipeline } from '../../../../shared/ai-test-gen/test-generation.ts';
+import { createTestGenerationPipeline, createToolRegistry, createOrchestratedPipeline, createOrchestratorGraph } from '../../../../shared/ai-test-gen/test-generation.ts';
+import { orchestratorNode } from './orchestrator-node.ts';
 import {
   TestAnalystRole,
   TestDesignerRole,
@@ -25,6 +26,7 @@ import { TestGenExecutionScope } from '../test-gen-scope.ts';
 import { TestGenSession } from './test-gen-session.ts';
 import { InteractiveResolver, AutoResolver } from './checkpoint-resolver.ts';
 import { BatchOrchestrator } from './batch-orchestrator.ts';
+import { ToolRegistry } from '../../../../shared/ai/tool-registry.ts';
 
 export class TestGenService {
   private readonly abortedRuns = new Set<string>();
@@ -105,7 +107,7 @@ export class TestGenService {
       getModelName: () => 'dummy',
       getProviderType: () => 'dummy',
     } as any;
-    const graph = await this.createPipelineFactory(dummyProvider, {}, {})();
+    const graph = await this.createOrchestratedPipelineFactory(dummyProvider, {}, {})();
     await graph.updateState(
       { configurable: { thread_id: threadId } },
       stateKeys,
@@ -123,7 +125,7 @@ export class TestGenService {
       getModelName: () => 'dummy',
       getProviderType: () => 'dummy',
     } as any;
-    const graph = await this.createPipelineFactory(dummyProvider, {}, {})();
+    const graph = await this.createOrchestratedPipelineFactory(dummyProvider, {}, {})();
     const snapshot = await graph.getState({ configurable: { thread_id: run.thread_id } });
 
     const state = snapshot?.values;
@@ -235,6 +237,64 @@ export class TestGenService {
     };
   }
 
+  private createOrchestratedPipelineFactory(provider: any, callbacks: any, agentOpts: any) {
+    return async () => {
+      return createOrchestratedPipeline(provider, {
+        testAnalyst: TestAnalystRole,
+        testDesigner: TestDesignerRole,
+        qualityManager: QualityManagerRole,
+      }, callbacks, agentOpts, new SqliteSaver(db));
+    };
+  }
+
+  createToolRegistryInstance(provider: any, opts?: { promptVersion?: string; modelName?: string }): ToolRegistry {
+    return createToolRegistry(provider, {
+      testAnalyst: TestAnalystRole,
+      testDesigner: TestDesignerRole,
+      qualityManager: QualityManagerRole,
+    }, opts);
+  }
+
+  async startOrchestrator(sessionId: string, input: unknown, providerConfigName?: string): Promise<any> {
+    const providerConfigRow = providerConfigName
+      ? pipelineRepo.getProviderConfigByName(providerConfigName)
+      : pipelineRepo.getActiveProviderConfig();
+    if (!providerConfigRow) throw new Error('No active AI provider configuration found');
+
+    const fallbackIds = JSON.parse(providerConfigRow.fallback_config_ids || '[]') as string[];
+    const fallbackConfigs = buildFallbackConfigs(pipelineRepo, fallbackIds);
+
+    const provider = createAIProviderWithFallback({
+      type: providerConfigRow.type as any,
+      endpoint: providerConfigRow.endpoint,
+      apiKey: decryptApiKey(providerConfigRow.encrypted_api_key),
+      deployment: providerConfigRow.deployment,
+      apiVersion: providerConfigRow.api_version,
+      model: providerConfigRow.model,
+      fallbackConfigs: fallbackConfigs as any,
+    });
+
+    const promptVersion = computePromptVersion();
+    const modelName = providerConfigRow.model || providerConfigRow.deployment || 'unknown';
+
+    const graph = createOrchestratorGraph(orchestratorNode);
+    const initialState: any = {
+      input,
+      messages: [],
+      reactLoopState: null,
+      providerFactory: () => provider,
+      promptVersion,
+      modelName,
+    };
+
+    const compiled = graph.compile();
+    const result = await compiled.invoke(initialState, {
+      configurable: { thread_id: sessionId },
+    });
+
+    return result;
+  }
+
   async startPipeline(runId: string, projectId: string, params: {
     requirementIds: string[];
     providerConfigName?: string;
@@ -334,8 +394,8 @@ export class TestGenService {
         onStart: (agentName: string, inputPrompt?: any) => {
           scope.recordAgentStart(agentName, scope.currentBatch, inputPrompt);
         },
-        onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any) => {
-          scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData });
+        onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any, toolHistory?: any) => {
+          scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData, toolHistory });
         },
         onError: (agentName: string, error: Error) => {
           scope.recordAgentError(agentName, scope.currentBatch, error);
@@ -351,7 +411,7 @@ export class TestGenService {
         signal: abortSignal,
       };
 
-      const pipelineFactory = this.createPipelineFactory(provider, pipelineCallbacks, agentOpts);
+      const pipelineFactory = this.createOrchestratedPipelineFactory(provider, pipelineCallbacks, agentOpts);
 
       initCompleted = true;
       if (initTimer) clearTimeout(initTimer);
@@ -533,7 +593,7 @@ export class TestGenService {
 
   private async resumePipeline(
     runId: string,
-    runRow: { thread_id: string; phase: string; config: any; project_id: string; mode: string; current_batch: number },
+    runRow: { thread_id: string; phase: string; config: any; project_id: string; mode: string; current_batch: number; total_batches: number },
     action: string,
     feedback?: string,
     editedData?: any,
@@ -576,12 +636,13 @@ export class TestGenService {
       const promptVersion = computePromptVersion();
       const modelName = providerConfigRow.model || providerConfigRow.deployment || 'unknown';
       const scope = new TestGenExecutionScope(runId, runRow.project_id, runMode, sendEvent);
+      scope.restoreBatchState(runRow.current_batch || 0);
 
       const pipelineCallbacks = {
         onStep: (agentName: string, stepIndex: number, stepName: string) => scope.recordAgentStep(agentName, scope.currentBatch, stepIndex, stepName),
         onThinking: (agentName: string, text: string) => scope.recordAgentThinking(agentName, text),
         onStart: (agentName: string, inputPrompt?: any) => scope.recordAgentStart(agentName, scope.currentBatch, inputPrompt),
-        onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any) => scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData }),
+        onComplete: (agentName: string, tokenUsage: any, latencyMs: number, inputPrompt?: any, outputData?: any, toolHistory?: any) => scope.recordAgentComplete(agentName, scope.currentBatch, { tokenUsage, latencyMs, inputPrompt, outputData, toolHistory }),
         onError: (agentName: string, error: Error) => scope.recordAgentError(agentName, scope.currentBatch, error),
       };
 
@@ -594,7 +655,7 @@ export class TestGenService {
         signal: abortSignal,
       };
 
-      const pipelineFactory = this.createPipelineFactory(provider, pipelineCallbacks, agentOpts);
+      const pipelineFactory = this.createOrchestratedPipelineFactory(provider, pipelineCallbacks, agentOpts);
 
       const resolver = new InteractiveResolver(this.sseGateway);
 
@@ -621,14 +682,30 @@ export class TestGenService {
           payload: outcome.interrupt.payload,
         });
       } else if (outcome.type === 'complete') {
-        if (outcome.result?.lastState) {
-          const { allCases } = deduplicateTestCases(
-            (outcome.result.lastState.finalTestCases || []) as any[]
+        const allResults: any[] = [];
+        if (outcome.result?.lastState) allResults.push(outcome.result.lastState);
+
+        const totalBatches = runRow.total_batches || 0;
+        const currentBatch = runRow.current_batch || 0;
+
+        if (currentBatch < totalBatches) {
+          const remaining = await this.continueRemainingBatches(
+            runId, runRow.project_id, config, session, scope, sendEvent, aborted,
           );
-          scope.markComplete({ totalCases: allCases.length, totalBatches: 1 });
-        } else {
-          scope.markComplete({ totalCases: 0, totalBatches: 1 });
+          if (remaining.interrupted) {
+            keepSse = true;
+            return;
+          }
+          allResults.push(...remaining.allResults);
         }
+
+        const { allCases, removedCount } = deduplicateTestCases(
+          allResults.flatMap((r: any) => r.finalTestCases || [])
+        );
+        if (removedCount > 0) {
+          sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length, conflicts: [] });
+        }
+        scope.markComplete({ totalCases: allCases.length, totalBatches: totalBatches || 1 });
       }
     } finally {
       this.concurrencySlot.release();
@@ -638,5 +715,91 @@ export class TestGenService {
         this.sseGateway.cleanup(runId);
       }
     }
+  }
+
+  /**
+   * After resuming an interrupted batch, continue any remaining unprocessed batches.
+   * Reconstructs batch inputs from persisted config and runs them via BatchOrchestrator.
+   */
+  private async continueRemainingBatches(
+    runId: string,
+    projectId: string,
+    config: any,
+    session: TestGenSession,
+    scope: TestGenExecutionScope,
+    sendEvent: (event: string, data: unknown) => void,
+    aborted: () => boolean,
+  ): Promise<{ allResults: any[]; interrupted: boolean }> {
+    const requirementIds: string[] = config.requirementIds || [];
+    const flowIds: string[] = config.flowIds || [];
+    const currentBatch = scope.currentBatch;
+
+    const allIndex = buildRequirementIndex(projectId);
+    const selectedIds = new Set(requirementIds);
+    const { epics, rootGroups, totalBatches } = groupRequirementsByEpic(allIndex, selectedIds);
+
+    const requirements = requirementRepo.listByProject(projectId);
+    const allProjectFlows = businessFlowRepo.listByProject(projectId);
+    const selectedFlowSet = new Set(flowIds);
+    const filteredFlows = selectedFlowSet.size > 0
+      ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
+      : allProjectFlows;
+    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirements });
+
+    const remainingBatchInputs = epics
+      .map((epic, i) => ({
+        batchIndex: i,
+        inputState: {
+          projectId,
+          requirementIds,
+          currentBatch: requirements.filter(r => new Set(rootGroups.get(epic.id)!).has(r.id)),
+          batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
+          projectContext: { name: epic.title, pages: [], endpoints: [] },
+          businessFlowBlueprints: businessFlows,
+          phase: 'analysis',
+          errors: [],
+        },
+      }))
+      .slice(currentBatch);
+
+    if (remainingBatchInputs.length === 0) {
+      return { allResults: [], interrupted: false };
+    }
+
+    const allResults: any[] = [];
+
+    const orchestrator = new BatchOrchestrator(session, {
+      onBatchStart: (batchIndex) => {
+        scope.setBatch(batchIndex + 1, totalBatches);
+        pipelineRepo.updateCurrentBatch(runId, batchIndex + 1);
+        pipelineRepo.updateThreadId(runId, `${runId}-batch-${batchIndex}`);
+      },
+      onBatchComplete: (batchIndex, result) => {
+        if (result?.lastState) allResults.push(result.lastState);
+        sendEvent('batch:complete', {
+          batch: batchIndex + 1, total: totalBatches,
+          testCases: result?.cases.length ?? 0,
+        });
+      },
+      onBatchError: (batchIndex, err) => {
+        sendEvent('pipeline:error', {
+          phase: 'batch', batch: batchIndex + 1,
+          message: err.message, recoverable: true,
+        });
+      },
+      onBatchInterrupt: (_batchIndex, interrupt) => {
+        pipelineRepo.updateThreadId(runId, interrupt.threadId);
+      },
+      isAborted: aborted,
+    });
+
+    const summary = await orchestrator.runAll(remainingBatchInputs);
+
+    if (summary.interruptedBatch) {
+      pipelineRepo.setRunWaiting(runId, summary.interruptedBatch.phase);
+      return { allResults, interrupted: true };
+    }
+
+    return { allResults, interrupted: false };
   }
 }

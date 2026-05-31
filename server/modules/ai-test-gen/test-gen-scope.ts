@@ -35,6 +35,11 @@ export class TestGenExecutionScope {
     this.emit('batch:start', { batch, total, timestamp: Date.now() });
   }
 
+  /** Restore batch tracking during resume without re-emitting batch:start. */
+  restoreBatchState(batch: number): void {
+    this.state.currentBatch = batch;
+  }
+
   recordAgentStart(agentName: string, batch: number, inputPrompt?: ChatMessage[]): void {
     const snap = this.state.recordAgentStart(agentName, batch, inputPrompt);
     this.persister.saveAgentLog(snap, this.runId);
@@ -46,6 +51,7 @@ export class TestGenExecutionScope {
     latencyMs: number;
     inputPrompt?: ChatMessage[];
     outputData?: unknown;
+    toolHistory?: import('../../../shared/ai/tool-orchestrator.ts').ToolCallRecord[];
   }): void {
     const snap = this.state.recordAgentComplete(agentName, batch, params);
 

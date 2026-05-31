@@ -1,3 +1,10 @@
+---
+name: requirement-index
+description: Searchable index of all project requirements with traversal and tag search
+tags: [requirements, index]
+module: ./index.ts
+allowedTools: [get_index_children, search_by_tag]
+---
 # Requirement Index Skill
 This skill provides a searchable index of all project requirements as a lightweight JSON file.
 

@@ -70,7 +70,7 @@ export class BatchOrchestrator {
 
     this.options.onBatchStart?.(interruptedBatchIndex);
     const outcome = await this.session.resumeBatch(
-      interruptedBatchIndex, threadId, resolution, originalPayload,
+      interruptedBatchIndex, threadId, resolution,
     );
 
     if (outcome.type === 'interrupt') {

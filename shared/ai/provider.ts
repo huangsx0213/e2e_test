@@ -1,8 +1,15 @@
 import type { ProviderConfig as ExtendedProviderConfig } from './provider-types.ts';
 
+export interface ToolCall {
+  name: string;
+  args: unknown;
+  id: string;
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  toolCallId?: string;
 }
 
 export interface ChatOptions {
@@ -11,17 +18,25 @@ export interface ChatOptions {
   responseFormat?: 'json_object' | 'text';
   signal?: AbortSignal;
   agentName?: string;
+  tools?: Array<{
+    name: string;
+    description: string;
+    parameters: import('./tool.ts').JsonSchema;
+  }>;
 }
 
 export interface ChatResponse {
   content: string;
   reasoningContent?: string;
+  toolCalls?: ToolCall[];
   usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
 }
 
 export interface StreamChunk {
-  type: 'reasoning' | 'content' | 'done' | 'error';
-  content: string;
+  type: 'reasoning' | 'content' | 'done' | 'error' | 'tool_call_start' | 'tool_call_end';
+  content?: string;
+  toolCall?: ToolCall;
+  toolResult?: unknown;
   usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
 }
 
@@ -188,6 +203,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       temperature: options?.temperature ?? 0.3,
       max_completion_tokens: options?.maxTokens ?? 128000,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      ...(options?.tools ? { tools: options.tools } : {}),
     }),
   });
 }
@@ -203,6 +219,7 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      ...(options?.tools ? { tools: options.tools } : {}),
     } as any),
   });
 }
@@ -218,6 +235,7 @@ function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      ...(options?.tools ? { tools: options.tools } : {}),
     } as any),
   });
 }
@@ -233,6 +251,7 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      ...(options?.tools ? { tools: options.tools } : {}),
     }),
   });
 }
@@ -307,11 +326,17 @@ async function parseChatResponse(response: Response, providerName: string, fetch
   }
   const data = await response.json() as any;
   const msg = data.choices[0].message;
+  const toolCalls = msg.tool_calls?.map((tc: any) => ({
+    name: tc.function.name,
+    args: JSON.parse(tc.function.arguments),
+    id: tc.id,
+  }));
   const formatted = formatContent(msg.content);
   console.log(`[provider:${providerName}] result${agentTag}:${formatted}\n       usage: ${data.usage?.prompt_tokens ?? '?'}in/${data.usage?.completion_tokens ?? '?'}out`);
   return {
     content: msg.content,
     reasoningContent: msg.reasoning_content || undefined,
+    toolCalls,
     usage: {
       promptTokens: data.usage?.prompt_tokens ?? 0,
       completionTokens: data.usage?.completion_tokens ?? 0,
@@ -323,6 +348,7 @@ async function parseChatResponse(response: Response, providerName: string, fetch
 async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, decoder: TextDecoder): AsyncGenerator<StreamChunk> {
   let buffer = '';
   let usageData: any = null;
+  let currentToolCall: { id: string; name: string; args: string } | null = null;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -337,11 +363,38 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
             usageData = data.usage;
           } else {
             const delta = data.choices?.[0]?.delta;
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                if (tc.id) {
+                  if (currentToolCall) {
+                    try {
+                      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+                    } catch {
+                      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+                    }
+                  }
+                  currentToolCall = { id: tc.id, name: tc.function.name, args: '' };
+                  yield { type: 'tool_call_start', content: '', toolCall: { id: tc.id, name: tc.function.name, args: {} } };
+                }
+                if (tc.function?.arguments) {
+                  if (currentToolCall) {
+                    currentToolCall.args += tc.function.arguments;
+                  }
+                }
+              }
+            }
             if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content };
             if (delta?.content) yield { type: 'content', content: delta.content };
           }
         } catch {}
       }
+    }
+  }
+  if (currentToolCall) {
+    try {
+      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+    } catch {
+      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
     }
   }
   yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };

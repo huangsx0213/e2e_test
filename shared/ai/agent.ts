@@ -5,6 +5,7 @@ import { loadSkillContext, type SkillContext } from './skill-loader.ts';
 import { TokenTracker } from './token-tracker.ts';
 import { getCached, setCache } from './cache.ts';
 import { inspectUserInput } from './guard.ts';
+import { globalSkillRegistry } from './skill-registry.ts';
 
 export interface AgentRole {
   name: string;
@@ -13,6 +14,8 @@ export interface AgentRole {
   inputSchema: ZodType;
   outputSchema: ZodType;
   options?: ChatOptions;
+  useProgressiveDisclosure?: boolean;
+  allowedTools?: string[];
 }
 
 export interface AgentContext {
@@ -30,7 +33,21 @@ export function createAgentContext(provider: AIProvider, role: AgentRole, opts?:
   modelName?: string;
   tokenLimit?: number | null;
 }): AgentContext {
-  const skillContext = loadSkillContext(role.requiredSkills);
+  const useProgressiveDisclosure = role.useProgressiveDisclosure ?? false;
+
+  let skillContext: SkillContext;
+  if (useProgressiveDisclosure) {
+    const allMetadata = globalSkillRegistry.getAllMetadata();
+    skillContext = {
+      systemPrompt: allMetadata.map(s => `- ${s.name}: ${s.description}`).join('\n'),
+      referenceFiles: [],
+      skillContents: {},
+      cachedSkillContents: {},
+    };
+  } else {
+    skillContext = loadSkillContext(role.requiredSkills);
+  }
+
   const ctx = {
     provider,
     role,
@@ -104,9 +121,11 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
   onStep?: (stepIndex: number, stepName: string) => void;
   onThinking?: (text: string) => void;
+  useReActLoop?: boolean;
+  resumeState?: import('./react-loop-state.ts').SerializedReactLoopState | null;
 }
 
-export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<{ result: unknown; tokenUsage: { input: number; output: number; reasoning: number }; latencyMs: number; inputPrompt: ChatMessage[]; rawOutput: string }> {
+export async function runAgent(context: AgentContext, input: unknown, options: AgentRunOptions = {}): Promise<{ result: unknown; tokenUsage: { input: number; output: number; reasoning: number }; latencyMs: number; inputPrompt: ChatMessage[]; rawOutput: string; toolHistory?: import('./tool-orchestrator.ts').ToolCallRecord[] }> {
   const { provider, role, skillContext, tokenTracker, promptVersion, modelName } = context;
   const maxRetries = options.maxRetries ?? RETRY_DELAYS.length;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
@@ -121,7 +140,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
     const cached = getCached(parsedInput, promptVersion, modelName);
     if (cached) {
       console.log(`[agent] ${role.name}: cache HIT, returning cached result`);
-      return { result: cached, tokenUsage: { input: 0, output: 0, reasoning: 0 }, latencyMs: 0, inputPrompt: [], rawOutput: '' };
+      return { result: cached, tokenUsage: { input: 0, output: 0, reasoning: 0 }, latencyMs: 0, inputPrompt: [], rawOutput: '', toolHistory: [] };
     }
   } else {
     console.log(`[agent] ${role.name}: cache DISABLED, will invoke LLM directly`);
@@ -198,7 +217,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
         reasoning: usageData?.reasoningTokens ?? 0,
       };
       console.log(`[agent] ${role.name}: SUCCESS, latency=${latencyMs}ms, tokens=${tokenUsage.input}in/${tokenUsage.output}out/${tokenUsage.reasoning}reason`);
-      return { result: validated, tokenUsage, latencyMs, inputPrompt: messages, rawOutput: fullContent };
+      return { result: validated, tokenUsage, latencyMs, inputPrompt: messages, rawOutput: fullContent, toolHistory: [] };
     } catch (err: any) {
         lastError = err as Error;
 

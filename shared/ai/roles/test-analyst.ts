@@ -79,7 +79,16 @@ Return valid JSON with exactly these two top-level fields:
 1. "requirementAnalysis" — object with "overallApproach" and "riskAssessmentSummary" strings
 2. "testConditions" — array of condition objects (see skill for field details)
 
-Both fields are required. Never omit requirementAnalysis.`,
+Both fields are required. Never omit requirementAnalysis.
+
+## Technique Constraint
+The "primaryTechnique" field in testConditions MUST be one of exactly these 5 values — no other technique names are accepted:
+- equivalence-partitioning
+- boundary-value-analysis
+- decision-table
+- state-transition
+- use-case
+Any other value (like "error-guessing", "exploratory-testing", etc.) will be rejected.`,
   requiredSkills: ['test-analyst', 'requirement-index', 'requirement-query', 'requirement-analysis', 'flow-design'],
   inputSchema: BatchAnalystInputSchema,
   outputSchema: AnalystOutputSchema,

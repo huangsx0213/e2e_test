@@ -108,21 +108,21 @@ export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentN
 
 export const TEST_GEN_NODE_DEFS: TestGenNodeDef[] = [
   { id: 'preparation', label: 'Preparation', kind: 'preparation' },
-  { id: 'agent_test_analyst', label: 'Test Analyst', kind: 'agent', agentName: 'test_analyst',
+  { id: 'agent_test_analyst', label: 'Test Analyst', kind: 'agent', agentName: 'test-analyst',
     subSteps: [
       { label: 'Assess risk & priority', done: false },
       { label: 'Extract test conditions', done: false },
       { label: 'Select ISTQB techniques', done: false },
     ] },
   { id: 'checkpoint_1', label: 'Review Conditions', kind: 'checkpoint' },
-  { id: 'agent_test_designer', label: 'Test Designer', kind: 'agent', agentName: 'test_designer',
+  { id: 'agent_test_designer', label: 'Test Designer', kind: 'agent', agentName: 'test-designer',
     subSteps: [
       { label: 'Design test cases', done: false },
       { label: 'Apply test techniques', done: false },
       { label: 'Self-review quality', done: false },
     ] },
   { id: 'checkpoint_2', label: 'Review Drafts', kind: 'checkpoint' },
-  { id: 'agent_quality_manager', label: 'Quality Manager', kind: 'agent', agentName: 'quality_manager',
+  { id: 'agent_quality_manager', label: 'Quality Manager', kind: 'agent', agentName: 'quality-manager',
     subSteps: [
       { label: 'Review 6 dimensions', done: false },
       { label: 'Merge human feedback', done: false },

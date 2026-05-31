@@ -40,6 +40,7 @@ describe('TestGenPersister', () => {
       JSON.stringify({ conditions: [] }),
       JSON.stringify({ input: 10, output: 5, reasoning: 1 }),
       100, null, 'COMPLETED',
+      null, null, null,
     );
   });
 

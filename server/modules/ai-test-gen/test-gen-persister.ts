@@ -12,8 +12,8 @@ export class TestGenPersister implements RunPersister {
   saveAgentLog(snapshot: AgentRunSnapshot, runId: string): void {
     const json = (v: unknown) => v !== null && v !== undefined ? JSON.stringify(v) : null;
     db.prepare(`
-      INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status, error_message, error_raw_response)
-      VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status, error_message, error_raw_response, tool_history)
+      VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         input_prompt = COALESCE(excluded.input_prompt, input_prompt),
         output_data = COALESCE(excluded.output_data, output_data),
@@ -22,7 +22,8 @@ export class TestGenPersister implements RunPersister {
         raw_trace = COALESCE(excluded.raw_trace, raw_trace),
         status = excluded.status,
         error_message = COALESCE(excluded.error_message, error_message),
-        error_raw_response = COALESCE(excluded.error_raw_response, error_raw_response)
+        error_raw_response = COALESCE(excluded.error_raw_response, error_raw_response),
+        tool_history = COALESCE(excluded.tool_history, tool_history)
     `).run(
       snapshot.logId, runId, snapshot.batch, snapshot.agentName,
       json(snapshot.inputPrompt), json(snapshot.outputData),
@@ -31,6 +32,7 @@ export class TestGenPersister implements RunPersister {
       snapshot.status,
       snapshot.errorMessage ?? null,
       snapshot.errorRawResponse ?? null,
+      snapshot.toolHistory ? json(snapshot.toolHistory) : null,
     );
   }
 

@@ -4,8 +4,11 @@ import { createFreshNodes, buildRestoredNodes } from './types';
 const CHECKPOINT_NODE_IDS: Record<number, NodeId> = { 1: 'checkpoint_1', 2: 'checkpoint_2', 3: 'checkpoint_3' };
 const AGENT_NAME_TO_NODE_ID: Record<string, NodeId> = {
   test_analyst: 'agent_test_analyst',
+  'test-analyst': 'agent_test_analyst',
   test_designer: 'agent_test_designer',
+  'test-designer': 'agent_test_designer',
   quality_manager: 'agent_quality_manager',
+  'quality-manager': 'agent_quality_manager',
 };
 
 export function createInitialState(): TestGenRunState {
@@ -112,8 +115,11 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           );
           const AGENT_TO_CHECKPOINT: Record<string, NodeId> = {
             test_analyst: 'checkpoint_1',
+            'test-analyst': 'checkpoint_1',
             test_designer: 'checkpoint_2',
+            'test-designer': 'checkpoint_2',
             quality_manager: 'checkpoint_3',
+            'quality-manager': 'checkpoint_3',
           };
           const nextCp = AGENT_TO_CHECKPOINT[data.agentName];
           const cpNode = nextCp ? nodes.find(n => n.id === nextCp && n.status === 'idle') : undefined;
@@ -285,7 +291,9 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         };
       }
         if (!n.agentName) return n;
-        const agentLogs = (action.logs ?? []).filter((l: any) => l.agent_name === n.agentName);
+        const normalize = (s: string) => s.replace(/_/g, '-');
+        const target = normalize(n.agentName);
+        const agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === target);
         if (agentLogs.length === 0) return n;
         const latest = agentLogs.reduce((best: any, l: any) =>
           (l.batch || 0) > (best?.batch || 0) ? l : best, agentLogs[0]);

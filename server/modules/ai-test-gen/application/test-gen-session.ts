@@ -68,8 +68,28 @@ function detectPhase(cpNum: number): Phase {
   }
 }
 
+export interface OrchestratorState {
+  messages: Array<{ role: string; content: string }>;
+  reactLoopState: import('../../../../shared/ai/react-loop-state.ts').SerializedReactLoopState | null;
+  currentPhase: string;
+}
+
 export class TestGenSession {
   private aborted = false;
+  private orchestratorState?: OrchestratorState;
+  private toolCallRecords: Array<import('../../../../shared/ai/tool-orchestrator.ts').ToolCallRecord> = [];
+
+  setToolHistory(records: Array<import('../../../../shared/ai/tool-orchestrator.ts').ToolCallRecord>): void {
+    this.toolCallRecords = records;
+  }
+
+  getToolHistory(): Array<import('../../../../shared/ai/tool-orchestrator.ts').ToolCallRecord> {
+    return this.toolCallRecords;
+  }
+
+  get serializedToolHistory(): string {
+    return JSON.stringify(this.toolCallRecords);
+  }
 
   constructor(
     private readonly runId: string,
@@ -96,7 +116,7 @@ export class TestGenSession {
   }
 
   private async streamPipeline(
-    input: Record<string, unknown> | ReturnType<typeof Command.prototype>,
+    input: Record<string, unknown> | Command,
     config: Record<string, unknown>,
   ): Promise<{ lastState: any; interruptPayload: Record<string, unknown> | null }> {
     const pipeline = await this.pipelineFactory();

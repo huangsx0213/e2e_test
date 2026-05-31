@@ -185,7 +185,7 @@ export class TestGenRepository {
 
   getRunWithThreadId(runId: string): any {
     const row = db.prepare(
-      'SELECT id, project_id, status, phase, thread_id, mode, config, current_batch FROM test_gen_runs WHERE id = ?'
+      'SELECT id, project_id, status, phase, thread_id, mode, config, current_batch, total_batches FROM test_gen_runs WHERE id = ?'
     ).get(runId) as any;
     if (!row) return null;
     return {
@@ -230,6 +230,7 @@ export class TestGenRepository {
       output_data: r.output_data ? JSON.parse(r.output_data) : null,
       token_usage: r.token_usage ? JSON.parse(r.token_usage) : null,
       raw_trace: r.raw_trace ? JSON.parse(r.raw_trace) : [],
+      tool_history: r.tool_history ? JSON.parse(r.tool_history) : null,
       error_message: r.error_message ?? null,
       error_raw_response: r.error_raw_response ?? null,
     }));

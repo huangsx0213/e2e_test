@@ -9,6 +9,8 @@ const SKILLS_ROOT = path.join(__dirname, 'skills');
 export interface SkillContext {
   systemPrompt: string;
   referenceFiles: { name: string; skillName: string; content: string }[];
+  skillContents: Record<string, string>;
+  cachedSkillContents: Record<string, string>;
 }
 
 export class SkillCache {
@@ -22,11 +24,15 @@ export class SkillCache {
 
     const prompts: string[] = [];
     const referenceFiles: SkillContext['referenceFiles'] = [];
+    const skillContents: Record<string, string> = {};
+    const cachedSkillContents: Record<string, string> = {};
     for (const skillName of skillNames) {
       const skillDir = path.join(SKILLS_ROOT, skillName);
       const skillMdPath = path.join(skillDir, 'SKILL.md');
       if (fs.existsSync(skillMdPath)) {
-        prompts.push(fs.readFileSync(skillMdPath, 'utf-8'));
+        const content = fs.readFileSync(skillMdPath, 'utf-8');
+        prompts.push(content);
+        skillContents[skillName] = content;
       }
       const refsDir = path.join(skillDir, 'references');
       if (fs.existsSync(refsDir)) {
@@ -38,7 +44,7 @@ export class SkillCache {
         }
       }
     }
-    const ctx: SkillContext = { systemPrompt: prompts.join('\n\n---\n\n'), referenceFiles };
+    const ctx: SkillContext = { systemPrompt: prompts.join('\n\n---\n\n'), referenceFiles, skillContents, cachedSkillContents };
     this.contexts.set(key, ctx);
     return ctx;
   }

@@ -87,11 +87,13 @@ router.post('/:runId/save-cases', withErrorHandling((req, res) => {
   const run = pipelineRepo.getRun(runId);
   if (!run) { res.status(404).json({ error: 'Run not found' }); return; }
 
-  const logs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+  const logs = pipelineRepo.getAgentLogs(runId);
   const allCases: any[] = [];
   for (const log of logs) {
-    if (log.output_data?.finalTestCases) {
-      allCases.push(...log.output_data.finalTestCases);
+    if (log.agent_name === 'quality_manager' || log.agent_name === 'quality-manager') {
+      if (log.output_data?.finalTestCases) {
+        allCases.push(...log.output_data.finalTestCases);
+      }
     }
   }
   if (allCases.length === 0) { res.status(400).json({ error: 'No test cases found to export' }); return; }
