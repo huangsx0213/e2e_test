@@ -2,8 +2,7 @@ import { SqliteSaver } from '@langchain/langgraph-checkpoint-sqlite';
 import { Semaphore } from '../../../../shared/ai/semaphore.ts';
 import { createAIProviderWithFallback } from '../../../../shared/ai/provider.ts';
 import { computePromptVersion } from '../../../../shared/ai/prompt-version.ts';
-import { createTestGenerationPipeline, createToolRegistry, createOrchestratedPipeline, createOrchestratorGraph } from '../../../../shared/ai-test-gen/test-generation.ts';
-import { orchestratorNode } from './orchestrator-node.ts';
+import { createTestGenerationPipeline, createToolRegistry, createOrchestratedPipeline } from '../../../../shared/ai-test-gen/test-generation.ts';
 import {
   TestAnalystRole,
   TestDesignerRole,
@@ -255,46 +254,6 @@ export class TestGenService {
     }, opts);
   }
 
-  async startOrchestrator(sessionId: string, input: unknown, providerConfigName?: string): Promise<any> {
-    const providerConfigRow = providerConfigName
-      ? pipelineRepo.getProviderConfigByName(providerConfigName)
-      : pipelineRepo.getActiveProviderConfig();
-    if (!providerConfigRow) throw new Error('No active AI provider configuration found');
-
-    const fallbackIds = JSON.parse(providerConfigRow.fallback_config_ids || '[]') as string[];
-    const fallbackConfigs = buildFallbackConfigs(pipelineRepo, fallbackIds);
-
-    const provider = createAIProviderWithFallback({
-      type: providerConfigRow.type as any,
-      endpoint: providerConfigRow.endpoint,
-      apiKey: decryptApiKey(providerConfigRow.encrypted_api_key),
-      deployment: providerConfigRow.deployment,
-      apiVersion: providerConfigRow.api_version,
-      model: providerConfigRow.model,
-      fallbackConfigs: fallbackConfigs as any,
-    });
-
-    const promptVersion = computePromptVersion();
-    const modelName = providerConfigRow.model || providerConfigRow.deployment || 'unknown';
-
-    const graph = createOrchestratorGraph(orchestratorNode);
-    const initialState: any = {
-      input,
-      messages: [],
-      reactLoopState: null,
-      providerFactory: () => provider,
-      promptVersion,
-      modelName,
-    };
-
-    const compiled = graph.compile();
-    const result = await compiled.invoke(initialState, {
-      configurable: { thread_id: sessionId },
-    });
-
-    return result;
-  }
-
   async startPipeline(runId: string, projectId: string, params: {
     requirementIds: string[];
     providerConfigName?: string;
@@ -409,6 +368,7 @@ export class TestGenService {
         timeoutMs: 300_000,
         useCache: params.useCache ?? false,
         signal: abortSignal,
+        useReActLoop: true,
       };
 
       const pipelineFactory = this.createOrchestratedPipelineFactory(provider, pipelineCallbacks, agentOpts);
@@ -653,6 +613,7 @@ export class TestGenService {
         timeoutMs: 300_000,
         useCache: config.useCache ?? false,
         signal: abortSignal,
+        useReActLoop: true,
       };
 
       const pipelineFactory = this.createOrchestratedPipelineFactory(provider, pipelineCallbacks, agentOpts);

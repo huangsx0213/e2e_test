@@ -1,6 +1,6 @@
 ---
 name: quality-manager
-description: ISTQB-certified test quality review across 6 dimensions with coverage matrix
+description: Use when reviewing approved draft test cases for coverage gaps, traceability violations, or duplicate cases. Triggers: "review test cases", "check coverage", "find duplicate cases".
 tags: [quality, review, coverage]
 module: ./index.ts
 allowedTools: [review_cases, generate_matrix]

@@ -1,6 +1,6 @@
 ---
 name: requirement-query
-description: Progressively load and filter requirements from the project index
+description: Use when you need to progressively load a subset of requirements by filter criteria instead of loading the entire index. Triggers: "load requirements for batch", "query requirements by priority", "get requirements for module".
 tags: [requirements, query, retrieval]
 module: ./index.ts
 allowedTools: [query_requirements]

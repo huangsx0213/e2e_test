@@ -22,7 +22,6 @@ export interface ReactLoopResult {
   inputPrompt: ChatMessage[];
   rawOutput: string;
   toolHistory: ToolCallRecord[];
-  requestedReview?: { phase: string; data: unknown };
   currentReactLoopState?: SerializedReactLoopState;
 }
 
@@ -124,27 +123,6 @@ export async function runReactLoop(
               result: { success: true, data: `Skill loaded: ${args.name}` } as any,
               stepIndex: state.iteration,
             });
-          } else if (call.name === 'request_review') {
-            return {
-              result: response.content,
-              tokenUsage: { ...state.totalTokenUsage },
-              latencyMs: Date.now() - startTime,
-              inputPrompt: initialPrompt,
-              rawOutput: response.content ?? '',
-              toolHistory: [...state.toolHistory, {
-                toolName: call.name,
-                input: call.args,
-                result: { success: true, data: 'Review requested' } as any,
-                stepIndex: state.iteration,
-              }],
-              requestedReview: call.args as any,
-              currentReactLoopState: {
-                loadedSkills: [...state.loadedSkills],
-                toolHistory: [...state.toolHistory],
-                totalTokenUsage: { ...state.totalTokenUsage },
-                iteration: state.iteration,
-              },
-            };
           } else if (call.name === 'search_skills') {
             const args = call.args as { query: string };
             const results = skillRegistry.search(args.query);
@@ -233,12 +211,30 @@ export async function runReactLoop(
         }
       }
     } else {
+      // Check if the response is valid JSON — if not, ask the LLM to fix it
+      const content = response.content ?? '';
+      const trimmed = content.trim();
+      const isJson = (trimmed.startsWith('{') || trimmed.startsWith('['));
+
+      if (!isJson && state.iteration < maxIter - 1) {
+        // LLM produced non-JSON text — push a correction message and retry
+        state.messages.push({
+          role: 'assistant',
+          content: content,
+        } as ChatMessage);
+        state.messages.push({
+          role: 'user',
+          content: 'Your response must be a single valid JSON object. No markdown, no explanations, no code blocks — just raw JSON matching the output schema. Return ONLY the JSON object now.',
+        } as ChatMessage);
+        continue;
+      }
+
       const result: ReactLoopResult = {
-        result: response.content,
+        result: content,
         tokenUsage: { ...state.totalTokenUsage },
         latencyMs: Date.now() - startTime,
         inputPrompt: initialPrompt,
-        rawOutput: response.content ?? '',
+        rawOutput: content,
         toolHistory: [...state.toolHistory],
       };
       if (shouldCache && options.promptVersion && options.modelName) {
@@ -267,6 +263,7 @@ export async function runReactLoop(
 
 export interface StreamReactLoopOptions extends ReactLoopOptions {
   onThinking?: (text: string) => void;
+  onStep?: (stepIndex: number, stepName: string) => void;
 }
 
 export async function streamReactLoop(
@@ -367,7 +364,9 @@ export async function streamReactLoop(
         if (toolExecutor.isSpecialTool(call.name)) {
           if (call.name === 'load_skill') {
             const args = call.args as { name: string };
+            onThinking?.(`\n📂 Loading skill: ${args.name}...`);
             const content = await skillRegistry.loadContent(args.name);
+            onThinking?.(` Loaded ${args.name} (${content.length} chars)`);
             state.messages.push({
               role: 'tool',
               content: `[Skill Loaded: ${args.name}]\n${content}`,
@@ -380,30 +379,11 @@ export async function streamReactLoop(
               result: { success: true, data: `Skill loaded: ${args.name}` } as any,
               stepIndex: state.iteration,
             });
-          } else if (call.name === 'request_review') {
-            return {
-              result: responseContent,
-              tokenUsage: { ...state.totalTokenUsage },
-              latencyMs: Date.now() - startTime,
-              inputPrompt: initialPrompt,
-              rawOutput: responseContent,
-              toolHistory: [...state.toolHistory, {
-                toolName: call.name,
-                input: call.args,
-                result: { success: true, data: 'Review requested' } as any,
-                stepIndex: state.iteration,
-              }],
-              requestedReview: call.args as any,
-              currentReactLoopState: {
-                loadedSkills: [...state.loadedSkills],
-                toolHistory: [...state.toolHistory],
-                totalTokenUsage: { ...state.totalTokenUsage },
-                iteration: state.iteration,
-              },
-            };
           } else if (call.name === 'search_skills') {
             const args = call.args as { query: string };
+            onThinking?.(`\n🔍 Searching skills: "${args.query}"...`);
             const results = skillRegistry.search(args.query);
+            onThinking?.(` Found ${results.length} match(es)`);
             state.messages.push({
               role: 'tool',
               content: `Search results for "${args.query}":\n${JSON.stringify(results)}`,
@@ -417,6 +397,7 @@ export async function streamReactLoop(
             });
           } else if (call.name === 'execute_skill_module') {
             const args = call.args as { skillName: string; functionName: string; args: unknown[] };
+            onThinking?.(`\n⚙️ Executing ${args.skillName}.${args.functionName}...`);
             try {
               const mod = await skillRegistry.loadModule(args.skillName);
               let fnResult: unknown;
@@ -434,6 +415,8 @@ export async function streamReactLoop(
               } else {
                 throw new Error(`Function ${args.functionName} not found in skill ${args.skillName}`);
               }
+              const resultSummary = Array.isArray(fnResult) ? `${fnResult.length} items` : typeof fnResult === 'object' ? 'object' : String(fnResult).slice(0, 80);
+              onThinking?.(` ✅ ${args.functionName} → ${resultSummary}`);
               state.messages.push({
                 role: 'tool',
                 content: `Module result for ${args.skillName}.${args.functionName}: ${JSON.stringify(fnResult)}`,
@@ -446,6 +429,7 @@ export async function streamReactLoop(
                 stepIndex: state.iteration,
               });
             } catch (err: any) {
+              onThinking?.(` ❌ ${args.functionName} failed: ${err.message}`);
               state.messages.push({
                 role: 'tool',
                 content: `Module error: ${err.message}`,
@@ -489,6 +473,24 @@ export async function streamReactLoop(
         }
       }
     } else {
+      // Check if the response is valid JSON — if not, ask the LLM to fix it
+      const content = responseContent.trim();
+      const isJson = (content.startsWith('{') || content.startsWith('['));
+
+      if (!isJson && state.iteration < maxIter - 1) {
+        // LLM produced non-JSON text — push a correction message and retry
+        state.messages.push({
+          role: 'assistant',
+          content: responseContent,
+        } as ChatMessage);
+        state.messages.push({
+          role: 'user',
+          content: 'Your response must be a single valid JSON object. No markdown, no explanations, no code blocks — just raw JSON matching the output schema. Return ONLY the JSON object now.',
+        } as ChatMessage);
+        onThinking?.('\n⚠️ Non-JSON output detected, asking LLM to fix...');
+        continue;
+      }
+
       const result: ReactLoopResult = {
         result: responseContent,
         tokenUsage: { ...state.totalTokenUsage },

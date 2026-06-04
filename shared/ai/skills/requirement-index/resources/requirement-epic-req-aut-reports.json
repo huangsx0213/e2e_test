@@ -1,0 +1,294 @@
+[
+  {
+    "id": "req-aut-reports",
+    "title": "Reports & Analytics",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "Visual data reports including charts for user role distribution and department distribution.",
+    "tags": [
+      "user",
+      "auth",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports"
+    ],
+    "childCount": 4,
+    "children": [
+      "req-aut-reports-stats",
+      "req-aut-reports-role-chart",
+      "req-aut-reports-dept-chart",
+      "req-aut-reports-api"
+    ]
+  },
+  {
+    "id": "req-aut-reports-stats",
+    "title": "Reports Stat Cards",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "Summary metric cards displayed at the top of the reports page.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-stats-metrics"
+    ]
+  },
+  {
+    "id": "req-aut-reports-role-chart",
+    "title": "Role Distribution Chart",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "A donut pie chart visualizing users by their assigned role.",
+    "tags": [
+      "user",
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-role-chart-pie"
+    ]
+  },
+  {
+    "id": "req-aut-reports-dept-chart",
+    "title": "Department Distribution Chart",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "A bar chart displaying user count per department.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-dept-chart-bar"
+    ]
+  },
+  {
+    "id": "req-aut-reports-api",
+    "title": "Reports Data API",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "API endpoint serving aggregated report data for charts and metrics.",
+    "tags": [
+      "api",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-api-aggregation"
+    ]
+  },
+  {
+    "id": "req-aut-reports-stats-metrics",
+    "title": "Metric Display",
+    "level": 0,
+    "parent": "req-aut-reports-stats",
+    "dependencies": [],
+    "summary": "The reports page must show key metrics as summary cards.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-stats-metrics-cards"
+    ]
+  },
+  {
+    "id": "req-aut-reports-role-chart-pie",
+    "title": "Pie Chart Visualization",
+    "level": 0,
+    "parent": "req-aut-reports-role-chart",
+    "dependencies": [],
+    "summary": "The role distribution must be visualized as an interactive donut chart.",
+    "tags": [
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-role-chart-pie-display"
+    ]
+  },
+  {
+    "id": "req-aut-reports-dept-chart-bar",
+    "title": "Bar Chart Visualization",
+    "level": 0,
+    "parent": "req-aut-reports-dept-chart",
+    "dependencies": [],
+    "summary": "The department distribution must be visualized as an interactive bar chart.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-dept-chart-bar-display"
+    ]
+  },
+  {
+    "id": "req-aut-reports-api-aggregation",
+    "title": "Data Aggregation",
+    "level": 0,
+    "parent": "req-aut-reports-api",
+    "dependencies": [],
+    "summary": "The reports API must aggregate user data into chart-friendly formats.",
+    "tags": [
+      "api",
+      "user",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-api-aggregation-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-reports-stats-metrics-cards",
+    "title": "Display stat cards for Total Users, Active Accounts, Admins, and Engagement Rate",
+    "level": 0,
+    "parent": "req-aut-reports-stats-metrics",
+    "dependencies": [],
+    "summary": "Four metric cards must show: total user count, active account count, admin count, and engagement rate percentage.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-role-chart-pie-display",
+    "title": "Display donut pie chart of users grouped by role with legend",
+    "level": 0,
+    "parent": "req-aut-reports-role-chart-pie",
+    "dependencies": [],
+    "summary": "The pie chart must show admin, editor, and viewer segments with different colors. A legend must show role names with corresponding colors.",
+    "tags": [
+      "user",
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-dept-chart-bar-display",
+    "title": "Display bar chart of users per department with tooltip",
+    "level": 0,
+    "parent": "req-aut-reports-dept-chart-bar",
+    "dependencies": [],
+    "summary": "A bar chart must show department names on X-axis and user counts on Y-axis with hover tooltips for exact values.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-api-aggregation-endpoint",
+    "title": "GET /aut-api/reports returns aggregated report data",
+    "level": 0,
+    "parent": "req-aut-reports-api-aggregation",
+    "dependencies": [],
+    "summary": "The endpoint must return totalUsers, activeUsers, roleDistribution array, and departmentDistribution array computed from the user database.",
+    "tags": [
+      "api",
+      "user",
+      "auth",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  }
+]

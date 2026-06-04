@@ -1,6 +1,6 @@
 ---
 name: test-analyst
-description: ISTQB test analysis with risk assessment, condition extraction, and technique selection
+description: Use when generating atomic test conditions from requirements. Returns ID-assigned, ISTQB-technique-tagged, risk-rated conditions. Triggers: "generate test conditions", "analyze requirements for testing", "apply ISTQB techniques".
 tags: [test-analysis, risk, conditions]
 module: ./index.ts
 allowedTools: [analyze_conditions]

@@ -6,7 +6,7 @@ import { TokenTracker } from './token-tracker.ts';
 import { getCached, setCache } from './cache.ts';
 import { inspectUserInput } from './guard.ts';
 import { globalSkillRegistry } from './skill-registry.ts';
-import { runReactLoop, type ToolExecutor } from './react-loop.ts';
+import { runReactLoop, streamReactLoop, type ToolExecutor } from './react-loop.ts';
 import type { SerializedReactLoopState } from './react-loop-state.ts';
 import type { ToolCallRecord } from './tool-orchestrator.ts';
 
@@ -137,7 +137,6 @@ export interface AgentRunResult {
   inputPrompt: ChatMessage[];
   rawOutput: string;
   toolHistory?: ToolCallRecord[];
-  requestedReview?: { phase: string; data: unknown };
   currentReactLoopState?: SerializedReactLoopState;
 }
 
@@ -151,23 +150,42 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
   if (options.useReActLoop) {
     console.log(`[agent] ${role.name}: entering ReAct Loop mode...`);
     const toolExecutor = options.toolExecutor ?? createDefaultToolExecutor(role.allowedTools);
-    const reactResult = await runReactLoop(
-      provider,
-      skillContext.systemPrompt,
-      { role: 'user', content: inputJson },
-      toolExecutor,
-      globalSkillRegistry,
-      {
-        maxIterations: 15,
-        tokenLimit: context.tokenLimit,
-        useCache: options.useCache,
-        signal: options.signal,
-        promptVersion,
-        modelName,
-        deps: options.deps,
-      },
-      options.resumeState,
-    );
+    const baseOptions: ReactLoopOptions = {
+      maxIterations: 15,
+      tokenLimit: context.tokenLimit,
+      useCache: options.useCache,
+      signal: options.signal,
+      promptVersion,
+      modelName,
+      deps: options.deps,
+    };
+    let reactResult: ReactLoopResult;
+    if (options.onThinking) {
+      reactResult = await streamReactLoop(
+        provider,
+        skillContext.systemPrompt,
+        { role: 'user', content: inputJson },
+        toolExecutor,
+        globalSkillRegistry,
+        {
+          ...baseOptions,
+          onThinking: (text) => {
+            options.onThinking?.(text);
+          },
+        },
+        options.resumeState,
+      );
+    } else {
+      reactResult = await runReactLoop(
+        provider,
+        skillContext.systemPrompt,
+        { role: 'user', content: inputJson },
+        toolExecutor,
+        globalSkillRegistry,
+        baseOptions,
+        options.resumeState,
+      );
+    }
     let parsedResult: unknown = reactResult.result;
     if (typeof parsedResult === 'string') {
       const extracted = extractJsonFromText(parsedResult);
@@ -191,7 +209,6 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       inputPrompt: reactResult.inputPrompt,
       rawOutput: reactResult.rawOutput,
       toolHistory: reactResult.toolHistory,
-      requestedReview: reactResult.requestedReview,
       currentReactLoopState: reactResult.currentReactLoopState,
     };
   }
@@ -265,9 +282,16 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       }
       console.log(`[agent] ${role.name}: parsing JSON response...`);
       const cleaned = fullContent.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-      const parsed = JSON.parse(cleaned);
+      const extracted = extractJsonFromText(cleaned);
+      if (extracted === undefined) throw new Error('No JSON object found in LLM response');
+      const normalized = normalizeAgentOutput(extracted);
+      // Schema-level repair: coerce LLM's invalid enum values / missing optional
+      // fields (e.g. selfReview.issues[].category) to schema-valid values
+      // BEFORE the strict Zod check. This is the main defense against
+      // first-attempt validation failures on enum-heavy schemas.
+      const repaired = repairAgentOutput(normalized);
       console.log(`[agent] ${role.name}: validating against schema...`);
-      const validated = role.outputSchema.parse(parsed);
+      const validated = role.outputSchema.parse(repaired);
       const tcCount = Array.isArray((validated as any).testConditions) ? (validated as any).testConditions.length
         : Array.isArray((validated as any).draftTestCases) ? (validated as any).draftTestCases.length
         : Array.isArray((validated as any).finalTestCases) ? (validated as any).finalTestCases.length
@@ -464,25 +488,13 @@ function createDefaultToolExecutor(allowedTools?: string[]): ToolExecutor {
         required: ['skillName', 'functionName', 'args'],
       },
     },
-    {
-      name: 'request_review',
-      description: 'Request human review of intermediate results. Pauses execution until user provides feedback.',
-      parameters: {
-        type: 'object' as const,
-        properties: {
-          phase: { type: 'string' as const, description: 'Label for the review phase' },
-          data: { type: 'object' as const, description: 'Data to present for review' },
-        },
-        required: ['phase', 'data'],
-      },
-    },
   ];
 
   const filtered = allowedTools
     ? allTools.filter(t => allowedTools.includes(t.name))
     : allTools;
 
-  const specialToolNames = ['search_skills', 'load_skill', 'execute_skill_module', 'request_review'];
+  const specialToolNames = ['search_skills', 'load_skill', 'execute_skill_module'];
 
   return {
     executeTool: async (call: import('./provider.ts').ToolCall) => {
@@ -507,4 +519,160 @@ function extractJsonFromText(text: string): unknown {
     try { return JSON.parse(bracketMatch[0]); } catch {}
   }
   return undefined;
+}
+
+const TOP_LEVEL_ARRAY_KEYS = ['testConditions', 'draftTestCases', 'finalTestCases'];
+const TOP_LEVEL_OBJECT_KEYS = ['requirementAnalysis', 'coverageMatrix'];
+
+function normalizeAgentOutput(parsed: unknown): unknown {
+  if (Array.isArray(parsed)) {
+    // LLM returned a bare array — wrap it in the most likely top-level field
+    if (parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null) {
+      const firstKeys = Object.keys(parsed[0] as object);
+      if (firstKeys.includes('conditionId') || firstKeys.includes('condition') || firstKeys.includes('requirementId')) {
+        return { requirementAnalysis: {}, testConditions: parsed };
+      }
+      if (firstKeys.includes('steps') || firstKeys.includes('testData')) {
+        return { draftTestCases: parsed, coverageMatrix: { rows: [] } };
+      }
+      if (firstKeys.includes('changeLog') || firstKeys.includes('reviewSummary')) {
+        return { finalTestCases: parsed, coverageMatrix: { rows: [] } };
+      }
+    }
+    return parsed;
+  }
+  if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>;
+    const hasAnyTop = TOP_LEVEL_ARRAY_KEYS.some(k => k in obj) || TOP_LEVEL_OBJECT_KEYS.some(k => k in obj);
+    if (!hasAnyTop) {
+      // LLM wrapped things in a generic key — try to find a matching array inside
+      for (const key of Object.keys(obj)) {
+        const v = obj[key];
+        if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+          const firstKeys = Object.keys(v[0] as object);
+          if (firstKeys.includes('condition') || firstKeys.includes('requirementId')) {
+            return { ...obj, requirementAnalysis: obj.requirementAnalysis ?? {}, testConditions: v };
+          }
+          if (firstKeys.includes('steps') || firstKeys.includes('testData')) {
+            return { ...obj, draftTestCases: v };
+          }
+          if (firstKeys.includes('changeLog') || firstKeys.includes('reviewSummary')) {
+            return { ...obj, finalTestCases: v };
+          }
+        }
+      }
+    }
+  }
+  return parsed;
+}
+
+/**
+ * Schema-level repair: LLMs frequently damage enum-typed fields and drop
+ * short optional fields like `suggestion`. Rather than reject and retry,
+ * we coerce the LLM's "best guess" to a schema-valid value before validation.
+ *
+ * Targets the failure modes we observed:
+ *   - selfReview.issues[].category: invalid enum (LLM invents values)
+ *   - selfReview.issues[].suggestion: missing (LLM forgets to include it)
+ *   - priority / category: invalid enum
+ *   - techniqueApplied / conditionId / id: empty string (LLM leaves blank)
+ */
+const VALID_SELF_REVIEW_CATEGORIES = new Set([
+  'atomicity', 'testability', 'coverage', 'repeatability', 'clarity', 'data-completeness',
+]);
+const VALID_SELF_REVIEW_SEVERITIES = new Set(['blocker', 'major', 'minor']);
+const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low']);
+const VALID_TEST_CATEGORIES = new Set(['happy-path', 'alternate', 'error', 'boundary', 'recovery', 'security', 'performance', 'compatibility']);
+
+function coerceSelfReviewCategory(v: unknown): string {
+  if (typeof v !== 'string') return 'clarity';
+  const norm = v.toLowerCase().trim();
+  if (VALID_SELF_REVIEW_CATEGORIES.has(norm)) return norm;
+  if (/atomic|granular|single/.test(norm)) return 'atomicity';
+  if (/testab|measur|verif|check/.test(norm)) return 'testability';
+  if (/cover|gap|missing/.test(norm)) return 'coverage';
+  if (/repeat|stable|consist|determin/.test(norm)) return 'repeatability';
+  if (/clear|ambig|unclear|phras|readab/.test(norm)) return 'clarity';
+  if (/data|complet|input|fixture/.test(norm)) return 'data-completeness';
+  return 'clarity';
+}
+
+function coerceSeverity(v: unknown): string {
+  if (typeof v !== 'string') return 'minor';
+  return VALID_SELF_REVIEW_SEVERITIES.has(v) ? v : 'minor';
+}
+
+function coercePriority(v: unknown): string {
+  if (typeof v !== 'string') return 'medium';
+  const norm = v.toLowerCase().trim();
+  if (VALID_PRIORITIES.has(norm)) return norm;
+  // Order matters: check explicit "low" / "high" first so they don't get
+  // swallowed by broader patterns like /crit|sev|block/ matching "severity"
+  if (/\blow\b|\bminor\b|\bp3\b/.test(norm)) return 'low';
+  if (/\bhigh\b|\bimp(ortant)?\b/.test(norm)) return 'high';
+  if (/\bcrit(ical)?\b|\bblocker?\b|\bp0\b|\bp1\b/.test(norm)) return 'critical';
+  return 'medium';
+}
+
+function coerceTestCategory(v: unknown): string {
+  if (typeof v !== 'string') return 'happy-path';
+  const norm = v.toLowerCase().trim();
+  if (VALID_TEST_CATEGORIES.has(norm)) return norm;
+  if (/happy|positive|main|normal/.test(norm)) return 'happy-path';
+  if (/alt|second|backup/.test(norm)) return 'alternate';
+  if (/err|fail|invalid|neg/.test(norm)) return 'error';
+  if (/bound|edge|limit/.test(norm)) return 'boundary';
+  return 'happy-path';
+}
+
+function ensureString(v: unknown, fallback = ''): string {
+  if (typeof v === 'string') return v;
+  if (v === null || v === undefined) return fallback;
+  return String(v);
+}
+
+function repairSelfReview(sr: unknown): unknown {
+  if (!sr || typeof sr !== 'object') return sr;
+  const obj = sr as Record<string, unknown>;
+  const issues = Array.isArray(obj.issues) ? obj.issues : [];
+  return {
+    ...obj,
+    score: typeof obj.score === 'number' ? Math.max(0, Math.min(1, obj.score)) : 0.8,
+    pass: typeof obj.pass === 'boolean' ? obj.pass : issues.length === 0,
+    issues: issues.map((iss: any) => {
+      if (!iss || typeof iss !== 'object') return iss;
+      return {
+        severity: coerceSeverity(iss.severity),
+        category: coerceSelfReviewCategory(iss.category),
+        description: ensureString(iss.description, 'Issue identified during self-review'),
+        suggestion: ensureString(iss.suggestion, 'Refine the test case to address this concern'),
+      };
+    }),
+  };
+}
+
+function repairTestCase(tc: any): any {
+  if (!tc || typeof tc !== 'object') return tc;
+  return {
+    ...tc,
+    id: ensureString(tc.id, `tc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+    conditionId: ensureString(tc.conditionId, ''),
+    requirementId: ensureString(tc.requirementId, ''),
+    techniqueApplied: ensureString(tc.techniqueApplied, 'use-case'),
+    priority: coercePriority(tc.priority),
+    category: coerceTestCategory(tc.category),
+    selfReview: repairSelfReview(tc.selfReview),
+  };
+}
+
+export function repairAgentOutput(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const obj = parsed as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...obj };
+  for (const key of ['draftTestCases', 'finalTestCases', 'testConditions']) {
+    if (Array.isArray(obj[key])) {
+      out[key] = (obj[key] as any[]).map(repairTestCase);
+    }
+  }
+  return out;
 }

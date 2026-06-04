@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { resources as resourceManifest } from './skills/requirement-index/resources/manifest.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,7 +102,8 @@ export class SkillRegistry {
       throw new Error(`No module defined for skill: ${name}`);
     }
     const modulePath = path.join(this.skillsDir, name, meta.module);
-    return import(modulePath);
+    const moduleUrl = pathToFileURL(modulePath).href;
+    return import(moduleUrl);
   }
 
   listByTag(tag: string): SkillMetadata[] {
@@ -111,6 +113,31 @@ export class SkillRegistry {
 
   getAllMetadata(): SkillMetadata[] {
     return this.metadataCache ? [...this.metadataCache.values()] : [];
+  }
+
+  async loadResource(skillName: string, uri: string): Promise<unknown> {
+    // Parse resource://skill-name/filename.json URI
+    const match = uri.match(/^resource:\/\/([^/]+)\/(.+)$/);
+    if (!match) {
+      throw new Error(`Invalid resource URI: ${uri}`);
+    }
+    const [, parsedSkillName, filePath] = match;
+    if (parsedSkillName !== skillName) {
+      throw new Error(`Resource URI skill "${parsedSkillName}" does not match requested skill "${skillName}"`);
+    }
+
+    // Check manifest first
+    const manifestEntry = Object.values(resourceManifest).find(e => e.uri === uri);
+    if (manifestEntry) {
+      const resourcePath = path.join(this.skillsDir, skillName, 'resources', path.basename(filePath));
+      if (!fs.existsSync(resourcePath)) {
+        throw new Error(`Resource file not found: ${resourcePath}`);
+      }
+      const content = fs.readFileSync(resourcePath, 'utf8');
+      return JSON.parse(content);
+    }
+
+    throw new Error(`Resource not found in manifest: ${uri}`);
   }
 }
 

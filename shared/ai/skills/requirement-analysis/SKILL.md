@@ -1,6 +1,6 @@
 ---
 name: requirement-analysis
-description: Analyze requirements for completeness, testability, and consistency
+description: Use when evaluating requirements for completeness, testability, and consistency before test design. Triggers: "analyze requirement quality", "check testability", "review requirement completeness".
 tags: [requirements, analysis, testability]
 module: ./index.ts
 allowedTools: [analyze_requirements]

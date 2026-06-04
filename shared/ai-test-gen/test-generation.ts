@@ -336,7 +336,7 @@ export function createOrchestratedPipeline(provider: AIProvider, roles: {
       timeoutMs: agentOpts?.timeoutMs,
       useCache: agentOpts?.useCache,
       signal: agentOpts?.signal,
-      useReActLoop: agentOpts?.useReActLoop ?? true,
+      useReActLoop: agentOpts?.useReActLoop ?? false,
     },
     stateAnnotation: TestGenStateAnnotation,
     agentStepConfig: {

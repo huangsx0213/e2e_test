@@ -1,6 +1,6 @@
 ---
 name: requirement-index
-description: Searchable index of all project requirements with traversal and tag search
+description: Use when you need to find requirements by module/priority/tag/status, or traverse parent-child requirement relationships. Triggers: "find requirements for module X", "what are the children of epic Y", "requirements tagged with Z".
 tags: [requirements, index]
 module: ./index.ts
 allowedTools: [get_index_children, search_by_tag]

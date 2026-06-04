@@ -1,6 +1,6 @@
 ---
 name: flow-design
-description: Business flow-based test design with blueprint parsing and flow validation
+description: Use when designing end-to-end test cases that span multiple business process steps from a blueprint. Triggers: "design flow-based tests", "parse business flow blueprint", "validate flow coverage".
 tags: [flows, design, blueprint]
 module: ./index.ts
 allowedTools: [parse_blueprint, validate_flow]

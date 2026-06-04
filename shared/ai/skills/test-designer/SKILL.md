@@ -1,6 +1,6 @@
 ---
 name: test-designer
-description: ISTQB test design with NLP test case generation using assigned techniques
+description: Use when designing detailed natural language test cases from approved test conditions. Triggers: "design test cases", "expand conditions to test cases", "write test steps".
 tags: [test-design, cases]
 module: ./index.ts
 allowedTools: [design_test_cases]

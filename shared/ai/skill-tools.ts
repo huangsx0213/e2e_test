@@ -38,13 +38,13 @@ export function createLoadSkillTool(registry: SkillRegistry) {
 export function createExecuteSkillModuleTool(registry: SkillRegistry, deps?: { db?: any; toolRegistry?: any }) {
   return {
     name: 'execute_skill_module',
-    description: 'Execute a function from a skill executable module (index.ts). Calls the exported function with provided arguments.',
+    description: 'Execute a function from a skill executable module (index.ts). Calls the exported function with provided arguments. Use this for deterministic test condition generation — ALWAYS call this before producing final output.',
     parameters: {
       type: 'object' as const,
       properties: {
         skillName: { type: 'string' as const, description: 'Name of the skill whose module to call' },
         functionName: { type: 'string' as const, description: 'Name of the exported function to call' },
-        args: { type: 'array' as const, description: 'Array of arguments to pass to the function', items: { type: 'string' as const } },
+        args: { type: 'array' as const, description: 'Array of arguments to pass to the function. Can include strings, objects, arrays, or any JSON values.' },
       },
       required: ['skillName', 'functionName', 'args'],
     } satisfies JsonSchema,
@@ -62,20 +62,19 @@ export function createExecuteSkillModuleTool(registry: SkillRegistry, deps?: { d
   };
 }
 
-export function createRequestReviewTool() {
+export function createFetchRequirementResourceTool(registry: SkillRegistry) {
   return {
-    name: 'request_review',
-    description: 'Request human review of intermediate results. Pauses execution until user provides feedback.',
+    name: 'fetch_requirement_resource',
+    description: 'Fetch a specific requirement resource by URI. Use when the skill summary is not enough and you need details for a specific epic.',
     parameters: {
       type: 'object' as const,
       properties: {
-        phase: { type: 'string' as const, description: 'Label for the review phase (e.g. "requirements", "test-design")' },
-        data: { type: 'object' as const, description: 'Data to present for review' },
+        uri: { type: 'string' as const, description: 'Resource URI from manifest (e.g. resource://requirement-index/requirement-epic-req-aut-auth.json)' },
       },
-      required: ['phase', 'data'],
+      required: ['uri'],
     } satisfies JsonSchema,
-    execute: async (_args: { phase: string; data: unknown }): Promise<never> => {
-      throw new Error('request_review must be handled by the ReAct loop, not direct execution');
+    execute: async (args: { uri: string }): Promise<unknown> => {
+      return registry.loadResource('requirement-index', args.uri);
     },
   };
 }

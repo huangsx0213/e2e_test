@@ -151,7 +151,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'agent:thinking': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
-          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: data.text };
+          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: (thinkingTextByNode[nodeId] || '') + data.text };
           break;
         }
         case 'checkpoint:waiting': {

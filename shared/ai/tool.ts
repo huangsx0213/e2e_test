@@ -5,16 +5,14 @@ import { createAgentContext, runAgent } from './agent.ts';
 import { zodToJsonSchema } from './tool-converter.ts';
 import { type ToolExecutor } from './react-loop.ts';
 import type { SerializedReactLoopState } from './react-loop-state.ts';
+import type { ToolCallRecord } from './tool-orchestrator.ts';
 import { globalSkillRegistry } from './skill-registry.ts';
 import {
   createSearchSkillsTool,
   createLoadSkillTool,
   createExecuteSkillModuleTool,
-  createRequestReviewTool,
+  createFetchRequirementResourceTool,
 } from './skill-tools.ts';
-import { TestAnalystRole } from './roles/test-analyst.ts';
-import { TestDesignerRole } from './roles/test-designer.ts';
-import { QualityManagerRole } from './roles/quality-manager.ts';
 
 export interface JsonSchema {
   type?: string;
@@ -57,6 +55,8 @@ export interface ToolMetadata {
   latencyMs: number;
   tokenUsage: { input: number; output: number; reasoning: number };
   inputPrompt?: ChatMessage[];
+  toolHistory?: ToolCallRecord[];
+  currentReactLoopState?: SerializedReactLoopState;
 }
 
 export interface ToolError {
@@ -158,20 +158,14 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
 
       return {
         success: true,
-        data: useReAct
-          ? {
-              result: raw.result,
-              tokenUsage: raw.tokenUsage,
-              toolHistory: raw.toolHistory,
-              requestedReview: raw.requestedReview,
-              currentReactLoopState: raw.currentReactLoopState,
-            } as any
-          : raw.result as TOutput,
+        data: raw.result as TOutput,
         metadata: {
           toolName: this.name,
           latencyMs: raw.latencyMs,
           tokenUsage: raw.tokenUsage,
           inputPrompt: raw.inputPrompt,
+          toolHistory: raw.toolHistory,
+          currentReactLoopState: raw.currentReactLoopState,
         },
       };
     } catch (err: any) {
@@ -191,52 +185,16 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
     const searchTool = createSearchSkillsTool(globalSkillRegistry);
     const loadTool = createLoadSkillTool(globalSkillRegistry);
     const execModuleTool = createExecuteSkillModuleTool(globalSkillRegistry);
-    const reviewTool = createRequestReviewTool();
+    const fetchResourceTool = createFetchRequirementResourceTool(globalSkillRegistry);
 
-    const allowed = this.role.allowedTools ?? ['search_skills', 'load_skill', 'execute_skill_module', 'request_review'];
-
-    const roleLookup: Record<string, AgentRole> = {
-      'test-analyst': TestAnalystRole,
-      'test-designer': TestDesignerRole,
-      'quality-manager': QualityManagerRole,
-    };
-
-    const spawnSubagentTool = {
-      name: 'spawn_subagent',
-      description: 'Delegate a task to a specialized sub-agent. The sub-agent runs independently with its own skill context and returns results.',
-      parameters: {
-        type: 'object' as const,
-        properties: {
-          role: { type: 'string' as const, description: 'Sub-agent role: test-analyst, test-designer, or quality-manager' },
-          goal: { type: 'string' as const, description: 'Goal or description of the task to delegate' },
-          input: { type: 'object' as const, description: 'Input data matching the sub-agent\'s input schema' },
-        },
-        required: ['role', 'goal', 'input'],
-      } satisfies JsonSchema,
-      execute: async (args: { role: string; goal: string; input: unknown }) => {
-        if ((this as any)._isSubagent) {
-          throw new Error('Nested sub-agent spawning is not allowed (max depth = 1)');
-        }
-        const subRole = roleLookup[args.role];
-        if (!subRole) throw new Error(`Unknown sub-agent role: ${args.role}. Available: ${Object.keys(roleLookup).join(', ')}`);
-        const subAgent = new AgentTool(subRole, this.providerFactory, this.getPromptVersion, this.getModelName);
-        (subAgent as any)._isSubagent = true;
-        const result = await subAgent.execute(args.input, { useReActLoop: true });
-        const r = result as any;
-        if (!r.success) throw new Error(`Sub-agent ${args.role} failed: ${r.error?.message ?? 'unknown error'}`);
-        return r.data;
-      },
-    };
+    const allowed = this.role.allowedTools ?? ['search_skills', 'load_skill', 'execute_skill_module'];
 
     const toolMap: Record<string, { execute: (args: any) => Promise<unknown>; description: string; parameters: JsonSchema }> = {
       search_skills: searchTool,
       load_skill: loadTool,
       execute_skill_module: execModuleTool,
-      request_review: reviewTool,
+      fetch_requirement_resource: fetchResourceTool,
     };
-    if (allowed.includes('spawn_subagent')) {
-      toolMap['spawn_subagent'] = spawnSubagentTool;
-    }
 
     return {
       executeTool: async (call: ToolCall) => {
@@ -251,7 +209,7 @@ export class AgentTool<TInput = unknown, TOutput = unknown> implements ToolDef<T
         });
       },
       isSpecialTool: (name: string) => {
-        return ['search_skills', 'load_skill', 'execute_skill_module', 'request_review'].includes(name);
+        return ['search_skills', 'load_skill', 'execute_skill_module', 'fetch_requirement_resource'].includes(name);
       },
     };
   }
