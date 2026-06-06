@@ -226,6 +226,89 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * 从失败的 agent 重试：利用 LangGraph checkpointer 保存的状态，
+   * 从最后一个成功的 checkpoint 重新执行失败的节点。
+   */
+  async retry(runId: string): Promise<void> {
+    const row = pipelineRepo.getFailedRun(runId);
+    if (!row) {
+      throw new Error('Test gen run is not in FAILED status');
+    }
+
+    const threadId = row.thread_id;
+    if (!threadId) {
+      throw new Error('No thread_id found for failed run, cannot retry');
+    }
+
+    pipelineRepo.setRunRunning(runId);
+    this.sseGateway.emit(runId, 'pipeline:retry', {
+      phase: row.phase,
+      message: `Retrying from last checkpoint (phase: ${row.phase})`,
+    });
+
+    const config = row.config ? (typeof row.config === 'string' ? JSON.parse(row.config) : row.config) : {};
+    let ctx: RunContext | null = null;
+    let keepSse = false;
+
+    try {
+      ctx = await this.contextBuilder.build(runId, row.project_id, (row.mode || 'auto') as 'auto' | 'interactive', {
+        providerConfigName: config.providerConfigName,
+        useCache: config.useCache,
+        currentBatch: row.current_batch || 0,
+      });
+
+      ctx.scope.restoreBatchState(row.current_batch || 0);
+      const batchIndex = (row.current_batch || 1) - 1;
+
+      const outcome = await ctx.session.retryFromLastCheckpoint(threadId, batchIndex);
+
+      if (outcome.type === 'interrupt') {
+        pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
+        pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
+        this.sseGateway.emit(runId, 'checkpoint:waiting', {
+          checkpointNumber: outcome.interrupt.checkpointNumber,
+          phase: outcome.interrupt.phase,
+          summary: 'Awaiting Review',
+          payload: outcome.interrupt.payload,
+        });
+        keepSse = true;
+        return;
+      }
+
+      // 继续剩余批次
+      const allResults: BatchResult[] = [outcome.result];
+      const totalBatches = row.total_batches || 0;
+      const currentBatch = row.current_batch || 0;
+      if (currentBatch < totalBatches) {
+        const remaining = await this.continueRemainingBatches(runId, row.project_id, config, ctx);
+        if (remaining.interrupted) { keepSse = true; return; }
+        allResults.push(...remaining.allResults);
+      }
+
+      const { allCases, removedCount } = deduplicateTestCases(
+        allResults.flatMap((r: any) => r.lastState?.finalTestCases || r.cases || []),
+      );
+      if (removedCount > 0) {
+        ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length });
+      }
+      ctx.scope.markComplete({ totalCases: allCases.length, totalBatches: totalBatches || 1 });
+    } catch (err: any) {
+      if (ctx) {
+        if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
+      } else {
+        this.sseGateway.emit(runId, 'pipeline:error', {
+          phase: 'retry', message: err.message, recoverable: true,
+        });
+      }
+    } finally {
+      if (ctx) {
+        ctx.releaseSlot();
+        if (!keepSse) this.sseGateway.cleanup(runId);
+      }
+    }
+  }
+
   async getCheckpointState(runId: string): Promise<any> {
     const run = pipelineRepo.getRunWithThreadId(runId);
     if (!run?.thread_id) return null;

@@ -103,7 +103,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 : "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300"
             }`}
           >
-            {loading ? "Deleting..." : confirmLabel}
+            {loading ? `${confirmLabel}...` : confirmLabel}
           </button>
         </div>
       </div>

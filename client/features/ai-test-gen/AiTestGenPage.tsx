@@ -92,17 +92,45 @@ const handleRefresh = useCallback(async () => {
 
   const handleRetry = useCallback(async () => {
     if (!pipeline.runId) return;
-    setRetrying(true);
-    checkpointEditedData.current = null;
-    try {
-      await pipeline.resume('retry');
-    } catch {
-      // error surfaced via SSE pipeline:error
-    } finally {
-      setRetrying(false);
-      setReviewMode(false);
+    // If the pipeline has an error node, use the retry-from-checkpoint API
+    const errorNode = pipeline.nodes.find((n: any) => n.status === 'error');
+    if (errorNode) {
+      setRetrying(true);
+      pipeline.startRetry(errorNode.id); // Only reset the selected error node, keep preceding nodes completed
+      try {
+        const { api } = await import('@/shared/services/api');
+        await api.testGen.retry(pipeline.runId);
+      } catch {
+        // error surfaced via SSE
+      } finally {
+        setRetrying(false);
+        setReviewMode(false);
+      }
+    } else {
+      setRetrying(true);
+      checkpointEditedData.current = null;
+      try {
+        await pipeline.resume('retry');
+      } catch {
+        // error surfaced via SSE pipeline:error
+      } finally {
+        setRetrying(false);
+        setReviewMode(false);
+      }
     }
   }, [pipeline]);
+
+  const handleRetryFailedRun = useCallback(async (runId: string) => {
+    try {
+      const errorNode = pipeline.nodes.find((n: any) => n.status === 'error');
+      if (errorNode) pipeline.startRetry(errorNode.id);
+      const { api } = await import('@/shared/services/api');
+      await api.testGen.retry(runId);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.testGen.runs(currentProjectId || '') });
+    } catch {
+      // best effort
+    }
+  }, [pipeline, queryClient, currentProjectId]);
 
   const handleToggleReview = useCallback(() => {
     setReviewMode(prev => !prev);
@@ -216,6 +244,7 @@ const handleRefresh = useCallback(async () => {
           onSelect={handleSelectRun}
           onBack={() => setView('config')}
           onDeleteRun={handleDeleteRun}
+          onRetryRun={handleRetryFailedRun}
         />
       ) : (
         <div className="flex-1 flex overflow-hidden">
@@ -270,12 +299,11 @@ const handleRefresh = useCallback(async () => {
       <ConfirmModal
         isOpen={showRetryConfirm}
         onClose={() => setShowRetryConfirm(false)}
-        onConfirm={handleRetry}
+        onConfirm={() => { setShowRetryConfirm(false); handleRetry(); }}
         title="Retry this Agent?"
         message="The current output will be discarded and the agent will re-run from scratch with the same inputs. Any edits made during review will be lost."
         confirmLabel="Retry Agent"
         type="warning"
-        loading={retrying}
       />
     </div>
   );

@@ -137,16 +137,31 @@ export class TestGenSession {
     return this.streamToOutcome(graph, resumeCommand, threadId, 0);
   }
 
+  /**
+   * 从失败的节点重试：利用 LangGraph checkpointer 保存的状态，
+   * 传入 null 作为 input，LangGraph 会自动从最后一个 checkpoint 恢复并重新执行失败节点。
+   */
+  async retryFromLastCheckpoint(threadId: string, batchIndex: number): Promise<RunOutcome> {
+    const graph = this.compileGraph();
+    console.log(`[session] Retrying from last checkpoint, threadId=${threadId}, batch=${batchIndex}`);
+    return this.streamToOutcome(graph, null, threadId, batchIndex);
+  }
+
   private async streamToOutcome(
     graph: ReturnType<typeof this.compileGraph>,
-    input: Record<string, unknown> | Command,
+    input: Record<string, unknown> | Command | null,
     tid: string,
     batchIndex: number,
   ): Promise<RunOutcome> {
-    const stream = await (graph as any).stream(input, {
+    const streamOpts = {
       configurable: { thread_id: tid },
       streamMode: 'values' as const,
-    });
+    };
+
+    // retryFromLastCheckpoint 传入 null，LangGraph 从最后一个 checkpoint 恢复
+    const stream = input === null
+      ? await (graph as any).stream(null, streamOpts)
+      : await (graph as any).stream(input, streamOpts);
 
     let lastState: any = null;
     let interruptPayload: Record<string, unknown> | null = null;

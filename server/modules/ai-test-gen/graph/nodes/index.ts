@@ -15,4 +15,4 @@ export { makeCompleteNode } from './complete';
 export type { CompleteNodeOptions } from './complete';
 
 export type { AgentObserver, SkillDefinition } from './types';
-export { callLLMWithStructuredOutput, buildChatOptions, buildStructuredOutputTool, executeSkill, zodToJsonSchema } from './utils';
+export { callLLMWithStructuredOutput, buildThinkingChatOptions, buildExtractionChatOptions, executeSkill, zodToJsonSchema } from './utils';

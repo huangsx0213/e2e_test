@@ -181,6 +181,24 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
             ? { ...state.batchProgress, generatedCases: (state.batchProgress.generatedCases || 0) + (data.testCases || 0) }
             : null;
           break;
+        case 'pipeline:retry': {
+          // Map phase to the failing agent node, only reset that node
+          const PHASE_TO_ERROR_NODE: Record<string, NodeId> = {
+            'analysis': 'agent_test_analyst',
+            'review-conditions': 'agent_test_analyst',
+            'design': 'agent_test_designer',
+            'review-draft': 'agent_test_designer',
+            'quality': 'agent_quality_manager',
+            'final-review': 'agent_quality_manager',
+          };
+          const retryNodeId = PHASE_TO_ERROR_NODE[data.phase];
+          nodes = nodes.map(n =>
+            n.id === retryNodeId && n.status === 'error'
+              ? { ...n, status: 'running' as const, subSteps: n.subSteps?.map(s => ({ ...s, done: false, running: false })) }
+              : n,
+          );
+          return { ...state, nodes, isRunning: true, error: null };
+        }
         case 'pipeline:complete':
           runSummary = {
             totalCases: data.stats?.totalCases || 0,
@@ -228,6 +246,22 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         error: null,
         thinkingTextByNode: {},
       };
+
+    case 'RETRY_STARTED': {
+      // Only reset the selected error node to running, keep preceding nodes completed
+      const retryNodes = state.nodes.map(n =>
+        n.id === action.nodeId && n.status === 'error'
+          ? { ...n, status: 'running' as const, subSteps: n.subSteps?.map(s => ({ ...s, done: false, running: false })) }
+          : n,
+      );
+      return {
+        ...state,
+        nodes: retryNodes,
+        isRunning: true,
+        error: null,
+        thinkingTextByNode: {},
+      };
+    }
 
     case 'RESTORE_RUN': {
       const restoredNodes = buildRestoredNodes(

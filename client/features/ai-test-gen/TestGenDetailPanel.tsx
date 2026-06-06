@@ -1901,6 +1901,20 @@ export function TestGenDetailPanel({
           </div>
         )}
 
+        {/* Action buttons for error agent nodes */}
+        {node.status === 'error' && nodeType !== 'checkpoint' && (
+          <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
+            <button
+              onClick={onRetry}
+              disabled={retrying}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
+              {retrying ? 'Retrying...' : 'Retry from Checkpoint'}
+            </button>
+          </div>
+        )}
+
         {nodeType === 'complete' && !casesSaved && (
           <div className="flex items-center gap-2 shrink-0 ml-auto justify-end">
             {saveCasesError && <span className="text-xs text-red-500">{saveCasesError}</span>}

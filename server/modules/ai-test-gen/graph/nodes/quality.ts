@@ -82,7 +82,8 @@ For each requirement, calculate:
 ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
 
 You may use available tools to verify coverage or check additional data.
-When you are done, call the extract_structured_output function with your complete review.`;
+
+Provide your review analysis step by step as plain text: walk through each dimension, explain changes, and justify coverage ratings. This analysis will be streamed to the user in real-time. Do NOT output JSON in this step — only provide your analysis text.`;
 }
 
 function buildUserMessage(state: TestGenState): string {

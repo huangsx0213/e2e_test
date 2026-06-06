@@ -57,7 +57,8 @@ ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlow
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 You may use available tools to query additional context before producing your final output.
-When you are done, call the extract_structured_output function with your complete analysis.`;
+
+Provide your analysis step by step as plain text: walk through each requirement, identify risks, select ISTQB techniques, and explain your reasoning for each test condition. This analysis will be streamed to the user in real-time. Do NOT output JSON in this step — only provide your analysis text.`;
 }
 
 function buildUserMessage(state: TestGenState): string {

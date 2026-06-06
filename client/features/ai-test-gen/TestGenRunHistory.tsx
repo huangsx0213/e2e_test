@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ArrowLeft, Trash2 } from 'lucide-react';
+import { Search, ArrowLeft, Trash2, RefreshCw } from 'lucide-react';
 
 interface TestGenRun {
   id: string;
@@ -19,6 +19,7 @@ interface TestGenRunHistoryProps {
   onSelect: (runId: string) => void;
   onBack: () => void;
   onDeleteRun: (runId: string) => Promise<void>;
+  onRetryRun: (runId: string) => Promise<void>;
 }
 
 const statusBadge: Record<string, string> = {
@@ -29,12 +30,13 @@ const statusBadge: Record<string, string> = {
   PAUSED: 'bg-yellow-100 text-yellow-700',
 };
 
-export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun }: TestGenRunHistoryProps) {
+export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun, onRetryRun }: TestGenRunHistoryProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [modeFilter, setModeFilter] = useState('All');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [retryingRunId, setRetryingRunId] = useState<string | null>(null);
 
   const filtered = runs.filter(r => {
     if (search) {
@@ -136,40 +138,60 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun }: TestG
                   {run.current_batch}/{run.total_batches} batches
                 </td>
                 <td className="px-4 py-2 text-right">
-                  {confirmDelete === run.id ? (
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-end gap-1">
+                    {run.status === 'FAILED' && (
                       <button
-                        disabled={deleting}
+                        disabled={retryingRunId === run.id}
                         onClick={async (e) => {
                           e.stopPropagation();
-                          setDeleting(true);
+                          setRetryingRunId(run.id);
                           try {
-                            await onDeleteRun(run.id);
+                            await onRetryRun(run.id);
                           } finally {
-                            setDeleting(false);
-                            setConfirmDelete(null);
+                            setRetryingRunId(null);
                           }
                         }}
-                        className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                        className="text-amber-500 hover:text-amber-700 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                        title="Retry from last checkpoint"
                       >
-                        {deleting ? '...' : 'Yes'}
+                        <RefreshCw size={14} className={retryingRunId === run.id ? 'animate-spin' : ''} />
                       </button>
+                    )}
+                    {confirmDelete === run.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          disabled={deleting}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDeleting(true);
+                            try {
+                              await onDeleteRun(run.id);
+                            } finally {
+                              setDeleting(false);
+                              setConfirmDelete(null);
+                            }
+                          }}
+                          className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50"
+                        >
+                          {deleting ? '...' : 'Yes'}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); }}
+                          className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); }}
-                        className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(run.id); }}
+                        className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Delete run"
                       >
-                        No
+                        <Trash2 size={14} />
                       </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmDelete(run.id); }}
-                      className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                      title="Delete run"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -45,6 +45,11 @@ export class RunScope {
   private totalReasoningTokens = 0;
   public totalLatencyMs = 0;
 
+  // Thinking throttle: buffer text per agent, flush every THINKING_FLUSH_MS
+  private readonly thinkingBuffer = new Map<string, string>();
+  private thinkingFlushTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly THINKING_FLUSH_MS = 100;
+
   constructor(
     runId: string,
     public readonly projectId: string,
@@ -52,6 +57,30 @@ export class RunScope {
     private readonly emitEvent: (event: string, data: unknown) => void,
   ) {
     this.runId = runId;
+    this.startThinkingFlush();
+  }
+
+  private startThinkingFlush(): void {
+    if (this.thinkingFlushTimer) return;
+    this.thinkingFlushTimer = setInterval(() => this.flushThinking(), RunScope.THINKING_FLUSH_MS);
+    this.thinkingFlushTimer.unref?.();
+  }
+
+  private flushThinking(): void {
+    for (const [agentName, text] of this.thinkingBuffer) {
+      if (text.length > 0) {
+        this.emit('agent:thinking', { agentName, text, timestamp: Date.now() });
+      }
+    }
+    this.thinkingBuffer.clear();
+  }
+
+  private stopThinkingFlush(): void {
+    this.flushThinking();
+    if (this.thinkingFlushTimer) {
+      clearInterval(this.thinkingFlushTimer);
+      this.thinkingFlushTimer = null;
+    }
   }
 
   private stateKey(agentName: string, batch: number): string {
@@ -96,6 +125,13 @@ export class RunScope {
     outputData?: unknown;
     toolHistory?: unknown[];
   }): void {
+    // Flush any remaining thinking text for this agent before marking complete
+    const remaining = this.thinkingBuffer.get(agentName);
+    if (remaining && remaining.length > 0) {
+      this.emit('agent:thinking', { agentName, text: remaining, timestamp: Date.now() });
+      this.thinkingBuffer.delete(agentName);
+    }
+
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
     let snap = this.agentStates.get(key);
@@ -137,6 +173,13 @@ export class RunScope {
   }
 
   recordAgentError(agentName: string, error: Error): void {
+    // Flush any remaining thinking text for this agent
+    const remaining = this.thinkingBuffer.get(agentName);
+    if (remaining && remaining.length > 0) {
+      this.emit('agent:thinking', { agentName, text: remaining, timestamp: Date.now() });
+      this.thinkingBuffer.delete(agentName);
+    }
+
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
     const snap = this.agentStates.get(key);
@@ -164,7 +207,9 @@ export class RunScope {
   }
 
   recordAgentThinking(agentName: string, text: string): void {
-    this.emit('agent:thinking', { agentName, text, timestamp: Date.now() });
+    // Buffer thinking text, flush periodically via timer
+    const existing = this.thinkingBuffer.get(agentName) ?? '';
+    this.thinkingBuffer.set(agentName, existing + text);
   }
 
   recordCheckpointResolved(checkpointNumber: number, action: string): void {
@@ -173,6 +218,7 @@ export class RunScope {
   }
 
   markComplete(stats: { totalCases: number; totalBatches: number }): void {
+    this.stopThinkingFlush();
     const usage = {
       prompt_tokens: this.totalPromptTokens,
       completion_tokens: this.totalCompletionTokens,
@@ -187,6 +233,7 @@ export class RunScope {
   }
 
   markFailed(error: string): void {
+    this.stopThinkingFlush();
     pipelineRepo.markRunFailed(this.runId);
     this.emit('pipeline:error', { phase: 'orchestrator', message: error, recoverable: false });
   }

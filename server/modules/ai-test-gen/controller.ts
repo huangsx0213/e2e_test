@@ -75,6 +75,12 @@ export class TestGenController {
     return { success: true, action };
   }
 
+  /** 从失败的 agent 重试 */
+  async retryRun(runId: string) {
+    await this.orchestrator.retry(runId);
+    return { success: true };
+  }
+
   /** 保存 checkpoint 编辑 */
   async saveCheckpointEdits(runId: string, body: unknown) {
     const { editedData, checkpointNumber } = checkpointUpdateSchema.parse(body);

@@ -83,6 +83,12 @@ router.post('/:runId/resume', withErrorHandling((req, res) => {
   res.json(result);
 }));
 
+// 从失败的 agent 重试
+router.post('/:runId/retry', withErrorHandling(async (req, res) => {
+  const result = await controller.retryRun(p(req.params.runId));
+  res.json(result);
+}));
+
 // 中止
 router.post('/:runId/abort', withErrorHandling((req, res) => {
   const result = controller.abortRun(p(req.params.runId));

@@ -12,6 +12,9 @@ export interface TestGenApiAdapter {
   logs: (runId: string, agentName?: string) => Promise<any[]>;
   abort: (runId: string) => Promise<any>;
   delete: (runId: string) => Promise<any>;
+  testGen: {
+    getCheckpointState: (runId: string) => Promise<any>;
+  };
 }
 
 export interface TestGenRunDeps {

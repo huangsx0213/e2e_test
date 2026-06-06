@@ -158,6 +158,8 @@ businessFlows: {
       apiFetch<{ saved: number; removed: number }>(`test-gen/${runId}/save-cases`, { method: 'POST' }),
     abort: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/abort`, { method: 'POST' }),
+    retry: (runId: string) =>
+      apiFetch<{ success: boolean }>(`test-gen/${runId}/retry`, { method: 'POST' }),
     delete: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}`, { method: 'DELETE' }),
   },

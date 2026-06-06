@@ -159,6 +159,13 @@ export class TestGenRepository {
     db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
+  getFailedRun(runId: string): TestGenRunRow | undefined {
+    const row = db.prepare(
+      "SELECT * FROM test_gen_runs WHERE id = ? AND status = 'FAILED'"
+    ).get(runId) as TestGenRunRow | undefined;
+    return row;
+  }
+
   markRunCompleted(runId: string, phase: string, usage: unknown): void {
     db.prepare(`UPDATE test_gen_runs SET status = 'COMPLETED', phase = ?, token_usage = ?, updated_at = datetime('now') || 'Z' WHERE id = ?`)
       .run(phase, JSON.stringify(usage), runId);

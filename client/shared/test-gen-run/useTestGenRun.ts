@@ -40,6 +40,7 @@ export interface UseTestGenRunAPI {
   runs: any[];
   start: (config: StartConfig) => Promise<string>;
   resume: (action: CheckpointAction, data?: { feedback?: string; editedData?: unknown }) => Promise<void>;
+  startRetry: (nodeId: NodeId) => void;
   abort: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshCheckpointData: () => Promise<void>;
@@ -74,6 +75,9 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   }, [explicitRunId, state.runId, state.isRunning]);
 
   const handleSSEEvent = useCallback((event: { type: string; data: any }) => {
+    if (event.type === 'agent:thinking') {
+      console.log(`[useTestGenRun] SSE agent:thinking agent=${event.data?.agentName} textLen=${(event.data?.text ?? '').length}`);
+    }
     dispatch({ type: 'SSE_EVENT', event });
   }, []);
 
@@ -138,6 +142,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     sse.disconnect();
     dispatch({ type: 'RUN_ABORTED' });
   }, [state.runId, api, sse]);
+
+  const startRetry = useCallback((nodeId: NodeId) => {
+    dispatch({ type: 'RETRY_STARTED', nodeId });
+  }, []);
 
   const PHASE_TO_CP: Record<string, number> = {
     'review-conditions': 1, 'review-draft': 2, 'final-review': 3,
@@ -234,6 +242,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   }, [state.runId, state.isRunning, state.selectedNodeId, api]);
 
   const loadRun = useCallback(async (runId: string) => {
+    let logs: any[] = [];
     try {
       const runInfo = await api.get(runId);
       if (runInfo) {
@@ -251,7 +260,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
             dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
           }
         }
-        const logs = await api.logs(runId);
+        logs = await api.logs(runId);
         if (logs.length > 0) {
           dispatch({ type: 'MERGE_AGENT_LOGS', logs });
         }
@@ -405,6 +414,7 @@ return {
     runs,
     start,
     resume,
+    startRetry,
     abort,
     refresh,
     refreshCheckpointData,

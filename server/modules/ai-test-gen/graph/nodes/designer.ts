@@ -68,7 +68,8 @@ ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlow
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 You may use available tools to query additional context (e.g., database schemas, API specs) before producing your final output.
-When you are done, call the extract_structured_output function with your complete test case designs.`;
+
+Provide your design rationale step by step as plain text: walk through each test case, explain technique application, test data choices, and coverage rationale. This analysis will be streamed to the user in real-time. Do NOT output JSON in this step — only provide your analysis text.`;
 }
 
 function buildUserMessage(state: TestGenState): string {

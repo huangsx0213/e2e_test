@@ -235,7 +235,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     buildBody: (messages, options?) => ({
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_completion_tokens: options?.maxTokens ?? 128000,
+      max_completion_tokens: options?.maxTokens ?? 4096,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
@@ -251,7 +251,7 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
       model: config.model,
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 131072,
+      max_tokens: options?.maxTokens ?? 8192,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
@@ -261,13 +261,13 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
 function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' }): AIProvider {
   return createProviderFromStrategy({
     name: 'openrouter',
-    buildUrl: () => 'https://openrouter.ai/api/v1/chat/completions',
+    buildUrl: () => 'https://openrouter.com/api/v1/chat/completions',
     buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }),
     buildBody: (messages, options?) => ({
       model: config.model,
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 131072,
+      max_tokens: options?.maxTokens ?? 8192,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
@@ -283,7 +283,7 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
       model: config.model,
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 131072,
+      max_tokens: options?.maxTokens ?? 8192,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
@@ -383,6 +383,8 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
   let buffer = '';
   let usageData: any = null;
   let currentToolCall: { id: string; name: string; args: string } | null = null;
+  let chunkCount = 0;
+  let toolCallDeltaCount = 0;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -395,9 +397,9 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
           const data = JSON.parse(line.slice(6));
           if (data.usage) {
             usageData = data.usage;
-          } else {
-            const delta = data.choices?.[0]?.delta;
-            if (delta?.tool_calls) {
+          }
+          const delta = data.choices?.[0]?.delta;
+          if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
                 if (tc.id) {
                   if (currentToolCall) {
@@ -409,10 +411,16 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
                   }
                   currentToolCall = { id: tc.id, name: tc.function.name, args: '' };
                   yield { type: 'tool_call_start', content: '', toolCall: { id: tc.id, name: tc.function.name, args: {} } };
-                }
-                if (tc.function?.arguments) {
+                  // Some providers send full arguments in the first chunk
+                  if (tc.function?.arguments) {
+                    currentToolCall.args += tc.function.arguments;
+                    toolCallDeltaCount++;
+                    yield { type: 'tool_call_delta', content: tc.function.arguments, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+                  }
+                } else if (tc.function?.arguments) {
                   if (currentToolCall) {
                     currentToolCall.args += tc.function.arguments;
+                    toolCallDeltaCount++;
                     yield { type: 'tool_call_delta', content: tc.function.arguments, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
                   }
                 }
@@ -420,11 +428,12 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
             }
             if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content };
             if (delta?.content) yield { type: 'content', content: delta.content };
-          }
+          chunkCount++;
         } catch {}
       }
     }
   }
+  console.log(`[readSSEStream] done: ${chunkCount} chunks, ${toolCallDeltaCount} tool_call_delta`);
   if (currentToolCall) {
     try {
       yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };

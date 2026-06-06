@@ -93,6 +93,7 @@ export type TestGenReducerAction =
   | { type: 'SSE_EVENT'; event: TestGenEvent }
   | { type: 'RUN_STARTED'; runId: string; config: StartConfig }
   | { type: 'RUN_ABORTED' }
+  | { type: 'RETRY_STARTED'; nodeId: NodeId }
   | { type: 'RESTORE_RUN'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number }
   | { type: 'SET_CHECKPOINT_DATA'; checkpointData: any; phase: string }
   | { type: 'MERGE_AGENT_LOGS'; logs: any[] }
