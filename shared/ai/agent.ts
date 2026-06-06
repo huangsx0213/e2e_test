@@ -6,9 +6,10 @@ import { TokenTracker } from './token-tracker.ts';
 import { getCached, setCache } from './cache.ts';
 import { inspectUserInput } from './guard.ts';
 import { globalSkillRegistry } from './skill-registry.ts';
-import { runReactLoop, streamReactLoop, type ToolExecutor } from './react-loop.ts';
+import { runReactLoop, streamReactLoop, type ToolExecutor, type ReactLoopOptions, type ReactLoopResult } from './react-loop.ts';
 import type { SerializedReactLoopState } from './react-loop-state.ts';
 import type { ToolCallRecord } from './tool-orchestrator.ts';
+import { zodToJsonSchema } from './tool-converter.ts';
 
 export interface AgentRole {
   name: string;
@@ -245,8 +246,21 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
       let lastEmit = 0;
       const THROTTLE_MS = 80;
 
+      const outputJsonSchema = zodToJsonSchema(role.outputSchema);
+      const forcedTool = {
+        name: 'extract_structured_output',
+        description: `Extract structured ${role.name} output from the analysis`,
+        parameters: outputJsonSchema as Record<string, unknown>,
+      };
+      const streamOptions: ChatOptions = {
+        ...role.options,
+        agentName: role.name,
+        tools: [forcedTool],
+        toolChoice: { type: 'function' as const, function: { name: 'extract_structured_output' } },
+        signal: combinedSignal,
+      };
       try {
-        for await (const chunk of provider.streamChat(messages, { ...role.options, agentName: role.name, responseFormat: 'json_object', signal: combinedSignal })) {
+        for await (const chunk of provider.streamChat(messages, streamOptions)) {
           if (chunk.type === 'reasoning') {
             reasoningContent += chunk.content;
             options.onThinking?.(chunk.content);
@@ -255,6 +269,13 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
             const now = Date.now();
             if (now - lastEmit >= THROTTLE_MS) {
               lastEmit = now;
+              options.onThinking?.(fullContent);
+            }
+          } else if (chunk.type === 'tool_call_end' && chunk.toolCall?.args) {
+            fullContent = typeof chunk.toolCall.args === 'object'
+              ? JSON.stringify(chunk.toolCall.args)
+              : String(chunk.toolCall.args);
+            if (fullContent) {
               options.onThinking?.(fullContent);
             }
           } else if (chunk.type === 'done' && chunk.usage) {
@@ -334,6 +355,7 @@ export async function runAgent(context: AgentContext, input: unknown, options: A
           err instanceof SyntaxError
           || err?.name === 'ZodError'
           || err?.message?.includes('Invalid input')
+          || err?.message?.includes('No JSON object found')
         );
 
         if (attempt >= maxRetries - 1) {

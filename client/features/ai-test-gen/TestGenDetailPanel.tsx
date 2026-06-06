@@ -809,7 +809,14 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                   <div className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1 min-h-0">
                     {thinkingText ? (
                       <div className="text-slate-300">
-                        {thinkingText}
+                        {(() => {
+                          try {
+                            const parsed = JSON.parse(thinkingText);
+                            return JSON.stringify(parsed, null, 2);
+                          } catch {
+                            return thinkingText;
+                          }
+                        })()}
                         {isRunning && (
                           <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-0.5 align-middle" />
                         )}
@@ -996,7 +1003,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                           </div>
                           <div className="px-4 pb-3 max-h-40 overflow-y-auto">
                             <pre className="text-[10px] font-mono bg-slate-950 text-slate-300 p-2 rounded-lg whitespace-pre-wrap">
-                              {thinkingText}
+                              {(() => { try { return JSON.stringify(JSON.parse(thinkingText), null, 2); } catch { return thinkingText; } })()}
                             </pre>
                           </div>
                         </div>

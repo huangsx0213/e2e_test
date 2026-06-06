@@ -1,0 +1,190 @@
+import { Command } from '@langchain/langgraph';
+import { buildTestGenGraph } from './graph/graph.ts';
+import { checkpointer } from './graph/checkpointer.ts';
+import type { AIProvider } from '../../../shared/ai/provider.ts';
+import type { AgentObserver } from './graph/nodes/types.ts';
+import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
+import type { TestGenState } from './graph/state.ts';
+
+export interface BatchInput {
+  batchIndex: number;
+  inputState: {
+    projectId: string;
+    runId: string;
+    mode: 'auto' | 'interactive';
+    requirementIds: string[];
+    currentBatch: any[];
+    batchContext: { currentBatch: number; totalBatches: number; processedCount: number };
+    projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
+    businessFlowBlueprints: any[] | undefined;
+    phase: TestGenState['phase'];
+    errors: any[];
+  };
+}
+
+export interface BatchResult {
+  batchIndex: number;
+  cases: unknown[];
+  tokenUsage: { input: number; output: number; total: number };
+  lastState: Partial<TestGenState>;
+}
+
+export interface InterruptInfo {
+  threadId: string;
+  phase: string;
+  checkpointNumber: number;
+  payload: Record<string, unknown>;
+}
+
+export type RunOutcome =
+  | { type: 'complete'; result: BatchResult }
+  | { type: 'interrupt'; interrupt: InterruptInfo };
+
+export interface SessionOptions {
+  runId: string;
+  provider: AIProvider;
+  observer: AgentObserver;
+  modelName: string;
+  tokenLimit: number | null;
+  timeoutMs?: number;
+  useCache?: boolean;
+  signal?: AbortSignal;
+}
+
+export class TestGenSession {
+  private aborted = false;
+
+  constructor(private readonly opts: SessionOptions) {}
+
+  abort(): void {
+    this.aborted = true;
+  }
+
+  private isAborted(): boolean {
+    return this.aborted || this.opts.signal?.aborted === true;
+  }
+
+  private compileGraph() {
+    return buildTestGenGraph({
+      provider: this.opts.provider,
+      observer: this.opts.observer,
+      modelName: this.opts.modelName,
+      tokenLimit: this.opts.tokenLimit,
+      timeoutMs: this.opts.timeoutMs,
+      useCache: this.opts.useCache,
+      signal: this.opts.signal,
+      checkpointer,
+    });
+  }
+
+  private threadId(batchIndex: number): string {
+    return `${this.opts.runId}-batch-${batchIndex}`;
+  }
+
+  /**
+   * 启动一个新批次的流水线执行
+   */
+  async startBatch(batch: BatchInput): Promise<RunOutcome> {
+    const graph = this.compileGraph();
+    const tid = this.threadId(batch.batchIndex);
+
+    const input = {
+      projectId: batch.inputState.projectId,
+      runId: batch.inputState.runId,
+      mode: batch.inputState.mode,
+      requirementIds: batch.inputState.requirementIds,
+      currentBatch: batch.inputState.currentBatch,
+      batchContext: batch.inputState.batchContext,
+      projectContext: batch.inputState.projectContext,
+      businessFlowBlueprints: batch.inputState.businessFlowBlueprints,
+      phase: batch.inputState.phase,
+      errors: batch.inputState.errors,
+      environmentReady: false,
+      initializationLogs: [],
+      tokenBudget: { estimated: 0, limit: null },
+      skillCalls: [],
+      humanReviewFeedback: '',
+    };
+
+    console.log(`[session] Starting batch ${batch.batchIndex} with threadId=${tid}`);
+
+    return this.streamToOutcome(graph, input, tid, batch.batchIndex);
+  }
+
+  /**
+   * 从 checkpoint 恢复执行
+   */
+  async resumeAt(
+    threadId: string,
+    resumeInput: { action: 'approve' | 'retry'; feedback?: string; edits?: any },
+  ): Promise<RunOutcome> {
+    const graph = this.compileGraph();
+
+    const resumeCommand = new Command({
+      resume: {
+        action: resumeInput.action,
+        feedback: resumeInput.feedback,
+        conditions: resumeInput.edits?.conditions,
+        cases: resumeInput.edits?.cases,
+        analysis: resumeInput.edits?.analysis,
+        matrix: resumeInput.edits?.matrix,
+        retry: resumeInput.action === 'retry',
+      },
+    });
+
+    console.log(`[session] Resuming threadId=${threadId} with action=${resumeInput.action}`);
+
+    return this.streamToOutcome(graph, resumeCommand, threadId, 0);
+  }
+
+  private async streamToOutcome(
+    graph: ReturnType<typeof this.compileGraph>,
+    input: Record<string, unknown> | Command,
+    tid: string,
+    batchIndex: number,
+  ): Promise<RunOutcome> {
+    const stream = await (graph as any).stream(input, {
+      configurable: { thread_id: tid },
+      streamMode: 'values' as const,
+    });
+
+    let lastState: any = null;
+    let interruptPayload: Record<string, unknown> | null = null;
+
+    for await (const chunk of stream) {
+      if (this.isAborted()) break;
+      lastState = chunk;
+
+      const interruptValue = (chunk as any)?.__interrupt__;
+      if (interruptValue && Array.isArray(interruptValue) && interruptValue.length > 0) {
+        interruptPayload = interruptValue[0] as Record<string, unknown>;
+        console.log(`[session] Interrupted at phase=${lastState?.phase}`);
+        break;
+      }
+    }
+
+    if (interruptPayload) {
+      const cpNum = (interruptPayload as any).checkpointNumber ?? 0;
+      return {
+        type: 'interrupt',
+        interrupt: {
+          threadId: tid,
+          phase: (interruptPayload as any).phase ?? lastState?.phase ?? 'unknown',
+          checkpointNumber: cpNum,
+          payload: interruptPayload,
+        },
+      };
+    }
+
+    const cases = lastState?.finalTestCases ?? [];
+    return {
+      type: 'complete',
+      result: {
+        batchIndex,
+        cases,
+        tokenUsage: { input: 0, output: 0, total: 0 },
+        lastState: lastState ?? {},
+      },
+    };
+  }
+}

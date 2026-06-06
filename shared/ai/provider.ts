@@ -24,6 +24,7 @@ export interface ChatOptions {
     description: string;
     parameters: import('./tool.ts').JsonSchema;
   }>;
+  toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
 }
 
 function formatToolsForApi(tools: ChatOptions['tools']): Array<{ type: 'function'; function: { name: string; description: string; parameters: import('./tool.ts').JsonSchema } }> | undefined {
@@ -46,7 +47,7 @@ export interface ChatResponse {
 }
 
 export interface StreamChunk {
-  type: 'reasoning' | 'content' | 'done' | 'error' | 'tool_call_start' | 'tool_call_end';
+  type: 'reasoning' | 'content' | 'done' | 'error' | 'tool_call_start' | 'tool_call_delta' | 'tool_call_end';
   content?: string;
   toolCall?: ToolCall;
   toolResult?: unknown;
@@ -236,7 +237,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       temperature: options?.temperature ?? 0.3,
       max_completion_tokens: options?.maxTokens ?? 128000,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
   });
 }
@@ -252,7 +253,7 @@ function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
   });
 }
@@ -268,7 +269,7 @@ function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' 
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
   });
 }
@@ -284,7 +285,7 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 131072,
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t } : {}; })(),
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
   });
 }
@@ -412,6 +413,7 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
                 if (tc.function?.arguments) {
                   if (currentToolCall) {
                     currentToolCall.args += tc.function.arguments;
+                    yield { type: 'tool_call_delta', content: tc.function.arguments, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
                   }
                 }
               }

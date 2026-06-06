@@ -1,13 +1,41 @@
 import type { ZodType } from 'zod';
 import type { JsonSchema } from './tool.ts';
 
+function unwrapEffects(schema: ZodType): ZodType {
+  const def = (schema as any)._def ?? (schema as any).def;
+  if (!def) return schema;
+  if (def.type === 'pipe' || def.type === 'transform' || def.type === 'effects') {
+    const inner = def.innerType ?? def.schema ?? def.in;
+    return inner ? unwrapEffects(inner) : schema;
+  }
+  return schema;
+}
+
 export function zodToJsonSchema(schema: ZodType): JsonSchema {
+  const unwrapped = unwrapEffects(schema);
+  if (unwrapped !== schema) return zodToJsonSchema(unwrapped);
   try {
     const result = (schema as any).toJSONSchema();
-    return cleanJsonSchema(result);
+    const cleaned = cleanJsonSchema(result);
+    if (hasBadDescriptions(cleaned)) throw new Error('incomplete toJSONSchema');
+    return cleaned;
   } catch {
     return convertFallback(schema);
   }
+}
+
+function hasBadDescriptions(schema: JsonSchema): boolean {
+  if (typeof schema.description === 'string' && /\[unknown zod type/.test(schema.description)) return true;
+  if (schema.properties) {
+    for (const val of Object.values(schema.properties)) {
+      if (hasBadDescriptions(val as JsonSchema)) return true;
+    }
+  }
+  if (schema.items && hasBadDescriptions(schema.items as JsonSchema)) return true;
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object' && hasBadDescriptions(schema.additionalProperties as JsonSchema)) return true;
+  if (schema.anyOf) { for (const s of schema.anyOf) { if (hasBadDescriptions(s)) return true; } }
+  if (schema.oneOf) { for (const s of schema.oneOf) { if (hasBadDescriptions(s)) return true; } }
+  return false;
 }
 
 function cleanJsonSchema(raw: any): JsonSchema {
@@ -166,6 +194,7 @@ function convertFallback(zodSchema: ZodType): JsonSchema {
     case 'readonly':
     case 'branded':
     case 'nonoptional':
+    case 'pipe':
     case 'transform': {
       const inner = def.innerType ?? def.in ?? def.input ?? def.type;
       return inner ? convertFallback(inner) : { type: 'object' };

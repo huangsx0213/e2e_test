@@ -9,6 +9,8 @@ interface TestGenRun {
   current_batch: number;
   total_batches: number;
   config: { name?: string } | null;
+  model_name: string | null;
+  provider_config_name: string | null;
   created_at: string;
 }
 
@@ -94,6 +96,7 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun }: TestG
               <th className="px-4 py-2 text-xs font-medium text-slate-500">Name</th>
               <th className="px-4 py-2 text-xs font-medium text-slate-500">Status</th>
               <th className="px-4 py-2 text-xs font-medium text-slate-500">Mode</th>
+              <th className="px-4 py-2 text-xs font-medium text-slate-500">Model</th>
               <th className="px-4 py-2 text-xs font-medium text-slate-500">Date</th>
               <th className="px-4 py-2 text-xs font-medium text-slate-500">Results</th>
               <th className="px-4 py-2 text-xs font-medium text-slate-500 w-10"></th>
@@ -121,6 +124,11 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun }: TestG
                   </span>
                 </td>
                 <td className="px-4 py-2 text-xs text-slate-500">{run.mode}</td>
+                <td className="px-4 py-2 text-xs text-slate-500">
+                  {run.model_name ? (
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px]">{run.model_name}</span>
+                  ) : '-'}
+                </td>
                 <td className="px-4 py-2 text-xs text-slate-400">
                   {run.created_at?.slice(0, 16) || '-'}
                 </td>
