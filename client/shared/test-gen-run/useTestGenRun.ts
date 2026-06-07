@@ -18,6 +18,7 @@ export interface UseTestGenRunOptions {
     autoRecover?: boolean;
     refetchLogsMs?: number;
   };
+  detailPanelVisible?: boolean;
 }
 
 export interface UseTestGenRunAPI {
@@ -55,7 +56,7 @@ export interface UseTestGenRunAPI {
 }
 
 export function useTestGenRun(currentProjectId: string | null, options?: UseTestGenRunOptions): UseTestGenRunAPI {
-  const { runId: explicitRunId, config: opts } = options ?? {};
+  const { runId: explicitRunId, config: opts, detailPanelVisible = true } = options ?? {};
   const autoFollow = opts?.autoFollow ?? true;
   const refetchLogsMs = opts?.refetchLogsMs ?? 3000;
 
@@ -71,8 +72,8 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
 
   const sseUrl = useMemo(() => {
     const rid = explicitRunId ?? state.runId;
-    return rid && state.isRunning ? `/api/test-gen/${rid}/stream` : null;
-  }, [explicitRunId, state.runId, state.isRunning]);
+    return rid && state.isRunning && detailPanelVisible ? `/api/test-gen/${rid}/stream` : null;
+  }, [explicitRunId, state.runId, state.isRunning, detailPanelVisible]);
 
   const handleSSEEvent = useCallback((event: { type: string; data: any }) => {
     if (event.type === 'agent:thinking') {
@@ -110,9 +111,13 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     state.runId ?? '', undefined, state.runId ? refetchLogsMs : 0,
   );
 
+  const lastMergedLogsRef = useRef<any[]>([]);
+
   useEffect(() => {
     if (!state.runId || !agentLogs.length) return;
     if (state.checkpointData) return;
+    if (agentLogs === lastMergedLogsRef.current) return;
+    lastMergedLogsRef.current = agentLogs;
     dispatch({ type: 'MERGE_AGENT_LOGS', logs: agentLogs });
   }, [agentLogs, state.runId, state.checkpointData]);
 
@@ -241,49 +246,87 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     }
   }, [state.runId, state.isRunning, state.selectedNodeId, api]);
 
+  // Infer the actual phase for RUNNING runs from agent logs.
+  // DB phase stays at 'analysis' since it's only updated at interrupt/completion.
+  // For RUNNING status, checkpoint must have been passed already (otherwise status = WAITING_REVIEW),
+  // so we never return review-conditions/review-draft/final-review here.
+  const inferRunningPhase = useCallback((logs: any[]): string => {
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const agentLogs = logs
+      .filter((l: any) => normalize(l.agent_name) !== 'preparation')
+      .sort((a: any, b: any) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0));
+    if (agentLogs.length === 0) return 'analysis';
+    const latest = agentLogs[0];
+    const name = normalize(latest.agent_name);
+    if (latest.status === 'COMPLETED') {
+      if (name === 'test-analyst') return 'design';
+      if (name === 'test-designer') return 'quality';
+      if (name === 'quality-manager') return 'complete';
+      return 'analysis';
+    }
+    if (name === 'test-analyst') return 'analysis';
+    if (name === 'test-designer') return 'design';
+    if (name === 'quality-manager') return 'quality';
+    return 'analysis';
+  }, []);
+
   const loadRun = useCallback(async (runId: string) => {
     let logs: any[] = [];
     try {
       const runInfo = await api.get(runId);
-      if (runInfo) {
-        dispatch({
-          type: 'RESTORE_RUN',
-          runId: runInfo.id,
-          phase: runInfo.phase,
-          status: runInfo.status,
-          mode: runInfo.mode ?? 'auto',
-          totalBatches: runInfo.total_batches,
-        });
-        if (runInfo.thread_id) {
-          const cpState = await api.testGen.getCheckpointState(runId);
-          if (cpState?.checkpointData) {
-            dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
-          }
-        }
+      if (!runInfo) return;
+
+      // For RUNNING runs, fetch logs first to infer actual phase
+      // (DB phase stays at 'analysis' since it's only updated at interrupt/completion)
+      if (runInfo.status === 'RUNNING') {
         logs = await api.logs(runId);
-        if (logs.length > 0) {
-          dispatch({ type: 'MERGE_AGENT_LOGS', logs });
-        }
-        const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
-        const totalCases = completedLogs.reduce((sum: number, l: any) => {
-          const od = l.output_data;
-          if (!od) return sum;
-          const finalCases = od.finalTestCases;
-          const count = Array.isArray(finalCases) ? finalCases.length : 0;
-          return sum + count;
-        }, 0);
-        const tu = runInfo.token_usage;
-        dispatch({
-          type: 'SET_RUN_SUMMARY',
-          summary: {
-            totalCases,
-            totalTokens: tu?.total_tokens || 0,
-            totalLatencyMs: logs.reduce((sum: number, l: any) => sum + (l.latency_ms ?? 0), 0),
-            totalBatches: runInfo.total_batches || 0,
-          },
-        });
       }
+      const effectivePhase = runInfo.status === 'RUNNING'
+        ? inferRunningPhase(logs)
+        : runInfo.phase;
+
+      let checkpointData: any = undefined;
+      if (runInfo.thread_id) {
+        try {
+          const cpState = await api.testGen.getCheckpointState(runId);
+          checkpointData = cpState?.checkpointData ?? undefined;
+        } catch {
+          // checkpoint state fetch failed, continue with logs
+        }
+      }
+      if (logs.length === 0) {
+        logs = await api.logs(runId);
+      }
+
+      const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
+      const totalCases = completedLogs.reduce((sum: number, l: any) => {
+        const od = l.output_data;
+        if (!od) return sum;
+        const finalCases = od.finalTestCases;
+        const count = Array.isArray(finalCases) ? finalCases.length : 0;
+        return sum + count;
+      }, 0);
+      const tu = runInfo.token_usage;
+      const summary = {
+        totalCases,
+        totalTokens: tu?.total_tokens || 0,
+        totalLatencyMs: logs.reduce((sum: number, l: any) => sum + (l.latency_ms ?? 0), 0),
+        totalBatches: runInfo.total_batches || 0,
+      };
+
       queryClient.setQueryData([...queryKeys.testGen.logs(runId), 'all'], logs);
+      lastMergedLogsRef.current = logs;
+      dispatch({
+        type: 'RESTORE_RUN_COMPLETE',
+        runId: runInfo.id,
+        phase: effectivePhase,
+        status: runInfo.status,
+        mode: runInfo.mode ?? 'auto',
+        totalBatches: runInfo.total_batches,
+        checkpointData,
+        logs,
+        summary,
+      });
     } catch {
     }
   }, [api, queryClient]);
@@ -345,22 +388,26 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     const target = normalize(agentName);
     const logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
     if (logs.length === 0) return null;
-    const latest = logs.reduce((best: any, l: any) =>
-      (l.batch || 0) > (best?.batch || 0) ? l : best, logs[0]);
+    const latest = logs.reduce((best: any, l: any) => {
+      const lBatch = l.batch || 0;
+      const bBatch = best?.batch || 0;
+      if (lBatch !== bBatch) return lBatch > bBatch ? l : best;
+      const lTime = Date.parse(l.created_at || '') || 0;
+      const bTime = Date.parse(best?.created_at || '') || 0;
+      return lTime >= bTime ? l : best;
+    }, logs[0]);
     const mergedOutputData = mergeOutputData(logs);
     const totalTokens = logs.reduce((sum: number, l: any) => {
       const tu = l.token_usage;
       return sum + (tu ? ((tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0)) : 0);
     }, 0);
     const totalLatencyMs = logs.reduce((sum: number, l: any) => sum + (l.latency_ms ?? 0), 0);
-    const allCompleted = logs.every((l: any) => l.status === 'COMPLETED');
-    const anyFailed = logs.some((l: any) => l.status === 'FAILED');
     return {
       ...latest,
       output_data: mergedOutputData,
       token_usage: { input: 0, output: 0, reasoning: 0, total_tokens: totalTokens },
       latency_ms: totalLatencyMs,
-      status: anyFailed ? 'FAILED' : allCompleted ? 'COMPLETED' : latest.status,
+      status: latest.status,
     };
   };
 

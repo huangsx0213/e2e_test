@@ -68,7 +68,8 @@ export type ProviderConfig =
   | { type: 'azure-openai'; endpoint: string; apiKey: string; deployment: string; apiVersion: string }
   | { type: 'nvidia-nim'; endpoint: string; apiKey: string; model: string }
   | { type: 'openrouter'; apiKey: string; model: string }
-  | { type: 'openai'; apiKey: string; model: string };
+  | { type: 'openai'; apiKey: string; model: string }
+  | { type: 'agnes-ai'; endpoint?: string; apiKey: string; model: string };
 
 export function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): AbortSignal | undefined {
   if (!signal1 && !signal2) return undefined;
@@ -173,6 +174,10 @@ function serializeMessages(messages: ChatMessage[]): unknown[] {
 }
 
 function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger): AIProvider {
+  const mergeHeaders = (providerHeaders: Record<string, string>): Record<string, string> => ({
+    'User-Agent': 'e2e-test/1.0',
+    ...providerHeaders,
+  });
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
@@ -181,7 +186,7 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
     const fetchStart = Date.now();
     const response = await fetch(strategy.buildUrl(), {
       method: 'POST',
-      headers: strategy.buildHeaders(),
+      headers: mergeHeaders(strategy.buildHeaders()),
       body: JSON.stringify(strategy.buildBody(serializeMessages(messages), options)),
       signal,
     });
@@ -194,7 +199,7 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
     const body = { ...strategy.buildBody(serializeMessages(messages), options, true), stream: true, stream_options: { include_usage: true } };
     const response = await fetch(strategy.buildUrl(), {
       method: 'POST',
-      headers: strategy.buildHeaders(),
+      headers: mergeHeaders(strategy.buildHeaders()),
       body: JSON.stringify(body),
       signal,
     });
@@ -204,6 +209,7 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
       const errorPrefix = strategy.name === 'azure' ? 'Azure OpenAI'
         : strategy.name === 'nvidia' ? 'Nvidia NIM'
         : strategy.name === 'openrouter' ? 'OpenRouter'
+        : strategy.name === 'agnes' ? 'Agnes AI'
         : 'OpenAI';
       throw new Error(`${errorPrefix} stream error ${response.status}: ${errorText}`);
     }
@@ -222,6 +228,7 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
     case 'nvidia-nim': return createNvidiaProvider(config);
     case 'openrouter': return createOpenRouterProvider(config);
     case 'openai': return createOpenAIProvider(config);
+    case 'agnes-ai': return createAgnesAIProvider(config);
   }
 }
 
@@ -290,6 +297,24 @@ function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIPr
   });
 }
 
+function createAgnesAIProvider(config: ProviderConfig & { type: 'agnes-ai' }): AIProvider {
+  const raw = (config.endpoint || 'https://apihub.agnes-ai.com/v1').replace(/\/$/, '');
+  const baseUrl = raw.endsWith('/v1') ? raw : `${raw}/v1`;
+  return createProviderFromStrategy({
+    name: 'agnes',
+    buildUrl: () => `${baseUrl}/chat/completions`,
+    buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}`, 'User-Agent': 'e2e-test/1.0' }),
+    buildBody: (messages, options?) => ({
+      model: config.model,
+      messages,
+      temperature: options?.temperature ?? 0.3,
+      max_tokens: options?.maxTokens ?? 8192,
+      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
+    } as any),
+  });
+}
+
 export function createAIProviderWithFallback(config: ExtendedProviderConfig): AIProvider {
   const primary = createAIProvider(config as ProviderConfig);
   const cb = new CircuitBreaker(
@@ -355,6 +380,7 @@ async function parseChatResponse(response: Response, providerName: string, fetch
     const errorPrefix = providerName === 'azure' ? 'Azure OpenAI error'
       : providerName === 'nvidia' ? 'Nvidia NIM error'
       : providerName === 'openrouter' ? 'OpenRouter error'
+      : providerName === 'agnes' ? 'Agnes AI error'
       : 'OpenAI error';
     throw new Error(`${errorPrefix} ${response.status}: ${errorText}`);
   }
@@ -368,7 +394,7 @@ async function parseChatResponse(response: Response, providerName: string, fetch
   const formatted = formatContent(msg.content);
   console.log(`[provider:${providerName}] result${agentTag}:${formatted}\n       usage: ${data.usage?.prompt_tokens ?? '?'}in/${data.usage?.completion_tokens ?? '?'}out`);
   return {
-    content: msg.content,
+    content: msg.content ?? '',
     reasoningContent: msg.reasoning_content || undefined,
     toolCalls,
     usage: {

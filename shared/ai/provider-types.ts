@@ -6,7 +6,7 @@ export interface CircuitBreakerState {
 }
 
 export interface ProviderConfig {
-  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai';
+  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai' | 'agnes-ai';
   endpoint?: string;
   apiKey: string;
   deployment?: string;

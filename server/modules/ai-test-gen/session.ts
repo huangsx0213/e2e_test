@@ -172,7 +172,8 @@ export class TestGenSession {
 
       const interruptValue = (chunk as any)?.__interrupt__;
       if (interruptValue && Array.isArray(interruptValue) && interruptValue.length > 0) {
-        interruptPayload = interruptValue[0] as Record<string, unknown>;
+        const raw = interruptValue[0] as Record<string, unknown>;
+        interruptPayload = (raw?.value as Record<string, unknown>) ?? raw;
         console.log(`[session] Interrupted at phase=${lastState?.phase}`);
         break;
       }

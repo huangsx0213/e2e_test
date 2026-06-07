@@ -617,18 +617,15 @@ function ProviderConfigsTab() {
     if (!form.name || !form.apiKey) return;
     setIsSubmitting(true);
     try {
+      const payload = {
+        name: form.name.trim(), type: form.type, endpoint: form.endpoint.trim(),
+        encryptedApiKey: form.apiKey.trim(), deployment: form.deployment.trim(),
+        apiVersion: form.apiVersion.trim(), model: form.model.trim(),
+      };
       if (editingId) {
-        await update(editingId, {
-          name: form.name, type: form.type, endpoint: form.endpoint,
-          encryptedApiKey: form.apiKey, deployment: form.deployment,
-          apiVersion: form.apiVersion, model: form.model,
-        });
+        await update(editingId, payload);
       } else {
-        await create({
-          name: form.name, type: form.type, endpoint: form.endpoint,
-          encryptedApiKey: form.apiKey, deployment: form.deployment,
-          apiVersion: form.apiVersion, model: form.model,
-        });
+        await create(payload);
       }
       setShowForm(false);
     } finally {
@@ -641,6 +638,7 @@ function ProviderConfigsTab() {
     'nvidia-nim': 'Nvidia NIM',
     'openrouter': 'OpenRouter',
     'openai': 'OpenAI',
+    'agnes-ai': 'Agnes AI',
   };
 
   return (
@@ -754,7 +752,7 @@ function ProviderConfigsTab() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-slate-500 mb-1">Endpoint URL</label>
-              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder="https://your-resource.openai.azure.com" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'agnes-ai' ? 'https://apihub.agnes-ai.com/v1 (default)' : form.type === 'nvidia-nim' ? 'https://integrate.api.nvidia.com/v1' : 'https://your-resource.openai.azure.com'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">API Key *</label>
@@ -767,7 +765,7 @@ function ProviderConfigsTab() {
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">Model</label>
-              <input type="text" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder="gpt-4o" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+              <input type="text" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder={form.type === 'agnes-ai' ? 'agnes-2.0-flash' : 'gpt-4o'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
             </div>
             {(form.type === 'azure-openai') && (
               <>

@@ -19,7 +19,7 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
   const [showRetryConfirm, setShowRetryConfirm] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const pipeline = useTestGenRun(currentProjectId);
+  const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: view === 'config' });
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
   const [reviewMode, setReviewMode] = useState(false);
@@ -100,6 +100,7 @@ const handleRefresh = useCallback(async () => {
       try {
         const { api } = await import('@/shared/services/api');
         await api.testGen.retry(pipeline.runId);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.testGen.runs(currentProjectId || '') });
       } catch {
         // error surfaced via SSE
       } finally {
@@ -118,7 +119,7 @@ const handleRefresh = useCallback(async () => {
         setReviewMode(false);
       }
     }
-  }, [pipeline]);
+  }, [pipeline, queryClient, currentProjectId]);
 
   const handleRetryFailedRun = useCallback(async (runId: string) => {
     try {
@@ -168,10 +169,7 @@ const handleRefresh = useCallback(async () => {
   // Debug: log pipeline state on node selection
   useEffect(() => {
     if (pipeline.selectedNode) {
-      console.log('[TestGen] Selected node:', pipeline.selectedNode.id, 'kind:', pipeline.selectedNode.kind);
-      console.log('[TestGen] checkpointData:', pipeline.checkpointData ? 'has data' : 'null');
-      console.log('[TestGen] selectedAgentLog:', pipeline.selectedAgentLog ? 'has log' : 'null');
-      console.log('[TestGen] agentLogs count:', pipeline.agentLogs.length);
+      console.log(`[TestGen] node=${pipeline.selectedNode.id} kind=${pipeline.selectedNode.kind} checkpoint=${pipeline.checkpointData ? 'yes' : 'no'} agentLog=${pipeline.selectedAgentLog ? 'yes' : 'no'} logs=${pipeline.agentLogs.length}`);
     }
   }, [pipeline.selectedNode, pipeline.checkpointData, pipeline.selectedAgentLog, pipeline.agentLogs]);
 

@@ -1,4 +1,5 @@
 import { Command, interrupt } from '@langchain/langgraph';
+import { PHASE_BY_CHECKPOINT } from '../state';
 import type { TestGenState, Phase } from '../state';
 
 interface CheckpointInterruptPayload {
@@ -33,7 +34,7 @@ type CheckpointResponse = {
 
 export function makeCheckpoint(checkpointNum: number) {
   return (state: TestGenState): Command => {
-    const phase = `checkpoint_${checkpointNum}` as Phase;
+    const phase = PHASE_BY_CHECKPOINT[checkpointNum] ?? `checkpoint_${checkpointNum}` as Phase;
 
     if (state.mode === 'auto') {
       console.log(`[test-gen:graph] [checkpoint_${checkpointNum}] AUTO mode, auto-passing`);

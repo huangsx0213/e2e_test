@@ -101,6 +101,7 @@ export class Orchestrator {
           batchIndex: i,
           inputState: this.buildBatchInputState(
             projectId, params.requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows,
+            params.mode,
           ),
         };
 
@@ -326,11 +327,11 @@ export class Orchestrator {
 
     switch (run.phase) {
       case 'review-conditions':
-        return { conditions: state.testConditions ?? [], analysis: state.requirementAnalysis ?? null };
+        return { checkpointData: { conditions: state.testConditions ?? [], analysis: state.requirementAnalysis ?? null } };
       case 'review-draft':
-        return { cases: state.draftTestCases ?? [] };
+        return { checkpointData: { cases: state.draftTestCases ?? [] } };
       case 'final-review':
-        return { cases: state.finalTestCases ?? [], matrix: state.coverageMatrix ?? null };
+        return { checkpointData: { cases: state.finalTestCases ?? [], matrix: state.coverageMatrix ?? null } };
       default:
         return null;
     }
@@ -405,7 +406,7 @@ export class Orchestrator {
     const remaining = epics
       .map((epic, i) => ({
         batchIndex: i,
-        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows),
+        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto'),
       }))
       .slice(startFrom);
 
@@ -441,11 +442,12 @@ export class Orchestrator {
     i: number,
     totalBatches: number,
     businessFlows: any[],
+    mode: 'auto' | 'interactive' = 'auto',
   ) {
     return {
       projectId,
       runId: '',
-      mode: 'auto' as const,
+      mode,
       requirementIds,
       currentBatch: requirements.filter((r: any) => new Set(rootGroups.get(epic.id)!).has(r.id)),
       batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },

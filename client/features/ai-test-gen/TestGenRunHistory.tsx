@@ -138,7 +138,7 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun, onRetry
                   {run.current_batch}/{run.total_batches} batches
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <div className="flex items-center justify-end gap-1">
+                  <div className="flex items-center justify-end gap-2.5">
                     {run.status === 'FAILED' && (
                       <button
                         disabled={retryingRunId === run.id}

@@ -610,7 +610,7 @@ export interface ProviderConfig {
   id: string;
   projectId: string;
   name: string;
-  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai';
+  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai' | 'agnes-ai';
   endpoint: string;
   encryptedApiKey: string;
   deployment: string;

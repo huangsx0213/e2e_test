@@ -268,11 +268,15 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         action.phase, action.status, action.totalBatches,
       );
       const isRunning = action.status !== 'COMPLETED' && action.status !== 'FAILED';
+      const waitingNode = action.status === 'WAITING_REVIEW'
+        ? restoredNodes.find(n => n.status === 'waiting')
+        : undefined;
       return {
         ...state,
         runId: action.runId,
         mode: action.mode ?? state.mode,
         nodes: restoredNodes,
+        selectedNodeId: waitingNode?.id ?? state.selectedNodeId,
         isRunning,
         checkpointData: null,
         thinkingTextByNode: {},
@@ -293,6 +297,13 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
       if (n.id === 'complete') {
         const logs = action.logs ?? [];
         const completedLogs = logs.filter((l: any) => l.status === 'COMPLETED');
+        // Only mark complete as completed if quality_manager has finished
+        const normalize = (s: string) => s.replace(/_/g, '-');
+        const qualityManagerDone = completedLogs.some((l: any) => {
+          const name = normalize(l.agent_name ?? '');
+          return name === 'quality-manager' || name === 'quality_manager';
+        });
+        if (!qualityManagerDone) return n;
         let totalOutputCount = 0;
         let totalTokens = 0;
         let totalLatencyMs = 0;
@@ -329,8 +340,14 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         const target = normalize(n.agentName);
         const agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === target);
         if (agentLogs.length === 0) return n;
-        const latest = agentLogs.reduce((best: any, l: any) =>
-          (l.batch || 0) > (best?.batch || 0) ? l : best, agentLogs[0]);
+        const latest = agentLogs.reduce((best: any, l: any) => {
+          const lBatch = l.batch || 0;
+          const bBatch = best?.batch || 0;
+          if (lBatch !== bBatch) return lBatch > bBatch ? l : best;
+          const lTime = Date.parse(l.created_at || '') || 0;
+          const bTime = Date.parse(best?.created_at || '') || 0;
+          return lTime >= bTime ? l : best;
+        }, agentLogs[0]);
         let outputCount = 0;
         const mergedOutputData: Record<string, any> = {};
         let totalTokens = 0;
@@ -352,13 +369,113 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
           totalLatencyMs += log.latency_ms ?? 0;
         }
-        const status = n.status === 'running' ? 'running' as const :
-                       latest.status === 'COMPLETED' ? 'completed' as const :
+        const status = latest.status === 'COMPLETED' ? 'completed' as const :
                        latest.status === 'FAILED' ? 'error' as const :
                        n.status;
         return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
       return { ...state, nodes, agentLogs: action.logs ?? [] };
+    }
+
+    case 'RESTORE_RUN_COMPLETE': {
+      const restoredNodes = buildRestoredNodes(
+        action.phase, action.status, action.totalBatches,
+      );
+      const isRunning = action.status !== 'COMPLETED' && action.status !== 'FAILED';
+      const waitingNode = action.status === 'WAITING_REVIEW'
+        ? restoredNodes.find(n => n.status === 'waiting')
+        : undefined;
+      const nodes = restoredNodes.map(n => {
+        if (n.id === 'complete') {
+          const completedLogs = (action.logs ?? []).filter((l: any) => l.status === 'COMPLETED');
+          const normalize = (s: string) => s.replace(/_/g, '-');
+          const qualityManagerDone = completedLogs.some((l: any) => {
+            const name = normalize(l.agent_name ?? '');
+            return name === 'quality-manager' || name === 'quality_manager';
+          });
+          if (!qualityManagerDone) return n;
+          let totalOutputCount = 0;
+          let totalTokens = 0;
+          let totalLatencyMs = 0;
+          const mergedOutputData: Record<string, any> = {};
+          const seenCaseIds = new Set<string>();
+          for (const log of completedLogs) {
+            const od = log.output_data;
+            if (od) {
+              const finalCases = od.finalTestCases;
+              if (Array.isArray(finalCases)) {
+                for (const tc of finalCases) {
+                  if (tc.id && !seenCaseIds.has(tc.id)) {
+                    seenCaseIds.add(tc.id);
+                    totalOutputCount++;
+                  }
+                }
+              }
+              for (const [key, val] of Object.entries(od)) {
+                if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+              }
+            }
+            const tu = log.token_usage;
+            if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+            totalLatencyMs += log.latency_ms ?? 0;
+          }
+          return {
+            ...n, status: 'completed' as const,
+            meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
+          };
+        }
+        if (!n.agentName) return n;
+        const normalize = (s: string) => s.replace(/_/g, '-');
+        const target = normalize(n.agentName);
+        const agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === target);
+        if (agentLogs.length === 0) return n;
+        const latest = agentLogs.reduce((best: any, l: any) => {
+          const lBatch = l.batch || 0;
+          const bBatch = best?.batch || 0;
+          if (lBatch !== bBatch) return lBatch > bBatch ? l : best;
+          const lTime = Date.parse(l.created_at || '') || 0;
+          const bTime = Date.parse(best?.created_at || '') || 0;
+          return lTime >= bTime ? l : best;
+        }, agentLogs[0]);
+        let outputCount = 0;
+        const mergedOutputData: Record<string, any> = {};
+        let totalTokens = 0;
+        let totalLatencyMs = 0;
+        for (const log of agentLogs) {
+          const od = log.output_data;
+          if (od) {
+            outputCount += (Object.values(od) as any[]).reduce((sum: number, v: any) => sum + (Array.isArray(v) ? v.length : 0), 0);
+            for (const [key, val] of Object.entries(od)) {
+              if (Array.isArray(val)) {
+                if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
+                mergedOutputData[key] = [...mergedOutputData[key], ...val];
+              } else {
+                mergedOutputData[key] = val;
+              }
+            }
+          }
+          const tu = log.token_usage;
+          if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
+          totalLatencyMs += log.latency_ms ?? 0;
+        }
+        const status = latest.status === 'COMPLETED' ? 'completed' as const :
+                       latest.status === 'FAILED' ? 'error' as const :
+                       n.status;
+        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
+      });
+      return {
+        ...state,
+        runId: action.runId,
+        mode: action.mode ?? state.mode,
+        nodes,
+        selectedNodeId: waitingNode?.id ?? state.selectedNodeId,
+        isRunning,
+        checkpointData: action.checkpointData ?? null,
+        thinkingTextByNode: {},
+        error: null,
+        agentLogs: action.logs ?? [],
+        runSummary: action.summary,
+      };
     }
 
     case 'SET_RUN_SUMMARY':

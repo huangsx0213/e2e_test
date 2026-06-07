@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const providerTypes = ['azure-openai', 'nvidia-nim', 'openrouter', 'openai'] as const;
+const providerTypes = ['azure-openai', 'nvidia-nim', 'openrouter', 'openai', 'agnes-ai'] as const;
 
 export const providerConfigPayloadSchema = z.object({
   id: z.string().min(1).optional(),

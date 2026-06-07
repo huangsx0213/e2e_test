@@ -61,7 +61,7 @@ crudModule.router.post('/:id/test', withErrorHandling(async (req, res) => {
       success: true,
       latencyMs: latency,
       model: existing.model,
-      response: response.content.slice(0, 100),
+      response: response.content?.slice(0, 100) ?? '(empty response)',
       tokenUsage: response.usage,
     });
   } catch (err: any) {

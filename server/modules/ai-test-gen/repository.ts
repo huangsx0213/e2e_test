@@ -76,7 +76,7 @@ export class TestGenRepository {
   createRun(runId: string, projectId: string, mode: string, config: unknown, createdBy = 'anonymous'): void {
     db.prepare(`
       INSERT INTO test_gen_runs (id, project_id, status, phase, current_batch, total_batches, mode, created_by, config)
-      VALUES (?, ?, 'RUNNING', 'init', 0, 0, ?, ?, ?)
+      VALUES (?, ?, 'RUNNING', 'analysis', 0, 0, ?, ?, ?)
     `).run(runId, projectId, mode, createdBy, JSON.stringify(config));
   }
 

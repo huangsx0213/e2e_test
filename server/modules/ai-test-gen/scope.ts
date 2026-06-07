@@ -48,7 +48,7 @@ export class RunScope {
   // Thinking throttle: buffer text per agent, flush every THINKING_FLUSH_MS
   private readonly thinkingBuffer = new Map<string, string>();
   private thinkingFlushTimer: ReturnType<typeof setInterval> | null = null;
-  private static readonly THINKING_FLUSH_MS = 100;
+  private static readonly THINKING_FLUSH_MS = 3000;
 
   constructor(
     runId: string,

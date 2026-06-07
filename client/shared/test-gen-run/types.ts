@@ -103,7 +103,8 @@ export type TestGenReducerAction =
   | { type: 'SET_CONNECTED'; connected: boolean }
   | { type: 'SET_ERROR'; error: TestGenError | null }
   | { type: 'DISMISS_ERROR' }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary };
 
 export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentName' | 'subSteps'>;
 
@@ -134,6 +135,7 @@ export const TEST_GEN_NODE_DEFS: TestGenNodeDef[] = [
 ] as const;
 
 const PHASE_TO_DONE: Record<string, NodeId[]> = {
+  init: [],
   analysis: ['preparation'],
   'review-conditions': ['preparation', 'agent_test_analyst'],
   design: ['preparation', 'agent_test_analyst', 'checkpoint_1'],
@@ -141,6 +143,10 @@ const PHASE_TO_DONE: Record<string, NodeId[]> = {
   quality: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2'],
   'final-review': ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
   complete: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'],
+  // Server-side phase values (backward compatibility)
+  checkpoint_1: ['preparation', 'agent_test_analyst'],
+  checkpoint_2: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer'],
+  checkpoint_3: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
 };
 
 const PHASE_TO_CURRENT: Record<string, NodeId> = {
@@ -150,6 +156,10 @@ const PHASE_TO_CURRENT: Record<string, NodeId> = {
   'review-draft': 'checkpoint_2',
   quality: 'agent_quality_manager',
   'final-review': 'checkpoint_3',
+  // Server-side phase values (backward compatibility)
+  checkpoint_1: 'checkpoint_1',
+  checkpoint_2: 'checkpoint_2',
+  checkpoint_3: 'checkpoint_3',
 };
 
 export function createFreshNodes(): TestGenNode[] {
