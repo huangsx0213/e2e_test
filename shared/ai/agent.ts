@@ -80,7 +80,7 @@ function fillTemplate(template: string, variables: Record<string, string>): stri
 }
 
 const RETRY_DELAYS = [2000, 4000, 8000];
-const DEFAULT_TIMEOUT = 60_000;
+  const DEFAULT_TIMEOUT = 120_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));

@@ -1,6 +1,7 @@
 import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
 import type { AIProvider } from '../../../../../shared/ai/provider.ts';
+import { mergeSignals } from '../../../../../shared/ai/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { z } from 'zod';
 
@@ -125,11 +126,12 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
         { role: 'user' as const, content: userMessage },
       ];
 
-      const validated = await callLLMWithStructuredOutput(
+      const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
+      const { output: validated, usage } = await callLLMWithStructuredOutput(
         provider, messages, skills, DesignerOutputSchema,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
-        { signal, agentName },
+        { signal: nodeSignal, agentName },
       );
 
       observer?.onStep?.(agentName, 1, 'Apply test techniques');
@@ -139,7 +141,7 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       const latencyMs = Date.now() - startTime;
       const draftCount = validated.draftTestCases?.length ?? 0;
       console.log(`[test-gen:graph] [${agentName}] EXIT, ${draftCount} draft test cases, latency=${latencyMs}ms`);
-      observer?.onComplete?.(agentName, { input: 0, output: 0, reasoning: 0 }, latencyMs, messages, validated);
+      observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
       return {
         draftTestCases: validated.draftTestCases as any,

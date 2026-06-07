@@ -1,6 +1,7 @@
 import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
 import type { AIProvider } from '../../../../../shared/ai/provider.ts';
+import { mergeSignals } from '../../../../../shared/ai/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { z } from 'zod';
 
@@ -143,11 +144,12 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         { role: 'user' as const, content: userMessage },
       ];
 
-      const validated = await callLLMWithStructuredOutput(
+      const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
+      const { output: validated, usage } = await callLLMWithStructuredOutput(
         provider, messages, skills, QualityOutputSchema,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
-        { signal, agentName },
+        { signal: nodeSignal, agentName },
       );
 
       observer?.onStep?.(agentName, 1, 'Merge human feedback');
@@ -157,7 +159,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       const finalCount = validated.finalTestCases?.length ?? 0;
       const matrixRows = validated.coverageMatrix?.rows?.length ?? 0;
       console.log(`[test-gen:graph] [${agentName}] EXIT, ${finalCount} final test cases, ${matrixRows} coverage rows, latency=${latencyMs}ms`);
-      observer?.onComplete?.(agentName, { input: 0, output: 0, reasoning: 0 }, latencyMs, messages, validated);
+      observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
       return {
         finalTestCases: validated.finalTestCases as any,

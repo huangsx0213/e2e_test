@@ -76,7 +76,7 @@ export async function callLLMWithStructuredOutput<T>(
   observer?: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string) => void },
   agentName?: string,
   extra?: Partial<ChatOptions>,
-): Promise<T> {
+): Promise<{ output: T; usage: { input: number; output: number; reasoning: number } }> {
   const allMessages = [...messages];
 
   // ── Phase 1: Thinking ──
@@ -85,6 +85,7 @@ export async function callLLMWithStructuredOutput<T>(
   let thinkingText = '';
   let contentText = '';
   let maxRounds = 5;
+  let capturedUsage = { input: 0, output: 0, reasoning: 0 };
 
   while (maxRounds-- > 0 && !extra?.signal?.aborted) {
     const toolCalls: ToolCall[] = [];
@@ -106,19 +107,26 @@ export async function callLLMWithStructuredOutput<T>(
       if (chunk.type === 'tool_call_delta' && chunk.content && currentToolCall) {
         currentToolCall.args += chunk.content;
       }
-      if (chunk.type === 'tool_call_end' && chunk.toolCall) {
-        if (currentToolCall && currentToolCall.args) {
-          try {
-            toolCalls.push({ id: chunk.toolCall.id, name: chunk.toolCall.name, args: JSON.parse(currentToolCall.args) });
-          } catch {
-            toolCalls.push({ id: chunk.toolCall.id, name: chunk.toolCall.name, args: currentToolCall.args });
+        if (chunk.type === 'tool_call_end' && chunk.toolCall) {
+          if (currentToolCall && currentToolCall.args) {
+            try {
+              toolCalls.push({ id: chunk.toolCall.id, name: chunk.toolCall.name, args: JSON.parse(currentToolCall.args) });
+            } catch {
+              toolCalls.push({ id: chunk.toolCall.id, name: chunk.toolCall.name, args: currentToolCall.args });
+            }
+          } else {
+            toolCalls.push(chunk.toolCall);
           }
-        } else {
-          toolCalls.push(chunk.toolCall);
+          currentToolCall = null;
         }
-        currentToolCall = null;
+        if (chunk.type === 'done' && chunk.usage) {
+          capturedUsage = {
+            input: capturedUsage.input + (chunk.usage.promptTokens || 0),
+            output: capturedUsage.output + (chunk.usage.completionTokens || 0),
+            reasoning: capturedUsage.reasoning + (chunk.usage.reasoningTokens || 0),
+          };
+        }
       }
-    }
 
     // 处理 skill tool calls
     if (toolCalls.length > 0) {
@@ -173,7 +181,7 @@ export async function callLLMWithStructuredOutput<T>(
     // 1. 整个 content 就是 JSON
     try {
       const parsed = JSON.parse(contentText);
-      return outputSchema.parse(parsed);
+      return { output: outputSchema.parse(parsed), usage: capturedUsage };
     } catch {}
 
     // 2. 从混合内容中提取 JSON（分析文本 + JSON）
@@ -210,7 +218,7 @@ export async function callLLMWithStructuredOutput<T>(
     for (let i = jsonBlocks.length - 1; i >= 0; i--) {
       try {
         const extracted = JSON.parse(jsonBlocks[i]);
-        return outputSchema.parse(extracted);
+        return { output: outputSchema.parse(extracted), usage: capturedUsage };
       } catch {}
     }
 
@@ -222,7 +230,7 @@ export async function callLLMWithStructuredOutput<T>(
         const extractCall = calls.find((c: any) => c.name === 'extract_structured_output');
         if (extractCall?.arguments) {
           const args = typeof extractCall.arguments === 'string' ? JSON.parse(extractCall.arguments) : extractCall.arguments;
-          return outputSchema.parse(args);
+          return { output: outputSchema.parse(args), usage: capturedUsage };
         }
       } catch {}
     }
@@ -246,13 +254,20 @@ export async function callLLMWithStructuredOutput<T>(
       extractContent += chunk.content;
       observer?.onThinking?.(agentName ?? '', chunk.content);
     }
+    if (chunk.type === 'done' && chunk.usage) {
+      capturedUsage = {
+        input: capturedUsage.input + (chunk.usage.promptTokens || 0),
+        output: capturedUsage.output + (chunk.usage.completionTokens || 0),
+        reasoning: capturedUsage.reasoning + (chunk.usage.reasoningTokens || 0),
+      };
+    }
   }
 
   // 从 Phase 2 的 content 中解析 JSON
   if (extractContent) {
     try {
       const parsed = JSON.parse(extractContent);
-      return outputSchema.parse(parsed);
+      return { output: outputSchema.parse(parsed), usage: capturedUsage };
     } catch {}
 
     // 尝试提取 JSON 块
@@ -260,7 +275,7 @@ export async function callLLMWithStructuredOutput<T>(
     if (jsonMatch) {
       try {
         const extracted = JSON.parse(jsonMatch[0]);
-        return outputSchema.parse(extracted);
+        return { output: outputSchema.parse(extracted), usage: capturedUsage };
       } catch {}
     }
   }

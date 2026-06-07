@@ -1620,7 +1620,7 @@ function CompleteNodeView({ runSummary, node }: { runSummary: any; node: any }) 
         </div>
         <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
           <div className="text-xl font-bold text-slate-800 tracking-tight">{formatTokens(tokens)}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Tokens Saved</div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Tokens Used</div>
         </div>
         <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
           <div className="text-xl font-bold text-slate-800 tracking-tight">{latency > 0 ? formatMs(latency) : 'N/A'}</div>
