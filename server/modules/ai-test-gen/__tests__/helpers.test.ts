@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deduplicateTestCases } from '../helpers/dedup.ts';
-import { groupRequirementsByEpic } from '../helpers/grouper.ts';
-import { buildFallbackConfigs } from '../helpers/fallback.ts';
+import { deduplicateTestCases, groupRequirementsByEpic, buildFallbackConfigs } from '../helpers.ts';
 
 describe('deduplicateTestCases', () => {
   it('removes cases with the same title and identical steps', () => {

@@ -159,7 +159,7 @@ export const DesignerInputSchema = z.object({
 });
 ```
 
-#### `shared/ai/nl-test-case-schema.ts` — QMInputSchema
+#### QMInputSchema (removed — formerly in `shared/ai/nl-test-case-schema.ts`)
 
 ```ts
 export const QMInputSchema = z.object({

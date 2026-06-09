@@ -78,6 +78,84 @@ function formatTokens(n: number) {
   return n.toLocaleString(); 
 }
 
+function getPriorityBadgeClass(priority?: string) {
+  const p = (priority || '').toLowerCase();
+  if (['critical', 'high', 'p0'].includes(p)) return 'bg-rose-50 text-rose-600 border-rose-100';
+  if (['medium', 'p1'].includes(p)) return 'bg-amber-50 text-amber-600 border-amber-100';
+  return 'bg-slate-50 text-slate-500 border-slate-100';
+}
+
+function StepsSection({ steps, expanded, index, onToggle }: { steps: any[]; expanded: boolean; index: number; onToggle: (i: number) => void }) {
+  if (!steps?.length) return null;
+  return (
+    <div className="space-y-0.5">
+      <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Steps ({steps.length})</span>
+      <div className="space-y-0.5">
+        {(expanded ? steps : steps.slice(0, 3)).map((st: any, sIdx: number) => (
+          <div key={sIdx} className="flex gap-1 text-sm text-slate-500 leading-snug">
+            <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
+            <div>
+              <p className="leading-tight">{st.action || st.description || st}</p>
+              {st.expected && <p className="text-xs text-slate-400 italic">→ {st.expected}</p>}
+            </div>
+          </div>
+        ))}
+        {steps.length > 3 && <button onClick={() => onToggle(index)} className="text-xs text-blue-500 font-semibold hover:text-blue-600">{expanded ? 'Show fewer' : `+ ${steps.length - 3} more steps`}</button>}
+      </div>
+    </div>
+  );
+}
+
+function PreconditionSection({ preconditions, expanded, index, onToggle }: { preconditions: string[]; expanded: boolean; index: number; onToggle: (key: string) => void }) {
+  if (!preconditions?.length) return null;
+  return (
+    <div>
+      <button onClick={() => onToggle(`pre_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600 w-full text-left">
+        Preconditions ({preconditions.length}) {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+      </button>
+      {expanded && <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-slate-100">{preconditions.map((p: string, j: number) => <p key={j} className="text-sm text-slate-500 leading-snug">{j + 1}. {p}</p>)}</div>}
+    </div>
+  );
+}
+
+function TagSection({ tags, expanded, index, onToggle }: { tags: string[]; expanded: boolean; index: number; onToggle: (key: string) => void }) {
+  if (!tags?.length) return null;
+  return (
+    <div>
+      <button onClick={() => onToggle(`tags_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
+        Tags ({tags.length}) {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+      </button>
+      {expanded && <div className="flex flex-wrap gap-1 mt-1">{tags.map((tag: string, j: number) => <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>)}</div>}
+    </div>
+  );
+}
+
+function TestDataSection({ testData, expanded, index, onToggle }: { testData: any; expanded: boolean; index: number; onToggle: (key: string) => void }) {
+  if (!testData) return null;
+  return (
+    <div>
+      <button onClick={() => onToggle(`data_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
+        Test Data {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+      </button>
+      {expanded && <p className="mt-1 text-sm text-slate-500">{typeof testData === 'string' ? testData : JSON.stringify(testData)}</p>}
+    </div>
+  );
+}
+
+function SelfReviewIssuesList({ issues }: { issues: any[] }) {
+  if (!issues?.length) return null;
+  return <div className="mt-1 space-y-1">{issues.map((iss: any, j: number) => (
+    <div key={j} className="text-sm bg-slate-50 border border-slate-100 rounded p-1.5 space-y-0.5">
+      <div className="flex items-center gap-1">
+        <span className={`text-[10px] font-bold uppercase px-1 rounded border ${iss.severity === 'blocker' ? 'bg-rose-50 text-rose-600 border-rose-100' : iss.severity === 'major' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{iss.severity}</span>
+        <span className="text-[10px] font-bold uppercase text-slate-400">{iss.category}</span>
+      </div>
+      <p className="text-sm text-slate-600">{iss.description}</p>
+      <p className="text-xs text-slate-400 italic">Suggestion: {iss.suggestion}</p>
+    </div>
+  ))}</div>;
+}
+
 // Category design mapping helper
 const getCategoryBadgeClass = (category?: string) => {
   const normCat = (category || 'functional').toLowerCase();
@@ -297,7 +375,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                     <p className="text-slate-700 leading-tight font-medium">{c.condition}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1 shrink-0">
-                    {c.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${c.priority === 'critical' || c.priority === 'high' ? 'bg-rose-50 text-rose-600 border-rose-100' : c.priority === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{c.priority}</span>}
+                    {c.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(c.priority)}`}>{c.priority}</span>}
                     {c.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(c.category)}`}>{c.category}</span>}
                   </div>
                 </div>
@@ -374,7 +452,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                   <span className="font-semibold text-slate-800 text-sm truncate">{tc.title || tc.id}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-1 shrink-0">
-                  {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${tc.priority === 'high' || tc.priority === 'p0' ? 'bg-rose-50 text-rose-600 border-rose-100' : tc.priority === 'medium' || tc.priority === 'p1' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.priority}</span>}
+                  {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
                   {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
                 </div>
               </div>
@@ -388,67 +466,19 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                 )}
               </div>
 
-              {tc.preconditions && tc.preconditions.length > 0 && (
-                <div>
-                  <button onClick={() => toggleField(`pre_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600 w-full text-left">
-                    Preconditions ({tc.preconditions.length})
-                    {preExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                  </button>
-                  {preExp && <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-slate-100">{tc.preconditions.map((p: string, j: number) => <p key={j} className="text-sm text-slate-500 leading-snug">{j + 1}. {p}</p>)}</div>}
-                </div>
-              )}
-
-              {tc.steps && tc.steps.length > 0 && (
-                <div className="space-y-0.5">
-                  <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Steps ({tc.steps.length})</span>
-                  <div className="space-y-0.5">
-                    {(stepsExp ? tc.steps : tc.steps.slice(0, 3)).map((st: any, sIdx: number) => (
-                      <div key={sIdx} className="flex gap-1 text-sm text-slate-500 leading-snug">
-                        <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
-                        <div>
-                          <p className="leading-tight">{st.action || st.description || st}</p>
-                          {st.expected && <p className="text-xs text-slate-400 italic">→ {st.expected}</p>}
-                        </div>
-                      </div>
-                    ))}
-                    {tc.steps.length > 3 && <button onClick={() => toggleSteps(i)} className="text-xs text-blue-500 font-semibold hover:text-blue-600">{stepsExp ? 'Show fewer' : `+ ${tc.steps.length - 3} more steps`}</button>}
-                  </div>
-                </div>
-              )}
+              <PreconditionSection preconditions={tc.preconditions} expanded={preExp} index={i} onToggle={toggleField} />
+              <StepsSection steps={tc.steps} expanded={stepsExp} index={i} onToggle={toggleSteps} />
 
               {(tc.tags?.length > 0 || tc.testData || tc.selfReview?.issues) && (
                 <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1">
-                  {tc.tags?.length > 0 && (
-                    <div>
-                      <button onClick={() => toggleField(`tags_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                        Tags ({tc.tags.length}) {tagsExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                      </button>
-                      {tagsExp && <div className="flex flex-wrap gap-1 mt-1">{tc.tags.map((tag: string, j: number) => <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>)}</div>}
-                    </div>
-                  )}
-                  {tc.testData && (
-                    <div>
-                      <button onClick={() => toggleField(`data_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                        Test Data {dataExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                      </button>
-                      {dataExp && <p className="mt-1 text-sm text-slate-500">{typeof tc.testData === 'string' ? tc.testData : JSON.stringify(tc.testData)}</p>}
-                    </div>
-                  )}
+                  <TagSection tags={tc.tags} expanded={tagsExp} index={i} onToggle={toggleField} />
+                  <TestDataSection testData={tc.testData} expanded={dataExp} index={i} onToggle={toggleField} />
                   {tc.selfReview && (
                     <div>
                       <button onClick={() => toggleField(`review_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
                         Self Review ({tc.selfReview.score}/10) {reviewExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       </button>
-                      {reviewExp && <div className="mt-1 space-y-1">{tc.selfReview.issues?.map((iss: any, j: number) => (
-                        <div key={j} className="text-sm bg-slate-50 border border-slate-100 rounded p-1.5 space-y-0.5">
-                          <div className="flex items-center gap-1">
-                            <span className={`text-[10px] font-bold uppercase px-1 rounded border ${iss.severity === 'blocker' ? 'bg-rose-50 text-rose-600 border-rose-100' : iss.severity === 'major' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{iss.severity}</span>
-                            <span className="text-[10px] font-bold uppercase text-slate-400">{iss.category}</span>
-                          </div>
-                          <p className="text-sm text-slate-600">{iss.description}</p>
-                          <p className="text-xs text-slate-400 italic">Suggestion: {iss.suggestion}</p>
-                        </div>
-                      ))}</div>}
+                      {reviewExp && <SelfReviewIssuesList issues={tc.selfReview.issues} />}
                     </div>
                   )}
                 </div>
@@ -566,7 +596,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                     <span className="font-medium text-slate-700 truncate">{tc.title || tc.id}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-1 shrink-0">
-                    {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${tc.priority === 'high' || tc.priority === 'p0' ? 'bg-rose-50 text-rose-600 border-rose-100' : tc.priority === 'medium' || tc.priority === 'p1' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.priority}</span>}
+                    {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
                     {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
                     {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${tc.status === 'approved' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
                   </div>
@@ -582,51 +612,13 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                   {tc.selfReview?.pass !== undefined && <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border ${tc.selfReview.pass ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{tc.selfReview.pass ? 'PASS' : 'REVIEW'}</span>}
                 </div>
 
-                {tc.preconditions && tc.preconditions.length > 0 && (
-                  <div>
-                    <button onClick={() => toggleField(`pre_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600 w-full text-left">
-                      Preconditions ({tc.preconditions.length}) {preExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                    </button>
-                    {preExp && <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-slate-100">{tc.preconditions.map((p: string, j: number) => <p key={j} className="text-sm text-slate-500 leading-snug">{j + 1}. {p}</p>)}</div>}
-                  </div>
-                )}
-
-                {tc.steps && tc.steps.length > 0 && (
-                  <div className="space-y-0.5">
-                    <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Steps ({tc.steps.length})</span>
-                    <div className="space-y-0.5">
-                      {(stepsExp ? tc.steps : tc.steps.slice(0, 3)).map((st: any, sIdx: number) => (
-                        <div key={sIdx} className="flex gap-1 text-sm text-slate-500 leading-snug">
-                          <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
-                          <div>
-                            <p className="leading-tight">{st.action || st.description || st}</p>
-                            {st.expected && <p className="text-xs text-slate-400 italic">→ {st.expected}</p>}
-                          </div>
-                        </div>
-                      ))}
-                      {tc.steps.length > 3 && <button onClick={() => toggleSteps(i)} className="text-xs text-blue-500 font-semibold hover:text-blue-600">{stepsExp ? 'Show fewer' : `+ ${tc.steps.length - 3} more steps`}</button>}
-                    </div>
-                  </div>
-                )}
+                <PreconditionSection preconditions={tc.preconditions} expanded={preExp} index={i} onToggle={toggleField} />
+                <StepsSection steps={tc.steps} expanded={stepsExp} index={i} onToggle={toggleSteps} />
 
                 {(tc.tags?.length > 0 || tc.testData || tc.selfReview?.issues || tc.reviewSummary || tc.changeLog) && (
                   <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1">
-                    {tc.tags?.length > 0 && (
-                      <div>
-                        <button onClick={() => toggleField(`tags_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                          Tags ({tc.tags.length}) {tagsExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
-                        {tagsExp && <div className="flex flex-wrap gap-1 mt-1">{tc.tags.map((tag: string, j: number) => <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>)}</div>}
-                      </div>
-                    )}
-                    {tc.testData && (
-                      <div>
-                        <button onClick={() => toggleField(`data_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                          Test Data {dataExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
-                        {dataExp && <p className="mt-1 text-sm text-slate-500">{typeof tc.testData === 'string' ? tc.testData : JSON.stringify(tc.testData)}</p>}
-                      </div>
-                    )}
+                    <TagSection tags={tc.tags} expanded={tagsExp} index={i} onToggle={toggleField} />
+                    <TestDataSection testData={tc.testData} expanded={dataExp} index={i} onToggle={toggleField} />
                     {tc.reviewSummary && (
                       <div>
                         <button onClick={() => toggleField(`review_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
@@ -640,16 +632,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                         <button onClick={() => toggleField(`issues_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
                           Issues ({tc.selfReview.issues.length}) {issuesExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                         </button>
-                        {issuesExp && <div className="mt-1 space-y-1">{tc.selfReview.issues.map((iss: any, j: number) => (
-                          <div key={j} className="text-sm bg-slate-50 border border-slate-100 rounded p-1.5 space-y-0.5">
-                            <div className="flex items-center gap-1">
-                              <span className={`text-[10px] font-bold uppercase px-1 rounded border ${iss.severity === 'blocker' ? 'bg-rose-50 text-rose-600 border-rose-100' : iss.severity === 'major' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{iss.severity}</span>
-                              <span className="text-[10px] font-bold uppercase text-slate-400">{iss.category}</span>
-                            </div>
-                            <p className="text-sm text-slate-600">{iss.description}</p>
-                            <p className="text-xs text-slate-400 italic">Suggestion: {iss.suggestion}</p>
-                          </div>
-                        ))}</div>}
+                        {issuesExp && <SelfReviewIssuesList issues={tc.selfReview.issues} />}
                       </div>
                     )}
                     {tc.changeLog && (

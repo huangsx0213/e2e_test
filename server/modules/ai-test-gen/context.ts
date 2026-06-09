@@ -1,14 +1,14 @@
-import { Semaphore } from '../../../shared/ai/semaphore.ts';
-import { createAIProviderWithFallback } from '../../../shared/ai/provider.ts';
-import { computePromptVersion } from '../../../shared/ai/prompt-version.ts';
-import { useCacheStore } from '../../../shared/ai/cache.ts';
+import { Semaphore } from './infra/semaphore.ts';
+import { createAIProviderWithFallback } from './infra/provider.ts';
+import { computePromptVersion } from './infra/prompt-version.ts';
+import { useCacheStore } from './infra/cache.ts';
 import { pipelineRepo, decryptApiKey } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { RunScope } from './scope.ts';
 import { TestGenSession } from './session.ts';
-import { buildFallbackConfigs } from './helpers/fallback.ts';
+import { buildFallbackConfigs } from './helpers.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
-import type { AIProvider } from '../../../shared/ai/provider.ts';
+import type { AIProvider } from './infra/provider.ts';
 
 export interface RunContext {
   runId: string;
@@ -115,6 +115,7 @@ export class ContextBuilder {
       model: providerConfigRow.model,
       fallbackConfigs: fallbackConfigs as any,
     });
+    console.log(`[context] AI provider created: type=${providerConfigRow.type}, model=${providerConfigRow.model || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
 
     const promptVersion = computePromptVersion();
     const modelName = providerConfigRow.model || providerConfigRow.deployment || 'unknown';

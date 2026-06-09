@@ -1,8 +1,10 @@
 import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
-import type { AIProvider } from '../../../../../shared/ai/provider.ts';
-import { mergeSignals } from '../../../../../shared/ai/provider.ts';
+import type { AIProvider } from '../../infra/provider.ts';
+import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
+import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
+import { ANALYST_SKILLS } from '../skills/skills.ts';
 import { z } from 'zod';
 
 // ============================================================
@@ -31,89 +33,43 @@ const AnalystOutputSchema = z.object({
 });
 
 // ============================================================
-// Prompt
-// ============================================================
-function buildSystemPrompt(state: TestGenState): string {
-  const batch = state.batchContext;
-  return `You are a senior ISTQB Test Analyst. Your task is to analyze requirements and derive test conditions.
-
-## Context
-- Batch: ${batch.currentBatch}/${batch.totalBatches}
-- Requirements: ${state.currentBatch.length} items
-- Project: ${state.projectContext.name}
-${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-
-## Instructions
-1. Review each requirement and assess its risk level
-2. For each requirement, derive test conditions using ISTQB techniques:
-   - Equivalence Partitioning
-   - Boundary Value Analysis
-   - Decision Table Testing
-   - State Transition Testing
-   - Use Case Testing
-3. Assign priority based on business impact and risk
-4. Document the rationale for each technique choice
-5. Consider all coverage dimensions: functional, boundary, error, validation, integration
-
-${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
-
-You may use available tools to query additional context before producing your final output.
-
-Provide your analysis step by step as plain text: walk through each requirement, identify risks, select ISTQB techniques, and explain your reasoning for each test condition. This analysis will be streamed to the user in real-time. Do NOT output JSON in this step — only provide your analysis text.`;
-}
-
-function buildUserMessage(state: TestGenState): string {
-  return JSON.stringify({
-    requirements: state.currentBatch.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: (r as any).description ?? '',
-      level: (r as any).level ?? '',
-      parentId: (r as any).parentId ?? '',
-    })),
-    businessFlows: state.businessFlowBlueprints?.map(f => ({
-      name: f.name,
-      steps: f.steps,
-    })),
-  }, null, 2);
-}
-
-// ============================================================
 // Node
 // ============================================================
 export interface AnalystNodeOptions {
   provider: AIProvider;
-  observer?: AgentObserver;
   skills?: SkillDefinition[];
+  observer?: AgentObserver;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
 
 export function makeAnalystNode(opts: AnalystNodeOptions) {
-  const { provider, observer, skills = [], timeoutMs = 300_000, signal } = opts;
+  const { provider, skills = ANALYST_SKILLS, observer, timeoutMs = 300_000, signal } = opts;
   const agentName = 'test_analyst';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
     const reqCount = state.currentBatch?.length ?? 0;
     const batchInfo = `${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
-    console.log(`[test-gen:graph] [${agentName}] ENTER, ${batchInfo}, ${reqCount} requirements, phase=${state.phase}`);
+    const flowMode = state.includeFlowCases ? 'FLOW-LEVEL' : 'REQUIREMENT-LEVEL';
+    console.log(`[test-gen:graph] [${agentName}] ENTER, ${batchInfo}, ${reqCount} requirements, mode=${flowMode}, phase=${state.phase}`);
 
     observer?.onStart?.(agentName);
     observer?.onStep?.(agentName, 0, 'Assess risk & priority');
 
     try {
-      const systemPrompt = buildSystemPrompt(state);
-      const userMessage = buildUserMessage(state);
-
       const messages = [
-        { role: 'system' as const, content: systemPrompt },
-        { role: 'user' as const, content: userMessage },
+        { role: 'system' as const, content: buildAnalystSystemPrompt(state) },
+        { role: 'user' as const, content: buildAnalystUserMessage(state) },
       ];
+      console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
-      const { output: validated, usage } = await callLLMWithStructuredOutput(
-        provider, messages, skills, AnalystOutputSchema,
+      const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
+        provider,
+        messages,
+        skills,
+        AnalystOutputSchema,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
         { signal: nodeSignal, agentName },
@@ -124,12 +80,46 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
 
       const latencyMs = Date.now() - startTime;
       const tcCount = validated.testConditions?.length ?? 0;
-      console.log(`[test-gen:graph] [${agentName}] EXIT, ${tcCount} test conditions, latency=${latencyMs}ms`);
+      const skillCallCount = toolCallRecords?.length ?? 0;
+      const techniqueBreakdown = validated.testConditions?.reduce((acc: Record<string, number>, tc: any) => {
+        acc[tc.primaryTechnique] = (acc[tc.primaryTechnique] || 0) + 1;
+        return acc;
+      }, {});
+      console.log(`[test-gen:graph] [${agentName}] EXIT, ${tcCount} test conditions, ${skillCallCount} skill calls, tokens=${usage.input + usage.output}, latency=${latencyMs}ms`);
+      console.log(`[test-gen:graph] [${agentName}] Techniques: ${JSON.stringify(techniqueBreakdown)}`);
+      if (skillCallCount > 0) {
+        console.log(`[test-gen:graph] [${agentName}] Skill calls: ${toolCallRecords!.map(tc => `${tc.name}(${JSON.stringify(tc.input).slice(0, 60)})`).join(', ')}`);
+      }
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
+
+      // Collect queried requirement details from skill calls for downstream agents
+      const queriedReqs: Record<string, unknown> = {};
+      for (const tc of (toolCallRecords ?? [])) {
+        if (tc.name === 'requirement_detail_query' && tc.input && (tc.input as any).requirementId) {
+          const rawId = (tc.input as any).requirementId;
+          if (Array.isArray(rawId)) {
+            // Batch query returns { [id]: details }
+            if (tc.output && typeof tc.output === 'object' && !Array.isArray(tc.output)) {
+              Object.assign(queriedReqs, tc.output);
+            }
+          } else {
+            queriedReqs[rawId] = tc.output;
+          }
+        }
+      }
 
       return {
         requirementAnalysis: validated.requirementAnalysis,
         testConditions: validated.testConditions as any,
+        queriedRequirements: Object.keys(queriedReqs).length > 0 ? queriedReqs : undefined,
+        skillCalls: (toolCallRecords ?? []).map(tc => ({
+          agent: agentName,
+          skillName: tc.name,
+          input: tc.input,
+          output: tc.output,
+          latencyMs: 0,
+          timestamp: Date.now(),
+        })),
         phase: 'review-conditions' as const,
       };
     } catch (err: any) {

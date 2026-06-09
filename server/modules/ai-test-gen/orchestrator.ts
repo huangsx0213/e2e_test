@@ -1,5 +1,5 @@
 import { randomId } from '../../shared/utils/index.ts';
-import type { AIProvider } from '../../../shared/ai/provider.ts';
+import type { AIProvider } from './infra/provider.ts';
 import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { ContextBuilder, type RunContext, type StartParams } from './context.ts';
@@ -7,13 +7,20 @@ import { TestGenSession, type BatchInput, type BatchResult, type InterruptInfo }
 import { requirementRepo } from '../requirements/repository.ts';
 import { buildRequirementIndex } from '../requirements/index-generator.ts';
 import { businessFlowRepo } from '../business-flows/repository.ts';
-import { groupRequirementsByEpic } from './helpers/grouper.ts';
-import { deduplicateTestCases } from './helpers/dedup.ts';
+import { groupRequirementsByEpic } from './helpers.ts';
+import { deduplicateTestCases } from './helpers.ts';
 import { buildBusinessFlowBlueprints } from './business-flow-blueprint.ts';
 import { checkpointer } from './graph/checkpointer.ts';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import { db } from '../../shared/db/client.ts';
+
+function createDummyProvider(): AIProvider {
+  return {
+    chat: async () => ({ content: '', usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 } }),
+    streamChat: async function* () { /* noop */ },
+  };
+}
 
 export class Orchestrator {
   private readonly contextBuilder: ContextBuilder;
@@ -37,6 +44,7 @@ export class Orchestrator {
   }
 
   async start(runId: string, projectId: string, params: StartParams): Promise<void> {
+    console.log(`[orchestrator] START runId=${runId}, projectId=${projectId}, mode=${params.mode}, reqs=${params.requirementIds?.length ?? 0}, flows=${params.flowIds?.length ?? 0}, includeFlowCases=${params.includeFlowCases ?? false}`);
     let ctx: RunContext | null = null;
     let keepSse = false;
 
@@ -45,12 +53,14 @@ export class Orchestrator {
         providerConfigName: params.providerConfigName,
         useCache: params.useCache,
       });
+      console.log(`[orchestrator] Context built: model=${ctx.modelName}, tokenLimit=${ctx.tokenLimit}`);
 
       // 构建需求索引和批次
       const allIndex = buildRequirementIndex(projectId);
       const selectedIds = new Set(params.requirementIds || []);
       const { epics, rootGroups, totalBatches, selectedIndex } = groupRequirementsByEpic(allIndex, selectedIds);
       if (epics.length === 0) throw new Error('No matching requirements found for selected IDs');
+      console.log(`[orchestrator] Requirements indexed: ${selectedIndex.length} selected, ${epics.length} epics, ${totalBatches} batch(es)`);
       pipelineRepo.updateBatchCount(runId, totalBatches);
       pipelineRepo.updateModelInfo(runId, ctx.modelName, params.providerConfigName ?? null);
 
@@ -61,6 +71,7 @@ export class Orchestrator {
         ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
         : allProjectFlows;
       const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirements });
+      console.log(`[orchestrator] Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints built`);
 
       // 发送准备阶段事件
       ctx.sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
@@ -93,6 +104,7 @@ export class Orchestrator {
       for (let i = 0; i < epics.length; i++) {
         if (ctx.isAborted()) break;
         const epic = epics[i];
+        console.log(`[orchestrator] === Batch ${i + 1}/${epics.length} START (epic: ${epic.id ?? 'N/A'}) ===`);
         ctx.scope.setBatch(i + 1, totalBatches);
         pipelineRepo.updateCurrentBatch(runId, i + 1);
         pipelineRepo.updateThreadId(runId, `${runId}-batch-${i}`);
@@ -101,12 +113,13 @@ export class Orchestrator {
           batchIndex: i,
           inputState: this.buildBatchInputState(
             projectId, params.requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows,
-            params.mode,
+            params.mode, params.includeFlowCases, params.flowIds,
           ),
         };
 
         const outcome = await ctx.session.startBatch(batchInput);
         if (outcome.type === 'interrupt') {
+          console.log(`[orchestrator] Batch ${i + 1} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
           pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
           this.sseGateway.emit(runId, 'checkpoint:waiting', {
             checkpointNumber: outcome.interrupt.checkpointNumber,
@@ -117,6 +130,7 @@ export class Orchestrator {
           keepSse = true;
           return;
         }
+        console.log(`[orchestrator] === Batch ${i + 1}/${epics.length} COMPLETE, ${outcome.result.cases.length} test cases ===`);
         allResults.push(outcome.result);
         ctx.sendEvent('batch:complete', {
           batch: i + 1, total: totalBatches,
@@ -129,6 +143,7 @@ export class Orchestrator {
         const { allCases, removedCount } = deduplicateTestCases(
           allResults.flatMap(r => r.lastState?.finalTestCases || r.cases || []),
         );
+        console.log(`[orchestrator] ALL BATCHES DONE: ${allCases.length} final cases${removedCount > 0 ? ` (${removedCount} duplicates removed)` : ''}`);
         if (removedCount > 0) {
           ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length });
         }
@@ -316,11 +331,7 @@ export class Orchestrator {
 
     pipelineRepo.touchRun(runId);
 
-    const dummyProvider: AIProvider = {
-      chat: async () => ({ content: '', usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 } }),
-      streamChat: async function* () { /* noop */ },
-    };
-    const graph = buildTestGenGraph({ provider: dummyProvider, checkpointer });
+    const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
     const snapshot = await graph.getState({ configurable: { thread_id: run.thread_id } });
     const state = snapshot?.values;
     if (!state) return null;
@@ -359,11 +370,7 @@ export class Orchestrator {
     }
     if (Object.keys(stateKeys).length === 0) return;
 
-    const dummyProvider: AIProvider = {
-      chat: async () => ({ content: '', usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 } }),
-      streamChat: async function* () { /* noop */ },
-    };
-    const graph = buildTestGenGraph({ provider: dummyProvider, checkpointer });
+    const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
     await graph.updateState({ configurable: { thread_id: row.thread_id } }, stateKeys);
 
     try {
@@ -406,7 +413,7 @@ export class Orchestrator {
     const remaining = epics
       .map((epic, i) => ({
         batchIndex: i,
-        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto'),
+        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto', config.includeFlowCases, config.flowIds),
       }))
       .slice(startFrom);
 
@@ -443,6 +450,8 @@ export class Orchestrator {
     totalBatches: number,
     businessFlows: any[],
     mode: 'auto' | 'interactive' = 'auto',
+    includeFlowCases = false,
+    selectedFlowIds: string[] = [],
   ) {
     return {
       projectId,
@@ -453,6 +462,8 @@ export class Orchestrator {
       batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
       projectContext: { name: epic.title, pages: [], endpoints: [] },
       businessFlowBlueprints: businessFlows,
+      includeFlowCases,
+      selectedFlowIds,
       phase: 'analysis' as const,
       errors: [],
     };

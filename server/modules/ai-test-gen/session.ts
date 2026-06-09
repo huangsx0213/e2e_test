@@ -1,7 +1,7 @@
 import { Command } from '@langchain/langgraph';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { checkpointer } from './graph/checkpointer.ts';
-import type { AIProvider } from '../../../shared/ai/provider.ts';
+import type { AIProvider } from './infra/provider.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import type { TestGenState } from './graph/state.ts';
@@ -17,6 +17,8 @@ export interface BatchInput {
     batchContext: { currentBatch: number; totalBatches: number; processedCount: number };
     projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
     businessFlowBlueprints: any[] | undefined;
+    includeFlowCases: boolean;
+    selectedFlowIds: string[];
     phase: TestGenState['phase'];
     errors: any[];
   };
@@ -97,6 +99,8 @@ export class TestGenSession {
       batchContext: batch.inputState.batchContext,
       projectContext: batch.inputState.projectContext,
       businessFlowBlueprints: batch.inputState.businessFlowBlueprints,
+      includeFlowCases: batch.inputState.includeFlowCases,
+      selectedFlowIds: batch.inputState.selectedFlowIds,
       phase: batch.inputState.phase,
       errors: batch.inputState.errors,
       environmentReady: false,
@@ -158,6 +162,8 @@ export class TestGenSession {
       streamMode: 'values' as const,
     };
 
+    console.log(`[session] Streaming graph for threadId=${tid}, batch=${batchIndex}, input=${input === null ? 'null(retry)' : input instanceof Command ? 'Command(resume)' : 'state'}`);
+
     // retryFromLastCheckpoint 传入 null，LangGraph 从最后一个 checkpoint 恢复
     const stream = input === null
       ? await (graph as any).stream(null, streamOpts)
@@ -165,19 +171,32 @@ export class TestGenSession {
 
     let lastState: any = null;
     let interruptPayload: Record<string, unknown> | null = null;
+    let nodeCount = 0;
 
     for await (const chunk of stream) {
-      if (this.isAborted()) break;
+      if (this.isAborted()) {
+        console.log(`[session] Aborted during streaming, threadId=${tid}`);
+        break;
+      }
       lastState = chunk;
+      nodeCount++;
+
+      // Log each node transition
+      const phase = (chunk as any)?.phase;
+      if (phase) {
+        console.log(`[session] Graph step ${nodeCount}: phase=${phase}`);
+      }
 
       const interruptValue = (chunk as any)?.__interrupt__;
       if (interruptValue && Array.isArray(interruptValue) && interruptValue.length > 0) {
         const raw = interruptValue[0] as Record<string, unknown>;
         interruptPayload = (raw?.value as Record<string, unknown>) ?? raw;
-        console.log(`[session] Interrupted at phase=${lastState?.phase}`);
+        console.log(`[session] INTERRUPTED at phase=${lastState?.phase}, checkpoint=${(interruptPayload as any).checkpointNumber ?? '?'}`);
         break;
       }
     }
+
+    console.log(`[session] Stream complete: ${nodeCount} steps, threadId=${tid}`);
 
     if (interruptPayload) {
       const cpNum = (interruptPayload as any).checkpointNumber ?? 0;
@@ -193,6 +212,7 @@ export class TestGenSession {
     }
 
     const cases = lastState?.finalTestCases ?? [];
+    console.log(`[session] Batch ${batchIndex} outcome: complete, ${cases.length} final test cases`);
     return {
       type: 'complete',
       result: {

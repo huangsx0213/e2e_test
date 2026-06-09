@@ -3,7 +3,7 @@ import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { providerConfigRepo } from './repository.ts';
 import { normalizeProviderConfig } from './mapper.ts';
 import { providerConfigPayloadSchema, providerConfigPatchSchema } from './schema.ts';
-import { createAIProvider } from '../../../shared/ai/provider.ts';
+import { createAIProvider } from '../ai-test-gen/infra/provider.ts';
 import { decryptApiKey } from '../../shared/crypto.ts';
 
 const crudModule = createCrudModule({

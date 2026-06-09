@@ -1,16 +1,13 @@
 import { StateGraph, START, END, type BaseCheckpointSaver } from '@langchain/langgraph';
-import type { AIProvider } from '../../../../shared/ai/provider.ts';
+import type { AIProvider } from '../infra/provider.ts';
 import { TestGenStateAnnotation, type TestGenState } from './state.ts';
-import {
-  makePreparationNode,
-  makeAnalystNode,
-  makeDesignerNode,
-  makeQualityNode,
-  makeCheckpoint,
-  makeCompleteNode,
-} from './nodes/index.ts';
+import { makePreparationNode } from './nodes/preparation.ts';
+import { makeAnalystNode } from './nodes/analyst.ts';
+import { makeDesignerNode } from './nodes/designer.ts';
+import { makeQualityNode } from './nodes/quality.ts';
+import { makeCheckpoint } from './nodes/checkpoints.ts';
+import { makeCompleteNode } from './nodes/complete.ts';
 import type { AgentObserver } from './nodes/types.ts';
-import { ANALYST_SKILLS, DESIGNER_SKILLS, QUALITY_SKILLS } from './skills.ts';
 
 export interface BuildGraphOptions {
   provider: AIProvider;
@@ -36,21 +33,18 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
   const analystNode = makeAnalystNode({
     provider: opts.provider,
     observer,
-    skills: ANALYST_SKILLS,
     timeoutMs,
     signal,
   });
   const designerNode = makeDesignerNode({
     provider: opts.provider,
     observer,
-    skills: DESIGNER_SKILLS,
     timeoutMs,
     signal,
   });
   const qualityNode = makeQualityNode({
     provider: opts.provider,
     observer,
-    skills: QUALITY_SKILLS,
     timeoutMs,
     signal,
   });

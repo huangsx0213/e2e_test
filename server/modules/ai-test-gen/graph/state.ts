@@ -73,6 +73,7 @@ export const TestGenStateAnnotation = Annotation.Root({
   requirementAnalysis: Annotation<{ overallApproach: string; riskAssessmentSummary: string } | undefined>,
   testConditions: Annotation<TestCondition[] | undefined>,
   approvedConditions: Annotation<TestCondition[] | undefined>,
+  queriedRequirements: Annotation<Record<string, unknown> | undefined>,
 
   // === Test Designer 产物 ===
   draftTestCases: Annotation<NlTestCase[] | undefined>,
@@ -81,6 +82,10 @@ export const TestGenStateAnnotation = Annotation.Root({
   // === Quality Manager 产物 ===
   finalTestCases: Annotation<NlTestCase[] | undefined>,
   coverageMatrix: Annotation<CoverageMatrix | undefined>,
+
+  // === 生成模式 ===
+  includeFlowCases: Annotation<boolean>,
+  selectedFlowIds: Annotation<string[]>,
 
   // === 审核反馈 ===
   humanReviewFeedback: Annotation<string>,

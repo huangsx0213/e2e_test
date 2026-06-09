@@ -192,13 +192,13 @@ The reusable agent runtime and skill system. **No server-specific code**.
 | `provider-types.ts` | — | `ProviderConfig` extended config (circuit breaker settings, fallbacks). |
 | `tool.ts` | 253 | `AgentTool` (wraps a role as a `ToolDef`), `FunctionTool`, `JsonSchema`, `ToolResult`, `ToolContext`, `resolveToolErrorCode`. |
 | `tool-orchestrator.ts` | 327 | `ToolOrchestrator` — the dynamic graph builder used by `createOrchestratedPipeline`. |
-| `tool-registry.ts` | — | `ToolRegistry.resolve`, `register`, `toOpenAIFunctions`. |
+
 | `tool-converter.ts` | — | Zod → JSON Schema conversion. |
 | `cache.ts` | 51 | `CacheStore` interface, `getCached`, `setCache`, `invalidateCache`, SHA-256 cache key. |
 | `semaphore.ts` | 38 | `Semaphore` — async concurrency control. |
 | `token-tracker.ts` | 34 | `TokenTracker` with optional per-model cost. |
 | `guard.ts` | 24 | `inspectUserInput` — regex-based prompt-injection detector. |
-| `nl-test-case-schema.ts` | 74 | Zod schemas: `SelfReviewSchema`, `NlTestCaseSchema`, `DesignerOutputSchema`, `QMInputSchema`, `QMOutputSchema`, `CoverageMatrixSchema`. |
+
 | `prompt-version.ts` | 5 | `computePromptVersion()` — delegates to `skillCache.computeVersion()`. |
 | `__tests__/*.test.ts` | — | Vitest unit tests (8 files). |
 
@@ -590,7 +590,7 @@ interface AgentRole {
 **Input schema** (`DesignerInputSchema`, line 6-21): approved conditions +
 project context + business flows + previous draft cases + human feedback.
 
-**Output schema** (`DesignerOutputSchema` from `nl-test-case-schema.ts:39-41`):
+**Output schema** (`DesignerOutputSchema`, defined inline in `designer.ts`):
 
 ```ts
 { draftTestCases: Array<DesignerCaseSchema> }
@@ -615,10 +615,10 @@ where `DesignerCaseSchema` extends `NlTestCaseSchema` with a mandatory
 
 ### 6.3 Quality Manager — `roles/quality-manager.ts`
 
-**Input schema** (`QMInputSchema` from `nl-test-case-schema.ts:65-69`):
+**Input schema** (`QMInputSchema`, defined inline in `quality.ts`):
 approved draft cases + human feedback + business flow blueprints.
 
-**Output schema** (`QMOutputSchema` from `nl-test-case-schema.ts:71-74`):
+**Output schema** (`QMOutputSchema`, defined inline in `quality.ts`):
 
 ```ts
 {
@@ -898,15 +898,7 @@ Key methods:
   - `isSpecialTool(name)` — list of `['search_skills', 'load_skill',
     'execute_skill_module', 'fetch_requirement_resource']`.
 
-### 8.4 ToolRegistry
 
-`shared/ai/tool-registry.ts` (declaration) — concrete `ToolRegistry` class
-with:
-
-- `register(tool: ToolDef)` — append.
-- `resolve(name)` — lookup by tool name.
-- `toOpenAIFunctions()` — convert all registered tools to
-  OpenAI-style `{ type: 'function', function: { name, description, parameters } }`.
 
 `createToolRegistry(provider, roles, opts)` in `test-generation.ts:289-308`
 instantiates an `AgentTool` for each role and registers it. This is used

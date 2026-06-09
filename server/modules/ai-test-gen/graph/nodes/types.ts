@@ -1,4 +1,12 @@
-import type { ChatMessage } from '../../../../../shared/ai/provider.ts';
+import type { ZodType } from 'zod';
+import type { ChatMessage } from '../../infra/provider.ts';
+
+export interface SkillDefinition {
+  name: string;
+  description: string;
+  schema: ZodType;
+  func: (args: Record<string, unknown>) => Promise<unknown>;
+}
 
 export interface AgentObserver {
   onStep?: (agentName: string, stepIndex: number, stepName: string) => void;
@@ -12,11 +20,4 @@ export interface AgentObserver {
     outputData?: unknown,
   ) => void;
   onError?: (agentName: string, error: Error, rawResponse?: string) => void;
-}
-
-export interface SkillDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => Promise<unknown>;
 }

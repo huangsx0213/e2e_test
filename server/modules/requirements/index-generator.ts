@@ -81,7 +81,7 @@ export function buildRequirementIndex(projectId: string): IndexItem[] {
 
 export function regenerateIndexFile(projectId: string): void {
   const index = buildRequirementIndex(projectId);
-  const skillsDir = path.resolve(process.cwd(), 'shared/ai/skills/requirement-index/references');
+  const skillsDir = path.resolve(process.cwd(), 'server/modules/ai-test-gen/skills/requirement-index/references');
   if (!fs.existsSync(skillsDir)) { fs.mkdirSync(skillsDir, { recursive: true }); }
   fs.writeFileSync(path.join(skillsDir, 'index.json'), JSON.stringify(index, null, 2));
   console.log(`[index] Regenerated requirement index for project ${projectId}: ${index.length} entries`);

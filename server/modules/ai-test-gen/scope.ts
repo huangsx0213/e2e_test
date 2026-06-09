@@ -1,6 +1,6 @@
 import { randomId } from '../../shared/utils/index.ts';
 import { pipelineRepo } from './repository.ts';
-import type { ChatMessage } from '../../../shared/ai/provider.ts';
+import type { ChatMessage } from './infra/provider.ts';
 
 interface TraceEntry {
   timestamp: number;
@@ -23,17 +23,15 @@ interface AgentRunSnapshot {
   toolHistory?: unknown[];
 }
 
+const OUTPUT_SUMMARY_MAP: Record<string, { key: string; label: string }> = {
+  test_analyst: { key: 'testConditions', label: 'conditions' },
+  test_designer: { key: 'draftTestCases', label: 'draft cases' },
+};
+
 function outputSummary(agentName: string, outputData: unknown): { count: number; label: string } {
-  if (agentName === 'test_analyst') {
-    const c = (outputData as any)?.testConditions?.length ?? 0;
-    return { count: c, label: 'conditions' };
-  }
-  if (agentName === 'test_designer') {
-    const c = (outputData as any)?.draftTestCases?.length ?? 0;
-    return { count: c, label: 'draft cases' };
-  }
-  const c = (outputData as any)?.finalTestCases?.length ?? 0;
-  return { count: c, label: 'final cases' };
+  const def = OUTPUT_SUMMARY_MAP[agentName] ?? { key: 'finalTestCases', label: 'final cases' };
+  const c = ((outputData as any)?.[def.key]?.length ?? 0) as number;
+  return { count: c, label: def.label };
 }
 
 export class RunScope {

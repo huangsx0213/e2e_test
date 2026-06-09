@@ -3,7 +3,7 @@ import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
-import { deduplicateTestCases } from './helpers/dedup.ts';
+import { deduplicateTestCases } from './helpers.ts';
 import { nlCaseRepo } from '../nl-cases/repository.ts';
 
 export class TestGenController {
@@ -99,14 +99,9 @@ export class TestGenController {
     if (!run) throw new Error('Run not found');
 
     const logs = pipelineRepo.getAgentLogs(runId);
-    const allCases: any[] = [];
-    for (const log of logs) {
-      if (log.agent_name === 'quality_manager') {
-        if (log.output_data?.finalTestCases) {
-          allCases.push(...log.output_data.finalTestCases);
-        }
-      }
-    }
+    const allCases = logs
+      .filter(l => l.agent_name === 'quality_manager' && l.output_data?.finalTestCases)
+      .flatMap(l => l.output_data.finalTestCases);
     if (allCases.length === 0) throw new Error('No test cases found to export');
 
     const { allCases: deduped, removedCount } = deduplicateTestCases(allCases);

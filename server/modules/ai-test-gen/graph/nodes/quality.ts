@@ -1,8 +1,10 @@
 import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
-import type { AIProvider } from '../../../../../shared/ai/provider.ts';
-import { mergeSignals } from '../../../../../shared/ai/provider.ts';
+import type { AIProvider } from '../../infra/provider.ts';
+import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
+import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
+import { QUALITY_SKILLS } from '../skills/skills.ts';
 import { z } from 'zod';
 
 // ============================================================
@@ -57,73 +59,18 @@ const QualityOutputSchema = z.object({
 });
 
 // ============================================================
-// Prompt
-// ============================================================
-function buildSystemPrompt(state: TestGenState): string {
-  const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
-
-  return `You are a senior QA Quality Manager. Perform a comprehensive 6-dimension review of draft test cases.
-
-## Review Dimensions
-1. **Clarity** — Are steps clear and unambiguous?
-2. **Completeness** — Are all scenarios covered (happy path, alternate, error)?
-3. **Correctness** — Do expected results match requirements?
-4. **Traceability** — Is each case linked to a requirement and condition?
-5. **Data Validity** — Is test data realistic and boundary-appropriate?
-6. **Maintainability** — Are cases well-structured and reusable?
-
-## Coverage Matrix
-For each requirement, calculate:
-- Number of associated test conditions
-- Number of test cases
-- Coverage percentage
-- Technique distribution
-- Uncovered risks: ONLY list risks that are within the scope of the current requirement and have real impact. Do NOT list speculative or out-of-scope edge cases. Leave empty if coverage is adequate.
-
-${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
-
-You may use available tools to verify coverage or check additional data.
-
-Provide your review analysis step by step as plain text: walk through each dimension, explain changes, and justify coverage ratings. This analysis will be streamed to the user in real-time. Do NOT output JSON in this step — only provide your analysis text.`;
-}
-
-function buildUserMessage(state: TestGenState): string {
-  const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
-  return JSON.stringify({
-    draftCases: draftCases.map(c => ({
-      id: c.id,
-      title: c.title,
-      conditionId: c.conditionId,
-      requirementId: c.requirementId,
-      priority: c.priority,
-      category: c.category,
-      preconditions: c.preconditions,
-      testData: c.testData,
-      steps: c.steps,
-      selfReview: (c as any).selfReview,
-      tags: c.tags,
-    })),
-    requirements: state.currentBatch?.map(r => ({
-      id: r.id,
-      title: r.title,
-      level: (r as any).level ?? '',
-    })),
-  }, null, 2);
-}
-
-// ============================================================
 // Node
 // ============================================================
 export interface QualityNodeOptions {
   provider: AIProvider;
-  observer?: AgentObserver;
   skills?: SkillDefinition[];
+  observer?: AgentObserver;
   timeoutMs?: number;
   signal?: AbortSignal;
 }
 
 export function makeQualityNode(opts: QualityNodeOptions) {
-  const { provider, observer, skills = [], timeoutMs = 300_000, signal } = opts;
+  const { provider, skills = QUALITY_SKILLS, observer, timeoutMs = 300_000, signal } = opts;
   const agentName = 'quality_manager';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
@@ -136,17 +83,18 @@ export function makeQualityNode(opts: QualityNodeOptions) {
     observer?.onStep?.(agentName, 0, 'Review 6 dimensions');
 
     try {
-      const systemPrompt = buildSystemPrompt(state);
-      const userMessage = buildUserMessage(state);
-
       const messages = [
-        { role: 'system' as const, content: systemPrompt },
-        { role: 'user' as const, content: userMessage },
+        { role: 'system' as const, content: buildQualitySystemPrompt(state) },
+        { role: 'user' as const, content: buildQualityUserMessage(state) },
       ];
+      console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
-      const { output: validated, usage } = await callLLMWithStructuredOutput(
-        provider, messages, skills, QualityOutputSchema,
+      const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
+        provider,
+        messages,
+        skills,
+        QualityOutputSchema,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
         { signal: nodeSignal, agentName },
@@ -158,12 +106,28 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       const latencyMs = Date.now() - startTime;
       const finalCount = validated.finalTestCases?.length ?? 0;
       const matrixRows = validated.coverageMatrix?.rows?.length ?? 0;
-      console.log(`[test-gen:graph] [${agentName}] EXIT, ${finalCount} final test cases, ${matrixRows} coverage rows, latency=${latencyMs}ms`);
+      const skillCallCount = toolCallRecords?.length ?? 0;
+      const approvedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved').length ?? 0;
+      const changedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved_with_changes').length ?? 0;
+      const rejectedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'rejected').length ?? 0;
+      console.log(`[test-gen:graph] [${agentName}] EXIT, ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount}), ${matrixRows} coverage rows, ${skillCallCount} skill calls, tokens=${usage.input + usage.output}, latency=${latencyMs}ms`);
+      if (validated.coverageMatrix?.summary) {
+        const s = validated.coverageMatrix.summary;
+        console.log(`[test-gen:graph] [${agentName}] Coverage: ${s.totalRequirements} reqs, ${s.totalConditions} conditions, ${s.totalCases} cases, ${s.overallCoverage}% overall`);
+      }
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
       return {
         finalTestCases: validated.finalTestCases as any,
         coverageMatrix: validated.coverageMatrix as any,
+        skillCalls: (toolCallRecords ?? []).map(tc => ({
+          agent: agentName,
+          skillName: tc.name,
+          input: tc.input,
+          output: tc.output,
+          latencyMs: 0,
+          timestamp: Date.now(),
+        })),
         phase: 'final-review' as const,
       };
     } catch (err: any) {

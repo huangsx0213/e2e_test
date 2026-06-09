@@ -1,7 +1,7 @@
 import { db } from '../../shared/db/client.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { decryptApiKey } from '../../shared/crypto.ts';
-import type { CacheStore } from '../../../shared/ai/cache.ts';
+import type { CacheStore } from './infra/cache.ts';
 
 export interface TestGenRunRow {
   id: string;

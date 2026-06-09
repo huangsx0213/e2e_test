@@ -184,6 +184,14 @@ export function TestGenConfigPanel({
     });
   };
 
+  const handleFlowToggle = (id: string) => {
+    setSelectedFlows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const handleRefresh = () => {
     setIsRefreshing(true);
     queryClient.invalidateQueries({ queryKey: queryKeys.requirements as any });
@@ -308,14 +316,7 @@ export function TestGenConfigPanel({
                 <input
                   type="checkbox"
                   checked={selectedFlows.has(flow.id)}
-                  onChange={() => {
-                    setSelectedFlows(prev => {
-                      const next = new Set(prev);
-                      if (next.has(flow.id)) next.delete(flow.id);
-                      else next.add(flow.id);
-                      return next;
-                    });
-                  }}
+                  onChange={() => handleFlowToggle(flow.id)}
                   className="rounded shrink-0"
                 />
                 <span className="truncate" title={flow.name + ' (' + flow.type + ')'}>{flow.name}</span>

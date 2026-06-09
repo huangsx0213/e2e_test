@@ -14,29 +14,26 @@ import {
 import type { TestGenNode, NodeId } from '@/shared/test-gen-run/types';
 
 const PHASE_DEFS = [
-  { id: 'prep', label: 'Preparation', nodeIds: ['preparation'] as NodeId[], icon: Zap, colorClass: 'indigo' },
+  { id: 'prep', label: 'Preparation', nodeIds: ['preparation'] as NodeId[], icon: Zap },
   { 
     id: 'analysis', 
     label: 'Analysis Phase', 
     nodeIds: ['agent_test_analyst', 'checkpoint_1'] as NodeId[], 
     icon: Brain, 
-    colorClass: 'sky' 
   },
   { 
     id: 'design', 
     label: 'Design Phase', 
     nodeIds: ['agent_test_designer', 'checkpoint_2'] as NodeId[], 
     icon: PenTool, 
-    colorClass: 'violet' 
   },
   { 
     id: 'quality', 
     label: 'Quality Phase', 
     nodeIds: ['agent_quality_manager', 'checkpoint_3'] as NodeId[], 
     icon: Star, 
-    colorClass: 'amber' 
   },
-  { id: 'complete', label: 'Complete', nodeIds: ['complete'] as NodeId[], icon: CheckCircle2, colorClass: 'emerald' },
+  { id: 'complete', label: 'Complete', nodeIds: ['complete'] as NodeId[], icon: CheckCircle2 },
 ] as const;
 
 const nodeLabels: Record<NodeId, string> = {
@@ -74,6 +71,19 @@ function formatMs(ms: number) {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
+
+const NODE_BG: Record<string, string> = {
+  completed: 'bg-emerald-50 border-emerald-200 text-slate-700',
+  running: 'bg-blue-50 border-blue-300 text-blue-800',
+  waiting: 'bg-amber-50 border-amber-300 text-amber-800',
+  error: 'bg-red-50 border-red-200 text-red-700',
+};
+
+const NODE_ICON_COLOR: Record<string, string> = {
+  running: 'text-blue-500 animate-pulse',
+  waiting: 'text-amber-500',
+  completed: 'text-emerald-500',
+};
 
 export function TestGenStepper({
   nodes,
@@ -148,13 +158,7 @@ export function TestGenStepper({
               ? 'current'
               : 'future';
 
-            const phaseTheme = {
-              indigo: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
-              sky: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
-              violet: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
-              amber: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
-              emerald: { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' },
-            }[phase.colorClass];
+            const phaseTheme = { border: 'border-slate-200 bg-white', titleBg: 'bg-slate-100 border-slate-200 text-slate-700' };
 
             return (
               <div key={phase.id} className="relative">
@@ -190,22 +194,11 @@ export function TestGenStepper({
                       const isRef = isSelected || node.status === 'running' || node.status === 'waiting';
                       const isCheckpoint = nodeId.startsWith('checkpoint_');
 
-                      let nodeBg = 'bg-white border-slate-200 text-slate-600';
-                      if (isCheckpoint) {
-                        nodeBg = 'bg-slate-100 border-slate-300 text-slate-700';
-                      } else if (node.status === 'completed') {
-                        nodeBg = 'bg-emerald-50 border-emerald-200 text-slate-700';
-                      } else if (node.status === 'running') {
-                        nodeBg = 'bg-blue-50 border-blue-300 text-blue-800';
-                      } else if (node.status === 'waiting') {
-                        nodeBg = 'bg-amber-50 border-amber-300 text-amber-800';
-                      } else if (node.status === 'error') {
-                        nodeBg = 'bg-red-50 border-red-200 text-red-700';
-                      }
-
-                      if (isSelected) {
-                        nodeBg = 'bg-blue-50 border-2 border-blue-500 text-blue-900';
-                      }
+                      const nodeBg = isSelected
+                        ? 'bg-blue-50 border-2 border-blue-500 text-blue-900'
+                        : isCheckpoint
+                          ? 'bg-slate-100 border-slate-300 text-slate-700'
+                          : NODE_BG[node.status] ?? 'bg-white border-slate-200 text-slate-600';
 
                       const NodeIcon = nodeIcons[nodeId] || ShieldCheck;
 
@@ -217,15 +210,7 @@ export function TestGenStepper({
             className={`px-2 py-1.5 rounded border text-left cursor-pointer select-none transition-all text-[10px] min-h-[42px] flex items-center ${nodeBg}`}
           >
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
-              <NodeIcon size={10} className={`shrink-0 ${
-                node.status === 'running'
-                  ? 'text-blue-500 animate-pulse'
-                  : node.status === 'waiting'
-                    ? 'text-amber-500'
-                    : node.status === 'completed'
-                      ? 'text-emerald-500'
-                      : 'text-slate-400'
-              }`} />
+              <NodeIcon size={10} className={`shrink-0 ${NODE_ICON_COLOR[node.status] ?? 'text-slate-400'}`} />
               <span className="truncate font-medium">{nodeLabels[nodeId] || node.label}</span>
               {node.status === 'running' && (
                 <span className="text-[9px] font-medium text-blue-600 animate-pulse shrink-0">
