@@ -5,6 +5,7 @@ import type { AIProvider } from './infra/provider.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import type { TestGenState } from './graph/state.ts';
+import { clearQueryCache } from './graph/skills/data-skills.ts';
 
 export interface BatchInput {
   batchIndex: number;
@@ -111,6 +112,7 @@ export class TestGenSession {
     };
 
     console.log(`[session] Starting batch ${batch.batchIndex} with threadId=${tid}`);
+    clearQueryCache();
 
     return this.streamToOutcome(graph, input, tid, batch.batchIndex);
   }
@@ -170,6 +172,7 @@ export class TestGenSession {
       : await (graph as any).stream(input, streamOpts);
 
     let lastState: any = null;
+    let prevPhase: string | undefined;
     let interruptPayload: Record<string, unknown> | null = null;
     let nodeCount = 0;
 
@@ -181,10 +184,11 @@ export class TestGenSession {
       lastState = chunk;
       nodeCount++;
 
-      // Log each node transition
-      const phase = (chunk as any)?.phase;
-      if (phase) {
-        console.log(`[session] Graph step ${nodeCount}: phase=${phase}`);
+      // Log node transitions by detecting phase changes (streamMode: 'values' gives full state)
+      const currentPhase = (chunk as any)?.phase as string | undefined;
+      if (currentPhase && currentPhase !== prevPhase) {
+        console.log(`[session] Graph step ${nodeCount}: phase=${currentPhase}`);
+        prevPhase = currentPhase;
       }
 
       const interruptValue = (chunk as any)?.__interrupt__;
@@ -211,6 +215,7 @@ export class TestGenSession {
       };
     }
 
+    // In 'values' mode, lastState is the full state snapshot
     const cases = lastState?.finalTestCases ?? [];
     console.log(`[session] Batch ${batchIndex} outcome: complete, ${cases.length} final test cases`);
     return {

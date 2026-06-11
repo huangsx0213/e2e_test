@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { SkillDefinition } from '../nodes/types.ts';
 import {
   requirementDetailQuery,
-  relatedRequirementsQuery,
+  requirementGraphQuery,
   flowDetailQuery,
 } from './data-skills.ts';
 
@@ -52,7 +52,6 @@ function loadKnowledgeSkills(): SkillDefinition[] {
   const knowledgeDir = join(__dirname, 'knowledge');
   try {
     const files = readdirSync(knowledgeDir).filter((f) => f.endsWith('.md'));
-    console.log(`[skills] Loaded ${files.length} knowledge files from ${knowledgeDir}: ${files.join(', ')}`);
     return files.map((f) => createKnowledgeSkill(join(knowledgeDir, f)));
   } catch (err: any) {
     console.warn(`[skills] Knowledge directory not found or empty (${knowledgeDir}): ${err.message}`);
@@ -64,12 +63,14 @@ function loadKnowledgeSkills(): SkillDefinition[] {
 // Skill Groups
 // ============================================================
 
+// Registry of knowledge .md files — lazily scanned at import time.
+// File CONTENTS are read on-demand when the skill function is invoked.
 const knowledgeSkills = loadKnowledgeSkills();
 
 /** Analyst 绑定的 skills：Data + ISTQB + Knowledge Base */
 export const ANALYST_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
-  relatedRequirementsQuery,
+  requirementGraphQuery,
   flowDetailQuery,
   ...knowledgeSkills,
 ];
@@ -77,6 +78,7 @@ export const ANALYST_SKILLS: SkillDefinition[] = [
 /** Designer 绑定的 skills：Data (subset) + ISTQB + Knowledge Base */
 export const DESIGNER_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
+  requirementGraphQuery,
   flowDetailQuery,
   ...knowledgeSkills.filter(
     (s) => s.name.startsWith('istqb_') || s.name === 'knowledge_base',
@@ -92,7 +94,7 @@ export const QUALITY_SKILLS: SkillDefinition[] = [
 /** 所有 skills（用于调试/日志） */
 export const ALL_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
-  relatedRequirementsQuery,
+  requirementGraphQuery,
   flowDetailQuery,
   ...knowledgeSkills,
 ];

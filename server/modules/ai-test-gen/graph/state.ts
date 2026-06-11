@@ -1,6 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
 import type {
-  Requirement,
   TestCondition,
   NlTestCase,
   CoverageMatrix,
@@ -59,7 +58,7 @@ export const TestGenStateAnnotation = Annotation.Root({
 
   // === 批次上下文 ===
   requirementIds: Annotation<string[]>,
-  currentBatch: Annotation<Requirement[]>,
+  currentBatch: Annotation<{ id: string; title: string; level: string; parentId: string }[]>,
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
@@ -73,7 +72,6 @@ export const TestGenStateAnnotation = Annotation.Root({
   requirementAnalysis: Annotation<{ overallApproach: string; riskAssessmentSummary: string } | undefined>,
   testConditions: Annotation<TestCondition[] | undefined>,
   approvedConditions: Annotation<TestCondition[] | undefined>,
-  queriedRequirements: Annotation<Record<string, unknown> | undefined>,
 
   // === Test Designer 产物 ===
   draftTestCases: Annotation<NlTestCase[] | undefined>,

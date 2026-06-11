@@ -44,7 +44,7 @@ export interface AnalystNodeOptions {
 }
 
 export function makeAnalystNode(opts: AnalystNodeOptions) {
-  const { provider, skills = ANALYST_SKILLS, observer, timeoutMs = 300_000, signal } = opts;
+  const { provider, skills = ANALYST_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'test_analyst';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
@@ -92,26 +92,9 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
       }
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
-      // Collect queried requirement details from skill calls for downstream agents
-      const queriedReqs: Record<string, unknown> = {};
-      for (const tc of (toolCallRecords ?? [])) {
-        if (tc.name === 'requirement_detail_query' && tc.input && (tc.input as any).requirementId) {
-          const rawId = (tc.input as any).requirementId;
-          if (Array.isArray(rawId)) {
-            // Batch query returns { [id]: details }
-            if (tc.output && typeof tc.output === 'object' && !Array.isArray(tc.output)) {
-              Object.assign(queriedReqs, tc.output);
-            }
-          } else {
-            queriedReqs[rawId] = tc.output;
-          }
-        }
-      }
-
       return {
         requirementAnalysis: validated.requirementAnalysis,
         testConditions: validated.testConditions as any,
-        queriedRequirements: Object.keys(queriedReqs).length > 0 ? queriedReqs : undefined,
         skillCalls: (toolCallRecords ?? []).map(tc => ({
           agent: agentName,
           skillName: tc.name,

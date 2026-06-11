@@ -26,7 +26,7 @@ export function skillsToChatTools(skills: SkillDefinition[]): ChatOptions['tools
  */
 export function buildThinkingChatOptions(tools: ChatOptions['tools'], extra?: Partial<ChatOptions>): ChatOptions {
   return {
-    temperature: 0.3,
+    temperature: 0.2,
     maxTokens: 8192,
     tools,
     toolChoice: tools && tools.length > 0 ? 'auto' : undefined,
@@ -67,7 +67,11 @@ ${JSON.stringify(schema, null, 2)}`;
  *   2. 从混合文本中提取最后一个完整 JSON 对象
  */
 function tryExtractJson(content: string): unknown | null {
-  try { return JSON.parse(content); } catch { /* continue */ }
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  const stripped = content.replace(/```(?:json)?\s*\n?/g, '').replace(/```/g, '');
+
+  try { return JSON.parse(stripped.trim()); } catch { /* continue */ }
+  try { return JSON.parse(content.trim()); } catch { /* continue */ }
 
   const jsonBlocks: string[] = [];
   let searchFrom = 0;
@@ -269,11 +273,15 @@ export async function callLLMWithStructuredOutput<T>(
         console.log(`[llm:${name}] Phase 1 produced valid JSON, skipping Phase 2`);
         return { output: result, usage: capturedUsage, toolCallRecords };
       } catch (parseErr: any) {
-        console.warn(`[llm:${name}] Phase 1 found JSON but schema parse failed: ${parseErr.message?.slice(0, 120)}`);
+        const extractedType = typeof extracted;
+        const keys = extracted && typeof extracted === 'object' ? Object.keys(extracted as Record<string, unknown>) : [];
+        const draftType = (extracted as any)?.draftTestCases ? typeof (extracted as any).draftTestCases : 'missing';
+        console.warn(`[llm:${name}] Phase 1 found JSON but schema parse failed: ${parseErr.message?.slice(0, 200)}`);
+        console.warn(`[llm:${name}] Extracted structure: type=${extractedType}, keys=[${keys.join(',')}], draftTestCases type=${draftType}`);
       }
     }
 
-    // 兼容 Mistral/NVIDIA NIM 的 [TOOL_CALLS] 格式
+    // 兼容 NVIDIA NIM 的 [TOOL_CALLS] 文本格式（非标准 tool_call 事件）
     const toolCallsMatch = contentText.match(/\[TOOL_CALLS\]\s*(\[[\s\S]*\])/);
     if (toolCallsMatch) {
       try {
@@ -290,11 +298,15 @@ export async function callLLMWithStructuredOutput<T>(
     }
   }
 
-  // ── Phase 2: Extraction ──
-  console.log(`[llm:${name}] Phase 1 did not produce valid JSON, entering Phase 2 (extraction)`);
-  const extractionMessages = [
+  // ── Phase 2: JSON-mode Extraction ──
+  // Use the ReAct conversation history + json_object mode to guarantee valid JSON output.
+  // This is more reliable than Phase 1 free-form text because the API enforces JSON syntax.
+  console.log(`[llm:${name}] Phase 1 did not produce valid JSON, entering Phase 2 (json_object extraction)`);
+
+  const extractionMessages: ChatMessage[] = [
     ...messages,
-    { role: 'assistant' as const, content: contentText },
+    // Include the full ReAct conversation so the model has all context
+    { role: 'assistant' as const, content: contentText || '(analysis completed in tool calls above)' },
     { role: 'user' as const, content: buildExtractionPrompt(outputSchema) },
   ];
 
@@ -312,25 +324,23 @@ export async function callLLMWithStructuredOutput<T>(
   }
 
   if (extractContent) {
-    try {
-      const parsed = JSON.parse(extractContent);
-      console.log(`[llm:${name}] Phase 2 extraction successful`);
-      return { output: outputSchema.parse(parsed), usage: capturedUsage, toolCallRecords };
-    } catch (parseErr: any) {
-      const jsonMatch = extractContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          console.log(`[llm:${name}] Phase 2 extraction successful (via regex fallback)`);
-          return { output: outputSchema.parse(parsed), usage: capturedUsage, toolCallRecords };
-        } catch (schemaErr: any) {
-          console.error(`[llm:${name}] Phase 2 regex JSON found but schema parse failed: ${schemaErr.message?.slice(0, 200)}`);
-        }
-      } else {
-        console.error(`[llm:${name}] Phase 2 no JSON object found in extraction response`);
+    // json_object mode should produce valid JSON, but still try parse with fallback
+    const parsed = tryExtractJson(extractContent) ?? (() => {
+      try { return JSON.parse(extractContent); } catch { return null; }
+    })();
+
+    if (parsed) {
+      try {
+        const result = outputSchema.parse(parsed);
+        console.log(`[llm:${name}] Phase 2 extraction successful`);
+        return { output: result, usage: capturedUsage, toolCallRecords };
+      } catch (schemaErr: any) {
+        console.error(`[llm:${name}] Phase 2 JSON parsed but schema validation failed: ${schemaErr.message?.slice(0, 200)}`);
+        console.error(`[llm:${name}] Phase 2 parsed keys: ${parsed && typeof parsed === 'object' ? Object.keys(parsed).join(',') : 'N/A'}`);
       }
+    } else {
+      console.error(`[llm:${name}] Phase 2 json_object mode produced unparseable content`);
       console.error(`[llm:${name}] Phase 2 raw content preview (first 300 chars): ${extractContent.slice(0, 300)}`);
-      console.error(`[llm:${name}] Phase 1 content preview (first 300 chars): ${contentText.slice(0, 300)}`);
     }
   } else {
     console.error(`[llm:${name}] Phase 2 produced no content at all`);

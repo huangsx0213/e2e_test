@@ -44,7 +44,16 @@ export class Orchestrator {
   }
 
   async start(runId: string, projectId: string, params: StartParams): Promise<void> {
-    console.log(`[orchestrator] START runId=${runId}, projectId=${projectId}, mode=${params.mode}, reqs=${params.requirementIds?.length ?? 0}, flows=${params.flowIds?.length ?? 0}, includeFlowCases=${params.includeFlowCases ?? false}`);
+    console.log('══════════════════════════════════════════════');
+    console.log(`[orchestrator] PIPELINE START`);
+    console.log(`  runId         = ${runId}`);
+    console.log(`  projectId     = ${projectId}`);
+    console.log(`  mode          = ${params.mode}`);
+    console.log(`  provider      = ${params.providerConfigName ?? 'default'}`);
+    console.log(`  useCache      = ${params.useCache ?? false}`);
+    console.log(`  requirements  = ${params.requirementIds?.length ?? 0} selected`);
+    console.log(`  flows         = ${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
+    console.log('══════════════════════════════════════════════');
     let ctx: RunContext | null = null;
     let keepSse = false;
 
@@ -70,7 +79,7 @@ export class Orchestrator {
       const filteredFlows = selectedFlowSet.size > 0
         ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
         : allProjectFlows;
-      const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirements });
+      const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
       console.log(`[orchestrator] Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints built`);
 
       // 发送准备阶段事件
@@ -408,7 +417,7 @@ export class Orchestrator {
     const filteredFlows = selectedFlowSet.size > 0
       ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
       : allProjectFlows;
-    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirements });
+    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
 
     const remaining = epics
       .map((epic, i) => ({
@@ -458,7 +467,9 @@ export class Orchestrator {
       runId: '',
       mode,
       requirementIds,
-      currentBatch: requirements.filter((r: any) => new Set(rootGroups.get(epic.id)!).has(r.id)),
+      currentBatch: requirements
+        .filter((r: any) => new Set(rootGroups.get(epic.id)!).has(r.id))
+        .map((r: any) => ({ id: r.id, title: r.title, level: r.level ?? '', parentId: r.parentId ?? '' })),
       batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
       projectContext: { name: epic.title, pages: [], endpoints: [] },
       businessFlowBlueprints: businessFlows,

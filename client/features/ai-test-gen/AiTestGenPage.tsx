@@ -44,7 +44,7 @@ const handleRefresh = useCallback(async () => {
         requirementIds: config.requirementIds,
         providerConfigName: config.providerConfigName,
         mode: config.mode,
-        businessFlowIds: config.flowIds,
+        flowIds: config.flowIds,
         includeFlowCases: config.includeFlowCases,
         useCache: config.useCache,
       });

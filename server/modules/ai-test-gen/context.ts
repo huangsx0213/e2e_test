@@ -159,7 +159,7 @@ export class ContextBuilder {
       observer,
       modelName,
       tokenLimit: providerConfigRow.monthly_token_limit ?? null,
-      timeoutMs: 300_000,
+      timeoutMs: 600_000,
       useCache: config.useCache ?? false,
       signal: abortController.signal,
     });

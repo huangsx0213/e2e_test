@@ -14,16 +14,18 @@ const CoverageRowSchema = z.object({
   requirementId: z.string(),
   requirementTitle: z.string(),
   level: z.string(),
-  totalConditions: z.number(),
-  testCaseCount: z.number(),
-  coveragePercentage: z.number(),
-  techniqueBreakdown: z.record(z.string(), z.number()),
-  categoryBreakdown: z.record(z.string(), z.number()),
+  totalConditions: z.coerce.number(),
+  testCaseCount: z.coerce.number(),
+  coveragePercentage: z.coerce.number(),
+  techniqueBreakdown: z.record(z.string(), z.coerce.number()),
+  categoryBreakdown: z.record(z.string(), z.coerce.number()),
   uncoveredRisks: z.array(z.string()),
 });
 
 const QualityOutputSchema = z.object({
-  finalTestCases: z.array(z.object({
+  finalTestCases: z.preprocess(
+    (v) => Array.isArray(v) ? v : typeof v === 'object' && v !== null ? Object.values(v) : [],
+    z.array(z.object({
     id: z.string(),
     title: z.string(),
     conditionId: z.string(),
@@ -33,9 +35,12 @@ const QualityOutputSchema = z.object({
     preconditions: z.array(z.string()),
     testData: z.array(z.string()),
     steps: z.array(z.object({
-      stepNumber: z.number(),
-      action: z.string(),
-      expected: z.string(),
+      stepNumber: z.preprocess(
+        (v) => (typeof v === 'number' ? v : Number(v) || 1),
+        z.number(),
+      ),
+      action: z.preprocess((v) => String(v ?? ''), z.string()),
+      expected: z.preprocess((v) => String(v ?? ''), z.string()),
     })),
     tags: z.array(z.string()),
     status: z.string().describe('One of: approved, approved_with_changes, rejected').default('approved'),
@@ -46,14 +51,14 @@ const QualityOutputSchema = z.object({
       to: z.any().optional(),
       reason: z.string(),
     })).default([]),
-  })),
+  }))),
   coverageMatrix: z.object({
     rows: z.array(CoverageRowSchema),
     summary: z.object({
-      totalRequirements: z.number(),
-      totalConditions: z.number(),
-      totalCases: z.number(),
-      overallCoverage: z.number(),
+      totalRequirements: z.coerce.number(),
+      totalConditions: z.coerce.number(),
+      totalCases: z.coerce.number(),
+      overallCoverage: z.coerce.number(),
     }),
   }),
 });
@@ -70,7 +75,7 @@ export interface QualityNodeOptions {
 }
 
 export function makeQualityNode(opts: QualityNodeOptions) {
-  const { provider, skills = QUALITY_SKILLS, observer, timeoutMs = 300_000, signal } = opts;
+  const { provider, skills = QUALITY_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'quality_manager';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {

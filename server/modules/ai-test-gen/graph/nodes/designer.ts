@@ -11,13 +11,30 @@ import { z } from 'zod';
 // Output Schema
 // ============================================================
 const TestStepSchema = z.object({
-  stepNumber: z.number(),
-  action: z.string().describe('What the tester does'),
-  expected: z.string().describe('Expected system behavior'),
+  stepNumber: z.preprocess(
+    (v) => (typeof v === 'number' ? v : Number(v) || 1),
+    z.number(),
+  ),
+  action: z.preprocess((v) => String(v ?? ''), z.string()),
+  expected: z.preprocess((v) => String(v ?? ''), z.string()),
 });
 
-const DesignerOutputSchema = z.object({
-  draftTestCases: z.array(z.object({
+const DesignerOutputSchema = z.preprocess(
+  // If LLM outputs a single test case object at top level (missing draftTestCases wrapper),
+  // wrap it automatically. Detect by presence of "steps" key without "draftTestCases".
+  (v) => {
+    if (v && typeof v === 'object' && !Array.isArray(v) && !('draftTestCases' in (v as Record<string, unknown>))) {
+      const obj = v as Record<string, unknown>;
+      if ('steps' in obj || 'conditionId' in obj || 'title' in obj) {
+        return { draftTestCases: [obj] };
+      }
+    }
+    return v;
+  },
+  z.object({
+  draftTestCases: z.preprocess(
+    (v) => Array.isArray(v) ? v : typeof v === 'object' && v !== null ? Object.values(v) : [],
+    z.array(z.object({
     id: z.string(),
     title: z.string().describe('Concise test case title'),
     conditionId: z.string().describe('Reference to the test condition this covers'),
@@ -31,13 +48,14 @@ const DesignerOutputSchema = z.object({
     postconditions: z.array(z.string()).default([]),
     tags: z.array(z.string()).default([]),
     selfReview: z.object({
-      score: z.number().min(1).max(10).describe('Self-assessed quality score 1-10'),
+      score: z.coerce.number().min(1).max(10).describe('Self-assessed quality score 1-10'),
       strengths: z.array(z.string()),
       weaknesses: z.array(z.string()),
       suggestions: z.array(z.string()),
     }),
-  })).min(1),
-});
+  })).min(1)),
+  }),
+);
 
 // ============================================================
 // Node
@@ -51,7 +69,7 @@ export interface DesignerNodeOptions {
 }
 
 export function makeDesignerNode(opts: DesignerNodeOptions) {
-  const { provider, skills = DESIGNER_SKILLS, observer, timeoutMs = 300_000, signal } = opts;
+  const { provider, skills = DESIGNER_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'test_designer';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {

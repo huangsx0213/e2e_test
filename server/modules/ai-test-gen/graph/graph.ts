@@ -21,7 +21,7 @@ export interface BuildGraphOptions {
 }
 
 export function buildTestGenGraph(opts: BuildGraphOptions) {
-  const { observer, timeoutMs = 300_000, signal, checkpointer } = opts;
+  const { observer, timeoutMs = 600_000, signal, checkpointer } = opts;
 
   // 创建 ChatModel 实例
   // 实际使用时应根据 provider.type 创建对应的 ChatModel
