@@ -26,8 +26,8 @@ export function skillsToChatTools(skills: SkillDefinition[]): ChatOptions['tools
  */
 export function buildThinkingChatOptions(tools: ChatOptions['tools'], extra?: Partial<ChatOptions>): ChatOptions {
   return {
-    temperature: 0.2,
-    maxTokens: 8192,
+    temperature: 0.3,
+    maxTokens: 32768,
     tools,
     toolChoice: tools && tools.length > 0 ? 'auto' : undefined,
     ...extra,
@@ -45,7 +45,7 @@ export function buildExtractionChatOptions(
   return {
     responseFormat: 'json_object',
     temperature: 0.1,
-    maxTokens: 16384,
+    maxTokens: 32768,
     ...allowedExtra,
   };
 }
@@ -127,6 +127,17 @@ async function runAgentReActLoop(
   const tools = skillsToChatTools(skills);
   console.log(`[react:${agentName}] Starting ReAct loop with ${skills.length} skills: ${skills.map(s => s.name).join(', ')}`);
   const allMessages: ChatMessage[] = [...messages];
+  // Inject tool-call constraint when tools are available
+  if (skills.length > 0) {
+    const toolNames = skills.map(s => s.name).join(', ');
+    const constraintIdx = allMessages.findIndex(m => m.role === 'system');
+    if (constraintIdx !== -1) {
+      allMessages[constraintIdx] = {
+        ...allMessages[constraintIdx],
+        content: allMessages[constraintIdx].content + `\n\nIMPORTANT: You can only call the following tools: [${toolNames}]. Do NOT invent or call any tool that is not in this list. If you want to output structured data, include it directly in your text response.`,
+      };
+    }
+  }
   let contentText = '';
   let thinkingText = '';
   const toolCallRecords: ReActResult['toolCallRecords'] = [];
@@ -190,7 +201,7 @@ async function runAgentReActLoop(
       const skill = skillMap.get(tc.name);
       if (!skill) {
         console.warn(`[react:${agentName}] Unknown tool call: ${tc.name}`);
-        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: ${tc.name}` }), toolCallId: tc.id });
+        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. If you want to output structured data, include it directly in your text response instead.` }), toolCallId: tc.id });
         continue;
       }
 
