@@ -29,7 +29,7 @@ vi.mock('@/shared/hooks/useQueryHooks', async (importOriginal) => {
     useProviderConfigs: vi.fn().mockReturnValue({
       data: [
         { id: 'p1', name: 'Azure OpenAI', type: 'azure-openai', model: 'gpt-4o', isActive: true },
-        { id: 'p2', name: 'OpenAI', type: 'openai', model: 'gpt-4', isActive: false },
+        { id: 'p2', name: 'OpenAI Compatible', type: 'openai-compatible', model: 'gpt-4', isActive: false },
       ],
     }),
   };

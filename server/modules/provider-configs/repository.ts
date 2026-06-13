@@ -4,7 +4,7 @@ import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import { normalizeProviderConfig } from './mapper.ts';
 import { randomId } from '../../shared/utils/index.ts';
 
-const COLUMNS = 'id, project_id, name, type, endpoint, encrypted_api_key, deployment, api_version, model, fallback_config_ids, monthly_token_limit, is_active, created_at';
+const COLUMNS = 'id, project_id, name, type, endpoint, encrypted_api_key, deployment, api_version, model, models, fallback_config_ids, monthly_token_limit, is_active, created_at';
 
 class ProviderConfigRepository extends BaseCrudRepository<ProviderConfig> {
   protected table = 'provider_configs';
@@ -27,6 +27,7 @@ class ProviderConfigRepository extends BaseCrudRepository<ProviderConfig> {
       deployment: row.deployment || '',
       apiVersion: row.api_version || '',
       model: row.model || '',
+      models: JSON.parse(row.models || '[]'),
       fallbackConfigIds: JSON.parse(row.fallback_config_ids || '[]'),
       monthlyTokenLimit: row.monthly_token_limit,
       isActive: row.is_active === 1,
@@ -39,8 +40,8 @@ class ProviderConfigRepository extends BaseCrudRepository<ProviderConfig> {
     const id = normalized.id || randomId('prov');
 
     db.prepare(`
-      INSERT INTO provider_configs (id, project_id, name, type, endpoint, encrypted_api_key, deployment, api_version, model, fallback_config_ids, monthly_token_limit, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO provider_configs (id, project_id, name, type, endpoint, encrypted_api_key, deployment, api_version, model, models, fallback_config_ids, monthly_token_limit, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         type = excluded.type,
@@ -49,6 +50,7 @@ class ProviderConfigRepository extends BaseCrudRepository<ProviderConfig> {
         deployment = excluded.deployment,
         api_version = excluded.api_version,
         model = excluded.model,
+        models = excluded.models,
         fallback_config_ids = excluded.fallback_config_ids,
         monthly_token_limit = excluded.monthly_token_limit,
         is_active = excluded.is_active,
@@ -63,6 +65,7 @@ class ProviderConfigRepository extends BaseCrudRepository<ProviderConfig> {
       normalized.deployment || '',
       normalized.apiVersion || '',
       normalized.model || '',
+      JSON.stringify(normalized.models || []),
       JSON.stringify(normalized.fallbackConfigIds || []),
       normalized.monthlyTokenLimit ?? null,
       normalized.isActive ? 1 : 0,

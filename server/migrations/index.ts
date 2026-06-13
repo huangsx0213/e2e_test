@@ -25,6 +25,8 @@ import { migration023DropCheckpointData } from './023_drop_checkpoint_data.ts';
 import { migration024DropRedundantTables } from './024_drop_redundant_tables.ts';
 import { migration025AddAgentErrorColumns } from './025_add_agent_error_columns.ts';
 import { migration026AddToolHistoryColumn } from './026_add_tool_history_column.ts';
+import { migration027ProviderModels } from './027_provider_models.ts';
+import { migration028ThinkingData } from './028_thinking_data.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -55,6 +57,8 @@ migration021ProviderConfigFix,
   migration024DropRedundantTables,
   migration025AddAgentErrorColumns,
   migration026AddToolHistoryColumn,
+  migration027ProviderModels,
+  migration028ThinkingData,
 ];
 
 function appliedMigrationIds(): Set<string> {

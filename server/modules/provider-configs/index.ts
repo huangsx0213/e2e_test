@@ -47,7 +47,7 @@ crudModule.router.post('/:id/test', withErrorHandling(async (req, res) => {
       apiKey: decryptApiKey(existing.encryptedApiKey),
       deployment: existing.deployment,
       apiVersion: existing.apiVersion,
-      model: existing.model || undefined,
+      model: existing.models && existing.models.length > 0 ? existing.models[0] : (existing.model || undefined),
     } as any);
 
     const start = Date.now();

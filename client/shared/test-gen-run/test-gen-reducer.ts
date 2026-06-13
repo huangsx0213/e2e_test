@@ -91,7 +91,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'agent:start': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
-          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: '' };
+          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: [] };
           nodes = markPrecedingDone(nodes, nodeId);
           nodes = nodes.map(n =>
             n.id === nodeId
@@ -151,7 +151,20 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'agent:thinking': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
-          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: (thinkingTextByNode[nodeId] || '') + data.text };
+          const entries = thinkingTextByNode[nodeId] ?? [];
+          const lastEntry = entries[entries.length - 1];
+          // Merge into last entry if same type+phase, otherwise start a new entry
+          if (lastEntry && lastEntry.type === (data.type ?? 'content') && lastEntry.phase === (data.phase ?? 'react')) {
+            thinkingTextByNode = {
+              ...thinkingTextByNode,
+              [nodeId]: [...entries.slice(0, -1), { ...lastEntry, text: lastEntry.text + data.text }],
+            };
+          } else {
+            thinkingTextByNode = {
+              ...thinkingTextByNode,
+              [nodeId]: [...entries, { type: data.type ?? 'content', phase: data.phase ?? 'react', text: data.text, timestamp: data.timestamp ?? Date.now() }],
+            };
+          }
           break;
         }
         case 'checkpoint:waiting': {
@@ -192,12 +205,17 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
             'final-review': 'agent_quality_manager',
           };
           const retryNodeId = PHASE_TO_ERROR_NODE[data.phase];
+          // Reset thinking text for all error/retrying nodes so the streaming
+          // panel starts clean after a retry.
+          thinkingTextByNode = Object.fromEntries(
+            Object.entries(thinkingTextByNode).map(([k, v]) => [k, []]),
+          );
           nodes = nodes.map(n =>
             n.id === retryNodeId && n.status === 'error'
               ? { ...n, status: 'running' as const, subSteps: n.subSteps?.map(s => ({ ...s, done: false, running: false })) }
               : n,
           );
-          return { ...state, nodes, isRunning: true, error: null };
+          return { ...state, nodes, isRunning: true, error: null, thinkingTextByNode };
         }
         case 'pipeline:complete':
           runSummary = {
@@ -501,6 +519,9 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
 
     case 'RESET':
       return createInitialState();
+
+    case 'SET_THINKING_DATA':
+      return { ...state, thinkingTextByNode: action.thinkingData };
 
     default:
       return state;

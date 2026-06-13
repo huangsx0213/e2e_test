@@ -43,10 +43,12 @@ export class RunScope {
   private totalReasoningTokens = 0;
   public totalLatencyMs = 0;
 
-  // Thinking throttle: buffer text per agent, flush every THINKING_FLUSH_MS
-  private readonly thinkingBuffer = new Map<string, string>();
+  // Thinking throttle: buffer text per agent+phase+type, flush every THINKING_FLUSH_MS
+  private readonly thinkingBuffer = new Map<string, { text: string; type: string; phase: string }>();
   private thinkingFlushTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly THINKING_FLUSH_MS = 3000;
+  // Accumulated thinking entries for persistence
+  private readonly thinkingAccumulator = new Map<string, Array<{ type: string; phase: string; text: string; timestamp: number }>>();
 
   constructor(
     runId: string,
@@ -55,6 +57,12 @@ export class RunScope {
     private readonly emitEvent: (event: string, data: unknown) => void,
   ) {
     this.runId = runId;
+    // Restore token counters from previously completed agent logs (for resume/retry scenarios)
+    const existing = pipelineRepo.getAccumulatedTokenUsage(runId);
+    this.totalPromptTokens = existing.prompt_tokens;
+    this.totalCompletionTokens = existing.completion_tokens;
+    this.totalReasoningTokens = existing.reasoning_tokens;
+    this.totalLatencyMs = existing.latency_ms;
     this.startThinkingFlush();
   }
 
@@ -65,9 +73,21 @@ export class RunScope {
   }
 
   private flushThinking(): void {
-    for (const [agentName, text] of this.thinkingBuffer) {
-      if (text.length > 0) {
-        this.emit('agent:thinking', { agentName, text, timestamp: Date.now() });
+    for (const [key, entry] of this.thinkingBuffer) {
+      if (entry.text.length > 0) {
+        // key format: agentName:phase:type
+        const agentName = key.split(':').slice(0, -2).join(':') || key;
+        const timestamp = Date.now();
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp });
+        // Accumulate for persistence
+        const acc = this.thinkingAccumulator.get(agentName) ?? [];
+        const last = acc[acc.length - 1];
+        if (last && last.type === entry.type && last.phase === entry.phase) {
+          last.text += entry.text;
+        } else {
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp });
+        }
+        this.thinkingAccumulator.set(agentName, acc);
       }
     }
     this.thinkingBuffer.clear();
@@ -124,10 +144,20 @@ export class RunScope {
     toolHistory?: unknown[];
   }): void {
     // Flush any remaining thinking text for this agent before marking complete
-    const remaining = this.thinkingBuffer.get(agentName);
-    if (remaining && remaining.length > 0) {
-      this.emit('agent:thinking', { agentName, text: remaining, timestamp: Date.now() });
-      this.thinkingBuffer.delete(agentName);
+    for (const [key, entry] of this.thinkingBuffer) {
+      if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        // Accumulate for persistence
+        const acc = this.thinkingAccumulator.get(agentName) ?? [];
+        const last = acc[acc.length - 1];
+        if (last && last.type === entry.type && last.phase === entry.phase) {
+          last.text += entry.text;
+        } else {
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+        }
+        this.thinkingAccumulator.set(agentName, acc);
+        this.thinkingBuffer.delete(key);
+      }
     }
 
     const batch = this.currentBatch;
@@ -168,14 +198,27 @@ export class RunScope {
       tokenUsage: params.tokenUsage.input + params.tokenUsage.output + params.tokenUsage.reasoning,
       latencyMs: params.latencyMs, timestamp: Date.now(),
     });
+
+    // Incrementally persist thinking data after each agent completes
+    this.persistThinkingData();
   }
 
   recordAgentError(agentName: string, error: Error): void {
     // Flush any remaining thinking text for this agent
-    const remaining = this.thinkingBuffer.get(agentName);
-    if (remaining && remaining.length > 0) {
-      this.emit('agent:thinking', { agentName, text: remaining, timestamp: Date.now() });
-      this.thinkingBuffer.delete(agentName);
+    for (const [key, entry] of this.thinkingBuffer) {
+      if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        // Accumulate for persistence
+        const acc = this.thinkingAccumulator.get(agentName) ?? [];
+        const last = acc[acc.length - 1];
+        if (last && last.type === entry.type && last.phase === entry.phase) {
+          last.text += entry.text;
+        } else {
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+        }
+        this.thinkingAccumulator.set(agentName, acc);
+        this.thinkingBuffer.delete(key);
+      }
     }
 
     const batch = this.currentBatch;
@@ -194,6 +237,9 @@ export class RunScope {
       }, this.runId);
     }
     this.emit('agent:error', { agentName, batch, message: error.message, timestamp: Date.now() });
+
+    // Incrementally persist thinking data after agent error
+    this.persistThinkingData();
   }
 
   recordAgentStep(agentName: string, stepIndex: number, stepName: string): void {
@@ -204,10 +250,15 @@ export class RunScope {
     this.emit('agent:step', { agentName, stepIndex, stepName, timestamp: Date.now() });
   }
 
-  recordAgentThinking(agentName: string, text: string): void {
+  recordAgentThinking(agentName: string, text: string, type: 'reasoning' | 'content' = 'content', phase: 'react' | 'extraction' = 'react'): void {
     // Buffer thinking text, flush periodically via timer
-    const existing = this.thinkingBuffer.get(agentName) ?? '';
-    this.thinkingBuffer.set(agentName, existing + text);
+    const key = `${agentName}:${phase}:${type}`;
+    const existing = this.thinkingBuffer.get(key);
+    if (existing) {
+      existing.text += text;
+    } else {
+      this.thinkingBuffer.set(key, { text, type, phase });
+    }
   }
 
   recordCheckpointResolved(checkpointNumber: number, action: string): void {
@@ -215,8 +266,16 @@ export class RunScope {
     this.emit('checkpoint:resolved', { checkpointNumber, action, timestamp: Date.now() });
   }
 
+  /** Flush buffered thinking text and persist all accumulated thinking data.
+   *  Called by orchestrator when pipeline is interrupted at a checkpoint. */
+  flushAndPersistThinking(): void {
+    this.flushThinking();
+    this.persistThinkingData();
+  }
+
   markComplete(stats: { totalCases: number; totalBatches: number }): void {
     this.stopThinkingFlush();
+    this.persistThinkingData();
     const usage = {
       prompt_tokens: this.totalPromptTokens,
       completion_tokens: this.totalCompletionTokens,
@@ -232,11 +291,31 @@ export class RunScope {
 
   markFailed(error: string): void {
     this.stopThinkingFlush();
+    this.persistThinkingData();
     pipelineRepo.markRunFailed(this.runId);
     this.emit('pipeline:error', { phase: 'orchestrator', message: error, recoverable: false });
   }
 
   private emit(event: string, data: unknown): void {
     this.emitEvent(event, data);
+  }
+
+  private persistThinkingData(): void {
+    if (this.thinkingAccumulator.size === 0) return;
+    // Convert agentName keys to nodeId keys for client compatibility
+    const AGENT_NAME_TO_NODE_ID: Record<string, string> = {
+      test_analyst: 'analyst',
+      test_designer: 'designer',
+      quality_manager: 'quality',
+      final_reviewer: 'reviewer',
+    };
+    // Merge with existing persisted data (for resume/retry scenarios)
+    const existing = pipelineRepo.getThinkingData(this.runId) || {};
+    const data: Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> = { ...existing };
+    for (const [agentName, entries] of this.thinkingAccumulator) {
+      const nodeId = AGENT_NAME_TO_NODE_ID[agentName] || agentName;
+      data[nodeId] = [...(data[nodeId] || []), ...entries];
+    }
+    pipelineRepo.saveThinkingData(this.runId, JSON.stringify(data));
   }
 }

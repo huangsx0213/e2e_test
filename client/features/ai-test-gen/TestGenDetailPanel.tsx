@@ -28,6 +28,10 @@ import {
   Filter,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface NodeDetailProps {
   runId?: string;
@@ -43,7 +47,7 @@ interface NodeDetailProps {
   } | null;
   agentLog: any | null;
   checkpointData: any | null;
-  thinkingText: string | null;
+  thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null;
   runSummary: { totalCases: number; totalTokens: number; totalLatencyMs: number; totalBatches: number } | null;
   agentLogs?: any[];
   onClose: () => void;
@@ -174,7 +178,7 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
-function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs }: { node: any; agentLog: any; thinkingText: string | null; allAgentLogs: any[] }) {
+function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[] }) {
   const meta = node?.meta;
   const output = agentLog?.output_data;
 
@@ -665,7 +669,213 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
 
 type TabId = 'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors';
 
-function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog: any; node: any; thinkingText: string | null; agentLogs?: any[] }) {
+/** Format thinking text: try pretty-print JSON, otherwise return as-is */
+function formatThinkingText(text: string): string {
+  try {
+    const parsed = JSON.parse(text);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return text;
+  }
+}
+
+/** Collapsible reasoning block — ChatGPT "Thought for Xs" style */
+function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { text: string; isRunning: boolean; startTime?: number; endTime?: number }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const lineCount = text.split('\n').length;
+  // Default collapsed when not streaming and content is long
+  const [userToggled, setUserToggled] = useState(false);
+  const isCollapsed = userToggled ? collapsed : (!isRunning && lineCount > 20);
+
+  // Capture end time once when streaming stops (only if not provided externally)
+  const [capturedEndTime, setCapturedEndTime] = useState<number | null>(null);
+  useEffect(() => {
+    if (isRunning) {
+      setCapturedEndTime(null);
+    } else if (!endTimeProp && !capturedEndTime) {
+      setCapturedEndTime(Date.now());
+    }
+  }, [isRunning, endTimeProp]);
+
+  // Compute duration label like ChatGPT's "Thought for 12s"
+  const durationLabel = useMemo(() => {
+    if (!startTime) return null;
+    const end = endTimeProp ?? capturedEndTime ?? Date.now();
+    const elapsed = Math.round((end - startTime) / 1000);
+    if (elapsed < 1) return '<1s';
+    if (elapsed < 60) return `${elapsed}s`;
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    return `${m}m ${s}s`;
+  }, [startTime, endTimeProp, capturedEndTime, text]);
+
+  return (
+    <div className="rounded-lg bg-slate-100/80 dark:bg-slate-800/40 overflow-hidden">
+      <button
+        onClick={() => { setUserToggled(true); setCollapsed(!isCollapsed); }}
+        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-slate-200/60 dark:hover:bg-slate-700/40 transition-colors text-left group"
+      >
+        {isCollapsed ? (
+          <ChevronRight size={12} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
+        ) : (
+          <ChevronDown size={12} className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors" />
+        )}
+        {isRunning ? (
+          <>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Thinking</span>
+            <span className="inline-flex items-center gap-0.5">
+              <span className="animate-pulse delay-75 text-slate-400 text-[11px]">.</span>
+              <span className="animate-pulse delay-150 text-slate-400 text-[11px]">.</span>
+              <span className="animate-pulse delay-300 text-slate-400 text-[11px]">.</span>
+            </span>
+          </>
+        ) : (
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            Thought{durationLabel ? ` for ${durationLabel}` : ''} <span className="text-slate-400 dark:text-slate-500">({lineCount} lines)</span>
+          </span>
+        )}
+      </button>
+      {!isCollapsed && (
+        <div className="px-3 pb-2.5 border-t border-slate-200/60 dark:border-slate-700/40 pt-2 thinking-markdown text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 italic">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || '');
+                const codeStr = String(children).replace(/\n$/, '');
+                if (match) {
+                  return (
+                    <SyntaxHighlighter
+                      style={vscDarkPlus}
+                      language={match[1]}
+                      PreTag="div"
+                      customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                    >
+                      {codeStr}
+                    </SyntaxHighlighter>
+                  );
+                }
+                return <code className="bg-slate-200/60 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono not-italic" {...props}>{children}</code>;
+              },
+              pre({ children }) {
+                return <>{children}</>;
+              },
+              p({ children }) {
+                return <p className="mb-1.5 last:mb-0">{children}</p>;
+              },
+              ul({ children }) {
+                return <ul className="list-disc pl-4 mb-1.5">{children}</ul>;
+              },
+              ol({ children }) {
+                return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>;
+              },
+              li({ children }) {
+                return <li className="mb-0.5">{children}</li>;
+              },
+              blockquote({ children }) {
+                return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1">{children}</blockquote>;
+              },
+              h1({ children }) { return <h1 className="text-sm font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h1>; },
+              h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h2>; },
+              h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h3>; },
+              table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+              th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-200/60 dark:bg-slate-700/50 text-left font-semibold not-italic">{children}</th>; },
+              td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
+            }}
+          >
+            {text}
+          </ReactMarkdown>
+          {isRunning && (
+            <span className="inline-block w-1 h-3 bg-slate-400 animate-pulse ml-0.5 align-middle rounded-sm" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Detect if text looks like raw JSON (starts with { or [) */
+function isLikelyJson(text: string): boolean {
+  const trimmed = text.trim();
+  return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+}
+
+/** Render output content — auto-detects raw JSON and formats it with syntax highlighting */
+function OutputBlock({ text, isRunning }: { text: string; isRunning: boolean }) {
+  // If the text looks like raw JSON, render with syntax highlighting
+  if (isLikelyJson(text)) {
+    let formatted = text;
+    try { formatted = JSON.stringify(JSON.parse(text.trim()), null, 2); } catch { /* keep original */ }
+    return (
+      <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 overflow-hidden">
+        <div className="px-2.5 py-1 border-b border-slate-200/60 dark:border-slate-700/40 flex items-center gap-1.5">
+          <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">JSON Output</span>
+          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+        </div>
+        <SyntaxHighlighter
+          style={vscDarkPlus}
+          language="json"
+          PreTag="div"
+          customStyle={{ fontSize: '10px', borderRadius: '0', margin: 0, padding: '8px 12px' }}
+        >
+          {formatted}
+        </SyntaxHighlighter>
+        {isRunning && (
+          <div className="px-3 pb-2">
+            <span className="inline-block w-1.5 h-3 bg-slate-400 dark:bg-slate-500 animate-pulse ml-0.5 align-middle rounded-sm" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Otherwise render as markdown
+  return (
+    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          code({ className, children, ...props }) {
+            const match = /language-(\w+)/.exec(className || '');
+            const codeStr = String(children).replace(/\n$/, '');
+            if (match) {
+              return (
+                <SyntaxHighlighter
+                  style={vscDarkPlus}
+                  language={match[1]}
+                  PreTag="div"
+                  customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                >
+                  {codeStr}
+                </SyntaxHighlighter>
+              );
+            }
+            return <code className="bg-slate-100 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono" {...props}>{children}</code>;
+          },
+          pre({ children }) { return <>{children}</>; },
+          p({ children }) { return <p className="mb-1.5 last:mb-0">{children}</p>; },
+          ul({ children }) { return <ul className="list-disc pl-4 mb-1.5">{children}</ul>; },
+          ol({ children }) { return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>; },
+          li({ children }) { return <li className="mb-0.5">{children}</li>; },
+          blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 italic">{children}</blockquote>; },
+          h1({ children }) { return <h1 className="text-sm font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h1>; },
+          h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
+          h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
+          table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+          th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-50 dark:bg-slate-800 text-left font-semibold">{children}</th>; },
+          td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+      {isRunning && (
+        <span className="inline-block w-1.5 h-3 bg-slate-400 dark:bg-slate-500 animate-pulse ml-0.5 align-middle rounded-sm" />
+      )}
+    </div>
+  );
+}
+
+function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog: any; node: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; agentLogs?: any[] }) {
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [activePromptTab, setActivePromptTab] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -757,7 +967,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             }`}
           >
             {tab.label}
-            {tab.id === 'thinking' && isRunning && thinkingText && (
+            {tab.id === 'thinking' && isRunning && thinkingText && thinkingText.length > 0 && (
               <span className="absolute top-2.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
             )}
           </button>
@@ -783,39 +993,56 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 )}
             
             {activeTab === 'thinking' && (
-              <div className="p-4 h-full flex flex-col">
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 shadow-inner text-slate-300 font-mono text-[11px] leading-relaxed flex-1 flex flex-col relative overflow-hidden min-h-0">
-                  <div className="absolute top-1.5 right-2 flex items-center gap-1.5 text-[9px] text-slate-600 font-bold select-none uppercase">
-                    <Terminal size={10} /> AI Agent CLI Stdout
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto whitespace-pre-wrap pr-1 min-h-0">
-                    {thinkingText ? (
-                      <div className="text-slate-300">
-                        {(() => {
-                          try {
-                            const parsed = JSON.parse(thinkingText);
-                            return JSON.stringify(parsed, null, 2);
-                          } catch {
-                            return thinkingText;
-                          }
-                        })()}
-                        {isRunning && (
-                          <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-0.5 align-middle" />
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-slate-500 italic py-10 text-center flex flex-col items-center justify-center gap-2">
-                        {isRunning ? (
-                          <>
-                            <Loader2 size={24} className="animate-spin text-blue-500" />
-                            <span>Listening to agent prompt streams...</span>
-                          </>
-                        ) : 'No system thinking logs available for this batch.'}
-                      </div>
-                    )}
-                    <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
-                  </div>
+              <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
+                <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
+                  {thinkingText && thinkingText.length > 0 ? (
+                    (() => {
+                      // Group consecutive entries of same type+phase
+                      const groups: { type: 'reasoning' | 'content'; phase: 'react' | 'extraction'; text: string; timestamp: number; lastTimestamp: number }[] = [];
+                      for (const entry of thinkingText) {
+                        const last = groups[groups.length - 1];
+                        if (last && last.type === entry.type && last.phase === entry.phase) {
+                          last.text += entry.text;
+                          last.lastTimestamp = entry.timestamp;
+                        } else {
+                          groups.push({ ...entry, lastTimestamp: entry.timestamp });
+                        }
+                      }
+                      let lastPhase: string | null = null;
+                      return groups.map((g, i) => {
+                        const phaseChanged = g.phase !== lastPhase;
+                        lastPhase = g.phase;
+                        return (
+                          <div key={i}>
+                            {phaseChanged && i > 0 && (
+                              <div className="flex items-center gap-2 py-1.5">
+                                <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                                  {g.phase === 'extraction' ? 'Phase 2 · Extraction' : 'Phase 1 · Reasoning'}
+                                </span>
+                                <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                              </div>
+                            )}
+                            {g.type === 'reasoning' ? (
+                              <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === groups.length - 1} startTime={g.timestamp} endTime={g.lastTimestamp !== g.timestamp ? g.lastTimestamp : undefined} />
+                            ) : (
+                              <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === groups.length - 1} />
+                            )}
+                          </div>
+                        );
+                      });
+                    })()
+                  ) : (
+                    <div className="text-slate-400 dark:text-slate-500 italic py-10 text-center flex flex-col items-center justify-center gap-2">
+                      {isRunning ? (
+                        <>
+                          <Loader2 size={20} className="animate-spin text-slate-400" />
+                          <span className="text-xs">Waiting for agent output...</span>
+                        </>
+                      ) : <span className="text-xs">No thinking logs available.</span>}
+                    </div>
+                  )}
+                  <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
                 </div>
               </div>
             )}
@@ -855,15 +1082,15 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
               return (
                 <div className="h-full flex flex-col">
-                  <div className="flex border-b border-slate-200 bg-slate-50/70 overflow-x-auto scrollbar-none shrink-0">
+                  <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 overflow-x-auto scrollbar-none shrink-0">
                     {labeled.map((m, i) => (
                       <button
                         key={i}
                         onClick={() => setActivePromptTab(i)}
                         className={`px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all shrink-0 -mb-px ${
                           safeIndex === i
-                            ? 'border-blue-600 text-blue-700 bg-white'
-                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                            ? 'border-blue-600 text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-800'
+                            : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
                         }`}
                       >
                         {m.label}
@@ -871,9 +1098,44 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                     ))}
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                    <pre className="text-xs bg-slate-950 text-slate-300 p-3.5 rounded-xl whitespace-pre-wrap border border-slate-800 font-mono">
-                      {labeled[safeIndex]?.content || 'N/A'}
-                    </pre>
+                    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code({ className, children, ...props }) {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const codeStr = String(children).replace(/\n$/, '');
+                            if (match) {
+                              return (
+                                <SyntaxHighlighter
+                                  style={vscDarkPlus}
+                                  language={match[1]}
+                                  PreTag="div"
+                                  customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                                >
+                                  {codeStr}
+                                </SyntaxHighlighter>
+                              );
+                            }
+                            return <code className="bg-slate-100 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono" {...props}>{children}</code>;
+                          },
+                          pre({ children }) { return <>{children}</>; },
+                          p({ children }) { return <p className="mb-1.5 last:mb-0">{children}</p>; },
+                          ul({ children }) { return <ul className="list-disc pl-4 mb-1.5">{children}</ul>; },
+                          ol({ children }) { return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>; },
+                          li({ children }) { return <li className="mb-0.5">{children}</li>; },
+                          blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 italic">{children}</blockquote>; },
+                          h1({ children }) { return <h1 className="text-sm font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h1>; },
+                          h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
+                          h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
+                          table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+                          th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-50 dark:bg-slate-800 text-left font-semibold">{children}</th>; },
+                          td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
+                        }}
+                      >
+                        {labeled[safeIndex]?.content || 'N/A'}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               );
@@ -883,20 +1145,27 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
               <div className="p-4 space-y-3">
                 {agentLog?.output_data ? (
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-100 p-3 rounded-xl">
-                      <span className="text-xs text-slate-600 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl">
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
                       <button 
                         onClick={handleCopyRawJson}
-                        className="flex items-center gap-1 text-[10px] uppercase font-bold py-1 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 transition-colors rounded-lg"
+                        className="flex items-center gap-1 text-[10px] uppercase font-bold py-1 px-2.5 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors rounded-lg"
                       >
                         {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                         {copied ? 'Copied' : 'Copy JSON'}
                       </button>
                     </div>
 
-                    <pre className="text-xs bg-slate-950 text-slate-300 p-3.5 rounded-xl whitespace-pre-wrap max-h-96 overflow-y-auto border border-slate-800 font-mono">
+                    <SyntaxHighlighter
+                      style={vscDarkPlus}
+                      language="json"
+                      PreTag="div"
+                      customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px', maxHeight: '24rem' }}
+                      showLineNumbers
+                      lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
+                    >
                       {JSON.stringify(agentLog.output_data, null, 2)}
-                    </pre>
+                    </SyntaxHighlighter>
                   </div>
                 ) : (
                   <div className="text-center text-xs text-slate-400 py-10">No compilation output yet</div>
@@ -964,33 +1233,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                         </div>
                       )}
 
-                      {/* Output — fills remaining, scrolls */}
-                      {agentLog.output_data && Object.keys(agentLog.output_data).length > 0 && (
-                        <div className="flex-1 min-h-0 flex flex-col border-t border-slate-100 min-h-0">
-                          <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
-                            Output
-                          </div>
-                          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
-                            <pre className="text-[10px] font-mono bg-slate-50 text-slate-600 p-3 rounded-lg whitespace-pre-wrap border border-slate-100">
-                              {JSON.stringify(agentLog.output_data, null, 2)}
-                            </pre>
-                          </div>
-                        </div>
-                      )}
 
-                      {/* Thinking — fixed bottom */}
-                      {thinkingText && (
-                        <div className="border-t border-slate-100 shrink-0">
-                          <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Thinking
-                          </div>
-                          <div className="px-4 pb-3 max-h-40 overflow-y-auto">
-                            <pre className="text-[10px] font-mono bg-slate-950 text-slate-300 p-2 rounded-lg whitespace-pre-wrap">
-                              {(() => { try { return JSON.stringify(JSON.parse(thinkingText), null, 2); } catch { return thinkingText; } })()}
-                            </pre>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })() : (
@@ -1698,7 +1941,7 @@ function CheckpointViewWithAudit({ runId, nodeId, isEditing, children }: { runId
     (async () => {
       try {
         const { api } = await import('@/shared/services/api');
-        const logs = await api.testGen.audit(runId);
+        const logs = await api.testGen.audit(runId, nodeId);
         setAuditLogs(logs);
       } catch {}
     })();

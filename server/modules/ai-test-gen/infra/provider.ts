@@ -1,5 +1,5 @@
 export interface ExtendedProviderConfig {
-  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai' | 'agnes-ai';
+  type: 'azure-openai' | 'openai-compatible';
   endpoint?: string;
   apiKey: string;
   deployment?: string;
@@ -96,10 +96,7 @@ export interface ExtendedChatResponse extends ChatResponse {
 
 export type ProviderConfig =
   | { type: 'azure-openai'; endpoint: string; apiKey: string; deployment: string; apiVersion: string }
-  | { type: 'nvidia-nim'; endpoint: string; apiKey: string; model: string }
-  | { type: 'openrouter'; apiKey: string; model: string }
-  | { type: 'openai'; apiKey: string; model: string }
-  | { type: 'agnes-ai'; endpoint?: string; apiKey: string; model: string };
+  | { type: 'openai-compatible'; endpoint?: string; apiKey: string; model: string };
 
 export function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): AbortSignal | undefined {
   if (!signal1 && !signal2) return undefined;
@@ -188,14 +185,14 @@ function serializeMessages(messages: ChatMessage[]): unknown[] {
     if (m.role === 'assistant' && m.toolCalls) {
       return {
         role: 'assistant',
-        content: m.content || null,
+        content: m.content ?? null,
         tool_calls: m.toolCalls,
       };
     }
     if (m.role === 'tool' && m.toolCallId) {
       return {
         role: 'tool',
-        content: m.content,
+        content: m.content ?? '',
         tool_call_id: m.toolCallId,
       };
     }
@@ -208,39 +205,58 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
     'User-Agent': 'e2e-test/1.0',
     ...providerHeaders,
   });
+  const formatFetchError = (providerName: string, fetchErr: any, agentTag: string, url: string, bodyJson?: string): Error => {
+    const cause = fetchErr.cause;
+    const causeMsg = cause ? ` (cause: ${cause.code || cause.message || cause})` : '';
+    const sizeInfo = bodyJson ? ` body=${(bodyJson.length / 1024).toFixed(1)}KB` : '';
+    return new Error(`Provider ${providerName} fetch failed${agentTag}: ${fetchErr.message}${causeMsg} url=${url}${sizeInfo}`);
+  };
+
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
     const l = logger ?? consoleLogger;
-    l.info(`[provider:${strategy.name}] POST${agentTag} ${strategy.buildUrl()} messages=${messages.length}`);
+    const url = strategy.buildUrl();
+    l.info(`[provider:${strategy.name}] POST${agentTag} ${url} messages=${messages.length}`);
     const fetchStart = Date.now();
-    const response = await fetch(strategy.buildUrl(), {
-      method: 'POST',
-      headers: mergeHeaders(strategy.buildHeaders()),
-      body: JSON.stringify(strategy.buildBody(serializeMessages(messages), options)),
-      signal,
-    });
+    let response: Response;
+    try {
+      const reqBody = JSON.stringify(strategy.buildBody(serializeMessages(messages), options));
+      response = await fetchWithRetry(url, {
+        method: 'POST',
+        headers: mergeHeaders(strategy.buildHeaders()),
+        body: reqBody,
+        signal,
+      });
+    } catch (fetchErr: any) {
+      throw formatFetchError(strategy.name, fetchErr, agentTag, url);
+    }
     return parseChatResponse(response, strategy.name, fetchStart, agentTag);
   }
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     const l = logger ?? consoleLogger;
-    const body = { ...strategy.buildBody(serializeMessages(messages), options, true), stream: true, stream_options: { include_usage: true } };
-    const response = await fetch(strategy.buildUrl(), {
-      method: 'POST',
-      headers: mergeHeaders(strategy.buildHeaders()),
-      body: JSON.stringify(body),
-      signal,
-    });
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    const url = strategy.buildUrl();
+    const bodyJson = JSON.stringify({ ...strategy.buildBody(serializeMessages(messages), options, true), stream: true, stream_options: { include_usage: true } });
+    let response: Response;
+    try {
+      response = await fetchWithRetry(url, {
+        method: 'POST',
+        headers: mergeHeaders(strategy.buildHeaders()),
+        body: bodyJson,
+        signal,
+      });
+    } catch (fetchErr: any) {
+      throw formatFetchError(strategy.name, fetchErr, agentTag, url, bodyJson);
+    }
     if (!response.ok) {
       const errorText = await response.text();
       l.error(`[provider:${strategy.name}] stream error body: ${errorText}`);
       const errorPrefix = strategy.name === 'azure' ? 'Azure OpenAI'
-        : strategy.name === 'nvidia' ? 'Nvidia NIM'
-        : strategy.name === 'openrouter' ? 'OpenRouter'
-        : strategy.name === 'agnes' ? 'Agnes AI'
-        : 'OpenAI';
+      : strategy.name === 'openai-compat' ? 'OpenAI Compatible'
+      : 'Provider';
       throw new Error(`${errorPrefix} stream error ${response.status}: ${errorText}`);
     }
     const reader = response.body?.getReader();
@@ -255,19 +271,16 @@ function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger)
 export function createAIProvider(config: ProviderConfig): AIProvider {
   switch (config.type) {
     case 'azure-openai': return createAzureOpenAIProvider(config);
-    case 'nvidia-nim': return createNvidiaProvider(config);
-    case 'openrouter': return createOpenRouterProvider(config);
-    case 'openai': return createOpenAIProvider(config);
-    case 'agnes-ai': return createAgnesAIProvider(config);
+    case 'openai-compatible': return createOpenAICompatibleProvider(config);
   }
 }
 
 // ─── Provider Factories ───
 
 function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-openai' }): AIProvider {
-  return createProviderFromStrategy({
+  const chatStrategy: ProviderStrategy = {
     name: 'azure',
-    buildUrl: () => `${config.endpoint}/openai/deployments/${config.deployment}/chat/completions?api-version=${config.apiVersion}`,
+    buildUrl: () => `${config.endpoint.replace(/\/+$/, '')}/openai/deployments/${config.deployment}/chat/completions?api-version=${config.apiVersion}`,
     buildHeaders: () => ({ 'Content-Type': 'application/json', 'api-key': config.apiKey }),
     buildBody: (messages, options?) => ({
       messages,
@@ -276,63 +289,99 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
-  });
+  };
+
+  const baseProvider = createProviderFromStrategy(chatStrategy);
+
+  // Override streamChat to use Responses API for reasoning summary support
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+    const url = `${config.endpoint.replace(/\/+$/, '')}/openai/v1/responses`;
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    console.log(`[provider:azure-responses] POST${agentTag} ${url} messages=${messages.length}`);
+
+    // Build Responses API input from ChatMessage[]
+    // Responses API uses separate items: function_call, function_call_output (not nested tool_calls)
+    const input: unknown[] = [];
+    for (const m of messages) {
+      if (m.role === 'assistant' && m.toolCalls) {
+        // Assistant message content (if any)
+        if (m.content) {
+          input.push({ role: 'assistant', content: m.content });
+        }
+        // Each tool call becomes a separate function_call item
+        for (const tc of m.toolCalls) {
+          input.push({
+            type: 'function_call',
+            call_id: tc.id,
+            name: tc.function.name,
+            arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
+          });
+        }
+      } else if (m.role === 'tool' && m.toolCallId) {
+        input.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content || ' ' });
+      } else {
+        input.push({ role: m.role, content: m.content || '' });
+      }
+    }
+
+    const body: Record<string, unknown> = {
+      model: config.deployment,
+      input,
+      reasoning: { effort: 'medium', summary: 'auto' },
+      max_output_tokens: options?.maxTokens ?? 4096,
+      stream: true,
+    };
+    if (options?.tools && options.tools.length > 0) {
+      // Responses API tools format: { type: "function", name, description, parameters } (flat, not nested)
+      body.tools = options.tools.map(t => ({
+        type: 'function' as const,
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      }));
+    }
+
+    let response: Response;
+    const bodyJson = JSON.stringify(body);
+    try {
+      response = await fetchWithRetry(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'api-key': config.apiKey, 'User-Agent': 'e2e-test/1.0' },
+        body: bodyJson,
+        signal,
+      });
+    } catch (fetchErr: any) {
+      const cause = fetchErr.cause;
+      const causeMsg = cause ? ` (cause: ${cause.code || cause.message || cause})` : '';
+      console.error(`[provider:azure-responses] fetch failed${agentTag}: ${fetchErr.message}${causeMsg}, body=${(bodyJson.length / 1024).toFixed(1)}KB, input=${input.length}`);
+      throw new Error(`Azure OpenAI fetch failed${agentTag}: ${fetchErr.message}${causeMsg} url=${url} body=${(bodyJson.length / 1024).toFixed(1)}KB input=${input.length}`);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[provider:azure-responses] stream error body: ${errorText}`);
+      throw new Error(`Azure OpenAI Responses API stream error ${response.status}: ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+    const decoder = new TextDecoder();
+    yield* readResponsesApiSSEStream(reader, decoder);
+  }
+
+  return { chat: baseProvider.chat, streamChat };
 }
 
-function createNvidiaProvider(config: ProviderConfig & { type: 'nvidia-nim' }): AIProvider {
-  return createProviderFromStrategy({
-    name: 'nvidia',
-    buildUrl: () => `${config.endpoint}/v1/chat/completions`,
-    buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }),
-    buildBody: (messages, options?) => ({
-      model: config.model,
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 8192,
-      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
-    } as any),
-  });
-}
-
-function createOpenRouterProvider(config: ProviderConfig & { type: 'openrouter' }): AIProvider {
-  return createProviderFromStrategy({
-    name: 'openrouter',
-    buildUrl: () => 'https://openrouter.com/api/v1/chat/completions',
-    buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }),
-    buildBody: (messages, options?) => ({
-      model: config.model,
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 8192,
-      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
-    } as any),
-  });
-}
-
-function createOpenAIProvider(config: ProviderConfig & { type: 'openai' }): AIProvider {
-  return createProviderFromStrategy({
-    name: 'openai',
-    buildUrl: () => 'https://api.openai.com/v1/chat/completions',
-    buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` }),
-    buildBody: (messages, options?) => ({
-      model: config.model,
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 8192,
-      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
-    }),
-  });
-}
-
-function createAgnesAIProvider(config: ProviderConfig & { type: 'agnes-ai' }): AIProvider {
-  const raw = (config.endpoint || 'https://apihub.agnes-ai.com/v1').replace(/\/$/, '');
+function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai-compatible' }): AIProvider {
+  // Normalize endpoint: ensure it ends with /v1/chat/completions
+  const raw = (config.endpoint || 'https://api.openai.com/v1').replace(/\/$/, '');
   const baseUrl = raw.endsWith('/v1') ? raw : `${raw}/v1`;
+  const chatUrl = `${baseUrl}/chat/completions`;
+
   return createProviderFromStrategy({
-    name: 'agnes',
-    buildUrl: () => `${baseUrl}/chat/completions`,
+    name: 'openai-compat',
+    buildUrl: () => chatUrl,
     buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}`, 'User-Agent': 'e2e-test/1.0' }),
     buildBody: (messages, options?) => ({
       model: config.model,
@@ -400,7 +449,33 @@ function formatContent(content: string | null | undefined): string {
   }
 }
 
-const FETCH_TIMEOUT_MS = 600_000;
+const FETCH_TIMEOUT_MS = 900_000;
+const FETCH_RETRY_COUNT = 2;
+const FETCH_RETRY_DELAY_MS = 2000;
+
+const TRANSIENT_ERRORS = new Set([
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+]);
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = FETCH_RETRY_COUNT, attempt = 0): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err: any) {
+    const code = err.cause?.code || err.code || '';
+    if (retries > 0 && TRANSIENT_ERRORS.has(code)) {
+      const delay = FETCH_RETRY_DELAY_MS * Math.pow(2, attempt);
+      console.warn(`[fetch-retry] ${code} for ${url}, retrying in ${delay}ms (${retries} left)...`);
+      await new Promise(r => setTimeout(r, delay));
+      return fetchWithRetry(url, init, retries - 1, attempt + 1);
+    }
+    throw err;
+  }
+}
 
 async function parseChatResponse(response: Response, providerName: string, fetchStart: number, agentTag: string): Promise<ChatResponse> {
   console.log(`[provider:${providerName}] response ${response.status} in ${Date.now() - fetchStart}ms${agentTag}`);
@@ -408,10 +483,8 @@ async function parseChatResponse(response: Response, providerName: string, fetch
     const errorText = await response.text();
     console.error(`[provider:${providerName}] error body${agentTag}: ${errorText}`);
     const errorPrefix = providerName === 'azure' ? 'Azure OpenAI error'
-      : providerName === 'nvidia' ? 'Nvidia NIM error'
-      : providerName === 'openrouter' ? 'OpenRouter error'
-      : providerName === 'agnes' ? 'Agnes AI error'
-      : 'OpenAI error';
+      : providerName === 'openai-compat' ? 'OpenAI Compatible error'
+      : 'Provider error';
     throw new Error(`${errorPrefix} ${response.status}: ${errorText}`);
   }
   const data = await response.json() as any;
@@ -425,7 +498,7 @@ async function parseChatResponse(response: Response, providerName: string, fetch
   console.log(`[provider:${providerName}] result${agentTag}:${formatted}\n       usage: ${data.usage?.prompt_tokens ?? '?'}in/${data.usage?.completion_tokens ?? '?'}out`);
   return {
     content: msg.content ?? '',
-    reasoningContent: msg.reasoning_content || undefined,
+    reasoningContent: msg.reasoning_content || msg.reasoning || (msg.reasoning_details?.map((rd: any) => rd.text || rd.summary || '').filter(Boolean).join('\n')) || undefined,
     toolCalls,
     usage: {
       promptTokens: data.usage?.prompt_tokens ?? 0,
@@ -478,7 +551,18 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
                 }
               }
             }
-            if (delta?.reasoning_content) yield { type: 'reasoning', content: delta.reasoning_content };
+            // Reasoning content: multiple field names across providers
+            // - DeepSeek: delta.reasoning_content
+            // - Azure OpenAI GPT-5: delta.reasoning
+            // - Some providers: delta.reasoning_details[] with type "reasoning.text" or "reasoning.summary"
+            const reasoningText = delta?.reasoning_content || delta?.reasoning;
+            if (reasoningText) yield { type: 'reasoning', content: reasoningText };
+            if (delta?.reasoning_details) {
+              for (const rd of delta.reasoning_details) {
+                if (rd.type === 'reasoning.text' && rd.text) yield { type: 'reasoning', content: rd.text };
+                if (rd.type === 'reasoning.summary' && rd.summary) yield { type: 'reasoning', content: rd.summary };
+              }
+            }
             if (delta?.content) yield { type: 'content', content: delta.content };
         } catch {}
       }
@@ -492,4 +576,108 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
     }
   }
   yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
+}
+
+/** Read SSE stream from the Responses API (Azure OpenAI GPT-5 reasoning models) */
+async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, decoder: TextDecoder): AsyncGenerator<StreamChunk> {
+  let buffer = '';
+  let usageData: any = null;
+  let currentToolCall: { id: string; name: string; args: string } | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    let eventType = '';
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim();
+      } else if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+        try {
+          const data = JSON.parse(line.slice(6));
+
+          // Capture usage from response.completed
+          if (data.response?.usage) {
+            usageData = data.response.usage;
+          }
+
+          // Reasoning summary text delta
+          if (eventType === 'response.reasoning_summary_text.delta' && data.delta) {
+            yield { type: 'reasoning', content: data.delta };
+          }
+          // Reasoning text delta (full chain-of-thought, if available)
+          if ((eventType === 'response.reasoning_text.delta' || eventType === 'response.reasoning.delta') && data.delta) {
+            yield { type: 'reasoning', content: data.delta };
+          }
+
+          // Output text delta (the actual response content)
+          if (eventType === 'response.output_text.delta' && data.delta) {
+            yield { type: 'content', content: data.delta };
+          }
+
+          // Function call arguments delta
+          if (eventType === 'response.function_call_arguments.delta' && data.delta) {
+            if (currentToolCall) {
+              currentToolCall.args += data.delta;
+              yield { type: 'tool_call_delta', content: data.delta, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+          }
+
+          // Function call started
+          if (eventType === 'response.output_item.added') {
+            const item = data.item;
+            if (item?.type === 'function_call') {
+              // Finalize previous tool call if any
+              if (currentToolCall) {
+                try {
+                  yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+                } catch {
+                  yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+                }
+              }
+              currentToolCall = { id: item.call_id || item.id, name: item.name, args: '' };
+              yield { type: 'tool_call_start', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+          }
+
+          // Function call completed
+          if (eventType === 'response.output_item.done') {
+            const item = data.item;
+            if (item?.type === 'function_call' && currentToolCall) {
+              try {
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+              } catch {
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+              }
+              currentToolCall = null;
+            }
+          }
+        } catch {}
+        eventType = '';
+      } else if (line.trim() === '') {
+        eventType = '';
+      }
+    }
+  }
+
+  if (currentToolCall) {
+    try {
+      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+    } catch {
+      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+    }
+  }
+
+  yield {
+    type: 'done',
+    content: '',
+    usage: usageData ? {
+      promptTokens: usageData.input_tokens ?? 0,
+      completionTokens: usageData.output_tokens ?? 0,
+      reasoningTokens: usageData.output_tokens_details?.reasoning_tokens ?? 0,
+    } : undefined,
+  };
 }

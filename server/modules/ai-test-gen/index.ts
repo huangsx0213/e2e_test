@@ -45,9 +45,16 @@ router.get('/:runId/logs', withErrorHandling((req, res) => {
   res.json(controller.getLogs(p(req.params.runId), agent as string | undefined));
 }));
 
+// 思考数据（持久化）
+router.get('/:runId/thinking', withErrorHandling((req, res) => {
+  const data = controller.getThinkingData(p(req.params.runId));
+  res.json(data ?? null);
+}));
+
 // 审核日志
 router.get('/:runId/audit', withErrorHandling((req, res) => {
-  res.json(controller.getAuditLogs(p(req.params.runId)));
+  const checkpointId = req.query.checkpointId as string | undefined;
+  res.json(controller.getAuditLogs(p(req.params.runId), checkpointId));
 }));
 
 // checkpoint 数据

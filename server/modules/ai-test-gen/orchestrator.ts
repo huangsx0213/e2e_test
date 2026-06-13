@@ -50,6 +50,7 @@ export class Orchestrator {
     console.log(`  projectId     = ${projectId}`);
     console.log(`  mode          = ${params.mode}`);
     console.log(`  provider      = ${params.providerConfigName ?? 'default'}`);
+    console.log(`  model         = ${params.model ?? 'default'}`);
     console.log(`  useCache      = ${params.useCache ?? false}`);
     console.log(`  requirements  = ${params.requirementIds?.length ?? 0} selected`);
     console.log(`  flows         = ${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
@@ -60,6 +61,7 @@ export class Orchestrator {
     try {
       ctx = await this.contextBuilder.build(runId, projectId, params.mode, {
         providerConfigName: params.providerConfigName,
+        model: params.model,
         useCache: params.useCache,
       });
       console.log(`[orchestrator] Context built: model=${ctx.modelName}, tokenLimit=${ctx.tokenLimit}`);
@@ -129,6 +131,7 @@ export class Orchestrator {
         const outcome = await ctx.session.startBatch(batchInput);
         if (outcome.type === 'interrupt') {
           console.log(`[orchestrator] Batch ${i + 1} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
+          ctx.scope.flushAndPersistThinking();
           pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
           this.sseGateway.emit(runId, 'checkpoint:waiting', {
             checkpointNumber: outcome.interrupt.checkpointNumber,
@@ -180,10 +183,11 @@ export class Orchestrator {
       throw new Error('Test gen is not waiting for review');
     }
 
-    pipelineRepo.insertAuditLog(runId, row.phase, action, editedData ?? null);
+    const cpNum = CHECKPOINT_BY_PHASE[row.phase] ?? 0;
+
+    pipelineRepo.insertAuditLog(runId, `checkpoint_${cpNum}`, action, editedData ?? null);
     pipelineRepo.setRunRunning(runId);
 
-    const cpNum = CHECKPOINT_BY_PHASE[row.phase] ?? 0;
     if (cpNum > 0) {
       this.sseGateway.emit(runId, 'checkpoint:resolved', { checkpointNumber: cpNum, action });
     }
@@ -195,6 +199,7 @@ export class Orchestrator {
     try {
       ctx = await this.contextBuilder.build(runId, row.project_id, (row.mode || 'auto') as 'auto' | 'interactive', {
         providerConfigName: config.providerConfigName,
+        model: config.model,
         useCache: config.useCache,
         currentBatch: row.current_batch || 0,
       });
@@ -206,6 +211,7 @@ export class Orchestrator {
       });
 
       if (outcome.type === 'interrupt') {
+        ctx.scope.flushAndPersistThinking();
         pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
         pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
         this.sseGateway.emit(runId, 'checkpoint:waiting', {
@@ -279,6 +285,7 @@ export class Orchestrator {
     try {
       ctx = await this.contextBuilder.build(runId, row.project_id, (row.mode || 'auto') as 'auto' | 'interactive', {
         providerConfigName: config.providerConfigName,
+        model: config.model,
         useCache: config.useCache,
         currentBatch: row.current_batch || 0,
       });
@@ -289,6 +296,7 @@ export class Orchestrator {
       const outcome = await ctx.session.retryFromLastCheckpoint(threadId, batchIndex);
 
       if (outcome.type === 'interrupt') {
+        ctx.scope.flushAndPersistThinking();
         pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
         pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
         this.sseGateway.emit(runId, 'checkpoint:waiting', {
@@ -437,6 +445,7 @@ export class Orchestrator {
 
       const outcome = await ctx.session.startBatch(batch);
       if (outcome.type === 'interrupt') {
+        ctx.scope.flushAndPersistThinking();
         pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
         return { allResults, interrupted: true };
       }

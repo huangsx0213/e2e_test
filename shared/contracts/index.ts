@@ -610,12 +610,13 @@ export interface ProviderConfig {
   id: string;
   projectId: string;
   name: string;
-  type: 'azure-openai' | 'nvidia-nim' | 'openrouter' | 'openai' | 'agnes-ai';
+  type: 'azure-openai' | 'openai-compatible';
   endpoint: string;
   encryptedApiKey: string;
   deployment: string;
   apiVersion: string;
   model: string;
+  models: string[];
   fallbackConfigIds: string[];
   monthlyTokenLimit: number | null;
   isActive: boolean;

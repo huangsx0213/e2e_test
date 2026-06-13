@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const providerTypes = ['azure-openai', 'nvidia-nim', 'openrouter', 'openai', 'agnes-ai'] as const;
+const providerTypes = ['azure-openai', 'openai-compatible'] as const;
 
 export const providerConfigPayloadSchema = z.object({
   id: z.string().min(1).optional(),
@@ -12,6 +12,7 @@ export const providerConfigPayloadSchema = z.object({
   deployment: z.string().optional(),
   apiVersion: z.string().optional(),
   model: z.string().optional(),
+  models: z.array(z.string()).optional(),
   fallbackConfigIds: z.array(z.string()).optional(),
   monthlyTokenLimit: z.number().int().positive().optional().nullable(),
   isActive: z.boolean().optional(),

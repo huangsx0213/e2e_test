@@ -19,6 +19,7 @@ export interface TestGenStartConfig {
   flowIds: string[];
   mode: 'auto' | 'interactive';
   providerConfigName: string;
+  model?: string;
   includeFlowCases?: boolean;
   useCache?: boolean;
 }
@@ -141,13 +142,35 @@ export function TestGenConfigPanel({
   const [showApprovedOnly, setShowApprovedOnly] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [expandAll, setExpandAll] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState('');
-  useEffect(() => {
-    if (!selectedProvider) {
-      const active = providerConfigs.find((p: any) => p.isActive);
-      if (active) setSelectedProvider(active.name);
+  const [selectedModel, setSelectedModel] = useState('');
+  // Build flat model list: { model, providerName, providerType }
+  const modelOptions = useMemo(() => {
+    const opts: { model: string; providerName: string; providerType: string }[] = [];
+    for (const p of providerConfigs) {
+      const models: string[] = p.models || [];
+      for (const m of models) {
+        opts.push({ model: m, providerName: p.name, providerType: p.type });
+      }
     }
-  }, [providerConfigs, selectedProvider]);
+    return opts;
+  }, [providerConfigs]);
+  // Selected provider derived from selected model
+  const selectedProvider = useMemo(() => {
+    const opt = modelOptions.find(o => o.model === selectedModel);
+    return opt?.providerName || '';
+  }, [modelOptions, selectedModel]);
+  // Auto-select first model from active provider
+  useEffect(() => {
+    if (!selectedModel && modelOptions.length > 0) {
+      const active = providerConfigs.find((p: any) => p.isActive);
+      if (active) {
+        const firstModel = modelOptions.find(o => o.providerName === active.name);
+        if (firstModel) setSelectedModel(firstModel.model);
+      } else {
+        setSelectedModel(modelOptions[0].model);
+      }
+    }
+  }, [modelOptions, selectedModel, providerConfigs]);
   const [includeFlowCases, setIncludeFlowCases] = useState(false);
   const [useCache, setUseCache] = useState(false);
 
@@ -208,6 +231,7 @@ export function TestGenConfigPanel({
       flowIds: Array.from(selectedFlows),
       mode,
       providerConfigName: selectedProvider,
+      model: selectedModel || undefined,
       includeFlowCases,
       useCache,
     });
@@ -351,20 +375,20 @@ export function TestGenConfigPanel({
           </p>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-600 block mb-1">AI Provider</label>
+          <label className="text-xs font-medium text-slate-600 block mb-1">Model</label>
           <select
-            value={selectedProvider}
-            onChange={e => setSelectedProvider(e.target.value)}
+            value={selectedModel}
+            onChange={e => setSelectedModel(e.target.value)}
             className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"
           >
-            {providerConfigs.map((p: any) => (
-              <option key={p.id} value={p.name}>
-                {p.name} ({p.type}{p.model ? ` - ${p.model}` : ''}){p.isActive ? ' *' : ''}
+            {modelOptions.map((o, i) => (
+              <option key={`${o.providerName}-${o.model}-${i}`} value={o.model}>
+                {o.model} ({o.providerName})
               </option>
             ))}
           </select>
-          {providerConfigs.length === 0 && (
-            <p className="text-xs text-amber-600 mt-1">No providers configured. Go to Settings &gt; AI Provider.</p>
+          {modelOptions.length === 0 && (
+            <p className="text-xs text-amber-600 mt-1">No models configured. Go to Settings &gt; AI Provider.</p>
           )}
         </div>
         <div className="border-t border-slate-200 pt-2">

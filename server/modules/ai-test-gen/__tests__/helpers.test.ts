@@ -88,13 +88,13 @@ describe('buildFallbackConfigs', () => {
   it('maps provider config to provider config shape', () => {
     const repo = {
       getProviderConfig: (id: string) => ({
-        type: 'openai', endpoint: null, encrypted_api_key: 'enc',
+        type: 'openai-compatible', endpoint: null, encrypted_api_key: 'enc',
         deployment: null, api_version: null, model: 'gpt-4o',
       }),
     };
     const result = buildFallbackConfigs(repo as any, ['cfg-1']);
     expect(result).toEqual([{
-      type: 'openai', endpoint: undefined, apiKey: 'enc',
+      type: 'openai-compatible', endpoint: undefined, apiKey: 'enc',
       deployment: undefined, apiVersion: undefined, model: 'gpt-4o',
     }]);
   });

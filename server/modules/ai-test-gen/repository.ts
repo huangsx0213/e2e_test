@@ -33,6 +33,7 @@ export interface ProviderConfigRow {
   deployment: string | null;
   api_version: string | null;
   model: string | null;
+  models: string | null;
   is_active: number;
   monthly_token_limit: number | null;
   fallback_config_ids: string | null;
@@ -228,6 +229,20 @@ export class TestGenRepository {
     db.prepare('DELETE FROM test_gen_runs WHERE id = ?').run(runId);
   }
 
+  saveThinkingData(runId: string, thinkingJson: string): void {
+    db.prepare('UPDATE test_gen_runs SET thinking_data = ? WHERE id = ?').run(thinkingJson, runId);
+  }
+
+  getThinkingData(runId: string): Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null {
+    const row = db.prepare('SELECT thinking_data FROM test_gen_runs WHERE id = ?').get(runId) as any;
+    if (!row?.thinking_data) return null;
+    try {
+      return JSON.parse(row.thinking_data);
+    } catch {
+      return null;
+    }
+  }
+
   getAgentLogs(runId: string, agent?: string): any[] {
     let rows: any[];
     if (agent) {
@@ -249,6 +264,23 @@ export class TestGenRepository {
       error_message: r.error_message ?? null,
       error_raw_response: r.error_raw_response ?? null,
     }));
+  }
+
+  /** Get accumulated token usage and latency from completed agent logs for a run (used when resuming). */
+  getAccumulatedTokenUsage(runId: string): { prompt_tokens: number; completion_tokens: number; reasoning_tokens: number; latency_ms: number } {
+    const row = db.prepare(
+      `SELECT COALESCE(SUM(CAST(COALESCE(json_extract(token_usage, '$.input'), '0') AS INTEGER)), 0) as prompt_tokens,
+              COALESCE(SUM(CAST(COALESCE(json_extract(token_usage, '$.output'), '0') AS INTEGER)), 0) as completion_tokens,
+              COALESCE(SUM(CAST(COALESCE(json_extract(token_usage, '$.reasoning'), '0') AS INTEGER)), 0) as reasoning_tokens,
+              COALESCE(SUM(COALESCE(latency_ms, 0)), 0) as latency_ms
+       FROM test_gen_agent_logs WHERE run_id = ? AND status = 'COMPLETED'`
+    ).get(runId) as any;
+    return {
+      prompt_tokens: row?.prompt_tokens ?? 0,
+      completion_tokens: row?.completion_tokens ?? 0,
+      reasoning_tokens: row?.reasoning_tokens ?? 0,
+      latency_ms: row?.latency_ms ?? 0,
+    };
   }
 
   markAgentLogFailed(logId: string): void {
@@ -317,13 +349,22 @@ export class TestGenRepository {
     `).run(logId, runId, checkpointId, action, userId, json(snapshot));
   }
 
-  getAuditLogs(runId: string): any[] {
+  getAuditLogs(runId: string, checkpointId?: string): any[] {
+    if (checkpointId) {
+      return db.prepare(
+        "SELECT * FROM test_gen_audit_log WHERE run_id = ? AND checkpoint_id = ? ORDER BY created_at DESC"
+      ).all(runId, checkpointId).map((r: any) => ({
+        ...r,
+        snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
+        created_at: r.created_at ? new Date(r.created_at.replace(/Z$/, '') + 'Z').toISOString() : r.created_at,
+      }));
+    }
     return db.prepare(
       'SELECT * FROM test_gen_audit_log WHERE run_id = ? ORDER BY created_at DESC'
     ).all(runId).map((r: any) => ({
       ...r,
       snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
-      created_at: r.created_at ? new Date(r.created_at + 'Z').toISOString() : r.created_at,
+      created_at: r.created_at ? new Date(r.created_at.replace(/Z$/, '') + 'Z').toISOString() : r.created_at,
     }));
   }
 }

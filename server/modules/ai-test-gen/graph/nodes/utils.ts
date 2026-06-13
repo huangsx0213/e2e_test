@@ -119,7 +119,7 @@ async function runAgentReActLoop(
   provider: AIProvider,
   messages: ChatMessage[],
   skills: SkillDefinition[],
-  observer: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string) => void },
+  observer: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
   agentName: string,
   extra: Partial<ChatOptions> | undefined,
 ): Promise<ReActResult> {
@@ -152,11 +152,11 @@ async function runAgentReActLoop(
     for await (const chunk of provider.streamChat(allMessages, buildThinkingChatOptions(tools, extra))) {
       if (chunk.type === 'reasoning' && chunk.content) {
         roundThinking += chunk.content;
-        observer?.onThinking?.(agentName, chunk.content);
+        observer?.onThinking?.(agentName, chunk.content, 'reasoning', 'react');
       }
       if (chunk.type === 'content' && chunk.content) {
         roundContent += chunk.content;
-        observer?.onThinking?.(agentName, chunk.content);
+        observer?.onThinking?.(agentName, chunk.content, 'content', 'react');
       }
       if (chunk.type === 'tool_call_start' && chunk.toolCall) {
         pendingToolCalls.push(chunk.toolCall);
@@ -253,7 +253,7 @@ export async function callLLMWithStructuredOutput<T>(
   messages: ChatMessage[],
   skills: SkillDefinition[],
   outputSchema: ZodType<T>,
-  observer?: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string) => void },
+  observer?: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
   agentName?: string,
   extra?: Partial<ChatOptions>,
 ): Promise<{ output: T; usage: { input: number; output: number; reasoning: number }; toolCallRecords?: Array<{ name: string; input: unknown; output: unknown }> }> {
@@ -325,7 +325,7 @@ export async function callLLMWithStructuredOutput<T>(
   for await (const chunk of provider.streamChat(extractionMessages, buildExtractionChatOptions(outputSchema, extra))) {
     if (chunk.type === 'content' && chunk.content) {
       extractContent += chunk.content;
-      observer?.onThinking?.(name, chunk.content);
+      observer?.onThinking?.(name, chunk.content, 'content', 'extraction');
     }
     if (chunk.type === 'done' && chunk.usage) {
       capturedUsage.input += (chunk.usage.promptTokens || 0);

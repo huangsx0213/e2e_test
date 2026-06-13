@@ -1,0 +1,79 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [],
+  "provider": {
+    "myazure": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Azure_VSP",
+      "options": {
+        "baseURL": "https://{env:AZURE_RESOURCE_NAME_VSP}.services.ai.azure.com/openai/v1/",
+        "headers": {
+          "api-key": "{env:AZURE_API_KEY_VSP}"
+        }
+      },
+      "models": {
+        "grok-4-20-reasoning": {
+          "name": "Grok 4 20 Reasoning"
+        },
+        "grok-4.3": {
+          "name": "grok-4.3"
+        },
+        "DeepSeek-V4-Flash": {
+          "name": "DeepSeek V4 Flash"
+        },
+        "DeepSeek-V4-Pro": {
+          "name": "DeepSeek-V4-Pro"
+        },
+        "Mistral-Large-3": {
+          "name": "Mistral Large 3"
+        }
+      }
+    },
+    "azure_vstp": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Azure_VSTP",
+      "options": {
+        "baseURL": "https://{env:AZURE_RESOURCE_NAME_VSTP}.services.ai.azure.com/openai/v1/",
+        "headers": {
+          "api-key": "{env:AZURE_API_KEY_VSTP}"
+        }
+      },
+      "models": {
+        "grok-4-20-reasoning": {
+          "name": "Grok 4 20 Reasoning"
+        },
+        "grok-4.3": {
+          "name": "grok-4.3"
+        },
+        "DeepSeek-V4-Flash": {
+          "name": "DeepSeek V4 Flash"
+        },
+        "DeepSeek-V4-Pro": {
+          "name": "DeepSeek-V4-Pro"
+        },
+        "Mistral-Large-3": {
+          "name": "Mistral Large 3"
+        }
+      }
+    },
+    "agnes": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Agnes",
+      "options": {
+        "baseURL": "https://apihub.agnes-ai.com/v1",
+        "headers": {
+          "Authorization": "Bearer {env:AGNES_API_KEY}"
+        }
+      },
+      "models": {
+        "agnes-2.0-flash": {
+          "name": "Agnes 2.0 Flash",
+          "modalities": {
+            "input": ["text", "image"]
+          }
+        }
+      }
+    }
+  },
+  "model": "Agnes/agnes-2.0-flash"
+}

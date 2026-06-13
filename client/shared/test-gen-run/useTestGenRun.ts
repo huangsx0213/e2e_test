@@ -32,7 +32,7 @@ export interface UseTestGenRunAPI {
   selectNode: (id: NodeId | null) => void;
   agentLogs: any[];
   checkpointData: any | null;
-  thinkingText: string | null;
+  thinkingText: import('./types').ThinkingEntry[] | null;
   runSummary: RunSummary | null;
   isPending: boolean;
   isConnected: boolean;
@@ -149,8 +149,13 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   }, [state.runId, api, sse]);
 
   const startRetry = useCallback((nodeId: NodeId) => {
+    // Force SSE reconnect: previous run's pipeline:error closed the stream on the
+    // server side, so the new agent:thinking events emitted during retry have no
+    // listener. Reattach before dispatching so the reducer doesn't lose any events.
+    sse.disconnect();
+    sse.connect();
     dispatch({ type: 'RETRY_STARTED', nodeId });
-  }, []);
+  }, [sse]);
 
   const PHASE_TO_CP: Record<string, number> = {
     'review-conditions': 1, 'review-draft': 2, 'final-review': 3,
@@ -170,7 +175,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           totalBatches: runInfo.total_batches,
         });
         if (runInfo.thread_id) {
-          const cpState = await api.testGen.getCheckpointState(state.runId);
+          const cpState = await api.getCheckpointState(state.runId);
           if (cpState?.checkpointData) {
             dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
           }
@@ -212,7 +217,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     try {
       const [logs, cpState] = await Promise.all([
         api.logs(state.runId),
-        api.testGen.getCheckpointState(state.runId),
+        api.getCheckpointState(state.runId),
       ]);
       const logsArr = logs ?? [];
       if (logsArr.length > 0) {
@@ -288,7 +293,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
       let checkpointData: any = undefined;
       if (runInfo.thread_id) {
         try {
-          const cpState = await api.testGen.getCheckpointState(runId);
+          const cpState = await api.getCheckpointState(runId);
           checkpointData = cpState?.checkpointData ?? undefined;
         } catch {
           // checkpoint state fetch failed, continue with logs
@@ -327,6 +332,33 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
         logs,
         summary,
       });
+
+      // For completed/failed/waiting-review runs, load persisted thinking data
+      if (runInfo.status === 'COMPLETED' || runInfo.status === 'FAILED' || runInfo.status === 'WAITING_REVIEW') {
+        try {
+          console.log('[useTestGenRun] Loading persisted thinking data for run', runId);
+          const thinkingData = await api.getThinkingData(runId);
+          console.log('[useTestGenRun] Got thinking data:', thinkingData);
+          if (thinkingData) {
+            // Map server nodeId keys to client nodeId keys
+            const SERVER_TO_CLIENT_NODE_ID: Record<string, string> = {
+              analyst: 'agent_test_analyst',
+              designer: 'agent_test_designer',
+              quality: 'agent_quality_manager',
+              reviewer: 'agent_quality_manager',
+            };
+            const mapped: Record<string, any> = {};
+            for (const [key, entries] of Object.entries(thinkingData)) {
+              const clientKey = SERVER_TO_CLIENT_NODE_ID[key] || key;
+              mapped[clientKey] = entries;
+            }
+            console.log('[useTestGenRun] Dispatching SET_THINKING_DATA with keys:', Object.keys(mapped));
+            dispatch({ type: 'SET_THINKING_DATA', thinkingData: mapped });
+          }
+        } catch (err) {
+          console.warn('[useTestGenRun] Failed to load thinking data:', err);
+        }
+      }
     } catch {
     }
   }, [api, queryClient]);

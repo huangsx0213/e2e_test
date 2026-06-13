@@ -111,9 +111,14 @@ export class TestGenController {
     return { saved: deduped.length, removed: removedCount };
   }
 
+  /** 获取思考数据（持久化的） */
+  getThinkingData(runId: string) {
+    return pipelineRepo.getThinkingData(runId);
+  }
+
   /** 获取审核日志 */
-  getAuditLogs(runId: string) {
-    return pipelineRepo.getAuditLogs(runId);
+  getAuditLogs(runId: string, checkpointId?: string) {
+    return pipelineRepo.getAuditLogs(runId, checkpointId);
   }
 
   /** 恢复中断的运行（服务重启后调用） */

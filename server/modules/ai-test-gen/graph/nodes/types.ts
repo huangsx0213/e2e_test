@@ -10,7 +10,7 @@ export interface SkillDefinition {
 
 export interface AgentObserver {
   onStep?: (agentName: string, stepIndex: number, stepName: string) => void;
-  onThinking?: (agentName: string, text: string) => void;
+  onThinking?: (agentName: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void;
   onStart?: (agentName: string) => void;
   onComplete?: (
     agentName: string,

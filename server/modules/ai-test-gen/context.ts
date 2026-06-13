@@ -29,6 +29,7 @@ export interface RunContext {
 export interface StartParams {
   requirementIds: string[];
   providerConfigName?: string;
+  model?: string;
   mode: 'auto' | 'interactive';
   flowIds?: string[];
   includeFlowCases?: boolean;
@@ -69,7 +70,7 @@ export class ContextBuilder {
     runId: string,
     projectId: string,
     mode: 'auto' | 'interactive',
-    config: { providerConfigName?: string; useCache?: boolean; currentBatch?: number } = {},
+    config: { providerConfigName?: string; model?: string; useCache?: boolean; currentBatch?: number } = {},
   ): Promise<RunContext> {
     const abortController = new AbortController();
     this.abortControllers.set(runId, abortController);
@@ -106,19 +107,24 @@ export class ContextBuilder {
     const fallbackIds = JSON.parse(providerConfigRow.fallback_config_ids || '[]') as string[];
     const fallbackConfigs = buildFallbackConfigs(pipelineRepo, fallbackIds);
 
+    // Resolve model: explicit param > provider config models[0] > provider config model > deployment
+    const resolvedModel = config.model
+      || (providerConfigRow.models ? JSON.parse(providerConfigRow.models || '[]')[0] : undefined)
+      || providerConfigRow.model;
+
     const provider = createAIProviderWithFallback({
       type: providerConfigRow.type as any,
       endpoint: providerConfigRow.endpoint,
       apiKey: decryptApiKey(providerConfigRow.encrypted_api_key),
       deployment: providerConfigRow.deployment,
       apiVersion: providerConfigRow.api_version,
-      model: providerConfigRow.model,
+      model: resolvedModel,
       fallbackConfigs: fallbackConfigs as any,
     });
-    console.log(`[context] AI provider created: type=${providerConfigRow.type}, model=${providerConfigRow.model || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
+    console.log(`[context] AI provider created: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
 
     const promptVersion = computePromptVersion();
-    const modelName = providerConfigRow.model || providerConfigRow.deployment || 'unknown';
+    const modelName = resolvedModel || providerConfigRow.deployment || 'unknown';
     pipelineRepo.updateProviderInfo(runId, {
       providerType: providerConfigRow.type,
       modelName,
@@ -134,8 +140,8 @@ export class ContextBuilder {
       onStep: (agentName, stepIndex, stepName) => {
         scope.recordAgentStep(agentName, stepIndex, stepName);
       },
-      onThinking: (agentName, text) => {
-        scope.recordAgentThinking(agentName, text);
+      onThinking: (agentName, text, type, phase) => {
+        scope.recordAgentThinking(agentName, text, type, phase);
       },
       onStart: (agentName) => {
         scope.recordAgentStart(agentName);

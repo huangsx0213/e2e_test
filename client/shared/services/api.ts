@@ -152,8 +152,8 @@ businessFlows: {
       apiFetch<{ checkpointData: any }>(`test-gen/${runId}/checkpoint-state`),
     logs: (runId: string, agentName?: string) =>
       apiFetch<any[]>(`test-gen/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
-    audit: (runId: string) =>
-      apiFetch<any[]>(`test-gen/${runId}/audit`),
+    audit: (runId: string, checkpointId?: string) =>
+      apiFetch<any[]>(`test-gen/${runId}/audit${checkpointId ? `?checkpointId=${encodeURIComponent(checkpointId)}` : ''}`),
     saveCases: (runId: string) =>
       apiFetch<{ saved: number; removed: number }>(`test-gen/${runId}/save-cases`, { method: 'POST' }),
     abort: (runId: string) =>
@@ -162,6 +162,8 @@ businessFlows: {
       apiFetch<{ success: boolean }>(`test-gen/${runId}/retry`, { method: 'POST' }),
     delete: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}`, { method: 'DELETE' }),
+    getThinkingData: (runId: string) =>
+      apiFetch<Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null>(`test-gen/${runId}/thinking`),
   },
   nlCases: {
     ...createCrudService<any>('nl-cases'),

@@ -593,35 +593,42 @@ function ProviderConfigsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [form, setForm] = useState({ name: '', type: 'azure-openai' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '' });
+  const [form, setForm] = useState({ name: '', type: 'openai-compatible' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [] as string[] });
+  const [modelInput, setModelInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; latencyMs?: number; error?: string; response?: string } | null>(null);
 
   const handleEdit = (c: any) => {
-    setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '' });
+    setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '', models: c.models || [] });
     setEditingId(c.id);
     setShowForm(true);
     setShowApiKey(false);
   };
 
   const handleCreate = () => {
-    setForm({ name: '', type: 'azure-openai', endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '' });
+    setForm({ name: '', type: 'openai-compatible', endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [] });
+    setModelInput('');
     setEditingId(null);
     setShowForm(true);
     setShowApiKey(false);
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.apiKey) return;
+    if (!form.name || (!editingId && !form.apiKey)) return;
     setIsSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         name: form.name.trim(), type: form.type, endpoint: form.endpoint.trim(),
-        encryptedApiKey: form.apiKey.trim(), deployment: form.deployment.trim(),
-        apiVersion: form.apiVersion.trim(), model: form.model.trim(),
+        deployment: form.deployment.trim(),
+        apiVersion: form.apiVersion.trim(),
+        model: form.models.length > 0 ? form.models[0] : '',
+        models: form.models,
       };
+      if (form.apiKey.trim()) {
+        payload.encryptedApiKey = form.apiKey.trim();
+      }
       if (editingId) {
         await update(editingId, payload);
       } else {
@@ -635,10 +642,7 @@ function ProviderConfigsTab() {
 
   const typeLabels: Record<string, string> = {
     'azure-openai': 'Azure OpenAI',
-    'nvidia-nim': 'Nvidia NIM',
-    'openrouter': 'OpenRouter',
-    'openai': 'OpenAI',
-    'agnes-ai': 'Agnes AI',
+    'openai-compatible': 'OpenAI Compatible',
   };
 
   return (
@@ -680,7 +684,7 @@ function ProviderConfigsTab() {
                         )}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">
-                        {typeLabels[config.type] || config.type} {config.model ? `· ${config.model}` : ''}
+                        {typeLabels[config.type] || config.type} {config.models && config.models.length > 0 ? `· ${config.models.join(', ')}` : config.model ? `· ${config.model}` : ''}
                         {config.endpoint ? ` · ${config.endpoint}` : ''}
                       </div>
                     </div>
@@ -752,10 +756,10 @@ function ProviderConfigsTab() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-slate-500 mb-1">Endpoint URL</label>
-              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'agnes-ai' ? 'https://apihub.agnes-ai.com/v1 (default)' : form.type === 'nvidia-nim' ? 'https://integrate.api.nvidia.com/v1' : 'https://your-resource.openai.azure.com'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'azure-openai' ? 'https://your-resource.openai.azure.com' : 'https://api.openai.com/v1'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">API Key *</label>
+              <label className="block text-xs text-slate-500 mb-1">API Key{!editingId && ' *'}</label>
               <div className="relative">
                 <input type={showApiKey ? 'text' : 'password'} value={form.apiKey} onChange={e => setForm({ ...form, apiKey: e.target.value })} placeholder={editingId ? '(unchanged)' : 'sk-...'} className="w-full border border-slate-200 rounded pl-2 pr-8 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
                 <button onClick={() => setShowApiKey(!showApiKey)} className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600">
@@ -764,8 +768,27 @@ function ProviderConfigsTab() {
               </div>
             </div>
             <div>
-              <label className="block text-xs text-slate-500 mb-1">Model</label>
-              <input type="text" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} placeholder={form.type === 'agnes-ai' ? 'agnes-2.0-flash' : 'gpt-4o'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+              <label className="block text-xs text-slate-500 mb-1">Models</label>
+              <div className="flex flex-wrap items-center gap-1 border border-slate-200 rounded px-2 py-1.5 min-h-[32px] focus-within:border-blue-400 transition-colors bg-white">
+                {form.models.map((m, i) => (
+                  <span key={i} className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-700 text-[11px] px-1.5 py-0.5 rounded">
+                    {m}
+                    <button type="button" onClick={() => setForm({ ...form, models: form.models.filter((_, j) => j !== i) })} className="text-slate-400 hover:text-red-500 ml-0.5 leading-none">&times;</button>
+                  </span>
+                ))}
+                <input type="text" value={modelInput} onChange={e => setModelInput(e.target.value)} onKeyDown={e => {
+                  if ((e.key === 'Enter' || e.key === ',') && modelInput.trim()) {
+                    e.preventDefault();
+                    const val = modelInput.trim().replace(/,$/, '');
+                    if (val && !form.models.includes(val)) {
+                      setForm({ ...form, models: [...form.models, val] });
+                    }
+                    setModelInput('');
+                  } else if (e.key === 'Backspace' && !modelInput && form.models.length > 0) {
+                    setForm({ ...form, models: form.models.slice(0, -1) });
+                  }
+                }} placeholder={form.models.length === 0 ? (form.type === 'azure-openai' ? 'Type model name, press Enter...' : 'Type model name, press Enter...') : ''} className="flex-1 min-w-[120px] text-xs focus:outline-none bg-transparent" />
+              </div>
             </div>
             {(form.type === 'azure-openai') && (
               <>
@@ -784,7 +807,7 @@ function ProviderConfigsTab() {
             <button onClick={() => setShowForm(false)} className="px-4 py-1.5 text-xs text-slate-600 border border-slate-200 rounded hover:bg-slate-50" disabled={isSubmitting}>
               Cancel
             </button>
-            <button onClick={handleSave} disabled={isSubmitting || !form.name || !form.apiKey} className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+            <button onClick={handleSave} disabled={isSubmitting || !form.name || (!editingId && !form.apiKey)} className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
               {isSubmitting ? 'Saving...' : 'Save'}
             </button>
           </div>

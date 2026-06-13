@@ -13,6 +13,8 @@ function makeRun(overrides: Record<string, any> = {}) {
     current_batch: 3,
     total_batches: 3,
     config: { name: 'Test Run' },
+    model_name: null,
+    provider_config_name: null,
     created_at: '2026-05-24T10:30:00.000Z',
     ...overrides,
   };
@@ -26,6 +28,7 @@ describe('TestGenRunHistory', () => {
     onSelect: vi.fn(),
     onBack: vi.fn(),
     onDeleteRun: vi.fn() as (runId: string) => Promise<void>,
+    onRetryRun: vi.fn() as (runId: string) => Promise<void>,
   };
 
   it('TC-5.1: renders list of pipeline runs', () => {
@@ -72,13 +75,14 @@ describe('TestGenRunHistory', () => {
     expect(screen.queryByText('Auto Run')).toBeNull();
   });
 
-  it('TC-5.5: delete confirmation shows Yes/No', () => {
+  it('TC-5.5: delete confirmation shows ConfirmModal', () => {
     const runs = [makeRun()];
     render(React.createElement(TestGenRunHistory, { ...defaultProps, runs }));
     const deleteBtn = screen.getByTitle('Delete run');
     fireEvent.click(deleteBtn);
-    expect(screen.getByText('Yes')).toBeTruthy();
-    expect(screen.getByText('No')).toBeTruthy();
+    expect(screen.getByText('Delete run?')).toBeTruthy();
+    expect(screen.getByText('Delete')).toBeTruthy();
+    expect(screen.getByText('Cancel')).toBeTruthy();
   });
 
   it('TC-5.5: confirming delete calls onDeleteRun', async () => {
@@ -86,7 +90,7 @@ describe('TestGenRunHistory', () => {
     const onDeleteRun = vi.fn().mockResolvedValue(undefined);
     render(React.createElement(TestGenRunHistory, { ...defaultProps, runs, onDeleteRun }));
     fireEvent.click(screen.getByTitle('Delete run'));
-    fireEvent.click(screen.getByText('Yes'));
+    fireEvent.click(screen.getByText('Delete'));
     expect(onDeleteRun).toHaveBeenCalledWith('run-1');
   });
 

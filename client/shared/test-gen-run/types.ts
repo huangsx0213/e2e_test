@@ -72,6 +72,13 @@ export interface TestGenEvent {
   data: any;
 }
 
+export interface ThinkingEntry {
+  type: 'reasoning' | 'content';
+  phase: 'react' | 'extraction';
+  text: string;
+  timestamp: number;
+}
+
 export interface TestGenRunState {
   runId: string | null;
   mode: RunMode;
@@ -81,7 +88,7 @@ export interface TestGenRunState {
   autoFollowEnabled: boolean;
   batchProgress: BatchProgress | null;
   checkpointData: any | null;
-  thinkingTextByNode: Record<string, string>;
+  thinkingTextByNode: Record<string, ThinkingEntry[]>;
   runSummary: RunSummary | null;
   isConnected: boolean;
   error: TestGenError | null;
@@ -104,6 +111,7 @@ export type TestGenReducerAction =
   | { type: 'SET_ERROR'; error: TestGenError | null }
   | { type: 'DISMISS_ERROR' }
   | { type: 'RESET' }
+  | { type: 'SET_THINKING_DATA'; thinkingData: Record<string, ThinkingEntry[]> }
   | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary };
 
 export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentName' | 'subSteps'>;
