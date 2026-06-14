@@ -62,6 +62,7 @@ export interface StartConfig {
   requirementIds: string[];
   providerConfigName?: string;
   model?: string;
+  modelName?: string;
   mode: RunMode;
   flowIds?: string[];
   includeFlowCases?: boolean;

@@ -17,6 +17,7 @@ export interface TestGenStartConfig {
   mode: 'auto' | 'interactive';
   providerConfigName: string;
   model?: string;
+  modelName?: string;
   includeFlowCases?: boolean;
   useCache?: boolean;
 }
@@ -139,6 +140,7 @@ interface SavedConfig {
   mode: 'auto' | 'interactive';
   showApprovedOnly: boolean;
   selectedModel: string;
+  modelName: string;
   includeFlowCases: boolean;
   useCache: boolean;
   selectedReqIds?: string[];
@@ -162,6 +164,7 @@ const defaultConfig: SavedConfig = {
   mode: 'auto',
   showApprovedOnly: true,
   selectedModel: '',
+  modelName: '',
   includeFlowCases: false,
   useCache: false,
 };
@@ -195,6 +198,7 @@ export function TestGenConfigPanel({
 
   const [expandAll, setExpandAll] = useState(false);
   const [selectedModel, setSelectedModel] = useState(savedConfig?.selectedModel ?? defaultConfig.selectedModel);
+  const [modelName, setModelName] = useState(savedConfig?.modelName ?? defaultConfig.modelName);
   const [modelOpen, setModelOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -232,9 +236,13 @@ export function TestGenConfigPanel({
       const active = providerConfigs.find((p: any) => p.isActive);
       if (active) {
         const firstModel = modelOptions.find(o => o.providerName === active.name);
-        if (firstModel) setSelectedModel(firstModel.model);
-      } else {
+        if (firstModel) {
+          setSelectedModel(firstModel.model);
+          setModelName(`${firstModel.model} (${firstModel.providerName})`);
+        }
+      } else if (modelOptions[0]) {
         setSelectedModel(modelOptions[0].model);
+        setModelName(`${modelOptions[0].model} (${modelOptions[0].providerName})`);
       }
     }
   }, [modelOptions, selectedModel, providerConfigs]);
@@ -243,11 +251,11 @@ export function TestGenConfigPanel({
 
   useEffect(() => {
     saveConfig({
-      mode, showApprovedOnly, selectedModel, includeFlowCases, useCache,
+      mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache,
       selectedReqIds: Array.from(selectedReqs),
       selectedFlowIds: Array.from(selectedFlows),
     });
-  }, [mode, showApprovedOnly, selectedModel, includeFlowCases, useCache, selectedReqs, selectedFlows]);
+  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, selectedReqs, selectedFlows]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 
@@ -280,6 +288,7 @@ export function TestGenConfigPanel({
     setMode(defaultConfig.mode);
     setShowApprovedOnly(defaultConfig.showApprovedOnly);
     setSelectedModel(defaultConfig.selectedModel);
+    setModelName(defaultConfig.modelName);
     setIncludeFlowCases(defaultConfig.includeFlowCases);
     setUseCache(defaultConfig.useCache);
     setSelectedReqs(new Set());
@@ -296,6 +305,7 @@ export function TestGenConfigPanel({
       mode,
       providerConfigName: selectedProvider,
       model: selectedModel || undefined,
+      modelName: modelName || undefined,
       includeFlowCases,
       useCache,
     });
@@ -515,7 +525,7 @@ export function TestGenConfigPanel({
                     {group.models.map((o, i) => (
                       <button
                         key={`${o.providerName}-${o.model}-${i}`}
-                        onClick={() => { setSelectedModel(o.model); setModelOpen(false); }}
+                        onClick={() => { setSelectedModel(o.model); setModelName(`${o.model} (${o.providerName})`); setModelOpen(false); }}
                         className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
                           selectedModel === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
                         }`}

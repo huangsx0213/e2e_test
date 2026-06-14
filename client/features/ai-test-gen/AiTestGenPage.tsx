@@ -54,6 +54,7 @@ const handleRefresh = useCallback(async () => {
         requirementIds: config.requirementIds,
         providerConfigName: config.providerConfigName,
         model: config.model,
+        modelName: config.modelName,
         mode: config.mode,
         flowIds: config.flowIds,
         includeFlowCases: config.includeFlowCases,
