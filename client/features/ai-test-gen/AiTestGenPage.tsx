@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { History, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequirements, useBusinessFlows } from '@/shared/hooks/useQueryHooks';
 import { useTestGenRun } from '@/shared/test-gen-run';
@@ -8,18 +8,28 @@ import { TestGenConfigPanel, type TestGenStartConfig } from './TestGenConfigPane
 import { TestGenStepper } from './TestGenStepper';
 import { TestGenDetailPanel } from './TestGenDetailPanel';
 import { TestGenRunHistory } from './TestGenRunHistory';
+import { AgentPromptsPanel } from './AgentPromptsPanel';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
+
+type TabId = 'new' | 'runtime' | 'history' | 'prompts';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'new', label: 'New' },
+  { id: 'runtime', label: 'Runtime' },
+  { id: 'history', label: 'History' },
+  { id: 'prompts', label: 'Agent Prompts' },
+];
 
 interface AiTestGenPageProps {
   currentProjectId: string | null;
 }
 
 export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
-  const [view, setView] = useState<'config' | 'history'>('config');
+  const [activeTab, setActiveTab] = useState<TabId>('new');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
   const [showRetryConfirm, setShowRetryConfirm] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: view === 'config' });
+  const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: activeTab !== 'history' });
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
   const [reviewMode, setReviewMode] = useState(false);
@@ -48,6 +58,7 @@ const handleRefresh = useCallback(async () => {
         includeFlowCases: config.includeFlowCases,
         useCache: config.useCache,
       });
+      setActiveTab('runtime');
     } catch {
       // error dispatched to reducer via SET_ERROR
     }
@@ -163,7 +174,7 @@ const handleRefresh = useCallback(async () => {
 
   const handleSelectRun = useCallback(async (runId: string) => {
     await pipeline.loadRun(runId);
-    setView('config');
+    setActiveTab('runtime');
   }, [pipeline]);
 
   // Debug: log pipeline state on node selection
@@ -180,7 +191,8 @@ const handleRefresh = useCallback(async () => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
+    <div className="h-full flex flex-col bg-white overflow-hidden">
+      {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 bg-white shrink-0">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider">AI Test Gen</h2>
@@ -222,67 +234,86 @@ const handleRefresh = useCallback(async () => {
               Abort
             </button>
           )}
-          <button
-            onClick={() => setView(view === 'history' ? 'config' : 'history')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-              view === 'history'
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {view === 'history' ? <Plus size={14} /> : <History size={14} />}
-            {view === 'history' ? 'New Run' : 'History'}
-          </button>
         </div>
       </div>
 
-      {view === 'history' ? (
-        <TestGenRunHistory
-          runs={pipeline.runs}
-          onSelect={handleSelectRun}
-          onBack={() => setView('config')}
-          onDeleteRun={handleDeleteRun}
-          onRetryRun={handleRetryFailedRun}
-        />
-      ) : (
-        <div className="flex-1 flex overflow-hidden">
+      {/* Tab bar */}
+      <div className="flex border-b border-slate-200 bg-white px-4 shrink-0">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 text-xs font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'text-blue-600 border-b-2 border-blue-600 -mb-px'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'new' && (
           <TestGenConfigPanel
             requirements={requirements}
             businessFlows={businessFlows}
             onStart={handleStart}
             disabled={pipeline.isRunning}
           />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <TestGenStepper
-              nodes={pipeline.nodes as any}
-              selectedNodeId={pipeline.selectedNodeId ?? null}
-              onNodeClick={handleNodeClick}
-              autoFollowEnabled={pipeline.autoFollowEnabled}
-              onToggleAutoFollow={handleToggleAutoFollow}
-              isRunning={pipeline.isRunning}
-            />
+        )}
+        {activeTab === 'runtime' && (
+          <div className="h-full flex overflow-hidden">
+            <div className="w-80 shrink-0 h-full overflow-hidden border-r border-slate-200 bg-slate-50/60">
+              <TestGenStepper
+                nodes={pipeline.nodes as any}
+                selectedNodeId={pipeline.selectedNodeId ?? null}
+                onNodeClick={handleNodeClick}
+                autoFollowEnabled={pipeline.autoFollowEnabled}
+                onToggleAutoFollow={handleToggleAutoFollow}
+                isRunning={pipeline.isRunning}
+              />
+            </div>
             <div className="flex-1 overflow-hidden">
-        <TestGenDetailPanel
-          runId={pipeline.runId}
-          node={pipeline.selectedNode as any ?? null}
-          agentLog={selectedAgentLog}
-          checkpointData={pipeline.checkpointData}
-          thinkingText={pipeline.thinkingText}
-          runSummary={pipeline.runSummary}
-          agentLogs={pipeline.agentLogs}
-          onClose={handleCloseDetail}
-          onApprove={handleApprove}
-          onRetry={() => setShowRetryConfirm(true)}
-          onToggleReview={handleToggleReview}
-          onDoneReviewing={handleDoneReviewing}
-          onCheckpointDataChange={handleCheckpointDataChange}
-          isEditing={reviewMode}
-          retrying={retrying}
-        />
+              <TestGenDetailPanel
+                runId={pipeline.runId}
+                node={pipeline.selectedNode as any ?? null}
+                agentLog={selectedAgentLog}
+                checkpointData={pipeline.checkpointData}
+                thinkingText={pipeline.thinkingText}
+                runSummary={pipeline.runSummary}
+                agentLogs={pipeline.agentLogs}
+                startConfig={pipeline.startConfig}
+                requirements={requirements}
+                businessFlows={businessFlows}
+                modelName={pipeline.modelName}
+                onClose={handleCloseDetail}
+                onApprove={handleApprove}
+                onRetry={() => setShowRetryConfirm(true)}
+                onToggleReview={handleToggleReview}
+                onDoneReviewing={handleDoneReviewing}
+                onCheckpointDataChange={handleCheckpointDataChange}
+                isEditing={reviewMode}
+                retrying={retrying}
+              />
             </div>
           </div>
-        </div>
-      )}
+        )}
+        {activeTab === 'history' && (
+          <TestGenRunHistory
+            runs={pipeline.runs}
+            onSelect={handleSelectRun}
+            onBack={() => setActiveTab('new')}
+            onDeleteRun={handleDeleteRun}
+            onRetryRun={handleRetryFailedRun}
+          />
+        )}
+        {activeTab === 'prompts' && (
+          <AgentPromptsPanel projectId={currentProjectId} />
+        )}
+      </div>
 
       <ConfirmModal
         isOpen={showAbortConfirm}

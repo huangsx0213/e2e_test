@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Search, ArrowLeft, Trash2, RefreshCw } from 'lucide-react';
+import { Search, Trash2, RefreshCw } from 'lucide-react';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 
 interface TestGenRun {
@@ -18,7 +18,7 @@ interface TestGenRun {
 interface TestGenRunHistoryProps {
   runs: TestGenRun[];
   onSelect: (runId: string) => void;
-  onBack: () => void;
+  onBack?: () => void;
   onDeleteRun: (runId: string) => Promise<void>;
   onRetryRun: (runId: string) => Promise<void>;
 }
@@ -85,9 +85,6 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun, onRetry
   return (
     <div className="flex-1 flex flex-col bg-white">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200">
-        <button onClick={onBack} className="p-1 hover:bg-slate-100 rounded">
-          <ArrowLeft size={16} className="text-slate-500" />
-        </button>
         <h3 className="text-sm font-medium text-slate-700">Run History</h3>
         <div className="flex-1" />
         {selectedIds.size > 0 && (

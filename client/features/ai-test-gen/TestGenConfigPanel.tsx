@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, ChevronRight, ChevronDown, Play, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, Play, FileText, GitBranch, Settings2, Zap, CheckCircle } from 'lucide-react';
 import type { Requirement, BusinessFlow } from '../../../shared/contracts/index';
-import { HelpTooltip } from '@/shared/ui/HelpTooltip';
-import { queryKeys } from '@/shared/hooks/queryKeys';
-import { useQueryClient } from '@tanstack/react-query';
 import { useProviderConfigs } from '../../shared/hooks/useQueryHooks';
 
 interface TestGenConfigPanelProps {
@@ -70,14 +67,18 @@ function RequirementTreeNode({
   onToggle: (ids: string[]) => void;
   forceExpanded: boolean;
 }) {
-  const [selfExpanded, setSelfExpanded] = useState(false);
-  const expanded = forceExpanded || selfExpanded;
+  const [selfExpanded, setSelfExpanded] = useState(forceExpanded);
+  const expanded = selfExpanded;
   const hasChildren = node.children.length > 0;
   const allDescendantIds = hasChildren ? collectLeafIds(node) : [node.req.id];
   const allSelected = allDescendantIds.every(id => selectedIds.has(id));
   const someSelected = allDescendantIds.some(id => selectedIds.has(id));
   const labelRef = useRef<HTMLSpanElement>(null);
   const [showTooltip, setShowTooltip] = useState(false);
+
+  useEffect(() => {
+    setSelfExpanded(forceExpanded);
+  }, [forceExpanded]);
 
   const handleTitleMouseEnter = () => {
     if (labelRef.current && labelRef.current.scrollWidth > labelRef.current.clientWidth) {
@@ -88,11 +89,13 @@ function RequirementTreeNode({
   return (
     <div>
       <div
-        className="flex items-center gap-1 py-0.5 hover:bg-slate-100 rounded px-1 cursor-pointer"
-        style={{ paddingLeft: `${node.depth * 16 + 4}px` }}
+        className={`flex items-center gap-1.5 py-1 px-1.5 rounded-md cursor-pointer transition-colors ${
+          someSelected ? 'bg-blue-50/50' : 'hover:bg-slate-50'
+        }`}
+        style={{ paddingLeft: `${node.depth * 20 + 6}px` }}
       >
         {hasChildren ? (
-          <button onClick={(e) => { e.stopPropagation(); setSelfExpanded(!selfExpanded); }} className="p-0.5">
+          <button onClick={(e) => { e.stopPropagation(); setSelfExpanded(!expanded); }} className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         ) : (
@@ -103,17 +106,21 @@ function RequirementTreeNode({
           checked={allSelected}
           ref={el => { if (el) el.indeterminate = someSelected && !allSelected; }}
           onChange={() => onToggle(allDescendantIds)}
-          className="rounded shrink-0"
+          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 shrink-0"
         />
         <span
           ref={labelRef}
-          className="text-sm truncate flex-1 min-w-0"
+          className={`text-[13px] truncate flex-1 min-w-0 leading-snug ${
+            allSelected ? 'text-slate-800 font-medium' : someSelected ? 'text-slate-700' : 'text-slate-600'
+          }`}
           title={showTooltip ? node.req.title : undefined}
           onMouseEnter={handleTitleMouseEnter}
         >
           {node.req.title}
         </span>
-        <span className="text-xs text-slate-400 shrink-0">{node.req.level}</span>
+        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide shrink-0 bg-slate-100 px-1.5 py-0.5 rounded">
+          {node.req.level}
+        </span>
       </div>
       {expanded && hasChildren && (
         <div>
@@ -126,34 +133,94 @@ function RequirementTreeNode({
   );
 }
 
+const CONFIG_KEY = 'ai-test-gen-config';
+
+interface SavedConfig {
+  mode: 'auto' | 'interactive';
+  showApprovedOnly: boolean;
+  selectedModel: string;
+  includeFlowCases: boolean;
+  useCache: boolean;
+  selectedReqIds?: string[];
+  selectedFlowIds?: string[];
+}
+
+function loadConfig(): SavedConfig | null {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveConfig(config: SavedConfig) {
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+}
+
+const defaultConfig: SavedConfig = {
+  mode: 'auto',
+  showApprovedOnly: true,
+  selectedModel: '',
+  includeFlowCases: false,
+  useCache: false,
+};
+
 export function TestGenConfigPanel({
   requirements,
   businessFlows,
   onStart,
   disabled,
 }: TestGenConfigPanelProps) {
-  const queryClient = useQueryClient();
   const { data: providerConfigs = [] } = useProviderConfigs();
-  const [name, setName] = useState('');
-  const [reqSearch, setReqSearch] = useState('');
+  const savedConfig = useMemo(() => loadConfig(), []);
+
   const [selectedReqs, setSelectedReqs] = useState<Set<string>>(new Set());
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<'auto' | 'interactive'>('auto');
-  const [showApprovedOnly, setShowApprovedOnly] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [mode, setMode] = useState<'auto' | 'interactive'>(savedConfig?.mode ?? defaultConfig.mode);
+  const [showApprovedOnly, setShowApprovedOnly] = useState(savedConfig?.showApprovedOnly ?? defaultConfig.showApprovedOnly);
+
+  useEffect(() => {
+    if (requirements.length > 0 && savedConfig?.selectedReqIds) {
+      const valid = savedConfig.selectedReqIds.filter(id => requirements.some(r => r.id === id));
+      if (valid.length > 0) setSelectedReqs(new Set(valid));
+    }
+  }, [requirements]);
+  useEffect(() => {
+    if (businessFlows.length > 0 && savedConfig?.selectedFlowIds) {
+      const valid = savedConfig.selectedFlowIds.filter(id => businessFlows.some(f => f.id === id));
+      if (valid.length > 0) setSelectedFlows(new Set(valid));
+    }
+  }, [businessFlows]);
+
   const [expandAll, setExpandAll] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('');
-  // Build flat model list: { model, providerName, providerType }
-  const modelOptions = useMemo(() => {
-    const opts: { model: string; providerName: string; providerType: string }[] = [];
+  const [selectedModel, setSelectedModel] = useState(savedConfig?.selectedModel ?? defaultConfig.selectedModel);
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modelOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setModelOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [modelOpen]);
+  // Build model options grouped by provider name, sorted alphabetically
+  const modelGroups = useMemo(() => {
+    const groups: { providerName: string; models: { model: string; providerName: string; providerType: string }[] }[] = [];
     for (const p of providerConfigs) {
       const models: string[] = p.models || [];
-      for (const m of models) {
-        opts.push({ model: m, providerName: p.name, providerType: p.type });
-      }
+      if (models.length === 0) continue;
+      groups.push({
+        providerName: p.name,
+        models: models.map(m => ({ model: m, providerName: p.name, providerType: p.type })),
+      });
     }
-    return opts;
+    return groups.sort((a, b) => a.providerName.localeCompare(b.providerName));
   }, [providerConfigs]);
+  const modelOptions = useMemo(() => modelGroups.flatMap(g => g.models), [modelGroups]);
   // Selected provider derived from selected model
   const selectedProvider = useMemo(() => {
     const opt = modelOptions.find(o => o.model === selectedModel);
@@ -171,24 +238,18 @@ export function TestGenConfigPanel({
       }
     }
   }, [modelOptions, selectedModel, providerConfigs]);
-  const [includeFlowCases, setIncludeFlowCases] = useState(false);
-  const [useCache, setUseCache] = useState(false);
+  const [includeFlowCases, setIncludeFlowCases] = useState(savedConfig?.includeFlowCases ?? defaultConfig.includeFlowCases);
+  const [useCache, setUseCache] = useState(savedConfig?.useCache ?? defaultConfig.useCache);
+
+  useEffect(() => {
+    saveConfig({
+      mode, showApprovedOnly, selectedModel, includeFlowCases, useCache,
+      selectedReqIds: Array.from(selectedReqs),
+      selectedFlowIds: Array.from(selectedFlows),
+    });
+  }, [mode, showApprovedOnly, selectedModel, includeFlowCases, useCache, selectedReqs, selectedFlows]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
-  const filteredTree = useMemo(() => {
-    if (!reqSearch) return tree;
-    function filter(nodes: TreeNode[]): TreeNode[] {
-      return nodes.reduce<TreeNode[]>((acc, node) => {
-        const matches = node.req.title.toLowerCase().includes(reqSearch.toLowerCase());
-        const filteredChildren = filter(node.children);
-        if (matches || filteredChildren.length > 0) {
-          acc.push({ ...node, children: filteredChildren });
-        }
-        return acc;
-      }, []);
-    }
-    return filter(tree);
-  }, [tree, reqSearch]);
 
   const flows = showApprovedOnly
     ? businessFlows.filter(f => f.status === 'APPROVED')
@@ -215,16 +276,19 @@ export function TestGenConfigPanel({
     });
   };
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    queryClient.invalidateQueries({ queryKey: queryKeys.requirements as any });
-    queryClient.invalidateQueries({ queryKey: queryKeys.businessFlows as any });
-    setTimeout(() => setIsRefreshing(false), 500);
+  const handleReset = () => {
+    setMode(defaultConfig.mode);
+    setShowApprovedOnly(defaultConfig.showApprovedOnly);
+    setSelectedModel(defaultConfig.selectedModel);
+    setIncludeFlowCases(defaultConfig.includeFlowCases);
+    setUseCache(defaultConfig.useCache);
+    setSelectedReqs(new Set());
+    setSelectedFlows(new Set());
   };
 
   const handleStart = () => {
     const now = new Date();
-    const defaultName = name || `TestGen_${now.toISOString().slice(0, 10)}_${now.toTimeString().slice(0, 5).replace(':', '-')}`;
+    const defaultName = `TestGen_${now.toISOString().slice(0, 10)}_${now.toTimeString().slice(0, 5).replace(':', '-')}`;
     onStart({
       name: defaultName,
       requirementIds: Array.from(selectedReqs),
@@ -240,187 +304,282 @@ export function TestGenConfigPanel({
   const canStart = (includeFlowCases ? selectedFlows.size > 0 : selectedReqs.size > 0) && selectedProvider !== '' && !disabled;
 
   return (
-    <div className="w-80 border-r border-slate-200 flex flex-col h-full bg-white shrink-0">
-      <div className="p-3 border-b border-slate-100">
-        <div className="flex items-center gap-2 mb-3">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Test Gen Config</h3>
-          <HelpTooltip content="Select requirements and business flows as input for AI test case generation. Choose Auto mode to run all stages automatically, or Interactive mode to pause at each checkpoint for manual review." />
-          <div className="ml-auto">
-            <button
-              onClick={handleRefresh}
-              className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-            </button>
+    <div className="h-full flex overflow-hidden bg-white">
+      {/* Column 1: Requirements */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-50">
+            <FileText size={14} className="text-blue-600" />
           </div>
-        </div>
-        <label className="block text-xs text-slate-500 mb-1">Test Gen Name</label>
-        <input
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="e.g. User Management Test"
-          className="w-full border border-slate-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
-        />
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wide">Requirements</h4>
-            <span className="text-xs text-blue-600">{selectedReqs.size} selected</span>
-          </div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-2 top-2 text-slate-400" />
-              <input
-                type="text"
-                value={reqSearch}
-                onChange={e => setReqSearch(e.target.value)}
-                placeholder="Filter..."
-                className="w-full border border-slate-200 rounded pl-7 pr-2 py-1 text-xs focus:outline-none focus:border-blue-400"
-              />
-            </div>
-            <button
-              onClick={() => setExpandAll(!expandAll)}
-              className="text-xs text-slate-400 hover:text-blue-600 whitespace-nowrap"
-              title={expandAll ? 'Collapse all' : 'Expand all'}
-            >
-              {expandAll ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {filteredTree.map(node => (
-              <RequirementTreeNode
-                key={node.req.id}
-                node={node}
-                selectedIds={selectedReqs}
-                onToggle={handleReqToggle}
-                forceExpanded={expandAll}
-              />
-            ))}
-          </div>
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => {
-                const allIds = requirements.map(r => r.id);
-                setSelectedReqs(new Set(allIds));
-              }}
-              className="text-xs text-blue-600 hover:text-blue-800"
-            >
-              Select All
-            </button>
-            <button
-              onClick={() => setSelectedReqs(new Set())}
-              className="text-xs text-slate-500 hover:text-slate-700"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 border-b border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-medium text-slate-600 uppercase tracking-wide">Business Flows</h4>
-            <span className="text-xs text-blue-600">{selectedFlows.size} selected</span>
-          </div>
-          <label className="flex items-center gap-1 mb-2 text-xs text-slate-500">
-            <input
-              type="checkbox"
-              checked={showApprovedOnly}
-              onChange={e => setShowApprovedOnly(e.target.checked)}
-              className="rounded"
-            />
-            Show approved flows only
-          </label>
-          <div className="max-h-48 overflow-y-auto">
-            {flows.map(flow => (
-              <label key={flow.id} className="flex items-center gap-2 py-1 px-1 hover:bg-slate-50 rounded cursor-pointer text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedFlows.has(flow.id)}
-                  onChange={() => handleFlowToggle(flow.id)}
-                  className="rounded shrink-0"
-                />
-                <span className="truncate" title={flow.name + ' (' + flow.type + ')'}>{flow.name}</span>
-                <span className="text-xs text-slate-400 ml-auto shrink-0">
-                  {flow.type} {flow.status === 'APPROVED' ? '\u2713' : ''}
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="p-4 border-t border-slate-200 space-y-3">
-        <div>
-          <label className="text-xs font-medium text-slate-600 block mb-1">Run Mode</label>
-          <div className="flex rounded border border-slate-200 overflow-hidden">
-            <button
-              onClick={() => setMode('auto')}
-              className={`flex-1 py-1.5 text-xs ${mode === 'auto' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              Auto
-            </button>
-            <button
-              onClick={() => setMode('interactive')}
-              className={`flex-1 py-1.5 text-xs border-l border-slate-200 ${mode === 'interactive' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              Interactive
-            </button>
-          </div>
-          <p className="text-xs text-slate-400 mt-1">
-            {mode === 'auto' ? 'Automatically complete all stages' : 'Pause at each checkpoint for review'}
-          </p>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-slate-600 block mb-1">Model</label>
-          <select
-            value={selectedModel}
-            onChange={e => setSelectedModel(e.target.value)}
-            className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400"
-          >
-            {modelOptions.map((o, i) => (
-              <option key={`${o.providerName}-${o.model}-${i}`} value={o.model}>
-                {o.model} ({o.providerName})
-              </option>
-            ))}
-          </select>
-          {modelOptions.length === 0 && (
-            <p className="text-xs text-amber-600 mt-1">No models configured. Go to Settings &gt; AI Provider.</p>
+          <h3 className="text-[13px] font-semibold text-slate-700">Requirements</h3>
+          {selectedReqs.size > 0 && (
+            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {selectedReqs.size}
+            </span>
           )}
         </div>
-        <div className="border-t border-slate-200 pt-2">
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includeFlowCases}
-              onChange={e => setIncludeFlowCases(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-slate-600">Generate flow-level test cases (Flow Batch)</span>
-            <HelpTooltip content="When enabled, only end-to-end flow test cases are generated based on selected Business Flows. Atomic per-requirement cases are skipped. Requires at least one Business Flow to be selected." />
-          </label>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!useCache}
-              onChange={e => setUseCache(!e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-slate-600">Disable cache</span>
-            <HelpTooltip content="When checked, each AI agent run bypasses the cache for fresh LLM responses. Useful for debugging or evaluating prompt changes." />
-          </label>
+        <div className="flex-1 flex flex-col px-4 pt-3 pb-4 overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={selectedReqs.size === requirements.length && requirements.length > 0}
+                ref={el => {
+                  if (el) el.indeterminate = selectedReqs.size > 0 && selectedReqs.size < requirements.length;
+                }}
+                onChange={() => {
+                  if (selectedReqs.size === requirements.length) {
+                    setSelectedReqs(new Set());
+                  } else {
+                    setSelectedReqs(new Set(requirements.map(r => r.id)));
+                  }
+                }}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20"
+              />
+              <span>Select all</span>
+            </label>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setExpandAll(!expandAll)}
+                className="text-[11px] font-medium text-slate-400 hover:text-blue-600 px-2 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                title={expandAll ? 'Collapse all' : 'Expand all'}
+              >
+                {expandAll ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto -mx-1 px-1">
+            {tree.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <FileText size={28} className="mb-2 opacity-40" />
+                <p className="text-xs">No requirements found</p>
+              </div>
+            ) : (
+              tree.map(node => (
+                <RequirementTreeNode
+                  key={node.req.id}
+                  node={node}
+                  selectedIds={selectedReqs}
+                  onToggle={handleReqToggle}
+                  forceExpanded={expandAll}
+                />
+              ))
+            )}
+          </div>
         </div>
-        <button
-          onClick={handleStart}
-          disabled={!canStart}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          <Play size={16} />
-          Start Test Gen
-        </button>
+      </div>
+
+      {/* Column 2: Business Flows */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-violet-50">
+            <GitBranch size={14} className="text-violet-600" />
+          </div>
+          <h3 className="text-[13px] font-semibold text-slate-700">Business Flows</h3>
+          {selectedFlows.size > 0 && (
+            <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {selectedFlows.size}
+            </span>
+          )}
+        </div>
+        <div className="flex-1 flex flex-col px-4 pt-3 pb-4 overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={selectedFlows.size === flows.length && flows.length > 0}
+                ref={el => {
+                  if (el) el.indeterminate = selectedFlows.size > 0 && selectedFlows.size < flows.length;
+                }}
+                onChange={() => {
+                  if (selectedFlows.size === flows.length) {
+                    setSelectedFlows(new Set());
+                  } else {
+                    setSelectedFlows(new Set(flows.map(f => f.id)));
+                  }
+                }}
+                className="rounded border-slate-300 text-violet-600 focus:ring-violet-500/20"
+              />
+              <span>Select all</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showApprovedOnly}
+                onChange={e => setShowApprovedOnly(e.target.checked)}
+                className="rounded border-slate-300 text-violet-600 focus:ring-violet-500/20"
+              />
+              <span>Approved only</span>
+            </label>
+          </div>
+          <div className="flex-1 overflow-y-auto -mx-1 px-1">
+            {flows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                <GitBranch size={28} className="mb-2 opacity-40" />
+                <p className="text-xs">No business flows available</p>
+              </div>
+            ) : (
+              flows.map(flow => (
+                <label key={flow.id} className={`flex items-center gap-2.5 py-1.5 px-2 rounded-md cursor-pointer text-sm transition-colors ${
+                  selectedFlows.has(flow.id) ? 'bg-violet-50/70' : 'hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedFlows.has(flow.id)}
+                    onChange={() => handleFlowToggle(flow.id)}
+                    className="rounded border-slate-300 text-violet-600 focus:ring-violet-500/20 shrink-0"
+                  />
+                  <span className={`truncate flex-1 min-w-0 ${
+                    selectedFlows.has(flow.id) ? 'text-slate-800 font-medium' : 'text-slate-600'
+                  }`} title={flow.name + ' (' + flow.type + ')'}>
+                    {flow.name}
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide shrink-0 bg-slate-100 px-1.5 py-0.5 rounded">
+                    {flow.type}
+                  </span>
+                  {flow.status === 'APPROVED' && (
+                    <span className="shrink-0" title="Approved">
+                      <CheckCircle size={12} className="text-green-500" />
+                    </span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Column 3: Settings */}
+      <div className="w-96 flex flex-col bg-slate-50/50 shrink-0">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100">
+            <Settings2 size={14} className="text-slate-600" />
+          </div>
+          <h3 className="text-[13px] font-semibold text-slate-700">Settings</h3>
+          <button
+            onClick={handleReset}
+            className="ml-auto text-[11px] font-medium text-slate-400 hover:text-red-500 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
+          >
+            Reset
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Run Mode */}
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Run Mode</label>
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white p-0.5">
+              <button
+                onClick={() => setMode('auto')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ${
+                  mode === 'auto'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Zap size={13} />
+                Auto
+              </button>
+              <button
+                onClick={() => setMode('interactive')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-medium transition-all ${
+                  mode === 'interactive'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <CheckCircle size={13} />
+                Interactive
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {mode === 'auto' ? 'Run all stages automatically' : 'Pause at each checkpoint for review'}
+            </p>
+          </div>
+
+          {/* Model */}
+          <div className="relative" ref={modelDropdownRef}>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Model</label>
+            <button
+              onClick={() => setModelOpen(!modelOpen)}
+              className="w-full flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white hover:border-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all"
+            >
+              <span className="text-slate-700">{selectedModel || 'Select a model'}</span>
+              <ChevronDown size={14} className={`text-slate-400 transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {modelOpen && (
+              <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {modelGroups.map(group => (
+                  <div key={group.providerName}>
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">{group.providerName}</div>
+                    {group.models.map((o, i) => (
+                      <button
+                        key={`${o.providerName}-${o.model}-${i}`}
+                        onClick={() => { setSelectedModel(o.model); setModelOpen(false); }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
+                          selectedModel === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
+                        }`}
+                      >
+                        {o.model}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {modelOptions.length === 0 && (
+              <p className="text-[11px] text-amber-600 mt-1.5">No models configured. Go to Settings &gt; AI Provider.</p>
+            )}
+          </div>
+
+          {/* Options */}
+          <div className="space-y-2.5 pt-1">
+            <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
+              <input
+                type="checkbox"
+                checked={includeFlowCases}
+                onChange={e => setIncludeFlowCases(e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5"
+              />
+              <div className="flex-1">
+                <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Flow-level test cases</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Generate end-to-end flow cases instead of atomic per-requirement cases</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
+              <input
+                type="checkbox"
+                checked={!useCache}
+                onChange={e => setUseCache(!e.target.checked)}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5"
+              />
+              <div className="flex-1">
+                <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Disable cache</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Bypass cache for fresh LLM responses each run</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Start button */}
+        <div className="p-4 border-t border-slate-100">
+          <button
+            onClick={handleStart}
+            disabled={!canStart}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow disabled:shadow-none"
+          >
+            <Play size={16} fill="currentColor" />
+            Start Test Gen
+          </button>
+          {!canStart && selectedProvider === '' && (
+            <p className="text-[11px] text-amber-600 mt-1.5 text-center">Select a model to continue</p>
+          )}
+          {!canStart && selectedProvider !== '' && (includeFlowCases ? selectedFlows.size === 0 : selectedReqs.size === 0) && (
+            <p className="text-[11px] text-slate-400 mt-1.5 text-center">
+              {includeFlowCases ? 'Select at least one business flow' : 'Select at least one requirement'}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

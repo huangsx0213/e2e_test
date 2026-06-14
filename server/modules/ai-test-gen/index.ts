@@ -120,6 +120,26 @@ router.delete('/:runId', withErrorHandling((req, res) => {
   res.json(result);
 }));
 
+// ============================================================
+// Prompt Overrides
+// ============================================================
+
+// 获取项目的所有 prompt overrides
+router.get('/prompts/:projectId', withErrorHandling((req, res) => {
+  res.json(controller.getPromptOverrides(p(req.params.projectId)));
+}));
+
+// 保存 prompt override
+router.put('/prompts/:projectId/:agentName', withErrorHandling((req, res) => {
+  const { customPrompt, modelOverride } = req.body;
+  res.json(controller.upsertPromptOverride(p(req.params.projectId), p(req.params.agentName), customPrompt ?? null, modelOverride ?? null));
+}));
+
+// 删除 prompt override
+router.delete('/prompts/:projectId/:agentName', withErrorHandling((req, res) => {
+  res.json(controller.deletePromptOverride(p(req.params.projectId), p(req.params.agentName)));
+}));
+
 export const recoverInterruptedTestGenRuns = () => controller.recoverInterruptedRuns();
 
 export const aiTestGenModule = { basePath: '/api/test-gen', router };

@@ -53,6 +53,8 @@ export interface UseTestGenRunAPI {
   autoFollowEnabled: boolean;
   setAutoFollowEnabled: (enabled: boolean) => void;
   selectedAgentLog: any | null;
+  startConfig: StartConfig | null;
+  modelName: string | null;
 }
 
 export function useTestGenRun(currentProjectId: string | null, options?: UseTestGenRunOptions): UseTestGenRunAPI {
@@ -331,6 +333,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
         checkpointData,
         logs,
         summary,
+        modelName: runInfo.model_name,
       });
 
       // For completed/failed/waiting-review runs, load persisted thinking data
@@ -505,5 +508,7 @@ return {
     autoFollowEnabled: state.autoFollowEnabled,
     setAutoFollowEnabled,
     selectedAgentLog,
+    startConfig: state.startConfig,
+    modelName: state.modelName,
   };
 }

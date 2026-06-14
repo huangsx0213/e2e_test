@@ -27,6 +27,7 @@ import { migration025AddAgentErrorColumns } from './025_add_agent_error_columns.
 import { migration026AddToolHistoryColumn } from './026_add_tool_history_column.ts';
 import { migration027ProviderModels } from './027_provider_models.ts';
 import { migration028ThinkingData } from './028_thinking_data.ts';
+import { migration029PromptOverrides } from './029_prompt_overrides.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -59,6 +60,7 @@ migration021ProviderConfigFix,
   migration026AddToolHistoryColumn,
   migration027ProviderModels,
   migration028ThinkingData,
+  migration029PromptOverrides,
 ];
 
 function appliedMigrationIds(): Set<string> {

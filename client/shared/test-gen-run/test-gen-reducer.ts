@@ -27,6 +27,7 @@ export function createInitialState(): TestGenRunState {
     error: null,
     isRunning: false,
     agentLogs: [],
+    modelName: null,
   };
 }
 
@@ -481,11 +482,35 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
                        n.status;
         return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
+      // Fix checkpoint statuses from actual agent logs (DB phase alone is unreliable for FAILED runs)
+      const nextAgentAfter: Record<string, string> = {
+        checkpoint_1: 'test-designer',
+        checkpoint_2: 'quality-manager',
+      };
+      const normalize = (s: string) => s.replace(/_/g, '-');
+      const fixedNodes = nodes.map(n => {
+        if (n.kind !== 'checkpoint' || n.status === 'completed') return n;
+        if (n.id === 'checkpoint_1' || n.id === 'checkpoint_2') {
+          const next = nextAgentAfter[n.id];
+          if ((action.logs ?? []).some((l: any) => normalize(l.agent_name) === next)) {
+            return { ...n, status: 'completed' as const };
+          }
+        }
+        if (n.id === 'checkpoint_3') {
+          const qmCompleted = (action.logs ?? []).some((l: any) =>
+            normalize(l.agent_name) === 'quality-manager' && l.status === 'COMPLETED'
+          );
+          if (qmCompleted) {
+            return { ...n, status: 'completed' as const };
+          }
+        }
+        return n;
+      });
       return {
         ...state,
         runId: action.runId,
         mode: action.mode ?? state.mode,
-        nodes,
+        nodes: fixedNodes,
         selectedNodeId: waitingNode?.id ?? state.selectedNodeId,
         isRunning,
         checkpointData: action.checkpointData ?? null,
@@ -493,6 +518,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         error: null,
         agentLogs: action.logs ?? [],
         runSummary: action.summary,
+        modelName: action.modelName ?? state.modelName,
       };
     }
 

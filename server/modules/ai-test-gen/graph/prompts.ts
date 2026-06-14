@@ -4,7 +4,10 @@ import type { TestGenState } from './state';
 // Test Analyst Prompts
 // ============================================================
 
-export function buildAnalystSystemPrompt(state: TestGenState): string {
+export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: string): string {
+  if (customPrompt) {
+    return replacePromptVariables(customPrompt, state);
+  }
   const batch = state.batchContext;
   const isFlowMode = state.includeFlowCases;
 
@@ -101,7 +104,7 @@ Example of valid output:
   },
   "testConditions": [
     {
-      "id": "TC-001",
+      "id": "COND-001",
       "requirementId": "req-login-ui-validation",
       "condition": "Verify login form shows inline validation error for empty username",
       "category": "validation",
@@ -142,7 +145,10 @@ export function buildAnalystUserMessage(state: TestGenState): string {
 // Test Designer Prompts
 // ============================================================
 
-export function buildDesignerSystemPrompt(state: TestGenState): string {
+export function buildDesignerSystemPrompt(state: TestGenState, customPrompt?: string): string {
+  if (customPrompt) {
+    return replacePromptVariables(customPrompt, state);
+  }
   const conditions = state.approvedConditions ?? state.testConditions ?? [];
   const criticalCount = conditions.filter(c => c.priority === 'critical').length;
   const highCount = conditions.filter(c => c.priority === 'high').length;
@@ -217,7 +223,7 @@ Example of valid output:
     {
       "id": "DTC-001",
       "title": "Verify empty username validation error",
-      "conditionId": "TC-001",
+      "conditionId": "COND-001",
       "requirementId": "req-login-ui-validation",
       "priority": "high",
       "category": "validation",
@@ -267,7 +273,10 @@ export function buildDesignerUserMessage(state: TestGenState): string {
 // Quality Manager Prompts
 // ============================================================
 
-export function buildQualitySystemPrompt(state: TestGenState): string {
+export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: string): string {
+  if (customPrompt) {
+    return replacePromptVariables(customPrompt, state);
+  }
   const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
 
   return `You are a senior QA Quality Manager. Perform a comprehensive 6-dimension review of draft test cases.
@@ -300,7 +309,7 @@ First, provide your review analysis step by step as plain text: walk through eac
 
 After your analysis, output a JSON block with your structured results. The JSON must be wrapped in \`\`\`json ... \`\`\` markers. The JSON schema:
 {
-  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }],
+  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }],
   "coverageMatrix": { "rows": [{ "requirementId": string, "requirementTitle": string, "level": string, "totalConditions": number, "testCaseCount": number, "coveragePercentage": number, "techniqueBreakdown": {}, "categoryBreakdown": {}, "uncoveredRisks": string[] }], "summary": { "totalRequirements": number, "totalConditions": number, "totalCases": number, "overallCoverage": number } }
 }
 
@@ -311,10 +320,11 @@ Example of valid output:
     {
       "id": "DTC-001",
       "title": "Verify empty username validation error",
-      "conditionId": "TC-001",
+      "conditionId": "COND-001",
       "requirementId": "req-login-ui-validation",
       "priority": "high",
       "category": "validation",
+      "techniqueApplied": "Equivalence Partitioning",
       "preconditions": ["User is on login page", "No credentials entered"],
       "testData": ["username: ''", "password: 'validPass123'"],
       "steps": [
@@ -362,6 +372,7 @@ export function buildQualityUserMessage(state: TestGenState): string {
       requirementId: c.requirementId,
       priority: c.priority,
       category: c.category,
+      techniqueApplied: c.techniqueApplied,
       preconditions: c.preconditions,
       testData: c.testData,
       steps: c.steps,
@@ -374,4 +385,18 @@ export function buildQualityUserMessage(state: TestGenState): string {
       level: (r as any).level ?? '',
     })),
   }, null, 2);
+}
+
+// ============================================================
+// Shared: Variable replacement for custom prompts
+// ============================================================
+
+function replacePromptVariables(template: string, state: TestGenState): string {
+  const batch = state.batchContext;
+  return template
+    .replace(/\{batch\.currentBatch\}/g, String(batch?.currentBatch ?? ''))
+    .replace(/\{batch\.totalBatches\}/g, String(batch?.totalBatches ?? ''))
+    .replace(/\{currentBatch\.length\}/g, String(state.currentBatch?.length ?? 0))
+    .replace(/\{projectContext\.name\}/g, state.projectContext?.name ?? '')
+    .replace(/\{mode\}/g, state.includeFlowCases ? 'flow' : 'requirement');
 }

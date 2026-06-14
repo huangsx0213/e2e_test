@@ -588,7 +588,8 @@ export const Settings: React.FC<SettingsProps> = ({
 };
 
 function ProviderConfigsTab() {
-  const { data: configs = [], isLoading } = useProviderConfigs();
+  const { data: rawConfigs = [], isLoading } = useProviderConfigs();
+  const configs = [...rawConfigs].sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
   const { create, update, remove, setActive, copy } = useProviderConfigMutations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);

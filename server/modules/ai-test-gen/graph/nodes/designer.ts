@@ -5,6 +5,7 @@ import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildDesignerSystemPrompt, buildDesignerUserMessage } from '../prompts';
 import { DESIGNER_SKILLS } from '../skills/skills.ts';
+import { pipelineRepo } from '../../repository.ts';
 import { z } from 'zod';
 
 // ============================================================
@@ -81,8 +82,12 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
     observer?.onStep?.(agentName, 0, 'Design test cases');
 
     try {
+      // Load custom prompt override if available
+      const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
+      const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
+
       const messages = [
-        { role: 'system' as const, content: buildDesignerSystemPrompt(state) },
+        { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildDesignerUserMessage(state) },
       ];
       console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);

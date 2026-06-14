@@ -94,6 +94,7 @@ export interface TestGenRunState {
   error: TestGenError | null;
   isRunning: boolean;
   agentLogs: any[];
+  modelName: string | null;
 }
 
 export type TestGenReducerAction =
@@ -112,7 +113,7 @@ export type TestGenReducerAction =
   | { type: 'DISMISS_ERROR' }
   | { type: 'RESET' }
   | { type: 'SET_THINKING_DATA'; thinkingData: Record<string, ThinkingEntry[]> }
-  | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary };
+  | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary; modelName?: string | null };
 
 export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentName' | 'subSteps'>;
 

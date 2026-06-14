@@ -5,6 +5,7 @@ import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
 import { QUALITY_SKILLS } from '../skills/skills.ts';
+import { pipelineRepo } from '../../repository.ts';
 import { z } from 'zod';
 
 // ============================================================
@@ -32,6 +33,7 @@ const QualityOutputSchema = z.object({
     requirementId: z.string(),
     priority: z.string().describe('One of: critical, high, medium, low'),
     category: z.string(),
+    techniqueApplied: z.string().describe('Testing technique used (e.g. Equivalence Partitioning, Boundary Value Analysis)'),
     preconditions: z.array(z.string()),
     testData: z.array(z.string()),
     steps: z.array(z.object({
@@ -88,8 +90,12 @@ export function makeQualityNode(opts: QualityNodeOptions) {
     observer?.onStep?.(agentName, 0, 'Review 6 dimensions');
 
     try {
+      // Load custom prompt override if available
+      const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
+      const systemPrompt = buildQualitySystemPrompt(state, override?.custom_prompt ?? undefined);
+
       const messages = [
-        { role: 'system' as const, content: buildQualitySystemPrompt(state) },
+        { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildQualityUserMessage(state) },
       ];
       console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);

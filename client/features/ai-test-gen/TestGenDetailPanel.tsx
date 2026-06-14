@@ -50,6 +50,17 @@ interface NodeDetailProps {
   thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null;
   runSummary: { totalCases: number; totalTokens: number; totalLatencyMs: number; totalBatches: number } | null;
   agentLogs?: any[];
+  startConfig?: {
+    mode?: string;
+    requirementIds?: string[];
+    flowIds?: string[];
+    includeFlowCases?: boolean;
+    useCache?: boolean;
+    providerConfigName?: string;
+  } | null;
+  requirements?: any[];
+  businessFlows?: any[];
+  modelName?: string | null;
   onClose: () => void;
   onApprove?: () => void;
   onRetry?: () => void;
@@ -89,61 +100,15 @@ function getPriorityBadgeClass(priority?: string) {
   return 'bg-slate-50 text-slate-500 border-slate-100';
 }
 
-function StepsSection({ steps, expanded, index, onToggle }: { steps: any[]; expanded: boolean; index: number; onToggle: (i: number) => void }) {
-  if (!steps?.length) return null;
-  return (
-    <div className="space-y-0.5">
-      <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Steps ({steps.length})</span>
-      <div className="space-y-0.5">
-        {(expanded ? steps : steps.slice(0, 3)).map((st: any, sIdx: number) => (
-          <div key={sIdx} className="flex gap-1 text-sm text-slate-500 leading-snug">
-            <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
-            <div>
-              <p className="leading-tight">{st.action || st.description || st}</p>
-              {st.expected && <p className="text-xs text-slate-400 italic">→ {st.expected}</p>}
-            </div>
-          </div>
-        ))}
-        {steps.length > 3 && <button onClick={() => onToggle(index)} className="text-xs text-blue-500 font-semibold hover:text-blue-600">{expanded ? 'Show fewer' : `+ ${steps.length - 3} more steps`}</button>}
-      </div>
-    </div>
-  );
-}
-
-function PreconditionSection({ preconditions, expanded, index, onToggle }: { preconditions: string[]; expanded: boolean; index: number; onToggle: (key: string) => void }) {
-  if (!preconditions?.length) return null;
-  return (
-    <div>
-      <button onClick={() => onToggle(`pre_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600 w-full text-left">
-        Preconditions ({preconditions.length}) {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-      </button>
-      {expanded && <div className="mt-1 space-y-0.5 pl-2 border-l-2 border-slate-100">{preconditions.map((p: string, j: number) => <p key={j} className="text-sm text-slate-500 leading-snug">{j + 1}. {p}</p>)}</div>}
-    </div>
-  );
-}
-
-function TagSection({ tags, expanded, index, onToggle }: { tags: string[]; expanded: boolean; index: number; onToggle: (key: string) => void }) {
-  if (!tags?.length) return null;
-  return (
-    <div>
-      <button onClick={() => onToggle(`tags_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-        Tags ({tags.length}) {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-      </button>
-      {expanded && <div className="flex flex-wrap gap-1 mt-1">{tags.map((tag: string, j: number) => <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>)}</div>}
-    </div>
-  );
-}
-
-function TestDataSection({ testData, expanded, index, onToggle }: { testData: any; expanded: boolean; index: number; onToggle: (key: string) => void }) {
-  if (!testData) return null;
-  return (
-    <div>
-      <button onClick={() => onToggle(`data_${index}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-        Test Data {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-      </button>
-      {expanded && <p className="mt-1 text-sm text-slate-500">{typeof testData === 'string' ? testData : JSON.stringify(testData)}</p>}
-    </div>
-  );
+function normalizeTechnique(technique?: string): string {
+  if (!technique) return '';
+  const t = technique.toLowerCase().trim();
+  if (t.includes('equivalence')) return 'Equivalence Partitioning';
+  if (t.includes('boundary')) return 'Boundary Value Analysis';
+  if (t.includes('decision')) return 'Decision Table';
+  if (t.includes('state') || t.includes('transition')) return 'State Transition';
+  if (t.includes('use case') || t.includes('use_case') || t.includes('usecase')) return 'Use Case';
+  return technique;
 }
 
 function SelfReviewIssuesList({ issues }: { issues: any[] }) {
@@ -178,151 +143,141 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
-function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[] }) {
+function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, startConfig, requirements, businessFlows, modelName }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[]; startConfig?: any; requirements?: any[]; businessFlows?: any[]; modelName?: string | null }) {
   const meta = node?.meta;
   const output = agentLog?.output_data;
 
-  // Use logs from agentLog output_data (persisted after completion)
-  const initLogs = output?.initLogs || output?.initializationLogs || [];
-
-  // Format log entry to human-readable message
-  const formatLogEntry = (log: any): string => {
-    if (log.data?.message) return log.data.message;
-    if (log.message || log.text) return log.message || log.text;
-    if (log.type === 'pipeline:context') {
-      const d = log.data || {};
-      const parts = [];
-      if (d.indexEntries != null) parts.push(`${d.indexEntries} requirements`);
-      if (d.flows != null) parts.push(`${d.flows} business flows`);
-      return parts.length > 0 ? `Loaded ${parts.join(' across ')}` : 'Test gen context initialized';
-    }
-    if (log.type === 'pipeline:budget') {
-      const d = log.data || {};
-      const est = d.estimated != null ? `${(d.estimated / 1000).toFixed(0)},000 tokens` : 'unknown';
-      const limit = d.limit != null ? `limit: ${(d.limit / 1000).toFixed(0)},000 tokens` : 'no limit configured';
-      return `Estimated token usage: ${est} (${limit})`;
-    }
-    if (log.type === 'phase:start' && log.data?.phase === 'preparation') {
-      const d = log.data;
-      return d.message || 'Starting preparation phase';
-    }
-    if (log.type && log.data) return `${log.type}: ${JSON.stringify(log.data)}`;
-    if (log.type) return log.type;
-    return JSON.stringify(log);
-  };
+  // Filter to only selected requirements/flows
+  const selectedReqs = (requirements || []).filter(r => startConfig?.requirementIds?.includes(r.id));
+  const selectedFlows = (businessFlows || []).filter(f => startConfig?.flowIds?.includes(f.id));
 
   return (
-    <div className="p-3 space-y-3 text-sm">
-      {/* Initialization Header */}
-      <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/35 rounded-lg p-2.5 border border-indigo-100/60 shadow-sm">
-        <div className="flex items-center gap-1 text-xs font-bold text-indigo-800 uppercase tracking-wider mb-1">
+    <div className="p-4 space-y-4">
+      {/* Pipeline Config Header */}
+      <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/35 rounded-xl p-4 border border-indigo-100/60 shadow-sm">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3">
           <Zap size={12} className="text-indigo-600" />
-          Environment Initialized
+          Pipeline Configuration
         </div>
-        <p className="text-sm text-slate-600 leading-snug font-medium">
-          Pipeline environment ready for test generation
-        </p>
+        
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Mode</span>
+            <span className="font-semibold text-slate-700 capitalize">{startConfig?.mode || 'auto'}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">LLM Model</span>
+            <span className="font-semibold text-slate-700 truncate font-mono text-xs">{modelName || 'Unknown'}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Flow Cases</span>
+            <span className="font-semibold text-slate-700">{startConfig?.includeFlowCases ? 'Enabled' : 'Disabled'}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Cache</span>
+            <span className="font-semibold text-slate-700">{startConfig?.useCache ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        </div>
       </div>
 
-      {/* AI Flow Initialization Info - Only show if we have logs */}
-      {initLogs.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm">
-          <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-450 mb-2">
-            <Activity size={12} className="text-blue-500" />
-            AI Flow Initialization Logs
+      {/* Requirements Table */}
+      {selectedReqs.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
+              <FileText size={12} className="text-blue-500" />
+              Requirements ({selectedReqs.length})
+            </div>
           </div>
-
-          <div className="space-y-1 pr-1">
-            {initLogs.map((log: any, i: number) => {
-              const logStr = formatLogEntry(log);
-
-              let iconColor = 'text-slate-400';
-              let Icon = Activity;
-              if (log.type === 'pipeline:context') { iconColor = 'text-blue-600'; Icon = FileText; }
-              else if (log.type === 'pipeline:budget') { iconColor = 'text-amber-600'; Icon = Activity; }
-              else if (log.type === 'phase:start') { iconColor = 'text-emerald-600'; Icon = Zap; }
-
-              return (
-                <div key={i} className="flex items-start gap-2 text-sm">
-                  <Icon size={12} className={`${iconColor} shrink-0 mt-0.5`} />
-                  <span className="text-slate-600 leading-relaxed">{logStr}</span>
-                </div>
-              );
-            })}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/30">
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Title</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Level</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedReqs.map((req, i) => (
+                  <tr key={req.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 font-mono text-blue-600">{req.id}</td>
+                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{req.title}</td>
+                    <td className="px-3 py-2">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{req.level}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* Preparation Stats Grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {/* Requirements Count */}
-        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-          <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-450 mb-1">
-            <FileText size={12} className="text-slate-400" />
-            Requirements
+      {/* Business Flows Table */}
+      {selectedFlows.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
+              <Activity size={12} className="text-purple-500" />
+              Business Flows ({selectedFlows.length})
+            </div>
           </div>
-          <div className="text-lg font-bold text-slate-700">
-            {output?.requirementCount || meta?.requirementCount || output?.initLogs?.length || 0}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/30">
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Name</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Steps</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedFlows.map((flow, i) => (
+                  <tr key={flow.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 font-mono text-purple-600">{flow.id}</td>
+                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{flow.name}</td>
+                    <td className="px-3 py-2 text-slate-600">{flow.steps?.length || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
+      )}
 
-        {/* Batch Info */}
-        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-          <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-450 mb-1">
-            <Copy size={12} className="text-slate-400" />
-            Batches
-          </div>
+      {/* Stats Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
           <div className="text-lg font-bold text-slate-700">
             {output?.totalBatches || meta?.totalBatches || '-'}
           </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Batches</div>
         </div>
-
-        {/* Token Budget */}
-        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-          <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-450 mb-1">
-            <Activity size={12} className="text-slate-400" />
-            Token Budget
-          </div>
-          <div className="text-sm font-bold text-slate-700 truncate">
-            {output?.estimatedTokens ? `${formatTokens(output.estimatedTokens)} est.` : meta?.estimatedTokens ? `${formatTokens(meta.estimatedTokens)} est.` : '-'}
-          </div>
-        </div>
-
-        {/* Flow Cases */}
-        <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
-          <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-450 mb-1">
-            <History size={12} className="text-slate-400" />
-            Flow Cases
-          </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
           <div className="text-lg font-bold text-slate-700">
-            {output?.flowCases ? `${output.flowCases}` : meta?.flowCases ? `${meta.flowCases}` : '-'}
+            {output?.estimatedTokens ? formatTokens(output.estimatedTokens) : meta?.estimatedTokens ? formatTokens(meta.estimatedTokens) : '-'}
           </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Est. Tokens</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
+          <div className="text-lg font-bold text-emerald-600">
+            <CheckCircle2 size={18} className="inline" />
+          </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Ready</div>
         </div>
       </div>
-
-      {/* Environment Details */}
-      {(output?.environment || meta?.environment) && (
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 shadow-sm">
-          <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-450 mb-1.5">
-            <Terminal size={12} className="text-slate-400" />
-            Environment
-          </div>
-          <pre className="text-sm text-slate-600 font-mono whitespace-pre-wrap leading-relaxed">
-            {JSON.stringify(output?.environment || meta?.environment, null, 2)}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
 
 function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: string }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedCond, setExpandedCond] = useState<Set<number>>(new Set());
-  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
-  const toggleCond = (i: number) => setExpandedCond(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
-  const toggleSteps = (i: number) => setExpandedSteps(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const toggleField = (k: string) => setExpandedFields(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const output = agentLog?.output_data;
 
@@ -342,77 +297,111 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
       String(c.category || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
     return (
-      <div className="p-3 space-y-3 text-sm">
+      <div className="p-4 space-y-4">
         {output.analysis?.overallApproach && (
-          <div className="bg-gradient-to-br from-cyan-50/70 to-blue-50/35 rounded-lg p-2.5 border border-cyan-100/60 shadow-sm">
-            <div className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-cyan-800 mb-1">
-              <Brain size={12} className="text-cyan-600" />
-              Strategic Approach
+          <div className="bg-gradient-to-r from-cyan-50/80 to-blue-50/50 rounded-2xl p-5 border border-cyan-100/60">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-400 shadow flex items-center justify-center shadow-cyan-500/25">
+                <Brain size={16} className="text-white" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-800">Strategic Approach</h4>
+                <p className="text-[10px] text-slate-500">{conditions.length} conditions identified</p>
+              </div>
             </div>
-            <p className="text-sm text-slate-600 leading-snug">{output.analysis.overallApproach}</p>
+            <p className="text-sm text-slate-600 leading-relaxed">{output.analysis.overallApproach}</p>
           </div>
         )}
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold tracking-wider text-slate-450 flex items-center gap-1">
-              <Terminal size={10} className="text-slate-400" />
-              Conditions ({conditions.length})
-            </span>
-            {conditions.length > 4 && (
-              <div className="relative w-36">
-                <input type="text" placeholder="Filter..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full text-xs pl-5 pr-2 py-0.5 border border-slate-200 rounded bg-white text-slate-700 placeholder:text-slate-400 focus:outline-none" />
-                <Search size={10} className="absolute left-1.5 top-1.5 text-slate-400" />
-              </div>
-            )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 px-2 bg-cyan-50/50 border border-cyan-100/65 rounded-lg text-cyan-600 flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider">
+              <Terminal size={12} />
+              {conditions.length} Conditions
+            </div>
           </div>
+          {conditions.length > 4 && (
+            <div className="relative w-40">
+              <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                className="w-full text-xs pl-7 pr-2 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-100" />
+              <Search size={12} className="absolute left-2 top-1.5 text-slate-400" />
+            </div>
+          )}
+        </div>
 
-          <div className="space-y-1.5 pr-0.5">
-            {filteredConditions.map((c: any, i: number) => {
-              const exp = expandedCond.has(i);
-              return (
-              <div key={i} className="text-sm bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-1.5 min-w-0">
-                    <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
-                    <p className="text-slate-700 leading-tight font-medium">{c.condition}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1 shrink-0">
-                    {c.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(c.priority)}`}>{c.priority}</span>}
-                    {c.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(c.category)}`}>{c.category}</span>}
-                  </div>
-                </div>
+        <div className="space-y-3">
+          {filteredConditions.map((c: any, i: number) => {
+            return (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+              {/* Header */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{c.condition}</h4>
+                {c.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(c.priority)}`}>{c.priority}</span>}
+                {c.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(c.category)}`}>{c.category}</span>}
+              </div>
 
-                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                  {c.riskLevel && <span className={`px-1.5 py-0.2 rounded font-bold uppercase border ${c.riskLevel === 'high' ? 'bg-red-50 text-red-600 border-red-100' : c.riskLevel === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>Risk: {c.riskLevel}</span>}
-                  {c.primaryTechnique && <span className="px-1.5 py-0.2 rounded font-bold uppercase border bg-indigo-50 text-indigo-600 border-indigo-100">{c.primaryTechnique}</span>}
-                  {c.requirementLevel && <span className="px-1.5 py-0.2 rounded font-bold uppercase border bg-cyan-50 text-cyan-600 border-cyan-100">{c.requirementLevel}</span>}
-                </div>
+              {/* Badges Row */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {c.riskLevel && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${c.riskLevel === 'high' ? 'bg-red-50 text-red-600 border-red-100' : c.riskLevel === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>Risk: {c.riskLevel}</span>}
+                {c.primaryTechnique && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{c.primaryTechnique}</span>}
+                {c.requirementLevel && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-cyan-50 text-cyan-600 border-cyan-100">{c.requirementLevel}</span>}
+              </div>
 
-                {exp && (
-                  <div className="text-xs text-slate-500 space-y-1.5 border-t border-slate-100 pt-1.5">
-                    {c.secondaryTechniques?.length > 0 && <p><span className="font-medium text-slate-600">Secondary:</span> {c.secondaryTechniques.join(', ')}</p>}
-                    {c.techniqueRationale && <p className="italic">{c.techniqueRationale}</p>}
-                    {c.coverageDimensions?.length > 0 && c.coverageDimensions.map((cd: any, j: number) => (
-                      <p key={j}><span className="font-medium text-slate-600">{cd.dimension}:</span> {cd.variants?.join(', ')}</p>
-                    ))}
-                    {c.dataRequirements && <p><span className="font-medium text-slate-600">Data:</span> {c.dataRequirements}</p>}
-                    {c.dependencies?.length > 0 && <p><span className="font-medium text-slate-600">Depends on:</span> {c.dependencies.join(', ')}</p>}
-                    <p className="text-slate-400 font-mono text-[10px]">ID: {c.id} | Req: {c.requirementId}</p>
+              {/* Details */}
+              <div className="text-xs text-slate-500 space-y-2 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                {c.secondaryTechniques?.length > 0 && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Secondary Techniques</span>
+                    <p className="mt-0.5">{c.secondaryTechniques.join(', ')}</p>
                   </div>
                 )}
-
-                <button onClick={() => toggleCond(i)} className="text-xs text-blue-500 font-semibold hover:text-blue-600 w-full text-center">
-                  {exp ? 'Show less' : 'Show more details'}
-                </button>
+                {c.techniqueRationale && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Rationale</span>
+                    <p className="mt-0.5 italic">{c.techniqueRationale}</p>
+                  </div>
+                )}
+                {c.coverageDimensions?.length > 0 && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Coverage Dimensions</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {c.coverageDimensions.map((cd: any, j: number) => (
+                        <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-100 text-slate-600 border-slate-200">
+                          {typeof cd === 'string' ? cd : (
+                            <>
+                              <span className="font-medium">{cd.dimension}:</span> {cd.variants?.join(', ')}
+                            </>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {c.dataRequirements && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Data Requirements</span>
+                    <p className="mt-0.5">{c.dataRequirements}</p>
+                  </div>
+                )}
+                {c.dependencies?.length > 0 && (
+                  <div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Dependencies</span>
+                    <p className="mt-0.5">{c.dependencies.join(', ')}</p>
+                  </div>
+                )}
+                <div className="pt-1 border-t border-slate-100">
+                  <p className="text-slate-400 font-mono text-[10px]">ID: {c.id} | Req: {c.requirementId}</p>
+                </div>
               </div>
-              );
-            })}
-            {filteredConditions.length === 0 && (
-              <div className="text-center text-sm text-slate-400 py-4">No matching conditions found</div>
-            )}
-          </div>
+            </div>
+            );
+          })}
+          {filteredConditions.length === 0 && (
+            <div className="text-center text-sm text-slate-400 py-4">No matching conditions found</div>
+          )}
         </div>
       </div>
     );
@@ -426,70 +415,163 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
     );
 
     return (
-      <div className="p-3 space-y-3 text-sm">
+      <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="p-1 px-1.5 bg-indigo-50/50 border border-indigo-100/65 rounded text-indigo-600 flex items-center gap-1 text-xs uppercase font-bold tracking-wider">
-            <PenTool size={12} />
-            {cases.length} Scenarios Created
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 px-2 bg-indigo-50/50 border border-indigo-100/65 rounded-lg text-indigo-600 flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider">
+              <PenTool size={12} />
+              {cases.length} Scenarios Created
+            </div>
           </div>
           {cases.length > 4 && (
-            <div className="relative w-36">
+            <div className="relative w-40">
               <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                className="w-full text-xs pl-5 pr-2 py-0.5 border border-slate-200 rounded bg-white text-slate-700 focus:outline-none" />
-              <Search size={10} className="absolute left-1.5 top-1.5 text-slate-400" />
+                className="w-full text-xs pl-7 pr-2 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              <Search size={12} className="absolute left-2 top-1.5 text-slate-400" />
             </div>
           )}
         </div>
 
-        <div className="space-y-1.5 pr-0.5">
-          {filteredCases.map((tc: any, i: number) => {
-            const stepsExp = expandedSteps.has(i);
-            const preExp = expandedFields.has(`pre_${i}`);
-            const tagsExp = expandedFields.has(`tags_${i}`);
-            const reviewExp = expandedFields.has(`review_${i}`);
-            const dataExp = expandedFields.has(`data_${i}`);
-            return (
-            <div key={i} className="text-sm bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
-                  <span className="font-semibold text-slate-800 text-sm truncate">{tc.title || tc.id}</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1 shrink-0">
-                  {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
-                  {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1">
-                {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
+        <div className="space-y-3">
+          {filteredCases.map((tc: any, i: number) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+              {/* Header */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                  TC-{String(i + 1).padStart(2, '0')}
+                </span>
+                <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
+                {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
+                {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
+                {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
                 {tc.selfReview?.score !== undefined && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border ${tc.selfReview.score >= 8 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.selfReview.score >= 5 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.score >= 8 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.selfReview.score >= 5 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                     Score: {tc.selfReview.score}/10
                   </span>
                 )}
+                {tc.selfReview?.pass !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.pass ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{tc.selfReview.pass ? 'PASS' : 'REVIEW'}</span>}
               </div>
 
-              <PreconditionSection preconditions={tc.preconditions} expanded={preExp} index={i} onToggle={toggleField} />
-              <StepsSection steps={tc.steps} expanded={stepsExp} index={i} onToggle={toggleSteps} />
+              {/* Tags */}
+              {tc.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {tc.tags.map((tag: string, j: number) => (
+                    <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>
+                  ))}
+                </div>
+              )}
 
-              {(tc.tags?.length > 0 || tc.testData || tc.selfReview?.issues) && (
-                <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1">
-                  <TagSection tags={tc.tags} expanded={tagsExp} index={i} onToggle={toggleField} />
-                  <TestDataSection testData={tc.testData} expanded={dataExp} index={i} onToggle={toggleField} />
-                  {tc.selfReview && (
-                    <div>
-                      <button onClick={() => toggleField(`review_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                        Self Review ({tc.selfReview.score}/10) {reviewExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                      </button>
-                      {reviewExp && <SelfReviewIssuesList issues={tc.selfReview.issues} />}
-                    </div>
-                  )}
+              {/* Preconditions */}
+              {tc.preconditions?.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Preconditions</span>
+                  <ul className="space-y-0.5 pl-3 border-l-2 border-slate-100">
+                    {tc.preconditions.map((p: string, j: number) => (
+                      <li key={j} className="text-xs text-slate-600 leading-snug">{j + 1}. {p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Steps */}
+              {tc.steps?.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Steps ({tc.steps.length})</span>
+                  <div className="space-y-1">
+                    {tc.steps.map((st: any, sIdx: number) => (
+                      <div key={sIdx} className="flex gap-2 text-xs text-slate-600 leading-snug">
+                        <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
+                        <div>
+                          <p className="leading-tight">{st.action || st.description || st}</p>
+                          {st.expected && <p className="text-xs text-slate-400 italic mt-0.5">→ Expected: {st.expected}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Test Data */}
+              {tc.testData && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Test Data</span>
+                  <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                    {typeof tc.testData === 'string' ? (
+                      <p className="text-xs text-slate-600">{tc.testData}</p>
+                    ) : Array.isArray(tc.testData) ? (
+                      tc.testData.map((d: any, j: number) => {
+                        if (typeof d === 'string') {
+                          const sep = d.indexOf(':');
+                          return (
+                            <div key={j} className="flex items-start gap-2 text-xs">
+                              {sep > 0 ? (
+                                <>
+                                  <span className="font-mono font-medium text-slate-700 shrink-0">{d.slice(0, sep)}:</span>
+                                  <span className="text-slate-500">{d.slice(sep + 1).trim() || '(empty)'}</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-500">{d}</span>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={j} className="flex items-center gap-2 text-xs">
+                            <span className="font-mono font-medium text-slate-700">{d.key}:</span>
+                            <span className="text-slate-500">{d.value ?? '(empty)'}</span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <pre className="text-xs text-slate-600 font-mono whitespace-pre-wrap">{JSON.stringify(tc.testData, null, 2)}</pre>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Review Summary */}
+              {tc.reviewSummary && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Review Summary</span>
+                  <p className="text-xs text-slate-500 italic bg-slate-50 rounded-lg p-2.5 border border-slate-100">{tc.reviewSummary}</p>
+                </div>
+              )}
+
+              {/* Issues */}
+              {tc.selfReview?.issues?.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Issues ({tc.selfReview.issues.length})</span>
+                  <SelfReviewIssuesList issues={tc.selfReview.issues} />
+                </div>
+              )}
+
+              {/* Change Log */}
+              {tc.changeLog && (
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Change Log</span>
+                  <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                    {typeof tc.changeLog === 'string' ? (
+                      <p>{tc.changeLog}</p>
+                    ) : Array.isArray(tc.changeLog) ? (
+                      <ul className="space-y-0.5">
+                        {tc.changeLog.map((cl: any, j: number) => (
+                          <li key={j}>
+                            <span className="font-medium text-slate-600">{cl.field}</span>
+                            {cl.from && <span className="text-slate-400"> from "{cl.from}"</span>}
+                            {cl.to && <span className="text-slate-400"> to "{cl.to}"</span>}
+                            {cl.reason && <span className="text-slate-400 italic"> ({cl.reason})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <pre className="whitespace-pre-wrap">{JSON.stringify(tc.changeLog, null, 2)}</pre>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
-            );
-          })}
+          ))}
           {filteredCases.length === 0 && (
             <div className="text-center text-sm text-slate-400 py-4">No matching drafts found</div>
           )}
@@ -504,7 +586,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
     const matrixRows = matrix?.rows || [];
 
     return (
-      <div className="p-3 space-y-3 text-sm">
+      <div className="p-4 space-y-4">
         {matrixRows.length > 0 && (
           <div className="bg-slate-50 text-slate-800 rounded-lg p-2.5 border border-slate-150 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500 mb-1.5">
@@ -576,82 +658,153 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <span className="text-xs uppercase font-bold tracking-wider text-slate-450 flex items-center gap-1 mb-2">
-            <CheckCircle2 size={12} className="text-emerald-500" />
-            Approved Final Test Cases ({cases.length})
-          </span>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500" />
+            <h3 className="text-sm font-bold text-slate-700">Final Test Cases</h3>
+            <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{cases.length} total</span>
+          </div>
 
-          <div className="space-y-1.5 pr-0.5">
-            {cases.map((tc: any, i: number) => {
-              const stepsExp = expandedSteps.has(i);
-              const preExp = expandedFields.has(`pre_${i}`);
-              const tagsExp = expandedFields.has(`tags_${i}`);
-              const reviewExp = expandedFields.has(`review_${i}`);
-              const issuesExp = expandedFields.has(`issues_${i}`);
-              const dataExp = expandedFields.has(`data_${i}`);
-              const changelogExp = expandedFields.has(`changelog_${i}`);
-              return (
-              <div key={i} className="text-sm bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm space-y-1.5 hover:border-slate-300 transition-colors">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="h-3.5 w-3.5 rounded-full bg-emerald-50 text-[10px] text-emerald-600 font-bold border border-emerald-100 flex items-center justify-center shrink-0">✓</span>
-                    <span className="font-medium text-slate-700 truncate">{tc.title || tc.id}</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1 shrink-0">
-                    {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
-                    {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 rounded border ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
-                    {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 rounded border ${tc.status === 'approved' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
+          <div className="space-y-3">
+            {cases.map((tc: any, i: number) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+                {/* Header */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                    TC-{String(i + 1).padStart(2, '0')}
+                  </span>
+                  <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
+                  {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
+                  {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                  {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
+                  {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
                   {tc.selfReview?.score !== undefined && (
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border ${tc.selfReview.score >= 8 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.selfReview.score >= 5 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.score >= 8 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.selfReview.score >= 5 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                       Score: {tc.selfReview.score}/10
                     </span>
                   )}
-                  {tc.selfReview?.pass !== undefined && <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border ${tc.selfReview.pass ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{tc.selfReview.pass ? 'PASS' : 'REVIEW'}</span>}
+                  {tc.selfReview?.pass !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.pass ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{tc.selfReview.pass ? 'PASS' : 'REVIEW'}</span>}
                 </div>
 
-                <PreconditionSection preconditions={tc.preconditions} expanded={preExp} index={i} onToggle={toggleField} />
-                <StepsSection steps={tc.steps} expanded={stepsExp} index={i} onToggle={toggleSteps} />
+                {/* Tags */}
+                {tc.tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {tc.tags.map((tag: string, j: number) => (
+                      <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>
+                    ))}
+                  </div>
+                )}
 
-                {(tc.tags?.length > 0 || tc.testData || tc.selfReview?.issues || tc.reviewSummary || tc.changeLog) && (
-                  <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1">
-                    <TagSection tags={tc.tags} expanded={tagsExp} index={i} onToggle={toggleField} />
-                    <TestDataSection testData={tc.testData} expanded={dataExp} index={i} onToggle={toggleField} />
-                    {tc.reviewSummary && (
-                      <div>
-                        <button onClick={() => toggleField(`review_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                          Review Summary {reviewExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
-                        {reviewExp && <p className="mt-1 text-sm italic text-slate-400">{tc.reviewSummary}</p>}
-                      </div>
-                    )}
-                    {tc.selfReview?.issues?.length > 0 && (
-                      <div>
-                        <button onClick={() => toggleField(`issues_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                          Issues ({tc.selfReview.issues.length}) {issuesExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
-                        {issuesExp && <SelfReviewIssuesList issues={tc.selfReview.issues} />}
-                      </div>
-                    )}
-                    {tc.changeLog && (
-                      <div>
-                        <button onClick={() => toggleField(`changelog_${i}`)} className="flex items-center gap-1 text-xs uppercase font-bold tracking-wider text-slate-400 hover:text-slate-600">
-                          Change Log {changelogExp ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                        </button>
-                        {changelogExp && <p className="mt-1 text-sm text-slate-500">{typeof tc.changeLog === 'string' ? tc.changeLog : JSON.stringify(tc.changeLog)}</p>}
-                      </div>
-                    )}
+                {/* Preconditions */}
+                {tc.preconditions?.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Preconditions</span>
+                    <ul className="space-y-0.5 pl-3 border-l-2 border-slate-100">
+                      {tc.preconditions.map((p: string, j: number) => (
+                        <li key={j} className="text-xs text-slate-600 leading-snug">{j + 1}. {p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Steps */}
+                {tc.steps?.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Steps ({tc.steps.length})</span>
+                    <div className="space-y-1">
+                      {tc.steps.map((st: any, sIdx: number) => (
+                        <div key={sIdx} className="flex gap-2 text-xs text-slate-600 leading-snug">
+                          <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
+                          <div>
+                            <p className="leading-tight">{st.action || st.description || st}</p>
+                            {st.expected && <p className="text-xs text-slate-400 italic mt-0.5">→ Expected: {st.expected}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Test Data */}
+                {tc.testData && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Test Data</span>
+                    <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                      {typeof tc.testData === 'string' ? (
+                        <p className="text-xs text-slate-600">{tc.testData}</p>
+                      ) : Array.isArray(tc.testData) ? (
+                        tc.testData.map((d: any, j: number) => {
+                          if (typeof d === 'string') {
+                            const sep = d.indexOf(':');
+                            return (
+                              <div key={j} className="flex items-start gap-2 text-xs">
+                                {sep > 0 ? (
+                                  <>
+                                    <span className="font-mono font-medium text-slate-700 shrink-0">{d.slice(0, sep)}:</span>
+                                    <span className="text-slate-500">{d.slice(sep + 1).trim() || '(empty)'}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-500">{d}</span>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={j} className="flex items-center gap-2 text-xs">
+                              <span className="font-mono font-medium text-slate-700">{d.key}:</span>
+                              <span className="text-slate-500">{d.value ?? '(empty)'}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <pre className="text-xs text-slate-600 font-mono whitespace-pre-wrap">{JSON.stringify(tc.testData, null, 2)}</pre>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Review Summary */}
+                {tc.reviewSummary && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Review Summary</span>
+                    <p className="text-xs text-slate-500 italic bg-slate-50 rounded-lg p-2.5 border border-slate-100">{tc.reviewSummary}</p>
+                  </div>
+                )}
+
+                {/* Issues */}
+                {tc.selfReview?.issues?.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Issues ({tc.selfReview.issues.length})</span>
+                    <SelfReviewIssuesList issues={tc.selfReview.issues} />
+                  </div>
+                )}
+
+                {/* Change Log */}
+                {tc.changeLog && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Change Log</span>
+                    <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                      {typeof tc.changeLog === 'string' ? (
+                        <p>{tc.changeLog}</p>
+                      ) : Array.isArray(tc.changeLog) ? (
+                        <ul className="space-y-0.5">
+                          {tc.changeLog.map((cl: any, j: number) => (
+                            <li key={j}>
+                              <span className="font-medium text-slate-600">{cl.field}</span>
+                              {cl.from && <span className="text-slate-400"> from "{cl.from}"</span>}
+                              {cl.to && <span className="text-slate-400"> to "{cl.to}"</span>}
+                              {cl.reason && <span className="text-slate-400 italic"> ({cl.reason})</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <pre className="whitespace-pre-wrap">{JSON.stringify(tc.changeLog, null, 2)}</pre>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-            );
-            })}
+            ))}
           </div>
         </div>
       </div>
@@ -1537,12 +1690,10 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
             const expanded = expandedItems.has(i);
             return (
               <div key={item.id} className="text-sm bg-white border border-slate-100 rounded-xl p-3 text-slate-700 shadow-sm flex flex-col gap-1.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
-                    <Check size={11} className="text-emerald-500 shrink-0 mt-0.5 self-start" />
-                    <p className="font-semibold text-slate-800">{data.title || data.condition || `Item ${i + 1}`}</p>
-                  </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="shrink-0 text-xs font-mono text-slate-450 bg-slate-50 border border-slate-100 px-1 py-0.2 rounded">{String(i + 1).padStart(2, '0')}</span>
+                  <Check size={11} className="text-emerald-500 shrink-0" />
+                  <p className="font-semibold text-slate-800">{data.title || data.condition || `Item ${i + 1}`}</p>
                   {data.priority && (
                     <span className={`shrink-0 text-[10px] font-bold uppercase px-1.5 rounded border ${
                       ['critical', 'high', 'p0'].includes((data.priority || '').toLowerCase())
@@ -1552,18 +1703,15 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                           : 'bg-slate-50 text-slate-500 border-slate-100'
                     }`}>{data.priority}</span>
                   )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                  {data.category && <span className={`px-1.5 py-0.2 rounded font-bold uppercase border ${getCategoryBadgeClass(data.category)}`}>{data.category}</span>}
+                  {data.category && <span className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${getCategoryBadgeClass(data.category)}`}>{data.category}</span>}
                   {data.riskLevel && (
-                    <span className={`px-1.5 py-0.2 rounded font-bold uppercase border ${
+                    <span className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${
                       (data.riskLevel || '').toLowerCase() === 'high' ? 'bg-red-50 text-red-600 border-red-100'
                         : (data.riskLevel || '').toLowerCase() === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100'
                         : 'bg-slate-50 text-slate-500 border-slate-100'
                     }`}>Risk: {data.riskLevel}</span>
                   )}
-                  {data.primaryTechnique && <span className="px-1.5 py-0.2 rounded font-bold uppercase border bg-indigo-50 text-indigo-600 border-indigo-100">{data.primaryTechnique}</span>}
+                  {data.primaryTechnique && <span className="shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-100">{data.primaryTechnique}</span>}
                 </div>
 
                 {data.preconditions?.length > 0 && (
@@ -1740,14 +1888,17 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
                         </div>
                         <div>
                           <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Primary Technique</label>
-                          <select value={item.originalData?.primaryTechnique || ''} onChange={e => handleFieldEdit(item.id, 'primaryTechnique', e.target.value)}
+                          <select value={normalizeTechnique(item.originalData?.primaryTechnique || item.originalData?.techniqueApplied)} onChange={e => {
+                            handleFieldEdit(item.id, 'primaryTechnique', e.target.value);
+                            handleFieldEdit(item.id, 'techniqueApplied', e.target.value);
+                          }}
                             className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
                             <option value="">Select technique…</option>
-                            <option value="equivalence-partitioning">Equivalence Partitioning</option>
-                            <option value="boundary-value-analysis">Boundary Value Analysis</option>
-                            <option value="decision-table">Decision Table</option>
-                            <option value="state-transition">State Transition</option>
-                            <option value="use-case">Use Case</option>
+                            <option value="Equivalence Partitioning">Equivalence Partitioning</option>
+                            <option value="Boundary Value Analysis">Boundary Value Analysis</option>
+                            <option value="Decision Table">Decision Table</option>
+                            <option value="State Transition">State Transition</option>
+                            <option value="Use Case">Use Case</option>
                           </select>
                         </div>
                       </>
@@ -1810,58 +1961,224 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
 
 
 
-function CompleteNodeView({ runSummary, node }: { runSummary: any; node: any }) {
+function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; node: any; agentLogs?: any[] }) {
   const meta = node?.meta || {};
   const cases = runSummary?.totalCases ?? meta.totalCases ?? meta.outputCount ?? 0;
   const tokens = runSummary?.totalTokens ?? meta.totalTokens ?? meta.tokenUsage ?? 0;
   const latency = runSummary?.totalLatencyMs ?? meta.totalLatencyMs ?? meta.latencyMs ?? 0;
   const batches = runSummary?.totalBatches ?? meta.totalBatches ?? 0;
 
+  const finalTestCases = useMemo(() => {
+    if (!agentLogs) return [];
+    const qmLog = agentLogs.find((l: any) => {
+      const name = (l.agent_name || '').replace(/_/g, '-');
+      return name === 'quality-manager' && l.output_data?.finalTestCases;
+    });
+    return qmLog?.output_data?.finalTestCases || [];
+  }, [agentLogs]);
+
   return (
-    <div className="p-6 space-y-6 text-center h-full flex flex-col items-center justify-center overflow-y-auto">
-      {/* Radiant Sparkle Success check */}
-      <div className="relative inline-flex items-center justify-center">
-        <div className="absolute inset-0 rounded-full bg-emerald-100/50 scale-125 animate-pulse" />
-        <div className="relative h-16 w-16 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 shadow-lg flex items-center justify-center shadow-emerald-500/25">
-          <CheckCircle2 size={32} className="text-white" />
-        </div>
-      </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="overflow-y-auto flex-1 p-4 space-y-4">
+        {/* Summary Section */}
+        <div className="bg-gradient-to-r from-emerald-50/80 to-teal-50/50 rounded-2xl p-6 border border-emerald-100/60">
+          <div className="flex items-center gap-5">
+            <div className="relative inline-flex items-center justify-center shrink-0">
+              <div className="absolute inset-0 rounded-full bg-emerald-200/40 scale-150 animate-pulse" />
+              <div className="relative h-14 w-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 shadow-lg flex items-center justify-center shadow-emerald-500/30">
+                <CheckCircle2 size={28} className="text-white" />
+              </div>
+            </div>
 
-      <div className="space-y-1.5 max-w-sm mx-auto">
-        <h4 className="text-md font-bold text-slate-800">Test Gen Complete</h4>
-        <p className="text-xs text-slate-500 leading-normal">
-          The autonomous system has concluded the execution cycle. All draft conditions have been synthesized, optimized, and reviewed under target quality constraints.
-        </p>
-      </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xl font-extrabold text-slate-800 tracking-tight">Test Gen Complete</h4>
+              <p className="text-sm text-slate-500 mt-1">All stages completed. <span className="font-semibold text-emerald-600">{finalTestCases.length} test cases</span> generated.</p>
+            </div>
 
-      <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
-        {/* KPI Grid Item */}
-        <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
-          <div className="text-3xl font-black text-slate-800 tracking-tight">{cases}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Test Cases Generated</div>
+            <div className="flex items-center gap-5 shrink-0">
+              <div className="text-center">
+                <div className="text-2xl font-black text-emerald-600">{cases}</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cases</div>
+              </div>
+              <div className="w-px h-10 bg-emerald-200/60" />
+              <div className="text-center">
+                <div className="text-2xl font-black text-slate-700">{batches}</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Batches</div>
+              </div>
+              <div className="w-px h-10 bg-emerald-200/60" />
+              <div className="text-center">
+                <div className="text-lg font-bold text-slate-700">{formatTokens(tokens)}</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tokens</div>
+              </div>
+              <div className="w-px h-10 bg-emerald-200/60" />
+              <div className="text-center">
+                <div className="text-lg font-bold text-slate-700">{latency > 0 ? formatMs(latency) : 'N/A'}</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Time</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
-          <div className="text-3xl font-black text-slate-800 tracking-tight">{batches}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Batches</div>
-        </div>
-        <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
-          <div className="text-xl font-bold text-slate-800 tracking-tight">{formatTokens(tokens)}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Tokens Used</div>
-        </div>
-        <div className="bg-white rounded-xl p-3 border border-slate-150 shadow-sm">
-          <div className="text-xl font-bold text-slate-800 tracking-tight">{latency > 0 ? formatMs(latency) : 'N/A'}</div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1.5">Time Elapsed</div>
-        </div>
-      </div>
 
-      {cases > 0 && (
-        <div className="bg-emerald-50 rounded-xl p-4 text-xs text-emerald-800 leading-relaxed border border-emerald-150 text-left max-w-md mx-auto flex items-start gap-2.5">
-          <Sparkles size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-          <p>
-            Successfully generated <b>{cases} comprehensive end-to-end test scenarios</b>. You can view these directly in the <b>Test Matrix</b> panel to execute, assert, or debug them.
-          </p>
-        </div>
-      )}
+        {/* Detailed Test Cases Section */}
+        {finalTestCases.length > 0 && (
+          <div className="space-y-4 pt-2 border-t border-slate-100">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-500" />
+              <h3 className="text-sm font-bold text-slate-700">Final Test Cases</h3>
+              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">{finalTestCases.length} total</span>
+            </div>
+
+            <div className="space-y-3">
+              {finalTestCases.map((tc: any, i: number) => (
+                <div key={tc.id || i} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+                  {/* Header */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                      TC-{String(i + 1).padStart(2, '0')}
+                    </span>
+                    <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
+                    {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
+                    {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                    {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
+                    {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
+                    {tc.selfReview?.score !== undefined && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.score >= 8 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.selfReview.score >= 5 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                        Score: {tc.selfReview.score}/10
+                      </span>
+                    )}
+                    {tc.selfReview?.pass !== undefined && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${tc.selfReview.pass ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>{tc.selfReview.pass ? 'PASS' : 'REVIEW'}</span>}
+                  </div>
+
+                  {/* Tags */}
+                  {tc.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {tc.tags.map((tag: string, j: number) => (
+                        <span key={j} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Preconditions */}
+                  {tc.preconditions?.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Preconditions</span>
+                      <ul className="space-y-0.5 pl-3 border-l-2 border-slate-100">
+                        {tc.preconditions.map((p: string, j: number) => (
+                          <li key={j} className="text-xs text-slate-600 leading-snug">{j + 1}. {p}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Steps */}
+                  {tc.steps?.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Steps ({tc.steps.length})</span>
+                      <div className="space-y-1">
+                        {tc.steps.map((st: any, sIdx: number) => (
+                          <div key={sIdx} className="flex gap-2 text-xs text-slate-600 leading-snug">
+                            <span className="text-slate-300 font-bold shrink-0">{sIdx + 1}.</span>
+                            <div>
+                              <p className="leading-tight">{st.action || st.description || st}</p>
+                              {st.expected && <p className="text-xs text-slate-400 italic mt-0.5">→ Expected: {st.expected}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Test Data */}
+                  {tc.testData && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Test Data</span>
+                      <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                        {typeof tc.testData === 'string' ? (
+                          <p className="text-xs text-slate-600">{tc.testData}</p>
+                        ) : Array.isArray(tc.testData) ? (
+                          tc.testData.map((d: any, j: number) => {
+                            if (typeof d === 'string') {
+                              const sep = d.indexOf(':');
+                              return (
+                                <div key={j} className="flex items-start gap-2 text-xs">
+                                  {sep > 0 ? (
+                                    <>
+                                      <span className="font-mono font-medium text-slate-700 shrink-0">{d.slice(0, sep)}:</span>
+                                      <span className="text-slate-500">{d.slice(sep + 1).trim() || '(empty)'}</span>
+                                    </>
+                                  ) : (
+                                    <span className="text-slate-500">{d}</span>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={j} className="flex items-center gap-2 text-xs">
+                                <span className="font-mono font-medium text-slate-700">{d.key}:</span>
+                                <span className="text-slate-500">{d.value ?? '(empty)'}</span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <pre className="text-xs text-slate-600 font-mono whitespace-pre-wrap">{JSON.stringify(tc.testData, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Issues */}
+                  {tc.selfReview?.issues?.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Issues ({tc.selfReview.issues.length})</span>
+                      <SelfReviewIssuesList issues={tc.selfReview.issues} />
+                    </div>
+                  )}
+
+                  {/* Review Summary */}
+                  {tc.reviewSummary && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Review Summary</span>
+                      <p className="text-xs text-slate-500 italic bg-slate-50 rounded-lg p-2.5 border border-slate-100">{tc.reviewSummary}</p>
+                    </div>
+                  )}
+
+                  {/* Change Log */}
+                  {tc.changeLog && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Change Log</span>
+                      <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                        {typeof tc.changeLog === 'string' ? (
+                          <p>{tc.changeLog}</p>
+                        ) : Array.isArray(tc.changeLog) ? (
+                          <ul className="space-y-0.5">
+                            {tc.changeLog.map((cl: any, j: number) => (
+                              <li key={j}>
+                                <span className="font-medium text-slate-600">{cl.field}</span>
+                                {cl.from && <span className="text-slate-400"> from "{cl.from}"</span>}
+                                {cl.to && <span className="text-slate-400"> to "{cl.to}"</span>}
+                                {cl.reason && <span className="text-slate-400 italic"> ({cl.reason})</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <pre className="whitespace-pre-wrap">{JSON.stringify(tc.changeLog, null, 2)}</pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state if no cases */}
+        {finalTestCases.length === 0 && cases > 0 && (
+          <div className="text-center py-8">
+            <p className="text-sm text-slate-400">Test case details not available in agent logs.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1994,6 +2311,10 @@ export function TestGenDetailPanel({
   thinkingText,
   runSummary,
   agentLogs,
+  startConfig,
+  requirements,
+  businessFlows,
+  modelName,
   onClose,
   onApprove,
   onRetry,
@@ -2174,7 +2495,7 @@ export function TestGenDetailPanel({
         {nodeType === 'agent' ? (
           <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} agentLogs={agentLogs} />
         ) : nodeType === 'preparation' ? (
-          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
+          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} startConfig={startConfig} requirements={requirements} businessFlows={businessFlows} modelName={modelName} />
         ) : nodeType === 'checkpoint' ? (
           <CheckpointViewWithAudit
             runId={runId}
@@ -2184,7 +2505,7 @@ export function TestGenDetailPanel({
             <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
           </CheckpointViewWithAudit>
         ) : nodeType === 'complete' ? (
-          <CompleteNodeView runSummary={runSummary} node={node} />
+          <CompleteNodeView runSummary={runSummary} node={node} agentLogs={agentLogs} />
         ) : (
           <div className="p-4">
             {nodeType === 'preparation' && node.subSteps && (

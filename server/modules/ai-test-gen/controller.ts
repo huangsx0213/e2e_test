@@ -121,6 +121,22 @@ export class TestGenController {
     return pipelineRepo.getAuditLogs(runId, checkpointId);
   }
 
+  // ---- Prompt Overrides ----
+
+  getPromptOverrides(projectId: string) {
+    return pipelineRepo.getPromptOverrides(projectId);
+  }
+
+  upsertPromptOverride(projectId: string, agentName: string, customPrompt: string | null, modelOverride: string | null) {
+    pipelineRepo.upsertPromptOverride(projectId, agentName, customPrompt, modelOverride);
+    return { success: true };
+  }
+
+  deletePromptOverride(projectId: string, agentName: string) {
+    pipelineRepo.deletePromptOverride(projectId, agentName);
+    return { success: true };
+  }
+
   /** 恢复中断的运行（服务重启后调用） */
   async recoverInterruptedRuns(): Promise<void> {
     const waitingRuns = pipelineRepo.getWaitingRuns();

@@ -5,6 +5,7 @@ import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
 import { ANALYST_SKILLS } from '../skills/skills.ts';
+import { pipelineRepo } from '../../repository.ts';
 import { z } from 'zod';
 
 // ============================================================
@@ -58,8 +59,12 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     observer?.onStep?.(agentName, 0, 'Assess risk & priority');
 
     try {
+      // Load custom prompt override if available
+      const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
+      const systemPrompt = buildAnalystSystemPrompt(state, override?.custom_prompt ?? undefined);
+
       const messages = [
-        { role: 'system' as const, content: buildAnalystSystemPrompt(state) },
+        { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildAnalystUserMessage(state) },
       ];
       console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);

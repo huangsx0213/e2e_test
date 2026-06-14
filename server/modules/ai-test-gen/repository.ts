@@ -367,6 +367,38 @@ export class TestGenRepository {
       created_at: r.created_at ? new Date(r.created_at.replace(/Z$/, '') + 'Z').toISOString() : r.created_at,
     }));
   }
+
+  // ---- Prompt Overrides ----
+
+  getPromptOverrides(projectId: string): any[] {
+    return db.prepare(
+      'SELECT * FROM test_gen_prompt_overrides WHERE project_id = ?'
+    ).all(projectId);
+  }
+
+  getPromptOverride(projectId: string, agentName: string): any | undefined {
+    return db.prepare(
+      'SELECT * FROM test_gen_prompt_overrides WHERE project_id = ? AND agent_name = ?'
+    ).get(projectId, agentName);
+  }
+
+  upsertPromptOverride(projectId: string, agentName: string, customPrompt: string | null, modelOverride: string | null): void {
+    const id = `${projectId}_${agentName}`;
+    db.prepare(`
+      INSERT INTO test_gen_prompt_overrides (id, project_id, agent_name, custom_prompt, model_override, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(project_id, agent_name) DO UPDATE SET
+        custom_prompt = excluded.custom_prompt,
+        model_override = excluded.model_override,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(id, projectId, agentName, customPrompt, modelOverride);
+  }
+
+  deletePromptOverride(projectId: string, agentName: string): void {
+    db.prepare(
+      'DELETE FROM test_gen_prompt_overrides WHERE project_id = ? AND agent_name = ?'
+    ).run(projectId, agentName);
+  }
 }
 
 export const pipelineRepo = new TestGenRepository();

@@ -164,6 +164,15 @@ businessFlows: {
       apiFetch<{ success: boolean }>(`test-gen/${runId}`, { method: 'DELETE' }),
     getThinkingData: (runId: string) =>
       apiFetch<Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null>(`test-gen/${runId}/thinking`),
+    promptOverrides: (projectId: string) =>
+      apiFetch<any[]>(`test-gen/prompts/${projectId}`),
+    savePromptOverride: (projectId: string, agentName: string, data: { customPrompt?: string | null; modelOverride?: string | null }) =>
+      apiFetch<{ success: boolean }>(`test-gen/prompts/${projectId}/${agentName}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    deletePromptOverride: (projectId: string, agentName: string) =>
+      apiFetch<{ success: boolean }>(`test-gen/prompts/${projectId}/${agentName}`, { method: 'DELETE' }),
   },
   nlCases: {
     ...createCrudService<any>('nl-cases'),

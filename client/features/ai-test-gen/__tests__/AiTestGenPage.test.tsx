@@ -106,20 +106,18 @@ describe('AiTestGenPage', () => {
     expect(screen.getByText('AI Test Gen')).toBeTruthy();
   });
 
-  it('TC-4.2: can switch between config and history views', () => {
-    renderWithProviders(React.createElement(AiTestGenPage, defaultProps));
-    const historyBtn = screen.getByText('History');
-    fireEvent.click(historyBtn);
-    expect(screen.getByText('Run History')).toBeTruthy();
-    const newRunBtn = screen.getByText('New Run');
-    fireEvent.click(newRunBtn);
-    expect(screen.getByText('Test Gen Config')).toBeTruthy();
-  });
-
-  it('TC-4.2: shows New Run button when in history view', () => {
+  it('TC-4.2: can switch between tabs', () => {
     renderWithProviders(React.createElement(AiTestGenPage, defaultProps));
     fireEvent.click(screen.getByText('History'));
-    expect(screen.getByText('New Run')).toBeTruthy();
+    expect(screen.getByText('Run History')).toBeTruthy();
+    fireEvent.click(screen.getByText('New'));
+    expect(screen.getByText('Requirements')).toBeTruthy();
+  });
+
+  it('TC-4.2: shows tab bar when in history view', () => {
+    renderWithProviders(React.createElement(AiTestGenPage, defaultProps));
+    fireEvent.click(screen.getByText('History'));
+    expect(screen.getByText('New')).toBeTruthy();
   });
 
   it('TC-4.5: abort confirmation modal appears on abort click', () => {

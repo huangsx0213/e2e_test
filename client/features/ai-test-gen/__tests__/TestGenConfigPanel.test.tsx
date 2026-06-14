@@ -95,30 +95,16 @@ describe('TestGenConfigPanel', () => {
     expect(screen.getByText('Requirements')).toBeTruthy();
   });
 
-  it('TC-1.2: search filters requirements', () => {
+  it('TC-1.3: Select all checkbox selects/deselects all requirements', () => {
     const reqs = buildTreeSample();
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: reqs }));
 
-    fireEvent.click(screen.getByText('Expand'));
-    const searchInput = screen.getByPlaceholderText('Filter...');
-    fireEvent.change(searchInput, { target: { value: 'Email' } });
+    const checkbox = screen.getAllByLabelText('Select all')[0];
+    fireEvent.click(checkbox);
+    expect(screen.getByText('4')).toBeTruthy();
 
-    expect(screen.getByText('Email Registration')).toBeTruthy();
-    expect(screen.queryByText('Phone Registration')).toBeNull();
-  });
-
-  it('TC-1.3: Select All / Clear buttons work', () => {
-    const reqs = buildTreeSample();
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: reqs }));
-
-    const selectAll = screen.getByText('Select All');
-    fireEvent.click(selectAll);
-    expect(screen.getByText('4 selected')).toBeTruthy();
-
-    const clear = screen.getByText('Clear');
-    fireEvent.click(clear);
-    const zeroSelected = screen.getAllByText('0 selected');
-    expect(zeroSelected.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(checkbox);
+    expect(screen.queryByText('4')).toBeNull();
   });
 
   it('TC-1.4: Business Flow only shows approved by default', () => {
@@ -172,7 +158,7 @@ describe('TestGenConfigPanel', () => {
     const reqs = buildTreeSample();
     const onStart = vi.fn();
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: reqs, onStart }));
-    fireEvent.click(screen.getByText('Select All'));
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
     const select = screen.getByRole('combobox');
     fireEvent.change(select, { target: { value: 'Azure OpenAI' } });
     const startBtn = screen.getByText('Start Test Gen');

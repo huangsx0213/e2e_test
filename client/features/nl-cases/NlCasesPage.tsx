@@ -22,6 +22,22 @@ const priorityColors: Record<string, string> = {
   low: 'text-slate-500',
 };
 
+const TECHNIQUE_LABELS: Record<string, string> = {
+  ep: 'Equivalence Partitioning',
+  bva: 'Boundary Value Analysis',
+  dt: 'Decision Table',
+  st: 'State Transition',
+  uat: 'Use Case Testing',
+  pict: 'Pairwise Testing',
+  cp: 'Classification Tree',
+  ec: 'Equivalence Class Partitioning',
+};
+
+function formatTechnique(value: string | undefined): string {
+  if (!value) return '-';
+  return TECHNIQUE_LABELS[value.toLowerCase().trim()] || value;
+}
+
 export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
   const { data: cases = [], isLoading } = useNlCases(currentProjectId || '');
   const queryClient = useQueryClient();
@@ -369,7 +385,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                                 </div>
                                 {editData.steps.map((s: any, idx: number) => (
                                   <div key={idx} className="flex gap-2 mb-2">
-                                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0 mt-1">{s.sequence}</div>
+                                    <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0 mt-1">{s.sequence || idx + 1}</div>
                                     <div className="flex-1">
                                       <div className="flex gap-1 mb-1">
                                         <input value={s.action} onChange={e => { const arr = [...editData.steps]; arr[idx] = { ...arr[idx], action: e.target.value }; updateEditField('steps', arr); }} placeholder="Action" className="flex-1 border border-slate-200 rounded px-2 py-1 text-xs" />
@@ -434,14 +450,14 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                               {c.preconditions?.length > 0 && (
                                 <div>
                                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Preconditions</h4>
-                                  <ul className="space-y-1">
+                                  <div className="space-y-1">
                                     {c.preconditions.map((p: string, idx: number) => (
-                                      <li key={idx} className="text-xs text-slate-600 flex items-start gap-2">
-                                        <span className="w-1 h-1 rounded-full bg-slate-300 mt-1.5 shrink-0" />
-                                        {p}
-                                      </li>
+                                      <div key={idx} className="flex gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</span>
+                                        <span className="text-xs text-slate-600 py-0.5">{p}</span>
+                                      </div>
                                     ))}
-                                  </ul>
+                                  </div>
                                 </div>
                               )}
                               {c.steps?.length > 0 && (
@@ -451,7 +467,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                                     {c.steps.map((s: any, idx: number) => (
                                       <div key={idx} className="flex gap-3">
                                         <div className="flex flex-col items-center">
-                                          <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">{s.sequence}</div>
+                                          <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">{s.sequence || idx + 1}</div>
                                           {idx < c.steps.length - 1 && <div className="w-px flex-1 bg-slate-200 mt-1" />}
                                         </div>
                                         <div className="flex-1 pb-2">
@@ -466,14 +482,14 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                               {c.postconditions?.length > 0 && (
                                 <div>
                                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Postconditions</h4>
-                                  <ul className="space-y-1">
+                                  <div className="space-y-1">
                                     {c.postconditions.map((p: string, idx: number) => (
-                                      <li key={idx} className="text-xs text-slate-600 flex items-start gap-2">
-                                        <span className="w-1 h-1 rounded-full bg-slate-300 mt-1.5 shrink-0" />
-                                        {p}
-                                      </li>
+                                      <div key={idx} className="flex gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">{idx + 1}</span>
+                                        <span className="text-xs text-slate-600 py-0.5">{p}</span>
+                                      </div>
                                     ))}
-                                  </ul>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -481,13 +497,30 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                               {c.testData?.length > 0 && (
                                 <div>
                                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Test Data</h4>
-                                  <div className="bg-slate-100 rounded-lg p-3">
-                                    {c.testData.map((d: any, idx: number) => (
-                                      <div key={idx} className="flex items-center gap-2 text-xs">
-                                        <span className="font-mono font-medium text-slate-700">{d.key}:</span>
-                                        <span className="text-slate-500 truncate">{d.value || '(empty)'}</span>
-                                      </div>
-                                    ))}
+                                  <div className="bg-slate-100 rounded-lg p-3 space-y-1">
+                                    {c.testData.map((d: any, idx: number) => {
+                                      if (typeof d === 'string') {
+                                        const sep = d.indexOf(':');
+                                        return (
+                                          <div key={idx} className="flex items-start gap-2 text-xs">
+                                            {sep > 0 ? (
+                                              <>
+                                                <span className="font-mono font-medium text-slate-700 shrink-0">{d.slice(0, sep)}:</span>
+                                                <span className="text-slate-500">{d.slice(sep + 1).trim() || '(empty)'}</span>
+                                              </>
+                                            ) : (
+                                              <span className="text-slate-500">{d}</span>
+                                            )}
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div key={idx} className="flex items-center gap-2 text-xs">
+                                          <span className="font-mono font-medium text-slate-700">{d.key}:</span>
+                                          <span className="text-slate-500 truncate">{d.value ?? '(empty)'}</span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -499,7 +532,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                                   <div className="text-slate-400">Condition</div>
                                   <div className="text-slate-600 truncate">{c.conditionId || '-'}</div>
                                   <div className="text-slate-400">Technique</div>
-                                  <div className="text-slate-600">{c.techniqueApplied || '-'}</div>
+                                  <div className="text-slate-600">{formatTechnique(c.techniqueApplied)}</div>
                                   <div className="text-slate-400">Tags</div>
                                   <div className="text-slate-600">{(c.tags || []).join(', ') || '-'}</div>
                                 </div>
