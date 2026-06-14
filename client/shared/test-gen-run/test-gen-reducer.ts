@@ -246,6 +246,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         runId: action.runId,
         startConfig: action.config,
         mode: action.config.mode,
+        modelName: action.config.model || state.modelName,
         nodes: createFreshNodes(),
         selectedNodeId: null,
         batchProgress: null,
@@ -519,6 +520,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         agentLogs: action.logs ?? [],
         runSummary: action.summary,
         modelName: action.modelName ?? state.modelName,
+        startConfig: action.startConfig ?? state.startConfig,
       };
     }
 

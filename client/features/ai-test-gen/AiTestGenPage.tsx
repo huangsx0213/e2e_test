@@ -53,6 +53,7 @@ const handleRefresh = useCallback(async () => {
       await pipeline.start({
         requirementIds: config.requirementIds,
         providerConfigName: config.providerConfigName,
+        model: config.model,
         mode: config.mode,
         flowIds: config.flowIds,
         includeFlowCases: config.includeFlowCases,

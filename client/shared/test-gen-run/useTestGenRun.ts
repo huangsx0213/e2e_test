@@ -334,6 +334,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
         logs,
         summary,
         modelName: runInfo.model_name,
+        startConfig: runInfo.config,
       });
 
       // For completed/failed/waiting-review runs, load persisted thinking data

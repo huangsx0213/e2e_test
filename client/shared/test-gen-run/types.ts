@@ -61,6 +61,7 @@ export type CheckpointAction = 'approve' | 'edit' | 'retry' | 'continue';
 export interface StartConfig {
   requirementIds: string[];
   providerConfigName?: string;
+  model?: string;
   mode: RunMode;
   flowIds?: string[];
   includeFlowCases?: boolean;
@@ -113,7 +114,7 @@ export type TestGenReducerAction =
   | { type: 'DISMISS_ERROR' }
   | { type: 'RESET' }
   | { type: 'SET_THINKING_DATA'; thinkingData: Record<string, ThinkingEntry[]> }
-  | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary; modelName?: string | null };
+  | { type: 'RESTORE_RUN_COMPLETE'; runId: string; phase: string; status: string; mode?: RunMode; totalBatches?: number; checkpointData?: any; logs: any[]; summary: RunSummary; modelName?: string | null; startConfig?: StartConfig | null };
 
 export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentName' | 'subSteps'>;
 
