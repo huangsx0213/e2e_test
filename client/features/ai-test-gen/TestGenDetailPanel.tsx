@@ -84,7 +84,13 @@ function formatRelativeTime(dateStr: string): string {
 
 function formatMs(ms: number) { 
   if (ms < 1000) return `${ms}ms`; 
-  return `${(ms / 1000).toFixed(1)}s`; 
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function formatTokens(n: number) { 
@@ -1295,10 +1301,10 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             })()}
 
             {activeTab === 'output' && (
-              <div className="p-4 space-y-3">
+              <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
                 {agentLog?.output_data ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl">
+                  <div className="flex flex-col flex-1 min-h-0 space-y-2">
+                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl shrink-0">
                       <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
                       <button 
                         onClick={handleCopyRawJson}
@@ -1309,16 +1315,18 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                       </button>
                     </div>
 
-                    <SyntaxHighlighter
-                      style={vscDarkPlus}
-                      language="json"
-                      PreTag="div"
-                      customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px', maxHeight: '24rem' }}
-                      showLineNumbers
-                      lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
-                    >
-                      {JSON.stringify(agentLog.output_data, null, 2)}
-                    </SyntaxHighlighter>
+                    <div className="flex-1 overflow-y-auto min-h-0">
+                      <SyntaxHighlighter
+                        style={vscDarkPlus}
+                        language="json"
+                        PreTag="div"
+                        customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px', height: '100%' }}
+                        showLineNumbers
+                        lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
+                      >
+                        {JSON.stringify(agentLog.output_data, null, 2)}
+                      </SyntaxHighlighter>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center text-xs text-slate-400 py-10">No compilation output yet</div>
