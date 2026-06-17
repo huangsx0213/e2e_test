@@ -3,7 +3,7 @@
  * 定义录制事件、状态、payload 类型，供 client/server/agent 三端共用
  */
 
-import type { TestStep, UIElement, HeaderProfile, BodyTemplate, ApiEndpoint } from '../contracts/index.ts';
+import type { TestStep, UIElement, HeaderProfile, BodyTemplate, ApiEndpoint, NlTestCase } from '../contracts/index.ts';
 
 export type RecorderMode = 'ui' | 'api' | 'all';
 
@@ -179,3 +179,60 @@ export const STEP_RECORDED_EVENT = 'step-recorded';
 export const ELEMENT_RECORDED_EVENT = 'element-recorded';
 export const API_RECORDED_EVENT = 'api-recorded';
 export const RECORDER_STATE_CHANGED_EVENT = 'recorder-state-changed';
+
+// === AI-Driven Recorder WS Events ===
+// 独立的 WS 事件类型，不污染现有 RECORDING_START/STOP 协议。
+// Provider 配置通过 WS 双向通信获取：Agent 发 REQUEST，Server 回 RESPONSE（解密后），
+// 避免 API key 在 WS 消息中传输，且避免"Agent 无 HTTP 能力"的架构矛盾。
+
+/**
+ * 解密后的 Provider 配置（WS 传输用）。
+ * Server 解密 encryptedApiKey 后以 apiKey 明文形式通过 WS 回传给 Agent，
+ * Agent 在 run 结束后立即释放，不落盘、不缓存。
+ */
+export interface DecryptedProviderConfig {
+  id: string;
+  name: string;
+  type: 'azure-openai' | 'openai-compatible' | 'anthropic' | 'google';
+  endpoint?: string;
+  apiKey: string;
+  deployment?: string;
+  apiVersion?: string;
+  model: string;
+  models?: string[];
+}
+
+export interface AiRecorderStartData {
+  runId: string;
+  projectId: string;
+  nlCase: NlTestCase;
+  providerConfigId: string;
+  options: { headless?: boolean; maxRetriesPerStep?: number; timeoutPerStep?: number };
+  caseId: string;
+  suiteId: string;
+}
+
+export interface AiRecorderProviderConfigRequestData {
+  runId: string;
+  providerConfigId: string;
+}
+
+export interface AiRecorderProviderConfigResponseData {
+  runId: string;
+  providerConfigId: string;
+  providerConfig: DecryptedProviderConfig;
+}
+
+export type AiRecorderWsEvent =
+  | { event: 'AI_RECORDER_START'; data: AiRecorderStartData }
+  | { event: 'AI_RECORDER_STOP'; data: { runId: string } }
+  | { event: 'AI_RECORDER_TAKEOVER_COMPLETE'; data: { runId: string; nlStepIndex: number } }
+  | { event: 'AI_RECORDER_PROVIDER_CONFIG_REQUEST'; data: AiRecorderProviderConfigRequestData }
+  | { event: 'AI_RECORDER_PROVIDER_CONFIG_RESPONSE'; data: AiRecorderProviderConfigResponseData };
+
+export const AI_RECORDER_START_EVENT = 'AI_RECORDER_START';
+export const AI_RECORDER_STOP_EVENT = 'AI_RECORDER_STOP';
+export const AI_RECORDER_TAKEOVER_COMPLETE_EVENT = 'AI_RECORDER_TAKEOVER_COMPLETE';
+export const AI_RECORDER_PROVIDER_CONFIG_REQUEST_EVENT = 'AI_RECORDER_PROVIDER_CONFIG_REQUEST';
+export const AI_RECORDER_PROVIDER_CONFIG_RESPONSE_EVENT = 'AI_RECORDER_PROVIDER_CONFIG_RESPONSE';
+export const AI_RECORDER_COMPLETE_EVENT = 'AI_RECORDER_COMPLETE';
