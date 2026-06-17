@@ -8,12 +8,31 @@ interface SseStream {
   heartbeat: ReturnType<typeof setInterval>;
 }
 
+export interface SSEGatewayOptions {
+  /** Events that trigger stream cleanup (close SSE connection). Defaults to ai-test-gen's pipeline events. */
+  cleanupEvents?: string[];
+  /** Event whose latest payload is cached for late-attaching clients (e.g. checkpoint:waiting). Defaults to 'checkpoint:waiting'. */
+  checkpointEvent?: string;
+}
+
 export class SSEGateway {
   private readonly emitters = new Map<string, EventEmitter>();
   private readonly streams = new Map<string, SseStream>();
   private readonly eventBuffers = new Map<string, Array<{ event: string; data: unknown }>>();
   private readonly bufferTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly lastEvents = new Map<string, { event: string; data: unknown }>();
+
+  private readonly cleanupEvents: Set<string>;
+  private readonly checkpointEvent: string | null;
+
+  constructor(options: SSEGatewayOptions = {}) {
+    this.cleanupEvents = new Set(options.cleanupEvents ?? ['pipeline:complete', 'pipeline:error']);
+    this.checkpointEvent = options.checkpointEvent !== undefined ? options.checkpointEvent : 'checkpoint:waiting';
+  }
+
+  private isCleanupEvent(event: string): boolean {
+    return this.cleanupEvents.has(event);
+  }
 
   getEmitter(runId: string): EventEmitter {
     let ee = this.emitters.get(runId);
@@ -26,10 +45,10 @@ export class SSEGateway {
   }
 
   emit(runId: string, event: string, data: unknown): void {
-    if (event === 'checkpoint:waiting') {
+    if (this.checkpointEvent && event === this.checkpointEvent) {
       this.lastEvents.set(runId, { event, data });
     }
-    if (event === 'pipeline:complete' || event === 'pipeline:error') {
+    if (this.isCleanupEvent(event)) {
       this.lastEvents.delete(runId);
     }
 
@@ -68,7 +87,7 @@ export class SSEGateway {
 
     const onSse = (event: string, data: unknown) => {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      if (event === 'pipeline:complete' || event === 'pipeline:error') {
+      if (this.isCleanupEvent(event)) {
         cleanup();
       }
     };
@@ -85,7 +104,7 @@ export class SSEGateway {
       }
       for (const { event, data } of buffer) {
         res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-        if (event === 'pipeline:complete' || event === 'pipeline:error') {
+        if (this.isCleanupEvent(event)) {
           cleanup();
           return;
         }
