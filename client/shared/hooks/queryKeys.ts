@@ -19,4 +19,8 @@ export const queryKeys = {
   },
   nlCases: (projectId: string) => ['nl-cases', projectId] as const,
   providerConfigs: ['provider-configs'] as const,
+  aiRecorder: {
+    runs: (projectId: string) => ['ai-recorder', 'runs', projectId] as const,
+    run: (runId: string) => ['ai-recorder', 'run', runId] as const,
+  },
 };

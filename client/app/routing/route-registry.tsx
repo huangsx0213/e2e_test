@@ -25,6 +25,7 @@ export interface RouteContext {
   setCurrentEnvironment: (env: string) => void;
   setCurrentProjectId: (id: string) => void;
   setExecutionState: (state: any) => void;
+  navigateToTab: (tab: AppTab) => void;
 }
 
 type RouteComponent = React.ComponentType<any>;

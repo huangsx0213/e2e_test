@@ -1,7 +1,28 @@
-import type { NlTestCase } from '../../shared/contracts/index.ts';
+import type { NlTestCase, NlTestCaseStep, NlTestCaseTestData } from '../../shared/contracts/index.ts';
 import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
-import { randomId } from '../../shared/utils/index.ts';
+import { randomId, asText } from '../../shared/utils/index.ts';
+
+function normalizeTestDataEntry(d: unknown): NlTestCaseTestData {
+  if (typeof d === 'string') {
+    const sep = d.indexOf(':');
+    if (sep > 0) {
+      return { key: d.slice(0, sep).trim(), value: d.slice(sep + 1).trim(), description: '' };
+    }
+    return { key: d, value: '', description: '' };
+  }
+  const obj = (d || {}) as Record<string, unknown>;
+  return { key: asText(obj.key), value: asText(obj.value), description: asText(obj.description) };
+}
+
+function normalizeStep(s: unknown): NlTestCaseStep {
+  const obj = (s || {}) as Record<string, unknown>;
+  return {
+    sequence: (obj.sequence as number) ?? (obj.stepNumber as number) ?? 0,
+    action: asText(obj.action),
+    expected: asText(obj.expected),
+  };
+}
 
 type DbNlCaseRow = {
   id: string;
@@ -95,6 +116,8 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
   }
 
   rowToCase(row: DbNlCaseRow): NlTestCase {
+    const rawTestData = JSON.parse(row.test_data || '[]');
+    const rawSteps = JSON.parse(row.steps || '[]');
     return {
       id: row.id,
       projectId: row.project_id,
@@ -105,8 +128,8 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
       priority: row.priority as NlTestCase['priority'],
       category: row.category || undefined,
       preconditions: JSON.parse(row.preconditions || '[]'),
-      testData: JSON.parse(row.test_data || '[]'),
-      steps: JSON.parse(row.steps || '[]'),
+      testData: Array.isArray(rawTestData) ? rawTestData.map(normalizeTestDataEntry) : [],
+      steps: Array.isArray(rawSteps) ? rawSteps.map(normalizeStep) : [],
       postconditions: JSON.parse(row.postconditions || '[]'),
       tags: JSON.parse(row.tags || '[]'),
       selfReview: row.self_review ? JSON.parse(row.self_review) : undefined,

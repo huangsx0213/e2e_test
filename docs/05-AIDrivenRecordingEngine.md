@@ -30,7 +30,7 @@ graph TB
         SSE_GATEWAY[SSEGateway<br/>共享实例，参数化 cleanup 事件]
         WS_RELAY[WS Relay<br/>监听 RECORDING_EVENT，桥接到 SSEGateway]
         DRAFT_SAVER[DraftSuiteSaver<br/>Refined steps → saveSuite + link NlCase]
-        REPLAY[AutoReplay<br/>Agent 端 3 次回放 + flaky 检测]
+        REPLAY[AutoReplay<br/>（当前已禁用，后续恢复）]
     end
 
     subgraph "Agent"
@@ -87,7 +87,7 @@ graph TB
 
 | 端 | 职责 | 不做的事 |
 |:---|:---|:---|
-| **Server** | API 入口、DB 持久化、SSE 广播、WS Relay、DraftSuiteSaver、AutoReplay 编排 | 不运行 Refiner、不调 LLM、不碰浏览器 |
+| **Server** | API 入口、DB 持久化、SSE 广播、WS Relay、DraftSuiteSaver | 不运行 Refiner、不调 LLM、不碰浏览器 |
 | **Agent** | Stagehand 执行、录制捕获、Refiner 精炼、结果回传（通过 WS） | 不直接暴露 REST API、不操作 DB、不直接写 SSE |
 
 ---
@@ -117,13 +117,13 @@ Agent:
          emit WS RECORDING_EVENT { event: 'element-recorded', data }  ← 新增：和人工录制对齐
      → 每 NL step 完成: emit WS RECORDING_EVENT { event: 'step:complete', data }
      → 全部完成: Refiner.refine()
-     → AutoReplay（Agent 端，复用 Stagehand 浏览器，3 次回放 + flaky 检测）
+      → ~~AutoReplay（Agent 端，复用 Stagehand 浏览器，3 次回放 + flaky 检测）~~ [当前已禁用]
      → emit WS RECORDING_EVENT { event: 'AI_RECORDER_COMPLETE', data: { refinedSteps, extractResults, replayReport } }
 
 Server WS Relay:
    8. [跳过] 'step-recorded' / 'element-recorded' 事件由现有 registerRecordingWsHandlers() 处理（见 ws-handlers.ts:15-23），WS Relay 不应重复调用 RecordingService
    9. 收到 'step:complete' → SSEGateway.emit('step:complete') + 更新 step_log
-   10. 收到 'AI_RECORDER_COMPLETE'（已携带 replayReport，由 Agent 端 AutoReplay 产生）→ DraftSuiteSaver.save() → 将 replayReport 写入 run 记录 → 标记 run completed
+   10. 收到 'AI_RECORDER_COMPLETE'（replayReport 当前为 undefined，AutoReplay 已禁用）→ 保存/更新 draft suite → 标记 run completed
 
 Client:
   12. EventSource 消费进度事件
@@ -198,7 +198,7 @@ interface RecordingResult {
   extractResults: Map<number, StructuredExtractResult>;
   stepBoundaries: NlStepBoundary[];
   replayCandidateSuite: Partial<TestSuite>; // 供 DraftSuiteSaver 消费
-  replayReport?: ReplayReport;              // Agent 端 AutoReplay 结果，随 AI_RECORDER_COMPLETE 上报
+  replayReport?: ReplayReport;              // ——已禁用：AutoReplay 关闭后始终为 undefined——
 }
 
 class AIRecordingSession {
@@ -271,15 +271,14 @@ class AIRecordingSession {
       this.extractResults,
     );
 
-    // 6.5 AutoReplay（策略 B：Agent 端执行，复用 Stagehand 浏览器上下文）
-    // 必须在 Stagehand 关闭前执行，否则需要重新启动浏览器，延迟和成本都会上升。
-    // 回放结果随 RecordingResult.replayReport 返回，由 AI_RECORDER_COMPLETE 上报给 Server，
-    // Server 直接写入 DB 的 replay_report 字段，不再调用 AutoReplay。
-    const suiteSkeleton = buildSuiteSkeleton(nlCase, refinedSteps);
-    const replayReport = await autoReplayDraftSuite(suiteSkeleton, {
-      page,                // 复用当前 Stagehand 的 page
-      startUrl,            // 每次回放前重置到起始 URL
-    });
+    // 6.5 AutoReplay —— 已禁用
+    // 原逻辑：Agent 端 3 次回放 + flaky 检测，复用 Stagehand 浏览器上下文。
+    // 恢复时取消下方注释并在 start() 方法中添加对应调用即可。
+    // const suiteSkeleton = buildSuiteSkeleton(nlCase, refinedSteps);
+    // const replayReport = await autoReplayDraftSuite(suiteSkeleton, {
+    //   page,
+    //   startUrl,
+    // });
 
     // 7. 清理
     if (adapter) adapter.stop();
@@ -633,11 +632,14 @@ export function saveDraftSuite(
 }
 ```
 
-### 3.5 AutoReplay — 新增组件
+### 3.5 AutoReplay — ~~新增组件~~（当前已禁用）
 
-**路径**：`server/modules/ai-driven-recorder/auto-replay.ts`
+**路径**：`agent/recorder/auto-replay.ts`
 
-Refiner 完成后、run 标记 COMPLETED 前，自动回放 draft suite **3 次**。3 次回放用于检测 flaky test（业界最佳实践：Mabl、Reflect 均采用多次回放机制）。
+~~Refiner 完成后、run 标记 COMPLETED 前，自动回放 draft suite **3 次**。3 次回放用于检测 flaky test（业界最佳实践：Mabl、Reflect 均采用多次回放机制）。~~
+
+**当前状态**：已禁用。`ai-recording-session.ts` 不再调用 `autoReplayDraftSuite`，`RecordingResult.replayReport` 为 `undefined`。  
+**恢复方式**：在 `ai-recording-session.ts` `start()` 方法的 Refiner 步骤后重新添加 `autoReplayDraftSuite` 调用。
 
 ```typescript
 import type { TestSuite } from '../../../shared/contracts/index.ts';
@@ -744,14 +746,16 @@ async function replayOnce(
 }
 ```
 
-**策略 B 的执行位置**：AutoReplay 在 Agent 端 `AIRecordingSession.start()` 的第 6.5 步执行（Refiner 之后、Stagehand.close() 之前），复用 Stagehand 已打开的浏览器上下文。回放结果随 `RecordingResult.replayReport` 返回，由 `AI_RECORDER_COMPLETE` 事件上报给 Server。Server Controller 收到后直接写入 DB 的 `replay_report` 字段，**不再调用 AutoReplay**。
+**策略 B（当前已禁用）**：AutoReplay 原设计在 Agent 端 `AIRecordingSession.start()` 的第 6.5 步执行（Refiner 之后、Stagehand.close() 之前），复用 Stagehand 已打开的浏览器上下文。回放结果随 `RecordingResult.replayReport` 返回，由 `AI_RECORDER_COMPLETE` 事件上报给 Server。
 
 **为什么不在 Server 端执行**：
 1. Server 不碰浏览器（职责边界），AutoReplay 需要浏览器
-2. 复用 Agent 已打开的 Stagehand 浏览器，避免重新启动的开销（启动 + 关闭浏览器约 2-5 秒）
+2. 复用 Agent 已打开的 Stagehand 浏览器，避免重新启动的开销
 3. 回放结果随 `AI_RECORDER_COMPLETE` 一次性上报，减少 WS 往返
 
-**Flaky 检测意义**：如果 3 次回放中 1 次失败，verdict 标记为 `flaky` 而非 `fail`。TestBuilder 前端可以对 `flaky` step 做特殊高亮，帮助用户判断是 AI 生成逻辑问题还是页面本身的不稳定。
+**Flaky 检测意义**：如果 3 次回放中 1 次失败，verdict 标记为 `flaky` 而非 `fail`。TestBuilder 前端可以对 `flaky` step 做特殊高亮。
+
+**当前状态**：已禁用。相关代码已注释，`replayReport` 为 `undefined`。恢复时在 `ai-recording-session.ts` 取消注释第 6.5 步即可。
 
 ---
 
@@ -921,8 +925,8 @@ export function registerAiRecorderWsRelay() {
       }
     }
 
-    // AI 录制完成 → SSE 广播（DraftSuiteSaver + replayReport 写入 DB 在 Controller 中）
-    // AutoReplay 已在 Agent 端执行，replayReport 随本事件上报，Server 不再调用 AutoReplay
+    // AI 录制完成 → SSE 广播（DraftSuiteSaver + 更新 DB 在 WS Relay 中）
+    // AutoReplay 已禁用，replayReport 为 undefined
     if (event === 'AI_RECORDER_COMPLETE') {
       const runId = innerData?.runId;
       if (runId) {
@@ -1388,7 +1392,7 @@ server/modules/ai-driven-recorder/
 ├── repository.ts               # DB 读写 (ai_driven_recording_runs + step_logs)
 ├── ws-relay.ts                 # WS → SSE 桥接 + step/element 事件分发
 ├── draft-suite-saver.ts        # refined steps → saveSuite + link NlCase
-├── auto-replay.ts              # 回放验证
+├── auto-replay.ts              # 回放验证（已禁用，保留代码供后续恢复）
 └── provider-matrix.ts          # Provider 认证矩阵
 
 shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件类型
@@ -1407,7 +1411,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 | **Test Builder** | Draft suite 进入 TestBuilder 人工复核 | 先成 draft，不直接写用户当前 case |
 | **SSE Gateway** | 共享实例（重构为参数化 cleanup 事件，按 runId 隔离） | 原方案说"独占实例"，但 SSEGateway 按 runId 隔离，真正差异仅在 cleanup 事件名，应参数化而非独占 |
 | **Provider Configs** | 复用 LLM 配置；通过认证矩阵检查 | 改为传 providerConfigId，Agent 回调获取 |
-| **Execution Engine** | AutoReplay 生成后直接调用 | **新增 AutoReplay**，闭环验证 |
+| **Execution Engine** | AutoReplay 生成后直接调用 | ~~**新增 AutoReplay**~~（已禁用），闭环验证 |
 | **Suites Repository** | `saveSuite()` 保存 draft suite | **新增 DraftSuiteSaver**，事务化持久化 |
 | **NL Cases Repository** | `generatedSuiteId` 关联 | 写回 `NlTestCase.generatedSuiteId` |
 
@@ -1417,7 +1421,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 
 | 风险 | 严重度 | 原方案缓解 | 修正版增强 |
 |:---|:---|:---|:---|
-| Stagehand act() 选错元素 | High | extract 验证 + 重试 + TestBuilder 复核 | + observe 预检 + AutoReplay 回放验证 |
+| Stagehand act() 选错元素 | High | extract 验证 + 重试 + TestBuilder 复核 | + observe 预检 + ~~AutoReplay 回放验证~~ [已禁用] |
 | Stagehand 依赖特定 API | High | UI 限制：仅 OpenAI/Azure | 认证矩阵 + 逐一实测 + `modelClientOptions` 灵活配置 |
 | `_enableRecorder` 不可用 | High | isAvailable() + ActResult fallback | 双路径设计是正式设计，不是兜底；fallback 产物质量需额外保障 |
 | extract() schema 返回不稳定 | Medium | schema validation 降级 | + 扩展 source/operator 覆盖完整 assertions.ts 能力 |
@@ -1428,7 +1432,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 | 密码/敏感数据暴露 | High | Refiner 后脱敏 | + verbose:0 + Stagehand variables 注入 + WS 不传 API key |
 | LLM 调用成本 | Low | Refiner 不调 LLM | + token_usage 追踪 + observe 预检减少无效 act |
 | 产物直接写入用户数据 | **High** | 原方案未提及 | **DraftSuiteSaver** 先成 draft，关联 generatedSuiteId |
-| 无回放验证闭环 | **High** | 原方案未提及 | **AutoReplay** 在 run COMPLETED 前自动回放 |
+| 无回放验证闭环 | **High** | 原方案未提及 | ~~**AutoReplay** 在 run COMPLETED 前自动回放~~ [已禁用] |
 
 ---
 
@@ -1439,7 +1443,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 | **P0-1** | `RecordingBridge` 提取 + `AIRecordingSession` 核心：Stagehand init + act/extract 循环 + _enableRecorder 挂载 + WS 指令 (AI_RECORDER_START/STOP) | 无 | 2 周 |
 | **P0-2** | `Refiner` 纯代码管道：去重 → 断言映射 → 参数化 → 密码脱敏 → 选择器展开 → ProvenanceTagger | P0-1 | 1 周 |
 | **P0-3** | Server 模块：REST API + Repository + WS Relay + SSEGateway（重构为参数化 cleanup 事件） | P0-1 | 1 周 |
-| **P0-4** | `DraftSuiteSaver` + `AutoReplay`（Agent 端，3 次回放 + flaky 检测） | P0-2 | 1 周 |
+| **P0-4** | `DraftSuiteSaver` + ~~`AutoReplay`（Agent 端，3 次回放 + flaky 检测）~~ [已禁用] | P0-2 | — |
 | **P0-5** | Provider 认证矩阵 + 安全策略（verbose:0 + variables + WS 双向获取 providerConfig）+ **token_usage 追踪机制验证**（验证 Stagehand act/extract/observe 是否暴露 token 用量；若不暴露，评估 hook LLM client 的可行性，否则 `token_usage` 字段降级为 nullable） | 无 | 3 天 |
 | **P1-1** | 前端集成：NlCasesPage AI Record 入口 + `useAiDrivenRecorderRun` hook + RecorderRuntimePanel（SSE 进度 + takeover 交互）+ TestBuilder 跳转 + ReplayReportBanner（含 flaky 标记） | P0 | 1 周 |
 | **P1-2** | 健壮性：WAITING_TAKEOVER（仅 headless:false）+ 脏状态自愈 + schema validation + lazy observe | P0 | 1 周 |
@@ -1456,7 +1460,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 | 2 | `RECORDING_START` + `mode=ai` | 独立 `AI_RECORDER_START` 事件 | 不污染现有录制协议和前端 `useTestCaseRecording` |
 | 3 | 只发射 `step-recorded` | 同时发射 `step-recorded` + `element-recorded` | 元素仓库/页面发现需要 element 事件 |
 | 4 | AI 产物直接写入当前 case | DraftSuiteSaver 先成 draft suite | 人工复核前不应污染用户数据 |
-| 5 | 无 AutoReplay | Refiner → AutoReplay → COMPLETED | 闭环验证，减少人工 eyeballing |
+| 5 | 无 AutoReplay | Refiner → ~~AutoReplay~~ [已禁用] → COMPLETED | 闭环验证，减少人工 eyeballing（AutoReplay 已禁用） |
 | 6 | `verbose: 1` | `verbose: 0` + variables 注入 | 安全最佳实践 |
 | 7 | WS 传解密后的 providerConfig | WS 传 providerConfigId，Agent 通过 WS 双向通信获取 | API key 不应在 WS 消息中传输，且 Agent 无独立 HTTP 能力（避免矛盾） |
 | 8 | Provider 表述为"只支持 OpenAI/Azure" | 认证矩阵：已认证/实验性/待验证 | Stagehand 支持更多 provider，表述应基于实测 |
@@ -1466,7 +1470,7 @@ shared/recording/protocol.ts    # 扩展：新增 AI_RECORDER_START/STOP 事件�
 | 12 | SSEGateway 共享 ai-test-gen | 重构 SSEGateway 为参数化 cleanup 事件，按 runId 隔离共享实例 | 独占实例增加了无谓复杂度；真正差异仅在 cleanup 事件名 |
 | 13 | 无 Replay 状态 | 新增 `refining` → `replaying` → `completed` | 反映真实生命周期 |
 | 14 | extract schema 只有 4 种 source | 扩展至覆盖 assertions.ts 完整能力 | UI_ELEMENT_CHECKED/COUNT/ATTRIBUTE 都是已实现的断言源 |
-| 15 | AutoReplay 只跑 1 次 | AutoReplay 跑 3 次，增加 flaky 检测（pass/flaky/fail） | 业界最佳实践（Mabl/Reflect）；1 次无法区分 fail vs flaky |
+| 15 | AutoReplay 只跑 1 次 | ~~AutoReplay 跑 3 次，增加 flaky 检测（pass/flaky/fail）~~ [已禁用] | 业界最佳实践（Mabl/Reflect）；1 次无法区分 fail vs flaky |
 | 16 | WAITING_TAKEOVER 不限 headless | TAKEOVER 仅 headless:false；headless 直接 FAILED | headless 模式下用户无法操作浏览器 |
 | 17 | WS Relay 重复调用 RecordingService | 去除重复调用，step/element 事件由 ws-handlers.ts 统一处理 | 重复调用导致 step 双倍插入和 element 重复 |
 

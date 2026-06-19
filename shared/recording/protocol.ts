@@ -207,6 +207,7 @@ export interface AiRecorderStartData {
   projectId: string;
   nlCase: NlTestCase;
   providerConfigId: string;
+  model?: string;
   options: { headless?: boolean; maxRetriesPerStep?: number; timeoutPerStep?: number };
   caseId: string;
   suiteId: string;

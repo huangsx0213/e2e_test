@@ -72,6 +72,21 @@ let localTaskQueue: TaskPayload[] = [];
 let isProcessing = false;
 let isRecordingActive = false;
 
+// ─── WS 事件订阅（用于 AI 录制的双向通信，如 PROVIDER_CONFIG_REQUEST/RESPONSE）───
+// 简单的 pub/sub：event → Set<handler>
+const wsEventSubscribers = new Map<string, Set<(data: any) => void>>();
+function onWsEvent(event: string, handler: (data: any) => void) {
+  if (!wsEventSubscribers.has(event)) wsEventSubscribers.set(event, new Set());
+  wsEventSubscribers.get(event)!.add(handler);
+}
+function offWsEvent(event: string, handler: (data: any) => void) {
+  wsEventSubscribers.get(event)?.delete(handler);
+}
+function notifyWsEventSubscribers(event: string, data: any) {
+  const subs = wsEventSubscribers.get(event);
+  if (subs) for (const handler of subs) handler(data);
+}
+
 // ─── System Logger: Explicitly forward agent output to server ───
 function formatArgs(args: any[]): string {
   return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
@@ -171,10 +186,15 @@ function connect() {
         },
         setAgentStatus: (status) => { agentStatus = status; },
         setIsRecordingActive: (value) => { isRecordingActive = value; },
+        wsEvents: { onWsEvent, offWsEvent },
       })) {
         if (parsed.event === 'RECORDING_STOP') {
           processQueue();
         }
+      } else {
+        // 未被 handleRecordingControlMessage 处理的事件，通知 WS 事件订阅者
+        // 主要用于 AI_RECORDER_PROVIDER_CONFIG_RESPONSE（Server→Agent 响应）
+        notifyWsEventSubscribers(parsed.event, parsed.data);
       }
     } catch (e) {
       sysLogger.error('[AGENT] Error handling message:', e);

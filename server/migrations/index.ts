@@ -28,6 +28,7 @@ import { migration026AddToolHistoryColumn } from './026_add_tool_history_column.
 import { migration027ProviderModels } from './027_provider_models.ts';
 import { migration028ThinkingData } from './028_thinking_data.ts';
 import { migration029PromptOverrides } from './029_prompt_overrides.ts';
+import { migration030AiDrivenRecorderSchema } from './030_ai_driven_recorder_schema.ts';
 
 import { seedDefaults } from '../seed.ts';
 
@@ -61,6 +62,7 @@ migration021ProviderConfigFix,
   migration027ProviderModels,
   migration028ThinkingData,
   migration029PromptOverrides,
+  migration030AiDrivenRecorderSchema,
 ];
 
 function appliedMigrationIds(): Set<string> {

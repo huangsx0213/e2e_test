@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 const nlStepSchema = z.object({
-  sequence: z.number(),
+  sequence: z.number().optional(),
+  stepNumber: z.number().optional(),
   action: z.string().min(1),
   expected: z.string().min(1),
 });
@@ -9,7 +10,7 @@ const nlStepSchema = z.object({
 const testDataSchema = z.object({
   key: z.string(),
   value: z.string(),
-  description: z.string(),
+  description: z.string().optional().default(''),
 });
 
 export const nlCasePayloadSchema = z.object({

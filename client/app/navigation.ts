@@ -14,6 +14,7 @@ import {
   Server,
   ClipboardList,
   GitBranchPlus,
+  Wand2,
   type LucideIcon,
 } from 'lucide-react';
 import { AppTab } from '@/app/types';
@@ -49,6 +50,7 @@ export const navigationSections: NavigationSection[] = [
       { tab: 'BUSINESS_FLOWS', label: 'Business Flows', icon: GitBranchPlus },
       { tab: 'AI_TEST_GEN', label: 'AI Test Gen', icon: PlaySquare },
       { tab: 'NL_CASES', label: 'NL Test Cases', icon: FileText },
+      { tab: 'AI_DRIVEN_RECORDER', label: 'AI Recorder', icon: Wand2 },
       { tab: 'AGENTS', label: 'Remote Agents', icon: Server },
     ],
   },

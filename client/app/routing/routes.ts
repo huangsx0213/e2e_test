@@ -16,6 +16,8 @@ import { RequirementsPage } from '@/features/requirements/RequirementsPage';
 import { BusinessFlowsPage } from '@/features/business-flows/BusinessFlowsPage';
 import { NlCasesPage } from '@/features/nl-cases/NlCasesPage';
 import { AiTestGenPage } from '@/features/ai-test-gen/AiTestGenPage';
+import { AiDrivenRecorderPage } from '@/features/ai-driven-recorder/AiDrivenRecorderPage';
+import { setPendingRecorderNlCaseId, consumePendingRecorderNlCaseId } from './navigation-params';
 
 registerRoute('DASHBOARD', Dashboard, (ctx) => ({
   projects: ctx.projects,
@@ -122,8 +124,19 @@ registerRoute('BUSINESS_FLOWS', BusinessFlowsPage, (ctx) => ({
 
 registerRoute('NL_CASES', NlCasesPage, (ctx) => ({
   currentProjectId: ctx.currentProjectId,
+  onRecordWithAI: (nlCaseId: string) => {
+    setPendingRecorderNlCaseId(nlCaseId);
+    ctx.navigateToTab('AI_DRIVEN_RECORDER');
+  },
 }));
 
 registerRoute('AI_TEST_GEN', AiTestGenPage, (ctx) => ({
   currentProjectId: ctx.currentProjectId,
+}));
+
+registerRoute('AI_DRIVEN_RECORDER', AiDrivenRecorderPage, (ctx) => ({
+  currentProjectId: ctx.currentProjectId,
+  preselectNlCaseId: consumePendingRecorderNlCaseId(),
+  onNavigateToTestBuilder: (suiteId: string, caseId: string) =>
+    ctx.setExecutionState({ suiteId, caseId, runSuite: false }),
 }));

@@ -20,6 +20,7 @@ import { providerConfigsModule } from '../modules/provider-configs/index.ts';
 
 import { nlCasesModule } from '../modules/nl-cases/index.ts';
 import { aiTestGenModule } from '../modules/ai-test-gen/index.ts';
+import { aiDrivenRecorderModule } from '../modules/ai-driven-recorder/index.ts';
 import { autRouter } from '../../aut/server/routes';
 
 export function registerRoutes(app: Express) {
@@ -43,6 +44,7 @@ requirementsModule,
 
     nlCasesModule,
     aiTestGenModule,
+    aiDrivenRecorderModule,
   ];
 
   for (const module of modules) {

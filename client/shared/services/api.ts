@@ -188,6 +188,21 @@ businessFlows: {
     test: (id: string) =>
       apiFetch<any>(`provider-configs/${id}/test`, { method: 'POST' }),
   },
+  aiDrivenRecorder: {
+    runs: (projectId: string) =>
+      apiFetch<any[]>(`ai-driven-recorder/${projectId}/runs`),
+    getRun: (projectId: string, runId: string) =>
+      apiFetch<any>(`ai-driven-recorder/${projectId}/runs/${runId}`),
+    start: (projectId: string, config: { nlCaseId: string; providerConfigId: string; options?: Record<string, unknown> }) =>
+      apiFetch<{ runId: string; suiteId: string; caseId: string; status: string }>(`ai-driven-recorder/${projectId}/runs`, {
+        method: 'POST',
+        body: JSON.stringify(config),
+      }),
+    delete: (projectId: string, runId: string) =>
+      apiFetch<{ success: boolean }>(`ai-driven-recorder/${projectId}/runs/${runId}`, { method: 'DELETE' }),
+    streamUrl: (projectId: string, runId: string) =>
+      `/api/ai-driven-recorder/${projectId}/runs/${runId}/stream`,
+  },
 };
 
 // --- Execution API ---

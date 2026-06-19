@@ -11,7 +11,7 @@ interface AppContentProps {
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
 }
 
-export function AppContent({ activeTab }: AppContentProps) {
+export function AppContent({ activeTab, setActiveTab }: AppContentProps) {
   const workspace = useWorkspaceContext();
   const data = useDataContext();
   const { setExecutionState } = useExecutionPanelContext();
@@ -40,5 +40,6 @@ export function AppContent({ activeTab }: AppContentProps) {
     setCurrentEnvironment: workspace.setCurrentEnvironment,
     setCurrentProjectId: workspace.setCurrentProjectId,
     setExecutionState,
+    navigateToTab: setActiveTab,
   });
 }

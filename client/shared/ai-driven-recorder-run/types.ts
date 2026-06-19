@@ -1,0 +1,101 @@
+/**
+ * AI-Driven Recorder Run — 类型定义
+ *
+ * 参考 docs/05-AIDrivenRecordingEngine.md §8.4.3
+ * 复用 ai-test-gen 的 useReducer + SSE 模式，但状态机为单线性 step 序列。
+ */
+
+export type RunStatus = 'idle' | 'running' | 'refining' | 'replaying' | 'completed' | 'failed';
+
+export type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'takeover';
+
+export interface RecorderStep {
+  nlStepIndex: number;
+  instruction: string;
+  expected?: string;
+  status: StepStatus;
+  retryCount: number;
+  observeHint?: string;
+  error?: string;
+  recordedStepCount?: number;
+  durationMs?: number;
+}
+
+export interface ReplayReport {
+  verdict: 'pass' | 'flaky' | 'fail';
+  runs: number;
+  passCount: number;
+  failCount: number;
+  results?: Array<{
+    runIndex: number;
+    passed: boolean;
+    stepResults?: Array<{ stepIndex: number; passed: boolean; error?: string }>;
+  }>;
+}
+
+export interface RecorderRunState {
+  runId: string | null;
+  status: RunStatus;
+  steps: RecorderStep[];
+  suiteId: string | null;
+  caseId: string | null;
+  replayReport: ReplayReport | null;
+  error: { message: string; stepIndex?: number } | null;
+  isStarting: boolean;
+  isConnected: boolean;
+  nlCaseId: string | null;
+  providerConfigId: string | null;
+}
+
+export type RecorderAction =
+  | { type: 'START_REQUEST'; nlCaseId: string; providerConfigId: string }
+  | { type: 'START_SUCCESS'; runId: string; suiteId: string; caseId: string; steps: RecorderStep[] }
+  | { type: 'START_ERROR'; error: string }
+  | { type: 'SET_CONNECTED'; connected: boolean }
+  | { type: 'STEP_START'; runId: string; nlStepIndex: number; instruction: string; expected?: string }
+  | { type: 'STEP_OBSERVE'; runId: string; nlStepIndex: number; hint: string }
+  | { type: 'STEP_COMPLETE'; runId: string; nlStepIndex: number; recordedStepCount?: number; durationMs?: number }
+  | { type: 'STEP_FAILED'; runId: string; nlStepIndex: number; error: string; retryCount?: number }
+  | { type: 'STEP_TAKEOVER'; runId: string; nlStepIndex: number; reason?: string }
+  | { type: 'RUN_COMPLETE'; runId: string; suiteId: string; caseId: string; replayReport?: ReplayReport }
+  | { type: 'RUN_ERROR'; runId: string; error: string }
+  | { type: 'RECORDER_FALLBACK'; runId: string; reason: string }
+  | { type: 'ABORT_REQUEST' }
+  | { type: 'ABORT_SUCCESS' }
+  | { type: 'LOAD_RUN'; runId: string; state: Partial<RecorderRunState> }
+  | { type: 'RESET' };
+
+export interface StartConfig {
+  nlCaseId: string;
+  providerConfigId: string;
+  model?: string;
+  options?: {
+    headless?: boolean;
+    maxRetriesPerStep?: number;
+    timeoutPerStep?: number;
+  };
+}
+
+export interface AiRecorderApiAdapter {
+  runs: (projectId: string) => Promise<any[]>;
+  getRun: (projectId: string, runId: string) => Promise<any>;
+  start: (projectId: string, config: StartConfig) => Promise<{ runId: string; suiteId: string; caseId: string; status: string }>;
+  delete: (projectId: string, runId: string) => Promise<any>;
+  streamUrl: (projectId: string, runId: string) => string;
+}
+
+export function createInitialState(): RecorderRunState {
+  return {
+    runId: null,
+    status: 'idle',
+    steps: [],
+    suiteId: null,
+    caseId: null,
+    replayReport: null,
+    error: null,
+    isStarting: false,
+    isConnected: false,
+    nlCaseId: null,
+    providerConfigId: null,
+  };
+}

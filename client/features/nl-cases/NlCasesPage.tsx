@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Search, ChevronRight, RefreshCw, Trash2, CheckSquare, Edit3, Save, X, Loader2 } from 'lucide-react';
+import { Search, ChevronRight, RefreshCw, Trash2, CheckSquare, Edit3, Save, X, Loader2, AlertCircle, Wand2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNlCases } from '../../shared/hooks/useQueryHooks';
 import { queryKeys } from '../../shared/hooks/queryKeys';
@@ -7,6 +7,8 @@ import { api } from '../../shared/services/api';
 
 interface NlCasesPageProps {
   currentProjectId: string | null;
+  /** 跳转到 AI Recorder 并预选该 NlCase */
+  onRecordWithAI?: (nlCaseId: string) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -38,7 +40,7 @@ function formatTechnique(value: string | undefined): string {
   return TECHNIQUE_LABELS[value.toLowerCase().trim()] || value;
 }
 
-export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
+export function NlCasesPage({ currentProjectId, onRecordWithAI }: NlCasesPageProps) {
   const { data: cases = [], isLoading } = useNlCases(currentProjectId || '');
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -53,6 +55,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pageSize = 20;
 
   const filtered = useMemo(() => {
@@ -164,13 +167,16 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
 
   const saveEdit = useCallback(async () => {
     if (!editingId || !editData) return;
+    setError(null);
     setProcessingIds(prev => new Set(prev).add(editingId));
     try {
       await api.nlCases.update(editingId, editData);
       setEditingId(null);
       setEditData(null);
       invalidate();
-    } catch {}
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save test case');
+    }
     setProcessingIds(prev => { const n = new Set(prev); n.delete(editingId!); return n; });
   }, [editingId, editData, invalidate]);
 
@@ -257,6 +263,13 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
         </select>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="p-0.5 hover:bg-red-100 rounded"><X size={12} /></button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50">
@@ -309,6 +322,15 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                           title="Approve"
                         >
                           {processingIds.has(c.id) ? <Loader2 size={13} className="animate-spin text-blue-600" /> : <CheckSquare size={13} className="text-blue-600" />}
+                        </button>
+                      )}
+                      {c.status === 'APPROVED' && !c.generatedSuiteId && onRecordWithAI && (
+                        <button
+                          onClick={() => onRecordWithAI(c.id)}
+                          className="p-1 hover:bg-purple-100 rounded transition-colors"
+                          title="Record with AI"
+                        >
+                          <Wand2 size={13} className="text-purple-600" />
                         </button>
                       )}
                       <button
@@ -401,7 +423,7 @@ export function NlCasesPage({ currentProjectId }: NlCasesPageProps) {
                               <div>
                                 <div className="flex items-center gap-2 mb-2">
                                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Test Data</h4>
-                                  <button onClick={() => updateEditField('testData', [...(editData.testData || []), { key: '', value: '' }])} className="w-5 h-5 flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 transition-colors" title="Add test data">
+                                  <button onClick={() => updateEditField('testData', [...(editData.testData || []), { key: '', value: '', description: '' }])} className="w-5 h-5 flex items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600 transition-colors" title="Add test data">
                                     <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M4 1v6M1 4h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                                   </button>
                                 </div>

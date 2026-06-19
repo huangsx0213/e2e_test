@@ -25,9 +25,9 @@ import { WorkspaceContext, WorkspaceContextValue } from '@/app/contexts/Workspac
 import { ExecutionPanelContext, ExecutionContextValue } from '@/app/contexts/ExecutionContext';
 import { ExecutionState } from '@/app/types';
 import { TestGenRunDepsProvider } from '@/shared/test-gen-run';
+import { AiDrivenRecorderRunDepsProvider } from '@/shared/ai-driven-recorder-run';
 import { createFetchSSEConnection } from '@/shared/sse';
 import { api } from '@/shared/services/api';
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -149,19 +149,25 @@ function AppProvidersInner({ children }: { children: (isLoading: boolean) => Rea
     createSSEConnection: (url: string) => createFetchSSEConnection(url, {}),
   }), []);
 
+  const recorderDeps = useMemo(() => ({
+    api: api.aiDrivenRecorder as any,
+  }), []);
+
   if (isLoading) {
     return <>{children(true)}</>;
   }
 
   return (
     <TestGenRunDepsProvider deps={pipelineDeps}>
-      <WorkspaceContext.Provider value={workspaceValue}>
-        <DataContext.Provider value={dataValue}>
-          <ExecutionPanelContext.Provider value={executionValue}>
-            {children(false)}
-          </ExecutionPanelContext.Provider>
-        </DataContext.Provider>
-      </WorkspaceContext.Provider>
+      <AiDrivenRecorderRunDepsProvider deps={recorderDeps}>
+        <WorkspaceContext.Provider value={workspaceValue}>
+          <DataContext.Provider value={dataValue}>
+            <ExecutionPanelContext.Provider value={executionValue}>
+              {children(false)}
+            </ExecutionPanelContext.Provider>
+          </DataContext.Provider>
+        </WorkspaceContext.Provider>
+      </AiDrivenRecorderRunDepsProvider>
     </TestGenRunDepsProvider>
   );
 }
