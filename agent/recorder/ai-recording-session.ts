@@ -371,22 +371,15 @@ export class AIRecordingSession {
         const actInstruction = observeHint
           ? `${nlStep.action} (Context: ${observeHint})`
           : nlStep.action;
-        console.log(`[AI_SESSION] step:${nlStepIndex} attempt:${attempt} act instruction:`, actInstruction);
+        console.log(`[ACT|step:${nlStepIndex}|attempt:${attempt}] instruction: ${actInstruction}`);
         await this.stagehand!.act(actInstruction, { page });
         actSuccess = true;
-        console.log(`[AI_SESSION] step:${nlStepIndex} act succeeded`);
+        console.log(`[ACT|step:${nlStepIndex}|attempt:${attempt}] succeeded`);
         break;
       } catch (err: any) {
         let currentUrl = 'unknown';
         try { currentUrl = await page.url(); } catch { /* ignore */ }
-        console.error('[ACT_ERROR]', {
-          stepIndex: nlStepIndex,
-          attempt,
-          instruction: nlStep.action,
-          currentUrl,
-          error: err?.message,
-          stack: err?.stack?.split('\n').slice(0, 3).join('\n'),
-        });
+        console.error(`[ACT|step:${nlStepIndex}|attempt:${attempt}] error url=${currentUrl} msg=${err?.message}`);
         // Lazy observe：仅在首次失败（attempt === 0）后触发一次 observe。
         // 不在后续重试中重复 observe，避免无限循环；也不在 act 前预检，避免浪费 LLM 调用。
         if (attempt === 0) {
@@ -395,21 +388,21 @@ export class AIRecordingSession {
               'find all interactive elements on the page',
               { page },
             );
-            console.log('[AI_SESSION] observe found', observations.length, 'interactive elements');
+            console.log(`[OBSERVE|step:${nlStepIndex}] found ${observations.length} interactive elements`);
             if (observations.length > 0) {
               observeHint = observations
                 .filter((o: any) => o.selector || o.description)
                 .map((o: any) => o.description || o.selector)
                 .slice(0, 3)
                 .join('; ');
-              console.log('[AI_SESSION] observe hint:', observeHint);
+              console.log(`[OBSERVE|step:${nlStepIndex}] hint: ${observeHint}`);
               emit('step:observe', {
                 nlStepIndex,
                 observationCount: observations.length,
               });
             }
           } catch (observeErr: any) {
-            console.warn('[AI_SESSION] observe failed:', observeErr.message);
+            console.warn(`[OBSERVE|step:${nlStepIndex}] failed: ${observeErr.message}`);
             /* observe 失败不阻断重试 */
           }
         }
@@ -417,7 +410,7 @@ export class AIRecordingSession {
           if (attempt >= maxRetries) {
           let failedUrl = 'unknown';
           try { failedUrl = await page.url(); } catch { /* ignore */ }
-          console.error('[ACT_FAILED] instruction:', nlStep.action, 'currentUrl:', failedUrl, 'error:', err.message);
+          console.error(`[ACT|step:${nlStepIndex}] FAILED url=${failedUrl} msg=${err.message}`);
           // Takeover 仅在 headless:false 时可用；headless 模式下用户无法操作浏览器
           if (onTakeoverRequest && !this.isHeadless) {
             emit('step:takeover', {
@@ -431,7 +424,7 @@ export class AIRecordingSession {
               return { nlStepIndex, startStepIdx, endStepIdx: this.recordedSteps.length };
             }
           }
-          console.error('[AI_SESSION] step failed (no takeover):', nlStepIndex, nlStep.action);
+          console.error(`[ACT|step:${nlStepIndex}] failed (no takeover): ${nlStep.action}`);
           emit('step:failed', {
             nlStepIndex,
             reason: `act() failed: ${err.message}`,
@@ -448,6 +441,7 @@ export class AIRecordingSession {
             }),
           });
           if (recoveryHint.data?.needsCleanup && recoveryHint.data?.cleanupInstruction) {
+            console.log(`[RECOVERY|step:${nlStepIndex}] cleanup: ${recoveryHint.data.cleanupInstruction}`);
             await this.stagehand!.act(recoveryHint.cleanupInstruction, { page });
           }
         } catch {
@@ -493,9 +487,9 @@ export class AIRecordingSession {
               break;
             }
           }
-          console.error('[EXTRACT] result.data?.success=', result.data?.success, 'result:', JSON.stringify(result).slice(0, 300));
+          console.error(`[EXTRACT|step:${nlStepIndex}|attempt:${attempt}] success=${result.data?.success} result=${JSON.stringify(result).slice(0, 200)}`);
         } catch (err: any) {
-          console.error('[EXTRACT] threw:', err?.message?.slice(0, 200));
+          console.error(`[EXTRACT|step:${nlStepIndex}|attempt:${attempt}] threw: ${err?.message?.slice(0, 200)}`);
         }
       }
       if (!verified) {
