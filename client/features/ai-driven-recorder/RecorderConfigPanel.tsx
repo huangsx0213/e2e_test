@@ -25,6 +25,39 @@ const PROVIDER_LABELS: Record<string, { level: 'certified' | 'experimental' | 'u
   google: { level: 'experimental', canTrigger: true, label: 'Beta' },
 };
 
+const RECORDER_CONFIG_KEY = 'ai-recorder-config';
+
+interface SavedRecorderConfig {
+  model: string;
+  modelName: string;
+  providerConfigId: string;
+  headless: boolean;
+  maxRetries: number;
+  timeoutPerStep: number;
+}
+
+function loadRecorderConfig(): SavedRecorderConfig | null {
+  try {
+    const raw = localStorage.getItem(RECORDER_CONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRecorderConfig(config: SavedRecorderConfig) {
+  localStorage.setItem(RECORDER_CONFIG_KEY, JSON.stringify(config));
+}
+
+const defaultRecorderConfig: SavedRecorderConfig = {
+  model: '',
+  modelName: '',
+  providerConfigId: '',
+  headless: false,
+  maxRetries: 2,
+  timeoutPerStep: 30,
+};
+
 export function RecorderConfigPanel({
   nlCases,
   providerConfigs,
@@ -32,16 +65,28 @@ export function RecorderConfigPanel({
   onStart,
   disabled,
 }: RecorderConfigPanelProps) {
+  const savedConfig = useMemo(() => loadRecorderConfig(), []);
   const [nlCaseId, setNlCaseId] = useState<string>(preselectNlCaseId ?? '');
-  const [providerConfigId, setProviderConfigId] = useState<string>('');
-  const [model, setModel] = useState<string>('');
-  const [modelName, setModelName] = useState<string>('');
-  const [headless, setHeadless] = useState(false);
-  const [maxRetries, setMaxRetries] = useState(2);
-  const [timeoutPerStep, setTimeoutPerStep] = useState(30);
+  const [providerConfigId, setProviderConfigId] = useState<string>(savedConfig?.providerConfigId ?? defaultRecorderConfig.providerConfigId);
+  const [model, setModel] = useState<string>(savedConfig?.model ?? defaultRecorderConfig.model);
+  const [modelName, setModelName] = useState<string>(savedConfig?.modelName ?? defaultRecorderConfig.modelName);
+  const [headless, setHeadless] = useState(savedConfig?.headless ?? defaultRecorderConfig.headless);
+  const [maxRetries, setMaxRetries] = useState(savedConfig?.maxRetries ?? defaultRecorderConfig.maxRetries);
+  const [timeoutPerStep, setTimeoutPerStep] = useState(savedConfig?.timeoutPerStep ?? defaultRecorderConfig.timeoutPerStep);
   const [error, setError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    saveRecorderConfig({
+      model,
+      modelName,
+      providerConfigId,
+      headless,
+      maxRetries,
+      timeoutPerStep,
+    });
+  }, [model, modelName, providerConfigId, headless, maxRetries, timeoutPerStep]);
 
   useEffect(() => {
     if (!modelOpen) return;
@@ -54,20 +99,32 @@ export function RecorderConfigPanel({
     return () => document.removeEventListener('mousedown', handler);
   }, [modelOpen]);
 
-  // Build model options from selected provider's models array
-  const selectedProvider = useMemo(
-    () => providerConfigs.find((p) => p.id === providerConfigId),
-    [providerConfigs, providerConfigId],
+  // Build model groups from triggerable providers (same pattern as TestGenConfigPanel)
+  const triggerableProviders = useMemo(
+    () => providerConfigs.filter((p) => PROVIDER_LABELS[p.type]?.canTrigger),
+    [providerConfigs],
   );
-  const modelOptions = useMemo(
-    () => (selectedProvider?.models ?? []).map((m) => ({ model: m, providerName: selectedProvider.name })),
-    [selectedProvider],
-  );
-  // Auto-select first model when provider changes
+  const modelGroups = useMemo(() => {
+    const groups: { providerName: string; providerConfigId: string; models: { model: string; providerName: string; providerConfigId: string }[] }[] = [];
+    for (const p of triggerableProviders) {
+      const models: string[] = p.models || [];
+      if (models.length === 0) continue;
+      groups.push({
+        providerName: p.name,
+        providerConfigId: p.id,
+        models: models.map((m) => ({ model: m, providerName: p.name, providerConfigId: p.id })),
+      });
+    }
+    return groups.sort((a, b) => a.providerName.localeCompare(b.providerName));
+  }, [triggerableProviders]);
+  const modelOptions = useMemo(() => modelGroups.flatMap((g) => g.models), [modelGroups]);
+  // Auto-select first model
   useEffect(() => {
     if (modelOptions.length > 0 && !model) {
-      setModel(modelOptions[0].model);
-      setModelName(`${modelOptions[0].model} (${modelOptions[0].providerName})`);
+      const first = modelOptions[0];
+      setModel(first.model);
+      setModelName(`${first.model} (${first.providerName})`);
+      setProviderConfigId(first.providerConfigId);
     } else if (modelOptions.length === 0) {
       setModel('');
       setModelName('');
@@ -77,11 +134,6 @@ export function RecorderConfigPanel({
   const approvedCases = useMemo(
     () => nlCases.filter((c) => c.status === 'APPROVED' && !c.generatedSuiteId),
     [nlCases],
-  );
-
-  const triggerableProviders = useMemo(
-    () => providerConfigs.filter((p) => PROVIDER_LABELS[p.type]?.canTrigger),
-    [providerConfigs],
   );
 
   const selectedCase = useMemo(
@@ -172,53 +224,6 @@ export function RecorderConfigPanel({
           )}
         </div>
 
-        {/* Provider Selection */}
-        <div className="mb-6">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            Provider Configuration
-          </label>
-          {triggerableProviders.length === 0 ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700">
-              <AlertCircle size={14} className="shrink-0" />
-              No certified provider configurations available. Configure an Azure OpenAI, Anthropic, or Google provider in Settings.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {triggerableProviders.map((p) => {
-                const meta = PROVIDER_LABELS[p.type] ?? { level: 'unverified' as const, label: 'Unknown', canTrigger: false };
-                const isSelected = providerConfigId === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => !disabled && setProviderConfigId(p.id)}
-                    disabled={disabled}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition-all ${
-                      isSelected
-                        ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    } disabled:opacity-50`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${isSelected ? 'border-blue-500 bg-blue-500' : 'border-slate-300'}`} />
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">{p.name}</div>
-                        <div className="text-xs text-slate-400">{p.type} · {p.model || 'default model'}</div>
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      meta.level === 'certified'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {meta.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
     {/* Model Selection */}
     <div className="mb-6">
       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -240,17 +245,22 @@ export function RecorderConfigPanel({
             <ChevronDown size={14} className={`text-slate-400 transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
           </button>
           {modelOpen && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-              {modelOptions.map((o, i) => (
-                <button
-                  key={`${o.providerName}-${o.model}-${i}`}
-                  onClick={() => { setModel(o.model); setModelName(`${o.model} (${o.providerName})`); setModelOpen(false); }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
-                    model === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
-                  }`}
-                >
-                  {o.model}
-                </button>
+            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {modelGroups.map((group) => (
+                <div key={group.providerName}>
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">{group.providerName}</div>
+                  {group.models.map((o, i) => (
+                    <button
+                      key={`${o.providerName}-${o.model}-${i}`}
+                      onClick={() => { setModel(o.model); setModelName(`${o.model} (${o.providerName})`); setProviderConfigId(o.providerConfigId); setModelOpen(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
+                        model === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
+                      }`}
+                    >
+                      {o.model}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
