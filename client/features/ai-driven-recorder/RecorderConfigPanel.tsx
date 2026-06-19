@@ -214,9 +214,10 @@ export function RecorderConfigPanel({
                     </span>
                   </button>
                 );
-              }              )}
+              })}
+            </div>
+          )}
         </div>
-      </div>
 
     {/* Model Selection */}
     <div className="mb-6">

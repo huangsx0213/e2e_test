@@ -4,7 +4,7 @@ const nlStepSchema = z.object({
   sequence: z.number().optional(),
   stepNumber: z.number().optional(),
   action: z.string().min(1),
-  expected: z.string().min(1),
+  expected: z.string().optional(),
 });
 
 const testDataSchema = z.object({
