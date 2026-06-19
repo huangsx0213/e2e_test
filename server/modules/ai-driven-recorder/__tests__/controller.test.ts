@@ -58,6 +58,7 @@ function makeMockRepo() {
     updateRunStatus: vi.fn(),
     updateRunResult: vi.fn(),
     updateRunProgress: vi.fn(),
+    deleteRun: vi.fn(),
     getDecryptedProviderConfig: vi.fn(),
     insertStepLog: vi.fn(),
     getStepLogs: vi.fn(() => []),
@@ -341,7 +342,7 @@ describe('AiDrivenRecorderController', () => {
   });
 
   describe('deleteRun', () => {
-    it('进行中的 run：发送 STOP + SSE 广播 run:error + cleanup', () => {
+    it('进行中的 run：发送 STOP + SSE 广播 run:error + cleanup + 删除 run', () => {
       repository.getRun.mockReturnValue({
         id: 'run-1',
         project_id: 'proj-1',
@@ -352,9 +353,10 @@ describe('AiDrivenRecorderController', () => {
 
       expect(result).toEqual({ success: true });
       expect(wsService.broadcast).toHaveBeenCalledWith(AI_RECORDER_STOP_EVENT, { runId: 'run-1' });
+      expect(repository.deleteRun).toHaveBeenCalledWith('run-1');
     });
 
-    it('已完成的 run：不发送 STOP', () => {
+    it('已完成的 run：不发送 STOP 但仍删除 run', () => {
       repository.getRun.mockReturnValue({
         id: 'run-1',
         project_id: 'proj-1',
@@ -364,12 +366,14 @@ describe('AiDrivenRecorderController', () => {
       controller.deleteRun('proj-1', 'run-1');
 
       expect(wsService.broadcast).not.toHaveBeenCalled();
+      expect(repository.deleteRun).toHaveBeenCalledWith('run-1');
     });
 
-    it('run 不存在时抛错', () => {
+    it('run 不存在时抛错，不调用 deleteRun', () => {
       repository.getRun.mockReturnValue(undefined);
 
       expect(() => controller.deleteRun('proj-1', 'nonexistent')).toThrow('Run not found: nonexistent');
+      expect(repository.deleteRun).not.toHaveBeenCalled();
     });
   });
 });

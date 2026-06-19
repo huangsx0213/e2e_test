@@ -214,6 +214,12 @@ export class AiDrivenRecorderRepository {
       .all(runId) as AiDrivenRecordingStepLogRow[];
   }
 
+  deleteRun(id: string): void {
+    // 先删除关联的 step logs（避免外键约束失败）
+    db.prepare('DELETE FROM ai_driven_recording_step_logs WHERE run_id = ?').run(id);
+    db.prepare('DELETE FROM ai_driven_recording_runs WHERE id = ?').run(id);
+  }
+
   // === Provider Config ===
 
   getProviderConfig(id: string): ProviderConfigRow | undefined {

@@ -244,7 +244,7 @@ export function AiDrivenRecorderPage({
           <RecorderRunHistory
             runs={history}
             onSelect={handleSelectRun}
-            onDelete={handleDeleteRun}
+            onDeleteRun={handleDeleteRun}
             onBack={() => setActiveTab('new')}
           />
         )}

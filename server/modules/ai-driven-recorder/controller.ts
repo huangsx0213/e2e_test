@@ -224,6 +224,9 @@ export class AiDrivenRecorderController {
     this.sseGateway.emit(runId, 'run:error', { runId, error: 'Run aborted by user' });
     this.sseGateway.cleanup(runId);
 
+    // 实际删除 run 及其 step logs
+    this.repository.deleteRun(runId);
+
     return { success: true };
   }
 }
