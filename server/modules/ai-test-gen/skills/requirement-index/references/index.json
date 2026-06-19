@@ -1,0 +1,2298 @@
+[
+  {
+    "id": "req-aut-auth",
+    "title": "Authentication System",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "",
+    "tags": [
+      "auth"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-ui",
+      "req-aut-auth-login-api"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list",
+    "title": "User List View",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
+    "tags": [
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-list-table",
+      "req-aut-user-mgmt-list-filter",
+      "req-aut-user-mgmt-list-pagination"
+    ]
+  },
+  {
+    "id": "req-aut-dashboard-home-ui",
+    "title": "Dashboard Home Page",
+    "level": 0,
+    "parent": "req-aut-dashboard",
+    "dependencies": [],
+    "summary": "The dashboard landing page displays key metrics and navigation to other sections.",
+    "tags": [
+      "dashboard",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "dashboard"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-dashboard-home-ui-welcome",
+      "req-aut-dashboard-home-ui-stats"
+    ]
+  },
+  {
+    "id": "req-aut-fault-timeout",
+    "title": "Timeout Simulation",
+    "level": 0,
+    "parent": "req-aut-fault",
+    "dependencies": [],
+    "summary": "Simulates a slow API response for testing timeout handling.",
+    "tags": [
+      "api",
+      "fault-injection"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-timeout-delay"
+    ]
+  },
+  {
+    "id": "req-aut-reports-stats",
+    "title": "Reports Stat Cards",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "Summary metric cards displayed at the top of the reports page.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-stats-metrics"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-ui",
+    "title": "Login Page UI & UX",
+    "level": 0,
+    "parent": "req-aut-auth",
+    "dependencies": [],
+    "summary": "The login page provides a user-friendly authentication interface with form validation and password visibility toggle.",
+    "tags": [
+      "auth",
+      "user",
+      "authentication",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "authentication"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-ui-form",
+      "req-aut-auth-login-ui-validation"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-quick-add-form",
+    "title": "Simple Creation Form",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-quick-add",
+    "dependencies": [],
+    "summary": "The Quick Add modal provides a minimal form for rapid user creation.",
+    "tags": [
+      "api",
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-quick-add-form-modal"
+    ]
+  },
+  {
+    "id": "req-aut-fault-xml-content",
+    "title": "Content Type Testing",
+    "level": 0,
+    "parent": "req-aut-fault-xml",
+    "dependencies": [],
+    "summary": "An endpoint that returns XML instead of JSON for testing content negotiation.",
+    "tags": [
+      "fault-injection",
+      "api"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-xml-content-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-fault-error-500",
+    "title": "Server Error Testing",
+    "level": 0,
+    "parent": "req-aut-fault-error",
+    "dependencies": [],
+    "summary": "An endpoint that randomly returns 500 errors for testing error recovery.",
+    "tags": [
+      "fault-injection",
+      "api"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-error-500-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-reports-dept-chart-bar",
+    "title": "Bar Chart Visualization",
+    "level": 0,
+    "parent": "req-aut-reports-dept-chart",
+    "dependencies": [],
+    "summary": "The department distribution must be visualized as an interactive bar chart.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-dept-chart-bar-display"
+    ]
+  },
+  {
+    "id": "req-aut-reports-role-chart-pie",
+    "title": "Pie Chart Visualization",
+    "level": 0,
+    "parent": "req-aut-reports-role-chart",
+    "dependencies": [],
+    "summary": "The role distribution must be visualized as an interactive donut chart.",
+    "tags": [
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-role-chart-pie-display"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list-table",
+    "title": "Table Display & Sorting",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list",
+    "dependencies": [],
+    "summary": "The user table must display data with sortable columns for easy browsing.",
+    "tags": [
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-list-table-display",
+      "req-aut-user-mgmt-list-table-sort"
+    ]
+  },
+  {
+    "id": "req-aut-dashboard-home-ui-welcome",
+    "title": "Welcome & Navigation",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-ui",
+    "dependencies": [],
+    "summary": "The dashboard must greet the user and provide quick links to major sections.",
+    "tags": [
+      "dashboard",
+      "user",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "dashboard"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-dashboard-home-ui-welcome-greeting",
+      "req-aut-dashboard-home-ui-welcome-nav"
+    ]
+  },
+  {
+    "id": "req-aut-fault-timeout-delay",
+    "title": "Delayed Response",
+    "level": 0,
+    "parent": "req-aut-fault-timeout",
+    "dependencies": [],
+    "summary": "A configurable delay endpoint for testing client timeout behavior.",
+    "tags": [
+      "fault-injection",
+      "api"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-timeout-delay-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-reports-api-aggregation",
+    "title": "Data Aggregation",
+    "level": 0,
+    "parent": "req-aut-reports-api",
+    "dependencies": [],
+    "summary": "The reports API must aggregate user data into chart-friendly formats.",
+    "tags": [
+      "api",
+      "user",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-api-aggregation-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-reports-stats-metrics",
+    "title": "Metric Display",
+    "level": 0,
+    "parent": "req-aut-reports-stats",
+    "dependencies": [],
+    "summary": "The reports page must show key metrics as summary cards.",
+    "tags": [
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-stats-metrics-cards"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-api-list",
+    "title": "List & Query",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api",
+    "dependencies": [],
+    "summary": "The API must support querying users with filtering, sorting, and pagination.",
+    "tags": [
+      "api",
+      "user",
+      "user-management"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-api-list-endpoint"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-profile",
+    "title": "Profile & Export",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions",
+    "dependencies": [],
+    "summary": "Users can view detailed profiles and export data.",
+    "tags": [
+      "profile",
+      "user",
+      "user-management"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-actions-profile-view",
+      "req-aut-user-mgmt-actions-profile-export"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-select",
+    "title": "Multi-Select",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch",
+    "dependencies": [],
+    "summary": "Users must be selectable individually or in bulk via checkboxes.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-batch-select-checkboxes",
+      "req-aut-user-mgmt-batch-select-bar"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-delete-flow",
+    "title": "Deletion Flow",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-delete",
+    "dependencies": [],
+    "summary": "Deleting a user must require confirmation before proceeding.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-delete-flow-confirm"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-edit-flow",
+    "title": "Edit Flow",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-edit",
+    "dependencies": [],
+    "summary": "Editing a user must pre-load existing data into the form.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-edit-flow-preload"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-personal",
+    "title": "Personal Details",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form",
+    "dependencies": [],
+    "summary": "The advanced form must capture basic personal information.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-advanced-form-personal-fields"
+    ]
+  },
+  {
+    "id": "req-aut-dashboard-home-api-fetch",
+    "title": "Data Fetching",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-api",
+    "dependencies": [],
+    "summary": "The dashboard API must return aggregated statistics from the user database.",
+    "tags": [
+      "dashboard",
+      "api",
+      "user"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "dashboard",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-dashboard-home-api-fetch-stats"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-api-success",
+    "title": "Successful Authentication",
+    "level": 0,
+    "parent": "req-aut-auth-login-api",
+    "dependencies": [],
+    "summary": "Valid credentials must be accepted and result in a successful login with token.",
+    "tags": [
+      "auth",
+      "authentication",
+      "api"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-api-success-valid",
+      "req-aut-auth-login-api-success-token"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-ui-form",
+    "title": "Login Form Display",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui",
+    "dependencies": [],
+    "summary": "The login form must render correctly with all required fields and controls.",
+    "tags": [
+      "auth",
+      "authentication",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "authentication"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-ui-form-loading",
+      "req-aut-auth-login-ui-form-display"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-quick-add-form-modal",
+    "title": "Open modal form with name, email, role, and status fields",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-quick-add-form",
+    "dependencies": [],
+    "summary": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
+    "tags": [
+      "email",
+      "auth",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-list-pagination-nav",
+    "title": "Support pagination with page number buttons and navigation",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-pagination",
+    "dependencies": [],
+    "summary": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-list-filter-inputs",
+    "title": "Filter users by name search, role dropdown, and status dropdown",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-filter",
+    "dependencies": [],
+    "summary": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
+    "tags": [
+      "search",
+      "user",
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-dashboard-home-ui-stats-cards",
+    "title": "Show stat cards for Total Users, Active Sessions, and System Status",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-ui-stats",
+    "dependencies": [],
+    "summary": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
+    "tags": [
+      "user",
+      "dashboard",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "dashboard"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-fault-xml-content-endpoint",
+    "title": "GET /aut-api/fault/xml-content returns XML with proper content type",
+    "level": 0,
+    "parent": "req-aut-fault-xml-content",
+    "dependencies": [],
+    "summary": "The endpoint must return XML formatted response with Content-Type header set to application/xml.",
+    "tags": [
+      "api",
+      "fault-injection"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-fault-error-500-endpoint",
+    "title": "GET /aut-api/fault/simulate-500 returns 500 error with 50% probability",
+    "level": 0,
+    "parent": "req-aut-fault-error-500",
+    "dependencies": [],
+    "summary": "The endpoint must return HTTP 500 with error message 50% of the time, and success the other 50%.",
+    "tags": [
+      "api",
+      "fault-injection"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-dept-chart-bar-display",
+    "title": "Display bar chart of users per department with tooltip",
+    "level": 0,
+    "parent": "req-aut-reports-dept-chart-bar",
+    "dependencies": [],
+    "summary": "A bar chart must show department names on X-axis and user counts on Y-axis with hover tooltips for exact values.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-role-chart-pie-display",
+    "title": "Display donut pie chart of users grouped by role with legend",
+    "level": 0,
+    "parent": "req-aut-reports-role-chart-pie",
+    "dependencies": [],
+    "summary": "The pie chart must show admin, editor, and viewer segments with different colors. A legend must show role names with corresponding colors.",
+    "tags": [
+      "user",
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-api-batch-delete",
+    "title": "DELETE endpoints for single and batch removal",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api-batch",
+    "dependencies": [],
+    "summary": "DELETE /aut-api/users/:id removes single user. POST /aut-api/users/batch-delete removes multiple users by ID array.",
+    "tags": [
+      "api",
+      "user",
+      "user-management"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-api-crud-create",
+    "title": "POST /aut-api/users creates user with name/email validation",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api-crud",
+    "dependencies": [],
+    "summary": "The endpoint must validate that name and email are required strings, return 400 with error message if validation fails.",
+    "tags": [
+      "api",
+      "email",
+      "user",
+      "user-management"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-admin-pw-reset",
+    "title": "Trigger password reset email",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions-admin",
+    "dependencies": [],
+    "summary": "The More Options menu must include a password reset action that calls POST /aut-api/users/:id/reset-password.",
+    "tags": [
+      "api",
+      "email",
+      "auth",
+      "user",
+      "user-management"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-actions-activate",
+    "title": "Batch activate or deactivate selected users",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch-actions",
+    "dependencies": [],
+    "summary": "\"Activate All\" must set status to active for all selected inactive users. \"Deactivate All\" must set status to inactive for selected active users.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-job-cascader",
+    "title": "Cascading department tree selector",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-job",
+    "dependencies": [],
+    "summary": "The department selector must support 3-level cascading: Development > Frontend/Backend > React/Vue/Node.js/Python, and Design > UI Design/UX Research.",
+    "tags": [
+      "search",
+      "user-management",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-list-table-display",
+    "title": "Display user table with Name, Email, Role, Status, and date columns",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-table",
+    "dependencies": [],
+    "summary": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
+    "tags": [
+      "email",
+      "user",
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-dashboard-home-ui-welcome-greeting",
+    "title": "Display welcome message for authenticated user",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-ui-welcome",
+    "dependencies": [],
+    "summary": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
+    "tags": [
+      "auth",
+      "dashboard",
+      "user",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "dashboard"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-fault-timeout-delay-endpoint",
+    "title": "GET /aut-api/fault/timeout returns response after 5-second delay",
+    "level": 0,
+    "parent": "req-aut-fault-timeout-delay",
+    "dependencies": [],
+    "summary": "The endpoint must delay the response by 5000ms before returning a success JSON response.",
+    "tags": [
+      "api",
+      "fault-injection"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-api-aggregation-endpoint",
+    "title": "GET /aut-api/reports returns aggregated report data",
+    "level": 0,
+    "parent": "req-aut-reports-api-aggregation",
+    "dependencies": [],
+    "summary": "The endpoint must return totalUsers, activeUsers, roleDistribution array, and departmentDistribution array computed from the user database.",
+    "tags": [
+      "api",
+      "user",
+      "auth",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports-stats-metrics-cards",
+    "title": "Display stat cards for Total Users, Active Accounts, Admins, and Engagement Rate",
+    "level": 0,
+    "parent": "req-aut-reports-stats-metrics",
+    "dependencies": [],
+    "summary": "Four metric cards must show: total user count, active account count, admin count, and engagement rate percentage.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-api-list-endpoint",
+    "title": "GET /aut-api/users returns paginated, filterable, sortable list",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api-list",
+    "dependencies": [],
+    "summary": "The endpoint must accept query params: name, role, status, search, page, limit, sortBy, sortOrder and return paginated results with total count.",
+    "tags": [
+      "api",
+      "search",
+      "user",
+      "auth",
+      "user-management"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-profile-view",
+    "title": "View user profile details in read-only modal",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions-profile",
+    "dependencies": [],
+    "summary": "Clicking the eye icon must open a detailed read-only view of user profile with all fields displayed.",
+    "tags": [
+      "profile",
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-select-checkboxes",
+    "title": "Select all or individual users via checkboxes",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch-select",
+    "dependencies": [],
+    "summary": "A header checkbox must select/deselect all visible users. Individual row checkboxes allow selective multi-select.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-delete-flow-confirm",
+    "title": "Show confirmation dialog before single delete",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-delete-flow",
+    "dependencies": [],
+    "summary": "Clicking the delete action button must show a browser confirm dialog before performing the delete request.",
+    "tags": [
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-edit-flow-preload",
+    "title": "Pre-fill form with existing user data on edit",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-edit-flow",
+    "dependencies": [],
+    "summary": "Clicking the edit button must open the advanced form with all fields populated from the selected user record.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-security-permissions",
+    "title": "System permissions via checkboxes and access level slider",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-security",
+    "dependencies": [],
+    "summary": "The Security section must include permission checkboxes (view_reports, manage_users, billing_access, api_access) and a 1-5 range slider for access level.",
+    "tags": [
+      "api",
+      "user",
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "security",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-personal-fields",
+    "title": "Personal details section with name, email, and biography",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-personal",
+    "dependencies": [],
+    "summary": "The Personal Details section must include Full Name, Email Address, and Biography textarea fields.",
+    "tags": [
+      "email",
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-dashboard-home-api-fetch-stats",
+    "title": "GET /aut-api/dashboard/stats returns user statistics",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-api-fetch",
+    "dependencies": [],
+    "summary": "The API must return totalUsers count, activeUsers count, and recentRegistrations list from the user database.",
+    "tags": [
+      "dashboard",
+      "api",
+      "user"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "dashboard",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-api-errors-invalid",
+    "title": "Return 401 for invalid credentials",
+    "level": 0,
+    "parent": "req-aut-auth-login-api-errors",
+    "dependencies": [],
+    "summary": "POST /aut-api/auth/login with wrong credentials must return status 401 with error message \"Invalid credentials\".",
+    "tags": [
+      "auth",
+      "api",
+      "authentication"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-api-success-valid",
+    "title": "Authenticate with admin/admin123 credentials",
+    "level": 0,
+    "parent": "req-aut-auth-login-api-success",
+    "dependencies": [],
+    "summary": "POST /aut-api/auth/login with username \"admin\" and password \"admin123\" must return success with a JWT token.",
+    "tags": [
+      "auth",
+      "api",
+      "user",
+      "authentication"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-ui-validation-empty",
+    "title": "Show validation error for empty fields",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui-validation",
+    "dependencies": [],
+    "summary": "When username or password is empty on submit, display error message \"Please fill in all required fields.\"",
+    "tags": [
+      "auth",
+      "user",
+      "authentication",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "authentication"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-ui-form-loading",
+    "title": "Disable submit button and show loading state during authentication",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui-form",
+    "dependencies": [],
+    "summary": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
+    "tags": [
+      "auth"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-ui-form-display",
+    "title": "Display login form with username and password fields",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui-form",
+    "dependencies": [],
+    "summary": "The login form must render username input with user icon, password input with lock icon, and submit button.",
+    "tags": [
+      "auth",
+      "user"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-dashboard",
+    "title": "Dashboard",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "",
+    "tags": [
+      "dashboard"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-dashboard-home-ui",
+      "req-aut-dashboard-home-api"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-quick-add",
+    "title": "Quick Add User",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "A simple modal form for quickly creating a new user with basic fields.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-quick-add-form"
+    ]
+  },
+  {
+    "id": "req-aut-fault-error",
+    "title": "Error Simulation",
+    "level": 0,
+    "parent": "req-aut-fault",
+    "dependencies": [],
+    "summary": "Simulates server errors for testing error handling logic.",
+    "tags": [
+      "fault-injection",
+      "api"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-error-500"
+    ]
+  },
+  {
+    "id": "req-aut-reports-role-chart",
+    "title": "Role Distribution Chart",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "A donut pie chart visualizing users by their assigned role.",
+    "tags": [
+      "user",
+      "auth",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-role-chart-pie"
+    ]
+  },
+  {
+    "id": "req-aut-dashboard-home-api",
+    "title": "Dashboard Statistics API",
+    "level": 0,
+    "parent": "req-aut-dashboard",
+    "dependencies": [],
+    "summary": "The dashboard fetches real-time statistics from the server.",
+    "tags": [
+      "dashboard",
+      "api"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "dashboard",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-dashboard-home-api-fetch"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-api",
+    "title": "Login Authentication API",
+    "level": 0,
+    "parent": "req-aut-auth",
+    "dependencies": [],
+    "summary": "The authentication API validates credentials and returns a token for session management.",
+    "tags": [
+      "auth",
+      "api",
+      "authentication"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-api-success",
+      "req-aut-auth-login-api-errors"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list-filter",
+    "title": "Filtering",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list",
+    "dependencies": [],
+    "summary": "Users must be filterable by text search and dropdown selections.",
+    "tags": [
+      "search",
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-list-filter-inputs"
+    ]
+  },
+  {
+    "id": "req-aut-dashboard-home-ui-stats",
+    "title": "Statistics Display",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-ui",
+    "dependencies": [],
+    "summary": "The dashboard must display real-time system metrics in stat cards.",
+    "tags": [
+      "dashboard",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "ui",
+      "dashboard"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-dashboard-home-ui-stats-cards"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-api-crud",
+    "title": "Create & Update",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api",
+    "dependencies": [],
+    "summary": "The API must support creating and updating user records.",
+    "tags": [
+      "api",
+      "user",
+      "user-management"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-api-crud-create",
+      "req-aut-user-mgmt-api-crud-update"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-admin",
+    "title": "Admin Utilities",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions",
+    "dependencies": [],
+    "summary": "Administrative actions for user account management.",
+    "tags": [
+      "user",
+      "user-management"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-actions-admin-pw-reset",
+      "req-aut-user-mgmt-actions-admin-suspend"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-actions",
+    "title": "Batch Actions",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch",
+    "dependencies": [],
+    "summary": "Batch operations must support status updates and deletion.",
+    "tags": [
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-batch-actions-activate",
+      "req-aut-user-mgmt-batch-actions-delete",
+      "req-aut-user-mgmt-batch-actions-mixed"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-job",
+    "title": "Job Configuration",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form",
+    "dependencies": [],
+    "summary": "The form must capture job-related details with rich controls.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-advanced-form-job-cascader",
+      "req-aut-user-mgmt-advanced-form-job-dates"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-api-errors",
+    "title": "Error Handling",
+    "level": 0,
+    "parent": "req-aut-auth-login-api",
+    "dependencies": [],
+    "summary": "Invalid credentials and network failures must be handled gracefully with appropriate error messages.",
+    "tags": [
+      "authentication",
+      "api"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-auth-login-api-errors-invalid",
+      "req-aut-auth-login-api-errors-network"
+    ]
+  },
+  {
+    "id": "req-aut-auth-login-ui-validation",
+    "title": "Form Validation & UX",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui",
+    "dependencies": [],
+    "summary": "The login form must validate input and provide good user experience with password visibility and utility controls.",
+    "tags": [
+      "auth",
+      "user",
+      "authentication",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "authentication",
+      "ui"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-auth-login-ui-validation-empty",
+      "req-aut-auth-login-ui-validation-toggle",
+      "req-aut-auth-login-ui-validation-remember"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list-pagination-loading",
+    "title": "Show loading skeleton and syncing overlay",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-pagination",
+    "dependencies": [],
+    "summary": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-api-batch-update",
+    "title": "POST /aut-api/users/batch-update for mass updates",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api-batch",
+    "dependencies": [],
+    "summary": "The endpoint must accept { ids: number[], data: object } and apply the data update to all specified users.",
+    "tags": [
+      "api",
+      "user",
+      "user-management"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-list-table-sort",
+    "title": "Sort users by clicking column headers",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-table",
+    "dependencies": [],
+    "summary": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
+    "tags": [
+      "email",
+      "user",
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-dashboard-home-ui-welcome-nav",
+    "title": "Provide navigation links to Users and Reports pages",
+    "level": 0,
+    "parent": "req-aut-dashboard-home-ui-welcome",
+    "dependencies": [],
+    "summary": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
+    "tags": [
+      "dashboard",
+      "user",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "dashboard",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-api-crud-update",
+    "title": "PUT and PATCH /aut-api/users/:id for updates",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api-crud",
+    "dependencies": [],
+    "summary": "PUT must replace all fields. PATCH must support partial update. Both must update the updatedAt timestamp.",
+    "tags": [
+      "api",
+      "user",
+      "user-management"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-admin-suspend",
+    "title": "Suspend user account with confirmation",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions-admin",
+    "dependencies": [],
+    "summary": "The More Options menu must include a suspend action that sets user status to inactive after confirmation.",
+    "tags": [
+      "user",
+      "user-management"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-actions-profile-export",
+    "title": "Export user data as downloadable JSON file",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-actions-profile",
+    "dependencies": [],
+    "summary": "The More Options menu must include an export action that downloads user data as a JSON file.",
+    "tags": [
+      "user",
+      "user-management"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-actions-delete",
+    "title": "Batch delete selected users with confirmation",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch-actions",
+    "dependencies": [],
+    "summary": "\"Delete Selected\" must show a confirmation dialog with the count of users to be deleted before sending batch delete request.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-select-bar",
+    "title": "Show batch action bar with selected count",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch-select",
+    "dependencies": [],
+    "summary": "When users are selected, a batch action bar must appear showing the count badge, Activate/Deactivate buttons, and Delete Selected button.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-security-2fa",
+    "title": "Two-factor authentication toggle switch",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-security",
+    "dependencies": [],
+    "summary": "A toggle switch must allow enabling/disabling two-factor authentication with a styled sliding control.",
+    "tags": [
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-job-dates",
+    "title": "Contract period date range picker",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-job",
+    "dependencies": [],
+    "summary": "The Job Details section must include start date and end date native date inputs with a \"to\" separator.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-api-success-token",
+    "title": "Store token in localStorage and redirect to dashboard",
+    "level": 0,
+    "parent": "req-aut-auth-login-api-success",
+    "dependencies": [],
+    "summary": "On successful login, the token must be stored as \"aut_token\" in localStorage and navigate to /aut.",
+    "tags": [
+      "auth",
+      "dashboard",
+      "authentication",
+      "api"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "authentication",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-api-errors-network",
+    "title": "Handle network errors gracefully",
+    "level": 0,
+    "parent": "req-aut-auth-login-api-errors",
+    "dependencies": [],
+    "summary": "If the login request fails due to network error, display \"Network error occurred\" message.",
+    "tags": [
+      "auth",
+      "authentication",
+      "api"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "authentication",
+      "api"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-ui-validation-toggle",
+    "title": "Toggle password visibility with eye icon",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui-validation",
+    "dependencies": [],
+    "summary": "The password field must have a toggle button to show/hide password text using Eye/EyeOff icons.",
+    "tags": [
+      "auth",
+      "authentication",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "authentication",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt",
+    "title": "User Management",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "",
+    "tags": [
+      "user"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional"
+    ],
+    "childCount": 8,
+    "children": [
+      "req-aut-user-mgmt-list",
+      "req-aut-user-mgmt-quick-add",
+      "req-aut-user-mgmt-advanced-form",
+      "req-aut-user-mgmt-edit",
+      "req-aut-user-mgmt-delete",
+      "req-aut-user-mgmt-batch",
+      "req-aut-user-mgmt-actions",
+      "req-aut-user-mgmt-api"
+    ]
+  },
+  {
+    "id": "req-aut-fault-xml",
+    "title": "XML Content Type Response",
+    "level": 0,
+    "parent": "req-aut-fault",
+    "dependencies": [],
+    "summary": "Returns XML formatted response for testing content type handling.",
+    "tags": [
+      "fault-injection",
+      "api"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "fault-injection",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-fault-xml-content"
+    ]
+  },
+  {
+    "id": "req-aut-reports-dept-chart",
+    "title": "Department Distribution Chart",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "A bar chart displaying user count per department.",
+    "tags": [
+      "user",
+      "reports",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "ui",
+      "reports"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-dept-chart-bar"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form",
+    "title": "Advanced User Form",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "A comprehensive form with rich controls including cascading department selector, permissions, drag-and-drop upload, and more.",
+    "tags": [
+      "user",
+      "auth",
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "security",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-advanced-form-personal",
+      "req-aut-user-mgmt-advanced-form-job",
+      "req-aut-user-mgmt-advanced-form-security"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list-pagination",
+    "title": "Pagination & Loading",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list",
+    "dependencies": [],
+    "summary": "The table must paginate results and show appropriate loading states.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-list-pagination-nav",
+      "req-aut-user-mgmt-list-pagination-loading",
+      "req-aut-user-mgmt-list-pagination-empty"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-api-batch",
+    "title": "Delete & Batch",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-api",
+    "dependencies": [],
+    "summary": "The API must support single/batch deletion and batch updates.",
+    "tags": [
+      "api",
+      "user-management"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "api"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-api-batch-delete",
+      "req-aut-user-mgmt-api-batch-update"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-security",
+    "title": "Security Settings",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form",
+    "dependencies": [],
+    "summary": "The form must configure security-related settings with various control types.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "security",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-advanced-form-security-permissions",
+      "req-aut-user-mgmt-advanced-form-security-2fa",
+      "req-aut-user-mgmt-advanced-form-security-avatar"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-list-pagination-empty",
+    "title": "Display empty state when no users match filters",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-list-pagination",
+    "dependencies": [],
+    "summary": "When no users are found, the table must display \"No users found\" message spanning all columns.",
+    "tags": [
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "ui",
+      "user-management"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-batch-actions-mixed",
+    "title": "Handle mixed status selection gracefully",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-batch-actions",
+    "dependencies": [],
+    "summary": "When selected users have mixed active/inactive statuses, show warning badge and disable batch status update buttons.",
+    "tags": [
+      "user",
+      "user-management",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-user-mgmt-advanced-form-security-avatar",
+    "title": "Avatar upload via drag-and-drop",
+    "level": 0,
+    "parent": "req-aut-user-mgmt-advanced-form-security",
+    "dependencies": [],
+    "summary": "A drag-and-drop zone must accept image files for avatar upload, showing the filename after selection.",
+    "tags": [
+      "user-management",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "user-management",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-auth-login-ui-validation-remember",
+    "title": "Show Remember me checkbox and Forgot password link",
+    "level": 0,
+    "parent": "req-aut-auth-login-ui-validation",
+    "dependencies": [],
+    "summary": "The form must include a \"Remember me\" checkbox and a \"Forgot password?\" link below the password field.",
+    "tags": [
+      "auth",
+      "authentication",
+      "ui"
+    ],
+    "priority": "LOW",
+    "testType": [
+      "functional",
+      "authentication",
+      "ui"
+    ],
+    "childCount": 0,
+    "children": []
+  },
+  {
+    "id": "req-aut-reports",
+    "title": "Reports & Analytics",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "Visual data reports including charts for user role distribution and department distribution.",
+    "tags": [
+      "user",
+      "auth",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports"
+    ],
+    "childCount": 4,
+    "children": [
+      "req-aut-reports-stats",
+      "req-aut-reports-role-chart",
+      "req-aut-reports-dept-chart",
+      "req-aut-reports-api"
+    ]
+  },
+  {
+    "id": "req-aut-reports-api",
+    "title": "Reports Data API",
+    "level": 0,
+    "parent": "req-aut-reports",
+    "dependencies": [],
+    "summary": "API endpoint serving aggregated report data for charts and metrics.",
+    "tags": [
+      "api",
+      "reports"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "reports",
+      "api"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-reports-api-aggregation"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-edit",
+    "title": "Edit User",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "Edit existing user details through the advanced form pre-filled with current data.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-edit-flow"
+    ]
+  },
+  {
+    "id": "req-aut-fault",
+    "title": "Fault Injection & Testing Utilities",
+    "level": 0,
+    "parent": null,
+    "dependencies": [],
+    "summary": "Endpoints designed for testing error handling, timeouts, and content type variations in automated tests.",
+    "tags": [
+      "fault-injection"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "fault-injection"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-fault-timeout",
+      "req-aut-fault-error",
+      "req-aut-fault-xml"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-delete",
+    "title": "Delete User",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "Delete individual users with confirmation.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 1,
+    "children": [
+      "req-aut-user-mgmt-delete-flow"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-batch",
+    "title": "Batch Operations",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "Perform bulk actions on multiple selected users simultaneously.",
+    "tags": [
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "HIGH",
+    "testType": [
+      "functional",
+      "user-management",
+      "crud"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-batch-select",
+      "req-aut-user-mgmt-batch-actions"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-actions",
+    "title": "User Action Utilities",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "Additional user actions including view details, export, password reset, and account suspension.",
+    "tags": [
+      "auth",
+      "user",
+      "user-management"
+    ],
+    "priority": "MEDIUM",
+    "testType": [
+      "functional",
+      "user-management"
+    ],
+    "childCount": 2,
+    "children": [
+      "req-aut-user-mgmt-actions-profile",
+      "req-aut-user-mgmt-actions-admin"
+    ]
+  },
+  {
+    "id": "req-aut-user-mgmt-api",
+    "title": "User Management API",
+    "level": 0,
+    "parent": "req-aut-user-mgmt",
+    "dependencies": [],
+    "summary": "RESTful API endpoints for all user CRUD operations, batch operations, and utility actions.",
+    "tags": [
+      "api",
+      "user",
+      "user-management",
+      "crud"
+    ],
+    "priority": "CRITICAL",
+    "testType": [
+      "functional",
+      "user-management",
+      "api",
+      "crud"
+    ],
+    "childCount": 3,
+    "children": [
+      "req-aut-user-mgmt-api-list",
+      "req-aut-user-mgmt-api-crud",
+      "req-aut-user-mgmt-api-batch"
+    ]
+  }
+]
