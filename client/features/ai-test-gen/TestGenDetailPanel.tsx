@@ -884,6 +884,115 @@ function formatThinkingText(text: string): string {
   return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+function normalizeReasoningHeading(text: string): string {
+  return text
+    .trim()
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^\*\*(.*?)\*\*$/, '$1')
+    .replace(/^__(.*?)__$/, '$1')
+    .trim();
+}
+
+function isReasoningHeading(text: string): boolean {
+  const content = normalizeReasoningHeading(text);
+  return !!content
+    && content.length <= 72
+    && !/[.!?。！？:]$/.test(content)
+    && /^[A-Z][A-Za-z0-9\s&/()\-]+$/.test(content)
+    && content.split(/\s+/).length <= 8;
+}
+
+type ReasoningLogBlock =
+  | { kind: 'heading'; text: string }
+  | { kind: 'entry'; text: string }
+  | { kind: 'code'; text: string };
+
+function buildReasoningLogBlocks(text: string): ReasoningLogBlock[] {
+  let normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) return [];
+
+  normalized = normalized.replace(
+    /([.!?。！？])(\*\*[^\n*]{2,72}\*\*)/g,
+    '$1\n\n$2',
+  );
+  normalized = normalized.replace(
+    /([.!?。！？])([A-Z][A-Za-z][A-Za-z0-9&/()\-]*(?: [A-Za-z][A-Za-z0-9&/()\-]*){0,6})(?=\n|[A-Z][a-z])/g,
+    '$1\n\n$2',
+  );
+
+  const blocks: ReasoningLogBlock[] = [];
+  const lines = normalized.split('\n');
+  let inFence = false;
+  let codeLines: string[] = [];
+  let textLines: string[] = [];
+
+  const pushEntry = (entryText: string) => {
+    const clean = entryText.trim().replace(/^\*\*(.*?)\*\*$/, '$1').trim();
+    if (!clean) return;
+    const last = blocks[blocks.length - 1];
+    if (last && last.kind === 'entry') {
+      last.text = `${last.text}\n\n${clean}`;
+      return;
+    }
+    blocks.push({ kind: 'entry', text: clean });
+  };
+
+  const flushText = () => {
+    const joined = textLines.join('\n').trim();
+    textLines = [];
+    if (!joined) return;
+    const paragraphs = joined.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    for (const paragraph of paragraphs) {
+      const parts = paragraph.split(/(\*\*[^\n*]{2,72}\*\*)/g).map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (isReasoningHeading(part)) {
+          blocks.push({ kind: 'heading', text: normalizeReasoningHeading(part) });
+        } else {
+          pushEntry(part);
+        }
+      }
+    }
+  };
+
+  const flushCode = () => {
+    const joined = codeLines.join('\n').trim();
+    codeLines = [];
+    if (joined) blocks.push({ kind: 'code', text: joined });
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const content = line.trim();
+
+    if (content.startsWith('```')) {
+      if (!inFence) {
+        flushText();
+        inFence = true;
+        continue;
+      }
+      inFence = false;
+      flushCode();
+      continue;
+    }
+
+    if (inFence) {
+      codeLines.push(rawLine);
+      continue;
+    }
+
+    if (!content) {
+      textLines.push('');
+      continue;
+    }
+
+    textLines.push(rawLine);
+  }
+
+  flushText();
+  flushCode();
+  return blocks;
+}
+
 /** Collapsible reasoning block — ChatGPT "Thought for Xs" style */
 function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { text: string; isRunning: boolean; startTime?: number; endTime?: number }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -914,6 +1023,8 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
     return `${m}m ${s}s`;
   }, [startTime, endTimeProp, capturedEndTime, text]);
 
+  const logBlocks = useMemo(() => buildReasoningLogBlocks(text), [text]);
+
   return (
     <div className="rounded-lg bg-slate-100/80 dark:bg-slate-800/40 overflow-hidden">
       <button
@@ -941,58 +1052,44 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
         )}
       </button>
       {!isCollapsed && (
-        <div className="px-3 pb-2.5 border-t border-slate-200/60 dark:border-slate-700/40 pt-2 thinking-markdown text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '');
-                const codeStr = String(children).replace(/\n$/, '');
-                if (match) {
-                  return (
-                    <SyntaxHighlighter
-                      style={vscDarkPlus}
-                      language={match[1]}
-                      PreTag="div"
-                      customStyle={{ fontSize: '11px', borderRadius: '6px', margin: '6px 0', padding: '10px 12px' }}
-                    >
-                      {codeStr}
-                    </SyntaxHighlighter>
-                  );
-                }
-                if (className === 'language-') {
-                  return <pre className="bg-slate-200/60 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 rounded-lg px-3 py-2 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{codeStr}</pre>;
-                }
-                return <code className="bg-slate-200/60 dark:bg-slate-700/70 px-1 py-0.5 rounded text-[11px] font-mono not-italic text-slate-600 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50" {...props}>{children}</code>;
-              },
-              pre({ children }) {
-                return <div className="my-1.5">{children}</div>;
-              },
-              p({ children }) {
-                return <p className="mb-1.5 last:mb-0">{children}</p>;
-              },
-              ul({ children }) {
-                return <ul className="list-disc pl-4 mb-1.5">{children}</ul>;
-              },
-              ol({ children }) {
-                return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>;
-              },
-              li({ children }) {
-                return <li className="mb-0.5">{children}</li>;
-              },
-              blockquote({ children }) {
-                return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1">{children}</blockquote>;
-              },
-              h1({ children }) { return <h1 className="text-sm font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h1>; },
-              h2({ children }) { return <h2 className="text-[13px] font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h2>; },
-              h3({ children }) { return <h3 className="text-[12px] font-semibold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h3>; },
-              table({ children }) { return <table className="w-full border-collapse text-[11px] my-1.5">{children}</table>; },
-              th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-200/60 dark:bg-slate-700/50 text-left font-semibold not-italic">{children}</th>; },
-              td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
-            }}
-          >
-            {text}
-          </ReactMarkdown>
+        <div className="px-3 pb-2.5 border-t border-slate-200/60 dark:border-slate-700/40 pt-2 space-y-2">
+          {logBlocks.map((block, idx) => {
+            if (block.kind === 'heading') {
+              return (
+                <div key={idx} className="pt-1 first:pt-0">
+                  <div className="inline-flex items-center gap-2 rounded-md bg-slate-200/60 dark:bg-slate-700/40 px-2 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-slate-500 dark:bg-slate-400 shrink-0" />
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-slate-300 text-left">
+                      {block.text}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            if (block.kind === 'code') {
+              return (
+                <pre
+                  key={idx}
+                  className="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-3 py-2 overflow-x-auto text-[11px] font-mono leading-relaxed whitespace-pre-wrap"
+                >
+                  {block.text}
+                </pre>
+              );
+            }
+
+            return (
+              <div
+                key={idx}
+                className="flex gap-2 rounded-lg border border-slate-200/70 dark:border-slate-700/50 bg-white/65 dark:bg-slate-900/25 px-2.5 py-2"
+              >
+                <span className="mt-[7px] h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                <p className="text-[12px] leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">
+                  {block.text}
+                </p>
+              </div>
+            );
+          })}
           {isRunning && (
             <span className="inline-block w-1 h-3 bg-slate-400 animate-pulse ml-0.5 align-middle rounded-sm" />
           )}
