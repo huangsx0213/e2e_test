@@ -47,23 +47,26 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'json_object' | 'text';
+  jsonSchema?: Record<string, unknown>;
   signal?: AbortSignal;
   agentName?: string;
   tools?: Array<{
     name: string;
     description: string;
+    strict?: boolean;
     parameters: JsonSchema;
   }>;
   toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
 }
 
-function formatToolsForApi(tools: ChatOptions['tools']): Array<{ type: 'function'; function: { name: string; description: string; parameters: JsonSchema } }> | undefined {
+function formatToolsForApi(tools: ChatOptions['tools']): Array<{ type: 'function'; function: { name: string; description: string; strict: boolean; parameters: JsonSchema } }> | undefined {
   if (!tools || tools.length === 0) return undefined;
   return tools.map(t => ({
     type: 'function' as const,
     function: {
       name: t.name,
       description: t.description,
+      strict: t.strict ?? false,
       parameters: t.parameters,
     },
   }));
@@ -286,7 +289,9 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       messages,
       temperature: options?.temperature ?? 0.3,
       max_completion_tokens: options?.maxTokens ?? 4096,
-      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      response_format: options?.jsonSchema
+        ? { type: 'json_schema' as const, json_schema: options.jsonSchema }
+        : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
   };
@@ -332,12 +337,18 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       max_output_tokens: options?.maxTokens ?? 4096,
       stream: true,
     };
+    if (options?.jsonSchema) {
+      body.response_format = { type: 'json_schema' as const, json_schema: options.jsonSchema };
+    } else if (options?.responseFormat === 'json_object') {
+      body.response_format = { type: 'json_object' };
+    }
     if (options?.tools && options.tools.length > 0) {
       // Responses API tools format: { type: "function", name, description, parameters } (flat, not nested)
       body.tools = options.tools.map(t => ({
         type: 'function' as const,
         name: t.name,
         description: t.description,
+        strict: t.strict ?? false,
         parameters: t.parameters,
       }));
     }
@@ -388,7 +399,9 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
       messages,
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 8192,
-      response_format: options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
+      response_format: options?.jsonSchema
+        ? { type: 'json_schema' as const, json_schema: options.jsonSchema }
+        : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
   });

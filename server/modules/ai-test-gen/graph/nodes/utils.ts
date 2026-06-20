@@ -3,10 +3,97 @@ import type { AIProvider, ChatMessage, ChatOptions, ToolCall } from '../../infra
 import type { SkillDefinition } from './types.ts';
 
 /**
- * 将 Zod schema 转换为 JSON Schema（用于 tool parameters）
+ * 递归遍历 JSON Schema，确保所有 object 类型都有 strict 约束：
+ * - additionalProperties: false
+ * - 确保每个嵌套 object 都有 required 数组（由 zodToJsonSchema 原生保证）
+ */
+function ensureStrictJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (schema.type === 'object' && typeof schema.properties === 'object' && schema.properties) {
+    schema.additionalProperties = false;
+    for (const key of Object.keys(schema.properties as Record<string, unknown>)) {
+      const val = (schema.properties as Record<string, unknown>)[key];
+      if (val && typeof val === 'object') {
+        (schema.properties as Record<string, unknown>)[key] = ensureStrictJsonSchema(val as Record<string, unknown>);
+      }
+    }
+  }
+  if (schema.items && typeof schema.items === 'object') {
+    schema.items = ensureStrictJsonSchema(schema.items as Record<string, unknown>);
+  }
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+    schema.additionalProperties = ensureStrictJsonSchema(schema.additionalProperties as Record<string, unknown>);
+  }
+  return schema;
+}
+
+/**
+ * 将 Zod schema 转换为 JSON Schema（用于 tool parameters），
+ * 自动注入 strict 约束（additionalProperties: false）。
  */
 export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
-  return toJSONSchema(schema) as Record<string, unknown>;
+  return ensureStrictJsonSchema(toJSONSchema(schema) as Record<string, unknown>);
+}
+
+/**
+ * 对 JSON Schema 做 OpenAI Structured Outputs / strict mode 的兼容处理：
+ * 1. 把所有 properties 的 key 都加入 required 数组
+ * 2. 对新增到 required 的字段（原为 optional），type 包装为 {type: [原type, "null"]}
+ *
+ * OpenAI strict mode 要求: required 必须包含 properties 的每一个 key。
+ */
+function makeSchemaOpenAICompatible(schema: Record<string, unknown>): Record<string, unknown> {
+  if (!schema || typeof schema !== 'object') return schema;
+
+  if (schema.type === 'object' && typeof schema.properties === 'object' && schema.properties) {
+    const propKeys = Object.keys(schema.properties as Record<string, unknown>);
+    const requiredSet = new Set<string>(
+      Array.isArray(schema.required) ? (schema.required as string[]) : []
+    );
+
+    for (const key of propKeys) {
+      if (!requiredSet.has(key)) {
+        // This property was optional in Zod — add null acceptance
+        const prop = (schema.properties as Record<string, unknown>)[key] as Record<string, unknown> | undefined;
+        if (prop && typeof prop === 'object') {
+          // Handle z.any() / type-less properties (e.g. changeLog[].from)
+          if (!prop.type && !prop.anyOf && !prop.oneOf && !prop.$ref) {
+            prop.type = ['string', 'null'];
+          } else if (typeof prop.type === 'string') {
+            prop.type = [prop.type, 'null'];
+          } else if (Array.isArray(prop.type) && !prop.type.includes('null')) {
+            prop.type.push('null');
+          }
+          // anyOf/oneOf: each branch needs null too
+          for (const combinator of ['anyOf', 'oneOf'] as const) {
+            if (Array.isArray(prop[combinator])) {
+              (prop[combinator] as Record<string, unknown>[]).push({ type: 'null' });
+            }
+          }
+        }
+        requiredSet.add(key);
+      }
+    }
+
+    schema.required = Array.from(requiredSet);
+
+    // Recurse into properties
+    for (const key of propKeys) {
+      const val = (schema.properties as Record<string, unknown>)[key];
+      if (val && typeof val === 'object') {
+        (schema.properties as Record<string, unknown>)[key] = makeSchemaOpenAICompatible(val as Record<string, unknown>);
+      }
+    }
+  }
+
+  if (schema.items && typeof schema.items === 'object') {
+    schema.items = makeSchemaOpenAICompatible(schema.items as Record<string, unknown>);
+  }
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+    schema.additionalProperties = makeSchemaOpenAICompatible(schema.additionalProperties as Record<string, unknown>);
+  }
+
+  return schema;
 }
 
 /**
@@ -37,7 +124,8 @@ export function buildThinkingChatOptions(
   const outputTool = {
     name: 'output_result',
     description: 'Submit the final structured result. You MUST call this tool when you are ready to output the final answer. The parameters must match the required schema exactly.',
-    parameters: zodToJsonSchema(outputSchema) as any,
+    strict: true,
+    parameters: makeSchemaOpenAICompatible(zodToJsonSchema(outputSchema)) as any,
   };
   
   const allTools = [...(businessTools ?? []), outputTool];
@@ -52,7 +140,7 @@ export function buildThinkingChatOptions(
 }
 
 /**
- * 构建 ChatOptions：Phase 2 提取阶段，使用 response_format
+ * 构建 ChatOptions：Phase 2 提取阶段，使用 json_schema response_format
  */
 export function buildExtractionChatOptions(
   outputSchema: ZodType,
@@ -60,7 +148,7 @@ export function buildExtractionChatOptions(
 ): ChatOptions {
   const { temperature: _ignored, responseFormat: _ignoredFormat, tools: _ignoredTools, toolChoice: _ignoredChoice, ...allowedExtra } = extra ?? {};
   return {
-    responseFormat: 'json_object',
+    jsonSchema: zodToJsonSchema(outputSchema),
     temperature: 0.1,
     maxTokens: 32768,
     ...allowedExtra,
@@ -230,7 +318,17 @@ async function runAgentReActLoop(
               ? issue.path.join('.') : '(root)';
             return `- ${pathStr}: ${issue.message}`;
           });
-          feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nFix ALL errors above and call output_result again. Refer to the tool parameters schema in the system prompt for the exact structure.`;
+          
+          // 检查是否有数组字段已有部分数据（非空数组）
+          const hasSomeData = Object.values(outputArgs).some(
+            (v: any) => Array.isArray(v) && v.length > 0
+          );
+          
+          if (hasSomeData) {
+            feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nYou have some valid data but specific fields are missing or invalid. Do NOT clear the existing data — only fix the fields listed above and call output_result again with the corrected structure.`;
+          } else {
+            feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nFix ALL errors above and call output_result again. Refer to the tool parameters schema in the system prompt for the exact structure.`;
+          }
         } else {
           feedbackToolContent = `Schema validation failed: ${schemaErr.message?.slice(0, 300)}. Fix and call output_result again.`;
         }

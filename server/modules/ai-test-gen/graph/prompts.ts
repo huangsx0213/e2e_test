@@ -89,7 +89,15 @@ ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback
 ## Output Format
 You can provide your analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
+When you write the analysis text, format it as markdown:
+- Use short section headings on their own lines
+- Separate sections with blank lines
+- Use bullet lists for steps, options, and observations
+- Wrap JSON, tool arguments, and examples in code fences when helpful
+
 **However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+
+**CRITICAL: Do NOT write all your data in the text response and then call \`output_result\` with empty or incomplete data. The COMPLETE structured data must be inside the \`output_result\` tool parameters — this is the only data that will be saved. If you wrote analysis in text, you must also include the FULL data in \`output_result\`.
 
 Tool parameters schema:
 {
@@ -188,6 +196,12 @@ ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback
 ## Output Format
 You can provide your design rationale step by step as plain text in your response content — this will be streamed to the user in real-time.
 
+When you write the analysis text, format it as markdown:
+- Use short section headings on their own lines
+- Separate sections with blank lines
+- Use bullet lists for steps, options, and observations
+- Wrap JSON, tool arguments, and examples in code fences when helpful
+
 **However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
 
 Tool parameters schema:
@@ -239,12 +253,7 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
 6. **Maintainability** — Are cases well-structured and reusable?
 
 ## Coverage Matrix
-For each requirement, calculate:
-- Number of associated test conditions
-- Number of test cases
-- Coverage percentage
-- Technique distribution
-- Uncovered risks: ONLY list risks that are within the scope of the current requirement and have real impact. Do NOT list speculative or out-of-scope edge cases. Leave empty if coverage is adequate.
+Coverage is computed automatically from your final test cases — you don't need to output it. Focus your review on the six dimensions above.
 
 ## Available Tools
 You have access to the following tools — use them when you need to verify information:
@@ -256,12 +265,17 @@ ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback
 ## Output Format
 You can provide your review analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
+When you write the analysis text, format it as markdown:
+- Use short section headings on their own lines
+- Separate sections with blank lines
+- Use bullet lists for steps, options, and observations
+- Wrap JSON, tool arguments, and examples in code fences when helpful
+
 **However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
 
 Tool parameters schema:
 {
-  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }],
-  "coverageMatrix": { "rows": [{ "requirementId": string, "requirementTitle": string, "level": string, "totalConditions": number, "testCaseCount": number, "coveragePercentage": number, "techniqueBreakdown": {}, "categoryBreakdown": {}, "uncoveredRisks": string[] }], "summary": { "totalRequirements": number, "totalConditions": number, "totalCases": number, "overallCoverage": number } }
+  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }]
 }
 `;
 }

@@ -828,14 +828,60 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
 
 type TabId = 'summary' | 'thinking' | 'input' | 'output' | 'trace' | 'errors';
 
-/** Format thinking text: try pretty-print JSON, otherwise return as-is */
+/**
+ * Normalize agent text into markdown that is easier to read.
+ * - Preserves code fences and JSON blocks
+ * - Promotes short title-like lines into markdown headings
+ * - Keeps blank lines as paragraph breaks
+ */
 function formatThinkingText(text: string): string {
+  const trimmed = text.replace(/\r\n/g, '\n').trim();
+  if (!trimmed) return '';
+
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(trimmed);
     return JSON.stringify(parsed, null, 2);
   } catch {
-    return text;
+    // fall through
   }
+
+  const lines = trimmed.split('\n');
+  const out: string[] = [];
+  let inFence = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const content = line.trim();
+
+    if (!content) {
+      if (out.length > 0 && out[out.length - 1] !== '') out.push('');
+      continue;
+    }
+
+    if (content.startsWith('```')) {
+      inFence = !inFence;
+      out.push(content);
+      continue;
+    }
+
+    const headingLike = !inFence
+      && !/^([#>*-]|\d+\.)\s/.test(content)
+      && content.length <= 64
+      && !/[.!?。！？:]$/.test(content)
+      && /^[A-Z][A-Za-z0-9\s&/()\-]+$/.test(content)
+      && content.split(/\s+/).length <= 8;
+
+    if (headingLike) {
+      if (out.length > 0 && out[out.length - 1] !== '') out.push('');
+      out.push(`### ${content}`);
+      out.push('');
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 /** Collapsible reasoning block — ChatGPT "Thought for Xs" style */
@@ -895,7 +941,7 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
         )}
       </button>
       {!isCollapsed && (
-        <div className="px-3 pb-2.5 border-t border-slate-200/60 dark:border-slate-700/40 pt-2 thinking-markdown text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 italic">
+        <div className="px-3 pb-2.5 border-t border-slate-200/60 dark:border-slate-700/40 pt-2 thinking-markdown text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -908,16 +954,19 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
                       style={vscDarkPlus}
                       language={match[1]}
                       PreTag="div"
-                      customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                      customStyle={{ fontSize: '11px', borderRadius: '6px', margin: '6px 0', padding: '10px 12px' }}
                     >
                       {codeStr}
                     </SyntaxHighlighter>
                   );
                 }
-                return <code className="bg-slate-200/60 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono not-italic" {...props}>{children}</code>;
+                if (className === 'language-') {
+                  return <pre className="bg-slate-200/60 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 rounded-lg px-3 py-2 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{codeStr}</pre>;
+                }
+                return <code className="bg-slate-200/60 dark:bg-slate-700/70 px-1 py-0.5 rounded text-[11px] font-mono not-italic text-slate-600 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50" {...props}>{children}</code>;
               },
               pre({ children }) {
-                return <>{children}</>;
+                return <div className="my-1.5">{children}</div>;
               },
               p({ children }) {
                 return <p className="mb-1.5 last:mb-0">{children}</p>;
@@ -935,9 +984,9 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
                 return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1">{children}</blockquote>;
               },
               h1({ children }) { return <h1 className="text-sm font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h1>; },
-              h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h2>; },
-              h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h3>; },
-              table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+              h2({ children }) { return <h2 className="text-[13px] font-bold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h2>; },
+              h3({ children }) { return <h3 className="text-[12px] font-semibold mb-1 not-italic text-slate-600 dark:text-slate-300">{children}</h3>; },
+              table({ children }) { return <table className="w-full border-collapse text-[11px] my-1.5">{children}</table>; },
               th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-200/60 dark:bg-slate-700/50 text-left font-semibold not-italic">{children}</th>; },
               td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
             }}
@@ -990,7 +1039,7 @@ function OutputBlock({ text, isRunning }: { text: string; isRunning: boolean }) 
 
   // Otherwise render as markdown
   return (
-    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">
+    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[12px] leading-relaxed text-slate-700 dark:text-slate-300">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1003,29 +1052,34 @@ function OutputBlock({ text, isRunning }: { text: string; isRunning: boolean }) 
                   style={vscDarkPlus}
                   language={match[1]}
                   PreTag="div"
-                  customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                  customStyle={{ fontSize: '11px', borderRadius: '6px', margin: '6px 0', padding: '10px 12px' }}
                 >
                   {codeStr}
                 </SyntaxHighlighter>
               );
             }
-            return <code className="bg-slate-100 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono" {...props}>{children}</code>;
+            if (className === 'language-') {
+              return <pre className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 rounded-lg px-3 py-2 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{codeStr}</pre>;
+            }
+            return <code className="bg-slate-100 dark:bg-slate-700/70 px-1 py-0.5 rounded text-[11px] font-mono text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50" {...props}>{children}</code>;
           },
-          pre({ children }) { return <>{children}</>; },
+          pre({ children }) {
+            return <div className="my-1.5">{children}</div>;
+          },
           p({ children }) { return <p className="mb-1.5 last:mb-0">{children}</p>; },
           ul({ children }) { return <ul className="list-disc pl-4 mb-1.5">{children}</ul>; },
           ol({ children }) { return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>; },
           li({ children }) { return <li className="mb-0.5">{children}</li>; },
-          blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 italic">{children}</blockquote>; },
+          blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 dark:text-slate-400 italic">{children}</blockquote>; },
           h1({ children }) { return <h1 className="text-sm font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h1>; },
-          h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
-          h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
-          table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+          h2({ children }) { return <h2 className="text-[13px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
+          h3({ children }) { return <h3 className="text-[12px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
+          table({ children }) { return <table className="w-full border-collapse text-[11px] my-1.5">{children}</table>; },
           th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-50 dark:bg-slate-800 text-left font-semibold">{children}</th>; },
           td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
         }}
       >
-        {text}
+        {formatThinkingText(text)}
       </ReactMarkdown>
       {isRunning && (
         <span className="inline-block w-1.5 h-3 bg-slate-400 dark:bg-slate-500 animate-pulse ml-0.5 align-middle rounded-sm" />
@@ -1257,7 +1311,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                     ))}
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">
+                    <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[12px] leading-relaxed text-slate-700 dark:text-slate-300">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -1270,24 +1324,27 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                                   style={vscDarkPlus}
                                   language={match[1]}
                                   PreTag="div"
-                                  customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px' }}
+                                  customStyle={{ fontSize: '11px', borderRadius: '6px', margin: '6px 0', padding: '10px 12px' }}
                                 >
                                   {codeStr}
                                 </SyntaxHighlighter>
                               );
                             }
-                            return <code className="bg-slate-100 dark:bg-slate-700/50 px-1 py-0.5 rounded text-[10px] font-mono" {...props}>{children}</code>;
+                            if (className === 'language-') {
+                              return <pre className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 rounded-lg px-3 py-2 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{codeStr}</pre>;
+                            }
+                            return <code className="bg-slate-100 dark:bg-slate-700/70 px-1 py-0.5 rounded text-[11px] font-mono text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50" {...props}>{children}</code>;
                           },
-                          pre({ children }) { return <>{children}</>; },
+                          pre({ children }) { return <div className="my-1.5">{children}</div>; },
                           p({ children }) { return <p className="mb-1.5 last:mb-0">{children}</p>; },
                           ul({ children }) { return <ul className="list-disc pl-4 mb-1.5">{children}</ul>; },
                           ol({ children }) { return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>; },
                           li({ children }) { return <li className="mb-0.5">{children}</li>; },
                           blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 italic">{children}</blockquote>; },
                           h1({ children }) { return <h1 className="text-sm font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h1>; },
-                          h2({ children }) { return <h2 className="text-[12px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
-                          h3({ children }) { return <h3 className="text-[11px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
-                          table({ children }) { return <table className="w-full border-collapse text-[10px] my-1.5">{children}</table>; },
+                          h2({ children }) { return <h2 className="text-[13px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
+                          h3({ children }) { return <h3 className="text-[12px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
+                          table({ children }) { return <table className="w-full border-collapse text-[11px] my-1.5">{children}</table>; },
                           th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-50 dark:bg-slate-800 text-left font-semibold">{children}</th>; },
                           td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
                         }}
