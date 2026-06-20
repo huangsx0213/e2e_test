@@ -54,7 +54,9 @@ const QualityOutputSchema = z.object({
       reason: z.string(),
     })).default([]),
   }))),
-  coverageMatrix: z.object({
+  coverageMatrix: z.preprocess(
+    (v) => v ?? { rows: [], summary: { totalRequirements: 0, totalConditions: 0, totalCases: 0, overallCoverage: 0 } },
+    z.object({
     rows: z.array(CoverageRowSchema),
     summary: z.object({
       totalRequirements: z.coerce.number(),
@@ -62,7 +64,7 @@ const QualityOutputSchema = z.object({
       totalCases: z.coerce.number(),
       overallCoverage: z.coerce.number(),
     }),
-  }),
+  })),
 });
 
 // ============================================================

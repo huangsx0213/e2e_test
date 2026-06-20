@@ -647,9 +647,15 @@ async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Ui
           if (eventType === 'response.output_item.done') {
             const item = data.item;
             if (item?.type === 'function_call' && currentToolCall) {
+              // Use item.arguments if available (more reliable than accumulated deltas)
+              const finalArgs = item.arguments || currentToolCall.args;
+              console.log(`[provider:azure-responses] tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, item.arguments=${item.arguments ? 'present' : 'missing'}, finalArgs=${finalArgs.slice(0, 200)}`);
               try {
-                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
-              } catch {
+                const parsedArgs = JSON.parse(finalArgs);
+                console.log(`[provider:azure-responses] parsed args keys: ${Object.keys(parsedArgs).join(', ')}`);
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
+              } catch (e) {
+                console.warn(`[provider:azure-responses] Failed to parse tool call args for ${currentToolCall.name}: ${finalArgs.slice(0, 200)}, error: ${e}`);
                 yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
               }
               currentToolCall = null;

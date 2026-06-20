@@ -87,40 +87,16 @@ Using the requirement details and technique guidance, derive test conditions wit
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-First, provide your analysis step by step as plain text: walk through each requirement, identify risks, select ISTQB techniques, and explain your reasoning for each test condition. This analysis will be streamed to the user in real-time.
+You can provide your analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-After your analysis, output a JSON block with your structured results. The JSON must be wrapped in \`\`\`json ... \`\`\` markers. The JSON schema:
+**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+
+Tool parameters schema:
 {
   "requirementAnalysis": { "overallApproach": string, "riskAssessmentSummary": string },
   "testConditions": [{ "id": string, "requirementId": string, "condition": string, "category": string, "priority": "critical"|"high"|"medium"|"low", "riskLevel": "high"|"medium"|"low", "primaryTechnique": string, "secondaryTechniques": string[], "techniqueRationale": string, "coverageDimensions": string[], "dataRequirements": string[], "dependencies": string[], "requirementLevel": string }]
 }
-
-Example of valid output:
-\`\`\`json
-{
-  "requirementAnalysis": {
-    "overallApproach": "Risk-based analysis focusing on login authentication flow",
-    "riskAssessmentSummary": "High risk on credential validation, medium on UI feedback"
-  },
-  "testConditions": [
-    {
-      "id": "COND-001",
-      "requirementId": "req-login-ui-validation",
-      "condition": "Verify login form shows inline validation error for empty username",
-      "category": "validation",
-      "priority": "high",
-      "riskLevel": "high",
-      "primaryTechnique": "Equivalence Partitioning",
-      "secondaryTechniques": ["Error Guessing"],
-      "techniqueRationale": "EP is suitable for input field validation scenarios",
-      "coverageDimensions": ["functional", "ui"],
-      "dataRequirements": ["empty string", "whitespace-only string"],
-      "dependencies": [],
-      "requirementLevel": "feature"
-    }
-  ]
-}
-\`\`\``;
+`;
 }
 
 export function buildAnalystUserMessage(state: TestGenState): string {
@@ -194,6 +170,7 @@ Using the requirement details and technique guidance, design detailed test cases
    - Alternative paths
    - Error/exception scenarios
 5. Tag each test case with relevant categories
+6. **The \`draftTestCases\` array MUST contain at least one test case.** Calling \`output_result\` with an empty array will be rejected and retried. If you wrote test cases in your response text, you must also include them in the \`output_result\` tool parameters.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: Get requirement details for accurate test data and preconditions
@@ -209,43 +186,15 @@ Using the requirement details and technique guidance, design detailed test cases
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-First, provide your design rationale step by step as plain text: walk through each test case, explain technique application, test data choices, and coverage rationale. This analysis will be streamed to the user in real-time.
+You can provide your design rationale step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-After your analysis, output a JSON block with your structured results. The JSON must be wrapped in \`\`\`json ... \`\`\` markers. The JSON schema:
+**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+
+Tool parameters schema:
 {
   "draftTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "postconditions": string[], "tags": string[], "selfReview": { "score": number, "strengths": string[], "weaknesses": string[], "suggestions": string[] } }]
 }
-
-Example of valid output:
-\`\`\`json
-{
-  "draftTestCases": [
-    {
-      "id": "DTC-001",
-      "title": "Verify empty username validation error",
-      "conditionId": "COND-001",
-      "requirementId": "req-login-ui-validation",
-      "priority": "high",
-      "category": "validation",
-      "techniqueApplied": "Equivalence Partitioning",
-      "preconditions": ["User is on login page", "No credentials entered"],
-      "testData": ["username: ''", "password: 'validPass123'"],
-      "steps": [
-        { "stepNumber": 1, "action": "Leave username field empty", "expected": "Username field shows no error yet" },
-        { "stepNumber": 2, "action": "Enter valid password and click Login", "expected": "Inline error 'Username is required' appears below username field" }
-      ],
-      "postconditions": ["Login form remains visible", "No API call was made"],
-      "tags": ["login", "validation", "ui"],
-      "selfReview": {
-        "score": 8,
-        "strengths": ["Clear steps", "Realistic test data"],
-        "weaknesses": ["Could add boundary case for whitespace-only username"],
-        "suggestions": ["Add test case for whitespace-only username input"]
-      }
-    }
-  ]
-}
-\`\`\``;
+`;
 }
 
 export function buildDesignerUserMessage(state: TestGenState): string {
@@ -305,61 +254,16 @@ You have access to the following tools — use them when you need to verify info
 ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-First, provide your review analysis step by step as plain text: walk through each dimension, explain changes, and justify coverage ratings. This analysis will be streamed to the user in real-time.
+You can provide your review analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-After your analysis, output a JSON block with your structured results. The JSON must be wrapped in \`\`\`json ... \`\`\` markers. The JSON schema:
+**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+
+Tool parameters schema:
 {
   "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }],
   "coverageMatrix": { "rows": [{ "requirementId": string, "requirementTitle": string, "level": string, "totalConditions": number, "testCaseCount": number, "coveragePercentage": number, "techniqueBreakdown": {}, "categoryBreakdown": {}, "uncoveredRisks": string[] }], "summary": { "totalRequirements": number, "totalConditions": number, "totalCases": number, "overallCoverage": number } }
 }
-
-Example of valid output:
-\`\`\`json
-{
-  "finalTestCases": [
-    {
-      "id": "DTC-001",
-      "title": "Verify empty username validation error",
-      "conditionId": "COND-001",
-      "requirementId": "req-login-ui-validation",
-      "priority": "high",
-      "category": "validation",
-      "techniqueApplied": "Equivalence Partitioning",
-      "preconditions": ["User is on login page", "No credentials entered"],
-      "testData": ["username: ''", "password: 'validPass123'"],
-      "steps": [
-        { "stepNumber": 1, "action": "Leave username field empty", "expected": "Username field shows no error yet" },
-        { "stepNumber": 2, "action": "Click Login", "expected": "Inline error 'Username is required' appears below username field" }
-      ],
-      "tags": ["login", "validation"],
-      "status": "approved",
-      "reviewSummary": "Clear steps, good test data. No changes needed.",
-      "changeLog": []
-    }
-  ],
-  "coverageMatrix": {
-    "rows": [
-      {
-        "requirementId": "req-login-ui-validation",
-        "requirementTitle": "Login form validation",
-        "level": "feature",
-        "totalConditions": 3,
-        "testCaseCount": 4,
-        "coveragePercentage": 90,
-        "techniqueBreakdown": { "Equivalence Partitioning": 3 },
-        "categoryBreakdown": { "validation": 4 },
-        "uncoveredRisks": []
-      }
-    ],
-    "summary": {
-      "totalRequirements": 1,
-      "totalConditions": 3,
-      "totalCases": 4,
-      "overallCoverage": 90
-    }
-  }
-}
-\`\`\``;
+`;
 }
 
 export function buildQualityUserMessage(state: TestGenState): string {

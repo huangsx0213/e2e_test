@@ -23,14 +23,31 @@ export function skillsToChatTools(skills: SkillDefinition[]): ChatOptions['tools
 
 /**
  * 构建 ChatOptions：Phase 1 思考 + ReAct 阶段
+ * 使用 tool-based 方式保证输出格式：模型必须调用 output_result tool 提交最终结果
  */
-export function buildThinkingChatOptions(tools: ChatOptions['tools'], extra?: Partial<ChatOptions>): ChatOptions {
+export function buildThinkingChatOptions(
+  skills: SkillDefinition[],
+  outputSchema: ZodType,
+  extra?: Partial<ChatOptions>,
+): ChatOptions {
+  const { temperature: _ignored, responseFormat: _ignoredFormat, tools: _ignoredTools, toolChoice: _ignoredChoice, ...allowedExtra } = extra ?? {};
+  
+  // 构建工具列表：业务 skills + output_result tool
+  const businessTools = skillsToChatTools(skills);
+  const outputTool = {
+    name: 'output_result',
+    description: 'Submit the final structured result. You MUST call this tool when you are ready to output the final answer. The parameters must match the required schema exactly.',
+    parameters: zodToJsonSchema(outputSchema) as any,
+  };
+  
+  const allTools = [...(businessTools ?? []), outputTool];
+  
   return {
     temperature: 0.3,
     maxTokens: 32768,
-    tools,
-    toolChoice: tools && tools.length > 0 ? 'auto' : undefined,
-    ...extra,
+    tools: allTools,
+    toolChoice: 'auto',
+    ...allowedExtra,
   };
 }
 
@@ -119,25 +136,14 @@ async function runAgentReActLoop(
   provider: AIProvider,
   messages: ChatMessage[],
   skills: SkillDefinition[],
+  outputSchema: ZodType,
   observer: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
   agentName: string,
   extra: Partial<ChatOptions> | undefined,
 ): Promise<ReActResult> {
   const skillMap = new Map(skills.map((s) => [s.name, s]));
-  const tools = skillsToChatTools(skills);
   console.log(`[react:${agentName}] Starting ReAct loop with ${skills.length} skills: ${skills.map(s => s.name).join(', ')}`);
   const allMessages: ChatMessage[] = [...messages];
-  // Inject tool-call constraint when tools are available
-  if (skills.length > 0) {
-    const toolNames = skills.map(s => s.name).join(', ');
-    const constraintIdx = allMessages.findIndex(m => m.role === 'system');
-    if (constraintIdx !== -1) {
-      allMessages[constraintIdx] = {
-        ...allMessages[constraintIdx],
-        content: allMessages[constraintIdx].content + `\n\nIMPORTANT: You can only call the following tools: [${toolNames}]. Do NOT invent or call any tool that is not in this list. If you want to output structured data, include it directly in your text response.`,
-      };
-    }
-  }
   let contentText = '';
   let thinkingText = '';
   const toolCallRecords: ReActResult['toolCallRecords'] = [];
@@ -149,7 +155,7 @@ async function runAgentReActLoop(
     let roundThinking = '';
     const pendingToolCalls: ToolCall[] = [];
 
-    for await (const chunk of provider.streamChat(allMessages, buildThinkingChatOptions(tools, extra))) {
+    for await (const chunk of provider.streamChat(allMessages, buildThinkingChatOptions(skills, outputSchema, extra))) {
       if (chunk.type === 'reasoning' && chunk.content) {
         roundThinking += chunk.content;
         observer?.onThinking?.(agentName, chunk.content, 'reasoning', 'react');
@@ -195,13 +201,68 @@ async function runAgentReActLoop(
 
     console.log(`[react:${agentName}] Round ${round + 1}: ${pendingToolCalls.length} tool calls: ${pendingToolCalls.map(tc => tc.name).join(', ')}`);
 
-    // 执行 tool calls
+    // 检查是否调用了 output_result tool
+    const outputToolCall = pendingToolCalls.find(tc => tc.name === 'output_result');
+    if (outputToolCall) {
+      console.log(`[react:${agentName}] output_result tool called, extracting structured output`);
+      // 解析 tool 参数作为最终输出
+      const outputArgs = typeof outputToolCall.args === 'string' 
+        ? JSON.parse(outputToolCall.args) 
+        : outputToolCall.args;
+      
+      // 立即验证 schema，若失败则注入错误反馈让模型重试（避免进入 Phase 2 浪费一轮 API 调用）
+      try {
+        outputSchema.parse(outputArgs);
+        // 验证通过
+        contentText = JSON.stringify(outputArgs);
+        toolCallRecords.push({ name: 'output_result', input: outputArgs, output: { status: 'success' } });
+        break;
+      } catch (schemaErr: any) {
+        console.warn(`[react:${agentName}] output_result validation failed: ${schemaErr.message?.slice(0, 200)}`);
+        toolCallRecords.push({ name: 'output_result', input: outputArgs, output: { status: 'validation_failed', error: schemaErr.message } });
+        
+        // 格式化 Zod 错误为具体字段路径 + 消息，帮助模型定位问题
+        const zodIssues = (schemaErr as any)?.issues;
+        let feedbackToolContent: string;
+        if (Array.isArray(zodIssues) && zodIssues.length > 0) {
+          const parts = zodIssues.map((issue: any) => {
+            const pathStr = issue.path && Array.isArray(issue.path) && issue.path.length > 0
+              ? issue.path.join('.') : '(root)';
+            return `- ${pathStr}: ${issue.message}`;
+          });
+          feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nFix ALL errors above and call output_result again. Refer to the tool parameters schema in the system prompt for the exact structure.`;
+        } else {
+          feedbackToolContent = `Schema validation failed: ${schemaErr.message?.slice(0, 300)}. Fix and call output_result again.`;
+        }
+        
+        // 追加 assistant message（包含本次 output_result 调用）
+        allMessages.push({
+          role: 'assistant',
+          content: roundContent || null as any,
+          toolCalls: pendingToolCalls.map((tc) => ({
+            type: 'function' as const,
+            function: { name: tc.name, arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args) },
+            id: tc.id,
+          })),
+        });
+        // 注入错误反馈（逐字段说明，可操作性更强）
+        allMessages.push({
+          role: 'tool',
+          content: JSON.stringify({ error: feedbackToolContent }),
+          toolCallId: outputToolCall.id,
+        });
+        
+        continue; // 继续 ReAct 循环，让模型修正
+      }
+    }
+
+    // 执行其他 tool calls
     const toolResults: ChatMessage[] = [];
     for (const tc of pendingToolCalls) {
       const skill = skillMap.get(tc.name);
       if (!skill) {
         console.warn(`[react:${agentName}] Unknown tool call: ${tc.name}`);
-        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. If you want to output structured data, include it directly in your text response instead.` }), toolCallId: tc.id });
+        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. If you want to output structured data, call the output_result tool instead.` }), toolCallId: tc.id });
         continue;
       }
 
@@ -264,6 +325,7 @@ export async function callLLMWithStructuredOutput<T>(
     provider,
     messages,
     skills,
+    outputSchema,
     { onStep: observer?.onStep, onThinking: observer?.onThinking },
     name,
     extra,
