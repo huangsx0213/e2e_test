@@ -125,8 +125,7 @@ export function buildThinkingChatOptions(
   const businessTools = skillsToChatTools(skills);
   
   return {
-    temperature: 0.3,
-    maxTokens: 32768,
+    temperature: 0.5,
     tools: businessTools,
     toolChoice: businessTools && businessTools.length > 0 ? 'auto' : undefined,
     ...allowedExtra,
@@ -144,7 +143,6 @@ export function buildExtractionChatOptions(
   return {
     jsonSchema: outputProfile.toolSchema,
     temperature: 0,
-    maxTokens: 32768,
     ...allowedExtra,
   };
 }

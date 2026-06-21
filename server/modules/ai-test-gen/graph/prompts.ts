@@ -50,13 +50,13 @@ Call **requirement_detail_query** with an ARRAY of ALL requirement IDs from the 
 ### Step 2: Gather Flow Context (Optional)
 If the input has "businessFlowBlueprints", call **flow_detail_query** with ALL blueprint IDs to load full flow details. This is CONTEXT ONLY — understanding how requirements participate in business flows helps you design more realistic test conditions that cover end-to-end scenarios.`}
 
-### Step 2b: Expand Requirement Graph (Recommended)
+### Step 3: Expand Requirement Graph (Recommended)
 Call **requirement_graph_query** with the requirement IDs. If the input has "selectedFlowIds" or "businessFlowBlueprints", also pass them as the **flowId** parameter so the graph includes user-selected flows. This helps ensure your test conditions cover broader integration scenarios and don't miss cross-cutting concerns.
 
-### Step 3: Load ISTQB Technique Guides
+### Step 4: Load ISTQB Technique Guides
 Call **istqb_guide** to load ALL ISTQB technique guides (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing) in a single call. You MUST load at least one technique guide before deriving test conditions.
 
-### Step 4: Derive Test Conditions
+### Step 5: Derive Test Conditions
 Using the requirement details and technique guidance, derive test conditions with proper technique application.
 
 ## Instructions
@@ -86,10 +86,41 @@ Write your analysis as plain text — this will be streamed to the user in real-
 
 After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
 
+Example block:
 \`\`\`json
 {
-  "requirementAnalysis": { "overallApproach": "...", "riskAssessmentSummary": "..." },
-  "testConditions": [ ... ]
+  "requirementAnalysis": {
+    "overallApproach": "Derived 2-4 requirement-focused test conditions per item, using Equivalence Partitioning and Boundary Value Analysis for empty/whitespace validation, Decision Table Testing for credential outcome combinations, State Transition Testing for authentication and session lifecycle behavior, and Use Case Testing for the end-to-end login-to-dashboard flow.",
+    "riskAssessmentSummary": "Authentication and session management are security-sensitive and therefore high risk. Valid login, session establishment, and sign out/session invalidation are critical because defects could lead to unauthorized access, stale sessions, duplicate submissions, or incorrect post-logout access. Loading feedback is medium risk but still important for user experience and submission control."
+  },
+  "testConditions": [
+    {
+      "id": "C-001",
+      "requirementId": "req-aut-auth-login-valid-success",
+      "condition": "Verify that submitting the valid administrator credentials (admin/admin123) authenticates successfully and redirects the user to the main application/dashboard.",
+      "category": "functional",
+      "priority": "critical",
+      "riskLevel": "critical",
+      "primaryTechnique": "Use Case Testing",
+      "secondaryTechniques": [
+        "State Transition Testing",
+        "Equivalence Partitioning"
+      ],
+      "techniqueRationale": "This is the primary happy-path business outcome, so Use Case Testing best validates the end-to-end login flow. State Transition Testing confirms movement from unauthenticated to authenticated state, and EP ensures the valid credential partition is represented.",
+      "coverageDimensions": [
+        "authentication",
+        "positive",
+        "redirect",
+        "access-control"
+      ],
+      "dataRequirements": [
+        "valid username: admin",
+        "valid password: admin123"
+      ],
+      "dependencies": [],
+      "requirementLevel": "AC"
+    },
+  ]
 }
 \`\`\`
 
@@ -99,44 +130,8 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 - Do NOT omit \`requirementAnalysis\` or \`testConditions\` from the block.
 - An empty object \`{}\` is always invalid.
 
-For EVERY object in \`testConditions\`, these fields are mandatory and must never be missing or blank:
-- \`id\`
-- \`requirementId\` must be the exact source requirement ID from the analyzed requirement
-- \`condition\`
-- \`category\` must be explicitly set, for example \`functional\`, \`ui\`, \`api\`, \`boundary\`, \`edge\`, \`error\`, \`validation\`, or \`performance\`
-- \`priority\`
-- \`riskLevel\`
-- \`primaryTechnique\`
-- \`secondaryTechniques\`
-- \`techniqueRationale\`
-- \`coverageDimensions\`
-
 Before closing the \`\`\`json block, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`. Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object.
 
-**IMPORTANT \u2014 Exact JSON syntax required:**
-- Every key must be double-quoted: \`"key"\` not \`key\`.
-- Every string value must be double-quoted: \`"value"\` not \`value\`.
-- No trailing commas before \`]\` or \`}\`.
-- All braces and brackets must be properly closed.
-
-Tool parameters schema (your block must match this shape):
-\`\`\`json
-{
-  "requirementAnalysis": { "overallApproach": "describe your approach here", "riskAssessmentSummary": "describe risks here" },
-  "testConditions": [{ "id": "C-001", "requirementId": "REQ-001", "condition": "describe the condition", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "explain why this technique", "coverageDimensions": ["functional"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" }]
-}
-\`\`\`
-
-Example block:
-\`\`\`json
-{
-  "requirementAnalysis": { "overallApproach": "Equivalence partitioning for input validation, BVT for numeric fields", "riskAssessmentSummary": "Login function carries high risk due to security implications" },
-  "testConditions": [
-    { "id": "C-001", "requirementId": "REQ-001", "condition": "Verify login with valid username and password", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "EP covers valid/invalid equivalence classes for authentication", "coverageDimensions": ["authentication", "security", "positive"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" },
-    { "id": "C-002", "requirementId": "REQ-001", "condition": "Reject login with an invalid password", "category": "error", "priority": "high", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "A separate invalid-password partition must be captured as its own condition", "coverageDimensions": ["authentication", "security", "negative"], "dataRequirements": ["valid username", "invalid password"], "dependencies": [], "requirementLevel": "L1" }
-  ]
-}
-\`\`\`
 `;
 }
 
@@ -224,10 +219,78 @@ Write your design rationale as plain text — this will be streamed to the user 
 - Bullet lists for steps, options, and observations
 
 After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
-
+Example block:
 \`\`\`json
 {
-  "draftTestCases": [ ... ]
+  "draftTestCases": [
+    {
+      "id": "TC-001",
+      "title": "Authenticate with valid administrator credentials and land on the dashboard",
+      "conditionId": "C-001",
+      "requirementId": "req-aut-auth-login-valid-success",
+      "priority": "critical",
+      "category": "functional",
+      "techniqueApplied": "Use Case Testing",
+      "preconditions": [
+        "User is on the login page",
+        "Browser session is clean with no existing authenticated session",
+        "Administrator account exists and is active"
+      ],
+      "testData": [
+        "username = admin",
+        "password = admin123"
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "action": "Enter username 'admin' and password 'admin123' into the login form.",
+          "expected": "The credentials are accepted by the form fields with no client-side validation errors."
+        },
+        {
+          "stepNumber": 2,
+          "action": "Click the Sign in / Login button.",
+          "expected": "Authentication is submitted and the system begins processing the login request."
+        },
+        {
+          "stepNumber": 3,
+          "action": "Wait for authentication to complete.",
+          "expected": "The user is redirected to the main application/dashboard and the dashboard content is displayed."
+        },
+        {
+          "stepNumber": 4,
+          "action": "Verify the dashboard page content after redirect.",
+          "expected": "The dashboard shows the expected main application elements such as navigation, personalized welcome content, and system overview content."
+        }
+      ],
+      "postconditions": [
+        "Authenticated session is created",
+        "Dashboard is accessible for the logged-in user"
+      ],
+      "tags": [
+        "authentication",
+        "login",
+        "dashboard",
+        "session",
+        "smoke",
+        "happy-path"
+      ],
+      "selfReview": {
+        "score": 9,
+        "strengths": [
+          "Covers the full end-to-end success path",
+          "Verifies redirect plus dashboard readiness",
+          "Aligns with the business flow and acceptance criteria"
+        ],
+        "weaknesses": [
+          "Does not inspect every individual dashboard widget"
+        ],
+        "suggestions": [
+          "Add a separate UI layout test for visual content consistency",
+          "Add an API-level session test if needed"
+        ]
+      }
+    },
+  ]
 }
 \`\`\`
 
@@ -237,43 +300,12 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 - The \`draftTestCases\` array MUST contain at least one test case.
 - An empty object \`{}\` is always invalid.
 
-For EVERY object in \`draftTestCases\`, these fields are mandatory and must never be missing or blank:
-- \`id\`
-- \`title\`
-- \`conditionId\`
-- \`requirementId\`
-- \`priority\`
-- \`category\`
-- \`techniqueApplied\`
-- \`preconditions\`
-- \`testData\`
-- \`steps\` with at least one step object containing \`stepNumber\`, \`action\`, and \`expected\`
-- \`selfReview\` with \`score\`, \`strengths\`, \`weaknesses\`, and \`suggestions\`
 
 Before closing the \`\`\`json block, do a final check that:
 - \`draftTestCases\` exists
 - \`draftTestCases.length >= 1\`
 - the first test case object is fully populated
 
-**IMPORTANT \u2014 Exact JSON syntax required:**
-- Every key must be double-quoted: \`"key"\` not \`key\`.
-- Every string value must be double-quoted: \`"value"\` not \`value\`.
-- No trailing commas before \`]\` or \`}\`.
-- All braces and brackets must be properly closed.
-
-Tool parameters schema (your block must match this shape):
-\`\`\`json
-{
-  "draftTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Dashboard shown" }], "postconditions": ["Session created"], "tags": ["smoke"], "selfReview": { "score": 8, "strengths": ["Clear steps"], "weaknesses": ["No negative"], "suggestions": ["Add error case"] } }]
-}
-\`\`\`
-
-Example block:
-\`\`\`json
-{
-  "draftTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page", "Browser session is clean"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter username and password", "expected": "Fields show input values" }, { "stepNumber": 2, "action": "Click Login button", "expected": "Dashboard page is displayed" }], "postconditions": ["Session token created"], "tags": ["smoke", "authentication"], "selfReview": { "score": 8, "strengths": ["Clear steps", "Covers happy path"], "weaknesses": ["No negative scenario"], "suggestions": ["Add invalid credential case"] } }]
-}
-\`\`\`
 `;
 }
 
@@ -335,9 +367,62 @@ Write your review analysis as plain text — this will be streamed to the user i
 
 After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
 
+Example block:
 \`\`\`json
 {
-  "finalTestCases": [ ... ]
+  "finalTestCases": [
+    {
+      "id": "TC-001",
+      "title": "Authenticate with valid administrator credentials and land on the dashboard",
+      "conditionId": "C-001",
+      "requirementId": "req-aut-auth-login-valid-success",
+      "priority": "critical",
+      "category": "functional",
+      "techniqueApplied": "Use Case Testing",
+      "preconditions": [
+        "User is on the login page",
+        "Browser session is clean with no existing authenticated session",
+        "Administrator account exists and is active"
+      ],
+      "testData": [
+        "username = admin",
+        "password = admin123"
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "action": "Enter username 'admin' and password 'admin123' into the login form.",
+          "expected": "The credentials are accepted by the form fields with no client-side validation errors."
+        },
+        {
+          "stepNumber": 2,
+          "action": "Click the Sign in / Login button.",
+          "expected": "Authentication is submitted and the system begins processing the login request."
+        },
+        {
+          "stepNumber": 3,
+          "action": "Wait for authentication to complete.",
+          "expected": "The user is redirected to the main application/dashboard and the dashboard content is displayed."
+        },
+        {
+          "stepNumber": 4,
+          "action": "Verify the dashboard page content after redirect.",
+          "expected": "The dashboard shows the expected main application elements such as navigation, personalized welcome content, and system overview content."
+        }
+      ],
+      "tags": [
+        "authentication",
+        "login",
+        "dashboard",
+        "session",
+        "smoke",
+        "happy-path"
+      ],
+      "status": "approved",
+      "reviewSummary": "Clear happy-path login case with correct end-to-end redirect and dashboard verification.",
+      "changeLog": []
+    },
+  ]
 }
 \`\`\`
 
@@ -346,29 +431,6 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 - The block must contain COMPLETE data: ALL final test cases, not a sample.
 - The \`finalTestCases\` array MUST contain at least one test case.
 - An empty object \`{}\` is always invalid.
-
-For EVERY object in \`finalTestCases\`, these fields are mandatory:
-- \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`priority\`, \`category\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`tags\`, \`status\`, \`reviewSummary\`, \`changeLog\`
-
-**IMPORTANT \u2014 Exact JSON syntax required:**
-- Every key must be double-quoted: \`"key"\` not \`key\`.
-- Every string value must be double-quoted: \`"value"\` not \`value\`.
-- No trailing commas before \`]\` or \`}\`.
-- All braces and brackets must be properly closed.
-
-Tool parameters schema (your block must match this shape):
-\`\`\`json
-{
-  "finalTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Dashboard shown" }], "tags": ["smoke"], "status": "approved", "reviewSummary": "Clear and complete test case", "changeLog": [{ "field": "title", "from": "old title", "to": "new title", "reason": "Clarified step description" }] }]
-}
-\`\`\`
-
-Example block:
-\`\`\`json
-{
-  "finalTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Values shown" }, { "stepNumber": 2, "action": "Click Login", "expected": "Dashboard shown" }], "tags": ["smoke", "login"], "status": "approved", "reviewSummary": "Clear and complete test case covering the happy path", "changeLog": [] }]
-}
-\`\`\`
 `;
 }
 

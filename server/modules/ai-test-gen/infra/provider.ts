@@ -93,6 +93,13 @@ export interface StreamChunk {
   toolCall?: ToolCall;
   toolResult?: unknown;
   usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
+  /**
+   * Native finish reason from the provider. Normalized to 'length' when output
+   * was truncated (Chat Completions finish_reason='length'; Responses API
+   * incomplete_details.reason='max_output_tokens'). Surfaced on the 'done' chunk
+   * so callers can distinguish truncation failures from schema failures.
+   */
+  finishReason?: string;
 }
 
 export interface AIProvider {
@@ -342,7 +349,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     buildBody: (messages, options?) => ({
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_completion_tokens: options?.maxTokens ?? 4096,
+      max_completion_tokens: options?.maxTokens ?? 65536,
       response_format: options?.jsonSchema
         ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
         : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
@@ -388,7 +395,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       model: config.deployment,
       input,
       reasoning: { effort: 'medium', summary: 'auto' },
-      max_output_tokens: options?.maxTokens ?? 4096,
+      max_output_tokens: options?.maxTokens ?? 65536,
       stream: true,
     };
     if (options?.jsonSchema) {
@@ -454,7 +461,7 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
       model: config.model,
       messages,
       temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 8192,
+      max_tokens: options?.maxTokens ?? 65536,
       response_format: options?.jsonSchema
         ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
         : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
@@ -616,6 +623,7 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
   let buffer = '';
   let usageData: any = null;
   let currentToolCall: { id: string; name: string; args: string } | null = null;
+  let finishReason: string | undefined;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -628,6 +636,11 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
           const data = JSON.parse(line.slice(6));
           if (data.usage) {
             usageData = data.usage;
+          }
+          // Capture finish_reason from any chunk that carries it (typically the last).
+          const chunkFinishReason = data.choices?.[0]?.finish_reason;
+          if (chunkFinishReason) {
+            finishReason = chunkFinishReason;
           }
           const delta = data.choices?.[0]?.delta;
           if (delta?.tool_calls) {
@@ -679,7 +692,13 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
       yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
     }
   }
-  yield { type: 'done', content: '', usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
+  // Surface truncation: Chat Completions reports finish_reason='length' when the
+  // response was cut off at max_tokens. This is the most common cause of malformed
+  // JSON in structured-output extraction, so make it visible to callers.
+  if (finishReason === 'length') {
+    Log.for('provider').warn(`Chat Completions stream truncated by max_tokens (finish_reason='length'). Output may be incomplete — JSON parsing may fail downstream.`);
+  }
+  yield { type: 'done', content: '', finishReason, usage: usageData ? { promptTokens: usageData.prompt_tokens ?? 0, completionTokens: usageData.completion_tokens ?? 0, reasoningTokens: usageData.completion_tokens_details?.reasoning_tokens ?? 0 } : undefined };
 }
 
 /** Read SSE stream from the Responses API (Azure OpenAI GPT-5 reasoning models) */
@@ -687,6 +706,7 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
   let buffer = '';
   let usageData: any = null;
   let currentToolCall: { id: string; name: string; args: string } | null = null;
+  let finishReason: string | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -706,6 +726,16 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
           // Capture usage from response.completed
           if (data.response?.usage) {
             usageData = data.response.usage;
+          }
+          // Detect truncation: Responses API marks an incomplete response with
+          // status 'incomplete' and incomplete_details.reason='max_output_tokens'.
+          // response.incomplete and response.completed both carry data.response.
+          if (
+            !finishReason &&
+            data.response?.status === 'incomplete' &&
+            data.response?.incomplete_details?.reason === 'max_output_tokens'
+          ) {
+            finishReason = 'length';
           }
 
           // Reasoning summary text delta
@@ -787,10 +817,16 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
       yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, currentToolCall.args, error, 'responses_stream_end') };
     }
   }
-
+  // Surface truncation: Responses API sets incomplete_details.reason='max_output_tokens'
+  // when output was cut off. This is the most common cause of malformed JSON in
+  // structured-output extraction, so make it visible to callers.
+  if (finishReason === 'length') {
+    Log.for('provider').warn(`Responses API stream truncated by max_output_tokens (incomplete_details.reason='max_output_tokens'). Output may be incomplete — JSON parsing may fail downstream.`);
+  }
   yield {
     type: 'done',
     content: '',
+    finishReason,
     usage: usageData ? {
       promptTokens: usageData.input_tokens ?? 0,
       completionTokens: usageData.output_tokens ?? 0,
