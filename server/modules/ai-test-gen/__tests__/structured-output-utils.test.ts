@@ -81,6 +81,7 @@ describe('callLLMWithStructuredOutput', () => {
 
     const profile = {
       toolSchema: { type: 'object', properties: {} },
+      shouldAttemptPhase1Extraction: (raw: unknown) => !!raw && typeof raw === 'object' && !Array.isArray(raw),
       normalize: vi.fn((raw: any) => raw),
       parse: vi.fn((normalized: any) => normalized),
       formatValidationError: vi.fn(() => 'Schema validation failed'),

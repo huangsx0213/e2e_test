@@ -166,14 +166,14 @@ ${JSON.stringify(schema, null, 2)}`;
  *   2. 从混合文本中提取最后一个完整 JSON 对象
  */
 /**
- * 使用 jsonrepair 库修复 LLM 输出中最常见的 JSON 语法错误：
- * - 缺引号 / 多重引号 / 单引号代替双引号
- * - 缺逗号 / 多余尾部逗号
- * - 括号不配对（截断）
- * - 注释（// 或 /* */）
- * - Python/JS 字面量（None, True, False → null, true, false）
- * - 拼接的 JSON 片段
- * 如果无法修复则返回 null。
+ * Use jsonrepair to fix common LLM JSON syntax errors:
+ * - missing/extra quotes, single quotes instead of double
+ * - missing/trailing commas
+ * - unclosed braces/brackets (truncated output)
+ * - comments (// and block comments)
+ * - Python/JS literals (None, True, False -> null, true, false)
+ * - concatenated JSON fragments
+ * Returns null if repair is not possible.
  */
 function tryRepairJson(text: string): string | null {
   try { return jsonrepair(text); } catch { return null; }
