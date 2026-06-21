@@ -3,6 +3,7 @@ import type { AIProvider, ChatMessage, ChatOptions, ToolCall } from '../../infra
 import type { SkillDefinition } from './types.ts';
 import type { StructuredOutputProfile } from '../structured-output/profile.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import { jsonrepair } from 'jsonrepair';
 
 /**
  * 递归遍历 JSON Schema，确保所有 object 类型都有 strict 约束：
@@ -164,13 +165,45 @@ ${JSON.stringify(schema, null, 2)}`;
  *   1. 整个 content 就是 JSON
  *   2. 从混合文本中提取最后一个完整 JSON 对象
  */
+/**
+ * 使用 jsonrepair 库修复 LLM 输出中最常见的 JSON 语法错误：
+ * - 缺引号 / 多重引号 / 单引号代替双引号
+ * - 缺逗号 / 多余尾部逗号
+ * - 括号不配对（截断）
+ * - 注释（// 或 /* */）
+ * - Python/JS 字面量（None, True, False → null, true, false）
+ * - 拼接的 JSON 片段
+ * 如果无法修复则返回 null。
+ */
+function tryRepairJson(text: string): string | null {
+  try { return jsonrepair(text); } catch { return null; }
+}
+
 function tryExtractJson(content: string): unknown | null {
-  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  // 1. Try extracting from ```json fences first (most reliable)
+  const fencePattern = /```(?:json)\s*\n([\s\S]*?)```/g;
+  const fenceBlocks: string[] = [];
+  let fenceMatch;
+  while ((fenceMatch = fencePattern.exec(content)) !== null) {
+    fenceBlocks.push(fenceMatch[1].trim());
+  }
+  for (let i = fenceBlocks.length - 1; i >= 0; i--) {
+    const raw = fenceBlocks[i];
+    try { return JSON.parse(raw); } catch { /* try repair */ }
+    const repaired = tryRepairJson(raw);
+    if (repaired !== null) try { return JSON.parse(repaired); } catch { /* try next */ }
+  }
+
+  // 2. Strip fences and try parsing whole content
   const stripped = content.replace(/```(?:json)?\s*\n?/g, '').replace(/```/g, '');
+  const candidates = [stripped.trim(), content.trim()];
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch { /* try repair */ }
+    const repaired = tryRepairJson(c);
+    if (repaired !== null) try { return JSON.parse(repaired); } catch { /* try next */ }
+  }
 
-  try { return JSON.parse(stripped.trim()); } catch { /* continue */ }
-  try { return JSON.parse(content.trim()); } catch { /* continue */ }
-
+  // 3. Fall back to brace matching
   const jsonBlocks: string[] = [];
   let searchFrom = 0;
   while (searchFrom < content.length) {
@@ -190,7 +223,10 @@ function tryExtractJson(content: string): unknown | null {
   }
 
   for (let i = jsonBlocks.length - 1; i >= 0; i--) {
-    try { return JSON.parse(jsonBlocks[i]); } catch { /* continue */ }
+    const raw = jsonBlocks[i];
+    try { return JSON.parse(raw); } catch { /* try repair */ }
+    const repaired = tryRepairJson(raw);
+    if (repaired !== null) try { return JSON.parse(repaired); } catch { /* try next */ }
   }
 
   return null;
@@ -458,7 +494,7 @@ export async function callLLMWithStructuredOutput<T>(
         extractionMessages.push({ role: 'assistant', content: extractContent });
         extractionMessages.push({ 
           role: 'user', 
-          content: 'The output was not valid JSON. Please output a single valid JSON object matching the required schema. Do NOT include any markdown formatting or extra text.'
+          content: 'The output was not valid JSON. Common issues: missing commas between properties, unquoted property names (use "key" not key), trailing commas before ] or }, or unclosed braces/brackets. Output a single valid JSON object matching the schema with no extra text.'
         });
       }
     } else {

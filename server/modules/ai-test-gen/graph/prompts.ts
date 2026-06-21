@@ -79,22 +79,25 @@ ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback
 
 ## Output Format
 
-**Two-step output process:**
-
-### Step 1: Write your analysis in text
-Provide your reasoning, findings, and decisions as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+Write your analysis as plain text — this will be streamed to the user in real-time. Use markdown formatting:
 - Short section headings on their own lines
 - Separate sections with blank lines
 - Bullet lists for steps, options, and observations
-- Code fences for JSON, tool arguments, and examples
 
-### Step 2: Stop after the complete analysis
-After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your analysis text and the tool results.
+After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+
+\`\`\`json
+{
+  "requirementAnalysis": { "overallApproach": "...", "riskAssessmentSummary": "..." },
+  "testConditions": [ ... ]
+}
+\`\`\`
 
 **Rules:**
-- Your analysis text is the source material for the automatic extraction pass, so it must contain the full data, not placeholders.
-- Do NOT call \`output_result\`.
-- Do NOT omit top-level concepts like \`requirementAnalysis\` or \`testConditions\` from the analysis you write.
+- The \`\`\`json block must be at the very end of your response — nothing after it.
+- The block must contain the COMPLETE output: ALL test conditions, not a sample or a truncated version.
+- Do NOT omit \`requirementAnalysis\` or \`testConditions\` from the block.
+- An empty object \`{}\` is always invalid.
 
 For EVERY object in \`testConditions\`, these fields are mandatory and must never be missing or blank:
 - \`id\`
@@ -108,25 +111,32 @@ For EVERY object in \`testConditions\`, these fields are mandatory and must neve
 - \`techniqueRationale\`
 - \`coverageDimensions\`
 
-Before finishing your analysis, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`.
+Before closing the \`\`\`json block, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`. Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object.
 
-If the automatic extraction step fails and you receive feedback, revise your analysis so the missing or incorrect fields are stated explicitly. Do NOT rewrite the analysis into a smaller partial structure.
+**IMPORTANT \u2014 Exact JSON syntax required:**
+- Every key must be double-quoted: \`"key"\` not \`key\`.
+- Every string value must be double-quoted: \`"value"\` not \`value\`.
+- No trailing commas before \`]\` or \`}\`.
+- All braces and brackets must be properly closed.
 
-The system will perform a second structured extraction pass automatically.
-
-Tool parameters schema:
+Tool parameters schema (your block must match this shape):
+\`\`\`json
 {
-  "requirementAnalysis": { "overallApproach": string, "riskAssessmentSummary": string },
-  "testConditions": [{ "id": string, "requirementId": string, "condition": string, "category": string, "priority": "critical"|"high"|"medium"|"low", "riskLevel": "high"|"medium"|"low", "primaryTechnique": string, "secondaryTechniques": string[], "techniqueRationale": string, "coverageDimensions": string[], "dataRequirements": string[], "dependencies": string[], "requirementLevel": string }]
+  "requirementAnalysis": { "overallApproach": "describe your approach here", "riskAssessmentSummary": "describe risks here" },
+  "testConditions": [{ "id": "C-001", "requirementId": "REQ-001", "condition": "describe the condition", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "explain why this technique", "coverageDimensions": ["functional"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" }]
 }
+\`\`\`
 
-Example:
+Example block:
+\`\`\`json
 {
   "requirementAnalysis": { "overallApproach": "Equivalence partitioning for input validation, BVT for numeric fields", "riskAssessmentSummary": "Login function carries high risk due to security implications" },
-  "testConditions": [{ "id": "C-001", "requirementId": "REQ-001", "condition": "Verify login with valid username and password", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "EP covers valid/invalid equivalence classes for authentication", "coverageDimensions": ["authentication", "security", "positive"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" }, { "id": "C-002", "requirementId": "REQ-001", "condition": "Reject login with an invalid password", "category": "error", "priority": "high", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "A separate invalid-password partition must be captured as its own condition", "coverageDimensions": ["authentication", "security", "negative"], "dataRequirements": ["valid username", "invalid password"], "dependencies": [], "requirementLevel": "L1" }]
+  "testConditions": [
+    { "id": "C-001", "requirementId": "REQ-001", "condition": "Verify login with valid username and password", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "EP covers valid/invalid equivalence classes for authentication", "coverageDimensions": ["authentication", "security", "positive"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" },
+    { "id": "C-002", "requirementId": "REQ-001", "condition": "Reject login with an invalid password", "category": "error", "priority": "high", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "A separate invalid-password partition must be captured as its own condition", "coverageDimensions": ["authentication", "security", "negative"], "dataRequirements": ["valid username", "invalid password"], "dependencies": [], "requirementLevel": "L1" }
+  ]
 }
-
-Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object. Never rely on surrounding context or the previous object to carry those fields for you.
+\`\`\`
 `;
 }
 
@@ -208,23 +218,24 @@ ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback
 
 ## Output Format
 
-**Two-step output process:**
-
-### Step 1: Write your design rationale in text
-Provide your reasoning and design decisions as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+Write your design rationale as plain text — this will be streamed to the user in real-time. Use markdown formatting:
 - Short section headings on their own lines
 - Separate sections with blank lines
 - Bullet lists for steps, options, and observations
-- Code fences for JSON, tool arguments, and examples
 
-### Step 2: Stop after the complete design analysis
-After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your analysis text and the tool results.
+After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+
+\`\`\`json
+{
+  "draftTestCases": [ ... ]
+}
+\`\`\`
 
 **Rules:**
-- Your analysis text is the source material for the automatic extraction pass, so it must contain the complete test case data.
-- Do NOT call \`output_result\`.
-- The \`draftTestCases\` array MUST contain at least one test case in the design you describe.
-- An empty object \`{}\` is always invalid. If you are not ready to provide a complete \`draftTestCases\` payload yet, keep analyzing instead of ending early.
+- The \`\`\`json block must be at the very end of your response — nothing after it.
+- The block must contain COMPLETE data: ALL draft test cases, not a sample.
+- The \`draftTestCases\` array MUST contain at least one test case.
+- An empty object \`{}\` is always invalid.
 
 For EVERY object in \`draftTestCases\`, these fields are mandatory and must never be missing or blank:
 - \`id\`
@@ -239,24 +250,30 @@ For EVERY object in \`draftTestCases\`, these fields are mandatory and must neve
 - \`steps\` with at least one step object containing \`stepNumber\`, \`action\`, and \`expected\`
 - \`selfReview\` with \`score\`, \`strengths\`, \`weaknesses\`, and \`suggestions\`
 
-Before finishing your analysis, do a final check that:
+Before closing the \`\`\`json block, do a final check that:
 - \`draftTestCases\` exists
 - \`draftTestCases.length >= 1\`
 - the first test case object is fully populated
 
-If the automatic extraction step fails and you receive feedback, revise your analysis so the missing or incorrect fields are stated explicitly. Do NOT rebuild a smaller partial structure or imply \`{}\`.
+**IMPORTANT \u2014 Exact JSON syntax required:**
+- Every key must be double-quoted: \`"key"\` not \`key\`.
+- Every string value must be double-quoted: \`"value"\` not \`value\`.
+- No trailing commas before \`]\` or \`}\`.
+- All braces and brackets must be properly closed.
 
-The system will perform a second structured extraction pass automatically.
-
-Tool parameters schema:
+Tool parameters schema (your block must match this shape):
+\`\`\`json
 {
-  "draftTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "postconditions": string[], "tags": string[], "selfReview": { "score": number, "strengths": string[], "weaknesses": string[], "suggestions": string[] } }]
+  "draftTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Dashboard shown" }], "postconditions": ["Session created"], "tags": ["smoke"], "selfReview": { "score": 8, "strengths": ["Clear steps"], "weaknesses": ["No negative"], "suggestions": ["Add error case"] } }]
 }
+\`\`\`
 
-Example:
+Example block:
+\`\`\`json
 {
   "draftTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page", "Browser session is clean"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter username and password", "expected": "Fields show input values" }, { "stepNumber": 2, "action": "Click Login button", "expected": "Dashboard page is displayed" }], "postconditions": ["Session token created"], "tags": ["smoke", "authentication"], "selfReview": { "score": 8, "strengths": ["Clear steps", "Covers happy path"], "weaknesses": ["No negative scenario"], "suggestions": ["Add invalid credential case"] } }]
 }
+\`\`\`
 `;
 }
 
@@ -311,34 +328,47 @@ ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback
 
 ## Output Format
 
-**Two-step output process:**
-
-### Step 1: Write your review analysis in text
-Provide your review findings as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+Write your review analysis as plain text — this will be streamed to the user in real-time. Use markdown formatting:
 - Short section headings on their own lines
 - Separate sections with blank lines
 - Bullet lists for steps, options, and observations
-- Code fences for JSON, tool arguments, and examples
 
-### Step 2: Stop after the complete review analysis
-After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your review text and the tool results.
+After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+
+\`\`\`json
+{
+  "finalTestCases": [ ... ]
+}
+\`\`\`
 
 **Rules:**
-- Your review analysis is the source material for the automatic extraction pass, so it must contain the complete final-case decisions.
-- Do NOT call \`output_result\`.
-- The \`finalTestCases\` array MUST contain at least one test case in the review you describe.
+- The \`\`\`json block must be at the very end of your response — nothing after it.
+- The block must contain COMPLETE data: ALL final test cases, not a sample.
+- The \`finalTestCases\` array MUST contain at least one test case.
+- An empty object \`{}\` is always invalid.
 
-The system will perform a second structured extraction pass automatically.
+For EVERY object in \`finalTestCases\`, these fields are mandatory:
+- \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`priority\`, \`category\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`tags\`, \`status\`, \`reviewSummary\`, \`changeLog\`
 
-Tool parameters schema:
+**IMPORTANT \u2014 Exact JSON syntax required:**
+- Every key must be double-quoted: \`"key"\` not \`key\`.
+- Every string value must be double-quoted: \`"value"\` not \`value\`.
+- No trailing commas before \`]\` or \`}\`.
+- All braces and brackets must be properly closed.
+
+Tool parameters schema (your block must match this shape):
+\`\`\`json
 {
-  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": "string | null", "to": "string | null", "reason": string }] }]
+  "finalTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Dashboard shown" }], "tags": ["smoke"], "status": "approved", "reviewSummary": "Clear and complete test case", "changeLog": [{ "field": "title", "from": "old title", "to": "new title", "reason": "Clarified step description" }] }]
 }
+\`\`\`
 
-Example:
+Example block:
+\`\`\`json
 {
   "finalTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Values shown" }, { "stepNumber": 2, "action": "Click Login", "expected": "Dashboard shown" }], "tags": ["smoke", "login"], "status": "approved", "reviewSummary": "Clear and complete test case covering the happy path", "changeLog": [] }]
 }
+\`\`\`
 `;
 }
 

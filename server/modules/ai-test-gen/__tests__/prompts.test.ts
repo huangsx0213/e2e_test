@@ -16,9 +16,8 @@ describe('buildAnalystSystemPrompt', () => {
     expect(prompt).toContain('For EVERY object in `testConditions`, these fields are mandatory');
     expect(prompt).toContain('`requirementId` must be the exact source requirement ID');
     expect(prompt).toContain('`category` must be explicitly set');
-    expect(prompt).toContain('If the automatic extraction step fails and you receive feedback');
-    expect(prompt).toContain('Do NOT call `output_result`');
-    expect(prompt).toContain('The system will perform a second structured extraction pass automatically');
+    expect(prompt).toContain('end with a single JSON code block');
+    expect(prompt).toContain('The block must contain the COMPLETE output');
   });
 
   it('includes a multi-condition example where each condition repeats requirementId and category', () => {
@@ -32,8 +31,8 @@ describe('buildAnalystSystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    expect(prompt).toContain('"testConditions": [{ "id": "C-001", "requirementId": "REQ-001"');
-    expect(prompt).toContain('{ "id": "C-002", "requirementId": "REQ-001", "condition": "Reject login with an invalid password", "category": "error"');
+    expect(prompt).toContain('"id": "C-001", "requirementId": "REQ-001"');
+    expect(prompt).toContain('"id": "C-002", "requirementId": "REQ-001"');
     expect(prompt).toContain('Even when two conditions come from the same requirement, repeat `requirementId` and `category` inside every condition object.');
   });
 });
@@ -60,9 +59,8 @@ describe('buildDesignerSystemPrompt', () => {
     expect(prompt).toContain('An empty object `{}` is always invalid');
     expect(prompt).toContain('Do not end your analysis until you have described at least one complete test case for extraction.');
     expect(prompt).toContain('For EVERY object in `draftTestCases`, these fields are mandatory');
-    expect(prompt).toContain('If the automatic extraction step fails and you receive feedback');
-    expect(prompt).toContain('Do NOT call `output_result`');
-    expect(prompt).toContain('The system will perform a second structured extraction pass automatically');
+    expect(prompt).toContain('end with a single JSON code block');
+    expect(prompt).toContain('The block must contain COMPLETE data');
   });
 });
 
@@ -86,7 +84,7 @@ describe('buildQualitySystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    expect(prompt).toContain('Do NOT call `output_result`');
-    expect(prompt).toContain('The system will perform a second structured extraction pass automatically');
+    expect(prompt).toContain('end with a single JSON code block');
+    expect(prompt).toContain('The block must contain COMPLETE data');
   });
 });
