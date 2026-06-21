@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { CURRENT_AGENT_VERSION } from '../../../shared/constants/agent.ts';
+import { Log } from '../../shared/services/logger';
 
 const ROOT_DIR = process.cwd();
 
@@ -134,7 +135,7 @@ node agent.js
         try {
             fs.rmSync(tempDir, { recursive: true, force: true });
         } catch (e) {
-            console.error('Failed to cleanup temp dir:', e);
+            Log.for('agent').error(`Failed to cleanup temp dir: ${e}`);
         }
     }
 }

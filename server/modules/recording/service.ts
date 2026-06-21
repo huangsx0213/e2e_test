@@ -1,6 +1,7 @@
 import { randomId } from '../../shared/utils/index.ts';
 import type { Page, Project, TestStep, UIElement, StepAssertion, ApiEndpoint } from '../../shared/contracts/index.ts';
 import type { StepRecordedEvent, ElementRecordedEvent, ApiRecordedEvent } from '../../../shared/recording/protocol.ts';
+import { Log } from '../../shared/services/logger';
 import type { RecordingIngestService, BroadcastService } from './ingest-service.ts';
 
 function getPageNameFromUrl(url: string): string {
@@ -30,7 +31,7 @@ export class RecordingService {
 
   handleStepRecorded(data: StepRecordedEvent['data']) {
     const { projectId, stepInfo, caseId, suiteId } = data || {};
-    console.log(`[RECORDER WS] handleStepRecorded: action=${stepInfo?.action} caseId=${caseId} suiteId=${suiteId}`);
+    Log.for('recording').info(`handleStepRecorded: action=${stepInfo?.action} caseId=${caseId} suiteId=${suiteId}`);
     const project = this.ingest.getProject(projectId);
     if (!project || !stepInfo) return;
 
@@ -59,9 +60,9 @@ export class RecordingService {
       if (caseId) {
         try {
           this.ingest.addStepToCase(caseId, step);
-          console.log(`[RECORDER WS] Nav step inserted: ${step.id} into case ${caseId}`);
+          Log.for('recording').info(`Nav step inserted: ${step.id} into case ${caseId}`);
         } catch (err) {
-          console.error(`[RECORDER WS] Nav step insert FAILED for case ${caseId}:`, err);
+          Log.for('recording').error(`Nav step insert FAILED for case ${caseId}: ${err}`);
         }
       }
 
@@ -105,15 +106,15 @@ export class RecordingService {
       if (caseId) {
         try {
           this.ingest.addStepToCase(caseId, step);
-          console.log(`[RECORDER WS] UI step inserted: ${step.id} action=${action} into case ${caseId}`);
+          Log.for('recording').info(`UI step inserted: ${step.id} action=${action} into case ${caseId}`);
         } catch (err) {
-          console.error(`[RECORDER WS] UI step insert FAILED for case ${caseId}:`, err);
+          Log.for('recording').error(`UI step insert FAILED for case ${caseId}: ${err}`);
         }
       }
 
       this.broadcast.broadcastToProject(projectId, 'step-recorded', { projectId, step, type: 'UI' as const, caseId, suiteId });
     } catch (err) {
-      console.error(`[RECORDER WS] handleStepRecorded (non-nav) FAILED:`, err);
+      Log.for('recording').error(`handleStepRecorded (non-nav) FAILED: ${err}`);
     }
   }
 
@@ -140,7 +141,7 @@ export class RecordingService {
   handleApiRecorded(data: ApiRecordedEvent['data']) {
     const { projectId, environment, apiInfo, caseId, suiteId } = data || {};
     const { url, method, headers, postData, status } = apiInfo;
-    console.log(`[ApiRecorded] ${method} ${url} -> ${status} (project=${projectId}, case=${caseId})`);
+    Log.for('recording').info(`${method} ${url} -> ${status} (project=${projectId}, case=${caseId})`);
 
     let urlObj: URL;
     try { urlObj = new URL(url); } catch(e) { return; }

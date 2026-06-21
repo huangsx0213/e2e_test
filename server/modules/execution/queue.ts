@@ -1,3 +1,4 @@
+import { Log } from '../../shared/services/logger';
 import EventEmitter from 'events';
 import type { TaskPayload } from '../../../shared/contracts/index.ts';
 
@@ -16,7 +17,7 @@ export class TaskQueue extends EventEmitter {
   enqueue(task: QueuedTask) {
     this.queue.push(task);
     this.emit('task_added', task);
-    console.log(`[QUEUE] Task ${task.id} entered queue at position ${this.queue.length}`);
+    Log.for('queue').info(`Task ${task.id} entered queue at position ${this.queue.length}`);
   }
 
   dequeueNext(availableAgentId: string, tags: string[]): QueuedTask | undefined {
@@ -52,7 +53,7 @@ export class TaskQueue extends EventEmitter {
     const idx = this.queue.findIndex(t => t.id === id);
     if (idx !== -1) {
         this.queue.splice(idx, 1);
-        console.log(`[QUEUE] Aborted queued task ${id}`);
+        Log.for('queue').info(`Aborted queued task ${id}`);
         return true;
     }
     return false;

@@ -1,0 +1,181 @@
+[04:04:25.531] ╔═══════════════════════════════════════════════╗
+[04:04:25.532] ║              PIPELINE START                   ║
+[04:04:25.532] ╚═══════════════════════════════════════════════╝
+[04:04:25.532]   runId         = tgr-20260621-120425-93f253
+[04:04:25.532]   projectId     = p-aut-demo
+[04:04:25.533]   mode          = auto
+[04:04:25.533]   ai.provider   = azure
+[04:04:25.534]   ai.model      = gpt-5.4-mini
+[04:04:25.534]   ai.cache      = off
+[04:04:25.534]   requirements  = 6
+[04:04:25.535]   flows         = 1 (no flow-level cases)
+[04:04:25.535] ═════════════════════════════════════════════════
+
+[04:04:25.605] [context] AI provider ready: azure-openai, model=gpt-5.4-mini
+[04:04:25.610] [context] Requirements indexed: 6 selected, 1 epic
+[04:04:25.613] [context] Business flows: 9 total, 1 selected, 1 blueprint built
+
+[04:04:25.614] ──────────────────────────────────────────────
+[04:04:25.614] BATCH 1/1 START ── epic: req-aut-auth
+[04:04:25.614] ──────────────────────────────────────────────
+[04:04:25.615] [graph] Building LangGraph state graph... 8 nodes
+[04:04:25.616] [graph] Compiling with checkpointer...
+[04:04:25.617] [graph] Compiled ✓
+
+[04:04:25.618] [session] threadId=tgr-20260621-120425-93f253-batch-0
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 1/8 │ preparation                                    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:04:25.627] [preparation] 6 requirements, 1 flow(s), flowMode=false
+[04:04:25.628] [preparation] Environment ready ── 1ms
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 2/8 │ analysis ── test_analyst                       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:04:25.634] [test_analyst] ENTER ── requirements=6, mode=REQUIREMENT-LEVEL
+[04:04:25.636] [test_analyst] Skills available: requirement_detail_query, requirement_graph_query, flow_detail_query, istqb_guide, knowledge_base
+
+[04:04:25.639] [test_analyst] Calling LLM ... (args: 6 requirement IDs)
+
+[04:04:28.867] [test_analyst] ── skill: requirement_detail_query(6 reqs)
+[04:04:29.124] [test_analyst]    → 6/6 found (3ms)
+
+[04:04:31.061] [test_analyst] ── skill: requirement_graph_query(6 reqs, 1 flow)
+[04:04:31.361] [test_analyst]    → graph expanded: +5 related requirements
+[04:04:31.361] [test_analyst]    ↳ req-aut-auth-login-valid
+[04:04:31.361] [test_analyst]    ↳ req-aut-auth-login-invalid
+[04:04:31.361] [test_analyst]    ↳ req-aut-auth-login-feedback
+[04:04:31.361] [test_analyst]    ↳ req-aut-auth-session-establish
+[04:04:31.361] [test_analyst]    ↳ req-aut-auth-session-terminate
+
+[04:04:32.419] [test_analyst] ── skill: istqb_guide(5 techniques)
+[04:04:32.673] [test_analyst]    → 5 guides loaded (15.8 KB)
+
+[04:05:02.326] [test_analyst] Phase 1 JSON invalid ── entering Phase 2 (schema extraction)
+[04:05:02.327] [test_analyst] Phase 2 attempt 1/3 ... extraction successful ✓
+[04:05:11.386] [test_analyst] EXIT ✓
+  Results:
+    ✓ test conditions        = 12
+    ⏱  latency               = 45.8s
+    ⚡ tokens                = 35,529
+    ⚡ LLM calls             = 4
+    ⚡ skill calls           = 3
+
+  Techniques applied:
+    State Transition Testing    5
+    Decision Table Testing      2
+    Use Case Testing            3
+    Equivalence Partitioning    1
+    Boundary Value Analysis     1
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 3/8 │ review-conditions ── checkpoint_1              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:05:11.393] [checkpoint_1] AUTO mode ── auto-pass ✓
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 4/8 │ design ── test_designer                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:05:11.400] [test_designer] ENTER ── conditions=12
+[04:05:11.403] [test_designer] Skills available: requirement_detail_query, requirement_graph_query, flow_detail_query, istqb_guide, knowledge_base
+
+[04:05:15.684] [test_designer] Calling LLM ...
+
+[04:05:15.684] [test_designer] ── skill: requirement_detail_query(6 reqs)
+[04:05:15.693] [test_designer]    → 6/6 cached (1ms each)
+
+[04:05:15.694] [test_designer] ── skill: flow_detail_query(flow-aut-login-to-dashboard)
+[04:05:15.698] [test_designer]    → found (5ms)
+
+[04:05:19.214] [test_designer] ── skill: istqb_guide
+[04:05:19.217] [test_designer]    → 5 guides loaded (2ms)
+
+[04:05:57.705] [test_designer] Phase 1 JSON valid ✓ (no Phase 2 needed)
+[04:05:57.706] [test_designer] EXIT ✓
+  Results:
+    ✓ draft test cases      = 12
+    ⭐ avg self-review      = 8.6 / 10
+    ⏱  latency              = 46.3s
+    ⚡ tokens               = 23,327
+    ⚡ LLM calls            = 3
+    ⚡ skill calls          = 8
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 5/8 │ review-draft ── checkpoint_2                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:05:57.715] [checkpoint_2] AUTO mode ── auto-pass ✓
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 6/8 │ quality ── quality_manager                     ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:05:57.720] [quality_manager] ENTER ── draft cases=12
+[04:05:57.722] [quality_manager] Skills available: requirement_detail_query, knowledge_base
+
+[04:06:01.751] [quality_manager] Calling LLM ...
+
+[04:06:01.751] [quality_manager] ── skill: requirement_detail_query(6 reqs)
+[04:06:01.760] [quality_manager]    → 6/6 cached
+
+[04:06:36.550] [quality_manager] ⚠ Phase 1 JSON invalid ── entering Phase 2
+[04:06:36.551] [quality_manager] Phase 2 attempt 1/3 ── schema validation failed (empty array)
+[04:06:49.761] [quality_manager] Phase 2 attempt 2/3 ── extraction successful ✓
+[04:07:09.245] [quality_manager] EXIT ✓
+  Results:
+    ✓ final test cases      = 12
+        approved            = 9
+        changed             = 3
+        rejected            = 0
+    ✓ coverage              = 6 reqs / 12 conditions / 12 cases (100%)
+    ⏱  latency              = 71.5s
+    ⚡ tokens               = 53,940
+    ⚡ LLM calls            = 4
+    ⚡ skill calls          = 6
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 7/8 │ final-review ── checkpoint_3                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:07:09.255] [checkpoint_3] AUTO mode ── auto-pass ✓
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ STEP 8/8 │ complete                                       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+[04:07:09.261] [complete] Finalizing: 12 test cases, 6 coverage rows
+[04:07:09.271] [complete] Stream complete: 9 steps, threadId=tgr-20260621-120425-93f253-batch-0
+
+[04:07:09.272] ──────────────────────────────────────────────
+[04:07:09.272] BATCH 1/1 COMPLETE ── 12 test cases ✓
+[04:07:09.272] ──────────────────────────────────────────────
+
+[04:07:09.272] ╔═══════════════════════════════════════════════╗
+[04:07:09.272] ║              PIPELINE COMPLETE                ║
+[04:07:09.272] ╚═══════════════════════════════════════════════╝
+  runId           = tgr-20260621-120425-93f253
+  batches         = 1/1
+  test cases      = 12
+  total steps     = 9 (8 graph + 1 transition)
+
+  ┌─────────────────────────────────────────────────────────┐
+  │ Phase              │ Result       │ Time     │ Tokens   │
+  ├─────────────────────────────────────────────────────────┤
+  │ preparation        │ ready        │     1ms  │       —  │
+  │ test_analyst       │ 12 conditions│   45.8s  │  35,529  │
+  │ checkpoint_1       │ auto-pass    │      —   │       —  │
+  │ test_designer      │ 12 drafts    │   46.3s  │  23,327  │
+  │ checkpoint_2       │ auto-pass    │      —   │       —  │
+  │ quality_manager    │ 12 final     │   71.5s  │  53,940  │
+  │ checkpoint_3       │ auto-pass    │      —   │       —  │
+  │ complete           │ finalized    │      —   │       —  │
+  ├─────────────────────────────────────────────────────────┤
+  │ TOTAL              │ 12 cases     │ ~2m 43s  │ 112,796  │
+  └─────────────────────────────────────────────────────────┘
+
+  Coverage:
+    requirements        = 6/6 (100%)
+    test conditions     = 12/12 (100%)
+    final test cases    = 12/12 (100%)
+
+  Quality:
+    approved            = 9
+    changed             = 3
+    rejected            = 0

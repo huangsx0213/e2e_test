@@ -1,3 +1,4 @@
+import { Log } from '../../shared/services/logger';
 import type { TestStep, HeaderProfile, BodyTemplate, ApiEndpoint, LogLevel } from '../../shared/contracts/index.ts';
 import { ExecutionContext } from './context.ts';
 import { interpolate } from './interpolator.ts';
@@ -260,7 +261,7 @@ export async function executeApiStep(
           });
         }
       } catch (err) {
-        console.error(`Extractor ${extractor.name} failed:`, err);
+        Log.for('api-exec').error(`Extractor ${extractor.name} failed: ${err}`);
         extractionLogs.push({
           status: 'WARN',
           level: 'warn',

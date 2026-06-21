@@ -4,6 +4,7 @@ import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { NotFoundError, ValidationError, ConflictError } from '../../shared/http/errors.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { saveSuite } from '../suites/repository.ts';
+import { Log } from '../../shared/services/logger';
 import type { TestSuite } from '../../../shared/contracts/index.ts';
 
 const router = Router();
@@ -42,10 +43,10 @@ router.post('/start', withErrorHandling(async (req, res) => {
       position: 0,
     };
     saveSuite(suite);
-    console.log(`[Recorder] Created draft suite ${suiteId} / case ${caseId} for manual recording`);
+    Log.for('recording').info(`Created draft suite ${suiteId} / case ${caseId} for manual recording`);
   }
 
-  console.log(`[Recorder] Dispatching remote recording to agent ${agentId} for case ${caseId}`);
+  Log.for('recording').info(`Dispatching remote recording to agent ${agentId} for case ${caseId}`);
   agent.ws.send(JSON.stringify({
     event: 'RECORDING_START',
     data: {
@@ -59,7 +60,7 @@ router.post('/start', withErrorHandling(async (req, res) => {
       mode,
     },
   }), (err) => {
-    if (err) console.error(`[Recorder] Failed to send recording start to agent ${agentId}:`, err);
+    if (err) Log.for('recording').error(`Failed to send recording start to agent ${agentId}: ${err}`);
   });
 
   res.json({ success: true, message: 'Recording started on agent', suiteId, caseId });
@@ -77,12 +78,12 @@ router.post('/stop', withErrorHandling(async (req, res) => {
     throw new NotFoundError(`Agent '${agentId}' is not connected`);
   }
 
-  console.log(`[Recorder] Dispatching recording stop to agent ${agentId}`);
+  Log.for('recording').info(`Dispatching recording stop to agent ${agentId}`);
   agent.ws.send(JSON.stringify({
     event: 'RECORDING_STOP',
     data: { agentId },
   }), (err) => {
-    if (err) console.error(`[Recorder] Failed to send recording stop to agent ${agentId}:`, err);
+    if (err) Log.for('recording').error(`Failed to send recording stop to agent ${agentId}: ${err}`);
   });
 
   res.json({ success: true, message: 'Recording stop sent to agent' });

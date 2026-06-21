@@ -8,6 +8,7 @@ import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
 import { QUALITY_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createQualityOutputProfile } from '../structured-output/quality.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
 // Output Schema — only finalTestCases; coverageMatrix is computed in TS
@@ -80,15 +81,15 @@ export function makeQualityNode(opts: QualityNodeOptions) {
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
+    const log = Log.for(agentName);
     const draftCount = (state.approvedDraftCases ?? state.draftTestCases ?? []).length;
     const fb = state.humanReviewFeedback ? `, feedback="${state.humanReviewFeedback.slice(0, 80)}"` : '';
-    console.log(`[test-gen:graph] [${agentName}] ENTER, ${draftCount} draft cases to review${fb}, phase=${state.phase}`);
+    log.info(`ENTER ── ${draftCount} draft cases to review${fb}`);
 
     observer?.onStart?.(agentName);
     observer?.onStep?.(agentName, 0, 'Review 6 dimensions');
 
     try {
-      // Load custom prompt override if available
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildQualitySystemPrompt(state, override?.custom_prompt ?? undefined);
       const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
@@ -104,7 +105,6 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildQualityUserMessage(state) },
       ];
-      console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
@@ -119,7 +119,6 @@ export function makeQualityNode(opts: QualityNodeOptions) {
 
       observer?.onStep?.(agentName, 1, 'Merge human feedback');
 
-      // coverageMatrix 由 TypeScript 编译时计算，不依赖模型输出
       const computedCoverageMatrix = computeCoverageMatrix(
         validated.finalTestCases as Array<{ requirementId: string; techniqueApplied: string; category: string }>,
         (state.currentBatch ?? []).map(r => ({ id: r.id, title: r.title, level: (r as any).level ?? '' })),
@@ -142,8 +141,12 @@ export function makeQualityNode(opts: QualityNodeOptions) {
           ? Math.round(computedCoverageMatrix.rows.reduce((sum, r) => sum + r.coveragePercentage, 0) / computedCoverageMatrix.rows.length)
           : 0,
       };
-      console.log(`[test-gen:graph] [${agentName}] EXIT, ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount}), ${matrixRows} coverage rows, ${skillCallCount} skill calls, tokens=${usage.input + usage.output}, latency=${latencyMs}ms`);
-      console.log(`[test-gen:graph] [${agentName}] Coverage: ${coverageSummary.totalRequirements} reqs, ${coverageSummary.totalConditions} conditions, ${coverageSummary.totalCases} cases, ${coverageSummary.overallCoverage}% overall`);
+      log.success(`EXIT ── ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount})`);
+      log.kv('coverage.rows', matrixRows);
+      log.kv('coverage.summary', `${coverageSummary.totalRequirements} reqs / ${coverageSummary.totalConditions} conditions / ${coverageSummary.overallCoverage}% overall`);
+      log.kv('skill.calls', skillCallCount);
+      log.kv('tokens', usage.input + usage.output);
+      log.kv('latency', `${latencyMs}ms`);
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
       return {

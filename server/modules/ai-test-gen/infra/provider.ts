@@ -1,3 +1,5 @@
+import { Log } from '../../../shared/services/logger.ts';
+
 export interface ExtendedProviderConfig {
   type: 'azure-openai' | 'openai-compatible';
   endpoint?: string;
@@ -178,9 +180,9 @@ export interface Logger {
 }
 
 export const consoleLogger: Logger = {
-  info: (msg) => console.log(msg),
-  warn: (msg) => console.warn(msg),
-  error: (msg) => console.error(msg),
+  info: (msg) => Log.raw(msg),
+  warn: (msg) => Log.raw(`⚠ ${msg}`),
+  error: (msg) => Log.raw(`✖ ${msg}`),
 };
 
 // ─── Circuit Breaker ───
@@ -355,7 +357,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     const url = `${config.endpoint.replace(/\/+$/, '')}/openai/v1/responses`;
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
-    console.log(`[provider:azure-responses] POST${agentTag} ${url} messages=${messages.length}`);
+    Log.for('provider').info(`POST${agentTag} ${url} messages=${messages.length}`);
 
     // Build Responses API input from ChatMessage[]
     // Responses API uses separate items: function_call, function_call_output (not nested tool_calls)
@@ -419,13 +421,13 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     } catch (fetchErr: any) {
       const cause = fetchErr.cause;
       const causeMsg = cause ? ` (cause: ${cause.code || cause.message || cause})` : '';
-      console.error(`[provider:azure-responses] fetch failed${agentTag}: ${fetchErr.message}${causeMsg}, body=${(bodyJson.length / 1024).toFixed(1)}KB, input=${input.length}`);
+      Log.for('provider').error(`fetch failed${agentTag}: ${fetchErr.message}${causeMsg}, body=${(bodyJson.length / 1024).toFixed(1)}KB, input=${input.length}`);
       throw new Error(`Azure OpenAI fetch failed${agentTag}: ${fetchErr.message}${causeMsg} url=${url} body=${(bodyJson.length / 1024).toFixed(1)}KB input=${input.length}`);
     }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[provider:azure-responses] stream error body: ${errorText}`);
+      Log.for('provider').error(`stream error body: ${errorText}`);
       throw new Error(`Azure OpenAI Responses API stream error ${response.status}: ${errorText}`);
     }
 
@@ -570,7 +572,7 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = FETCH_RE
     const code = err.cause?.code || err.code || '';
     if (retries > 0 && TRANSIENT_ERRORS.has(code)) {
       const delay = FETCH_RETRY_DELAY_MS * Math.pow(2, attempt);
-      console.warn(`[fetch-retry] ${code} for ${url}, retrying in ${delay}ms (${retries} left)...`);
+      Log.for('fetch').warn(`${code} for ${url}, retrying in ${delay}ms (${retries} left)...`);
       await new Promise(r => setTimeout(r, delay));
       return fetchWithRetry(url, init, retries - 1, attempt + 1);
     }
@@ -579,10 +581,11 @@ async function fetchWithRetry(url: string, init: RequestInit, retries = FETCH_RE
 }
 
 async function parseChatResponse(response: Response, providerName: string, fetchStart: number, agentTag: string): Promise<ChatResponse> {
-  console.log(`[provider:${providerName}] response ${response.status} in ${Date.now() - fetchStart}ms${agentTag}`);
+  const plog = Log.for('provider');
+  plog.info(`response ${response.status} in ${Date.now() - fetchStart}ms${agentTag}`);
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[provider:${providerName}] error body${agentTag}: ${errorText}`);
+    plog.error(`error body${agentTag}: ${errorText}`);
     const errorPrefix = providerName === 'azure' ? 'Azure OpenAI error'
       : providerName === 'openai-compat' ? 'OpenAI Compatible error'
       : 'Provider error';
@@ -596,7 +599,7 @@ async function parseChatResponse(response: Response, providerName: string, fetch
     id: tc.id,
   }));
   const formatted = formatContent(msg.content);
-  console.log(`[provider:${providerName}] result${agentTag}:${formatted}\n       usage: ${data.usage?.prompt_tokens ?? '?'}in/${data.usage?.completion_tokens ?? '?'}out`);
+  plog.info(`result${agentTag}:${formatted}  usage: ${data.usage?.prompt_tokens ?? '?'}in/${data.usage?.completion_tokens ?? '?'}out`);
   return {
     content: msg.content ?? '',
     reasoningContent: msg.reasoning_content || msg.reasoning || (msg.reasoning_details?.map((rd: any) => rd.text || rd.summary || '').filter(Boolean).join('\n')) || undefined,
@@ -725,7 +728,7 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
               currentToolCall.args += data.delta;
               yield { type: 'tool_call_delta', content: data.delta, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
             } else {
-              console.warn(`[provider:azure-responses] function_call_arguments.delta arrived before active tool call: deltaLen=${String(data.delta).length}`);
+              Log.for('provider').warn(`function_call_arguments.delta arrived before active tool call: deltaLen=${String(data.delta).length}`);
             }
           }
 
@@ -742,7 +745,7 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
                 }
               }
               currentToolCall = { id: item.call_id || item.id, name: item.name, args: '' };
-              console.log(`[provider:azure-responses] tool_call_start for ${currentToolCall.name}: id=${currentToolCall.id}`);
+              Log.for('provider').info(`tool_call_start for ${currentToolCall.name}: id=${currentToolCall.id}`);
               yield { type: 'tool_call_start', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
             }
           }
@@ -751,15 +754,13 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
           if (eventType === 'response.output_item.done') {
             const item = data.item;
             if (item?.type === 'function_call' && currentToolCall) {
-              // Use item.arguments if available (more reliable than accumulated deltas)
               const finalArgs = item.arguments || currentToolCall.args;
-              console.log(`[provider:azure-responses] tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, item.arguments=${item.arguments ? 'present' : 'missing'}, finalArgs=${finalArgs.slice(0, 200)}`);
+              Log.for('provider').info(`tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, item.arguments=${item.arguments ? 'present' : 'missing'}`);
               try {
                 const parsedArgs = JSON.parse(finalArgs);
-                console.log(`[provider:azure-responses] parsed args keys: ${Object.keys(parsedArgs).join(', ')}`);
                 yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
               } catch (e) {
-                console.warn(`[provider:azure-responses] Failed to parse tool call args for ${currentToolCall.name}: ${finalArgs.slice(0, 200)}, error: ${e}`);
+                Log.for('provider').warn(`Failed to parse tool call args for ${currentToolCall.name}: ${finalArgs.slice(0, 200)}, error: ${e}`);
                 yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, finalArgs, e, 'responses_output_item_done') };
               }
               currentToolCall = null;
@@ -767,7 +768,7 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
           }
         } catch (error) {
           if (eventType.startsWith('response.function_call') || eventType === 'response.output_item.added' || eventType === 'response.output_item.done') {
-            console.warn(`[provider:azure-responses] Failed to process SSE event ${eventType}: ${String(error).slice(0, 300)}`);
+            Log.for('provider').warn(`Failed to process SSE event ${eventType}: ${String(error).slice(0, 300)}`);
           }
         }
         eventType = '';
@@ -778,7 +779,7 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
   }
 
   if (currentToolCall) {
-    console.warn(`[provider:azure-responses] fallback tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, preview=${currentToolCall.args.slice(0, 200)}`);
+    Log.for('provider').warn(`fallback tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, preview=${currentToolCall.args.slice(0, 200)}`);
     try {
       const parsedArgs = JSON.parse(currentToolCall.args);
       yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };

@@ -9,6 +9,7 @@ import { TestGenSession } from './session.ts';
 import { buildFallbackConfigs } from './helpers.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
 import type { AIProvider } from './infra/provider.ts';
+import { Log } from '../../shared/services/logger.ts';
 
 export interface RunContext {
   runId: string;
@@ -121,7 +122,7 @@ export class ContextBuilder {
       model: resolvedModel,
       fallbackConfigs: fallbackConfigs as any,
     });
-    console.log(`[context] AI provider created: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
+    Log.for('context').info(`AI provider ready: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
 
     const promptVersion = computePromptVersion();
     const modelName = resolvedModel || providerConfigRow.deployment || 'unknown';

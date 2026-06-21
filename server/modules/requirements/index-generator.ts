@@ -1,4 +1,5 @@
 import { requirementRepo } from './repository.ts';
+import { Log } from '../../shared/services/logger';
 import fs from 'fs';
 import path from 'path';
 
@@ -84,5 +85,5 @@ export function regenerateIndexFile(projectId: string): void {
   const skillsDir = path.resolve(process.cwd(), 'server/modules/ai-test-gen/skills/requirement-index/references');
   if (!fs.existsSync(skillsDir)) { fs.mkdirSync(skillsDir, { recursive: true }); }
   fs.writeFileSync(path.join(skillsDir, 'index.json'), JSON.stringify(index, null, 2));
-  console.log(`[index] Regenerated requirement index for project ${projectId}: ${index.length} entries`);
+  Log.for('index-gen').info(`Regenerated requirement index for project ${projectId}: ${index.length} entries`);
 }

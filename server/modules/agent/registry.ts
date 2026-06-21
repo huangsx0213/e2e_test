@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws';
 import { saveAgent, getAgent, listAgents, AgentRecord } from './repository.ts';
+import { Log } from '../../shared/services/logger';
 
 export interface RemoteAgent extends AgentRecord {
   currentReportId?: string;
@@ -35,7 +36,7 @@ class AgentRegistry {
       lastSeen: Date.now(),
       ws,
     });
-    console.log(`[AGENT_REGISTRY] Agent ${id} (${finalStatus}) updated.`);
+    Log.for('agent').info(`Agent ${id} (${finalStatus}) updated.`);
   }
 
   remove(ws: WebSocket) {
@@ -48,7 +49,7 @@ class AgentRegistry {
                 lastSeen: Date.now()
             });
         }
-        console.log(`[AGENT_REGISTRY] Agent ${id} went offline.`);
+        Log.for('agent').info(`Agent ${id} went offline.`);
         this.activeConnections.delete(id); 
       }
     }

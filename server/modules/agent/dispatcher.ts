@@ -3,6 +3,7 @@ import type { TaskPayload } from '../../../shared/contracts/index.ts';
 import { taskQueue } from '../execution/queue.ts';
 import EventEmitter from 'events';
 import { getActiveRunLogger } from '../execution/run-registry.ts';
+import { Log } from '../../shared/services/logger';
 
 export const agentDispatcherEvents = new EventEmitter();
 
@@ -45,7 +46,7 @@ function assignTaskToAgent(agent: any, task: any) {
     agentDispatcherEvents.removeListener(`COMPLETE_${task.payload.reportId}`, onComplete);
     agentDispatcherEvents.removeListener(`REJECTED_${task.payload.reportId}`, onRejected);
     
-    console.log(`[DISPATCHER] Task ${task.payload.reportId} rejected by agent ${agent.id}. Re-queueing...`);
+    Log.for('dispatcher').info(`Task ${task.payload.reportId} rejected by agent ${agent.id}. Re-queueing...`);
     task.status = 'pending';
     taskQueue.enqueue(task);
     // checkQueue is called inside enqueue

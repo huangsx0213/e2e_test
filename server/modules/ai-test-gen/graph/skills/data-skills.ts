@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { businessFlowRepo } from '../../../business-flows/repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
 // Query cache — prevents LLM from re-querying same IDs
@@ -35,10 +36,11 @@ export const requirementDetailQuery: SkillDefinition = {
     for (const id of ids) {
       if (reqDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
     }
+    const rqLog = Log.for('skill:req_detail_query');
     if (cached.length > 0) {
-      console.log(`[skill:requirement_detail_query] Cache hit: ${cached.length} already queried, ${newIds.length} new`);
-    } else {
-      console.log(`[skill:requirement_detail_query] ${newIds.length > 1 ? `Batch querying ${newIds.length} requirements` : `Querying requirement ${newIds[0]}`}`);
+      rqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
+    } else if (newIds.length > 0) {
+      rqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} requirements` : `Querying requirement ${newIds[0]}`);
     }
 
     const queryOne = (id: string) => {
@@ -93,7 +95,7 @@ export const requirementDetailQuery: SkillDefinition = {
     }
 
     if (newIds.length > 0) {
-      console.log(`[skill:requirement_detail_query] Found ${found}/${ids.length} requirements (${cached.length} from cache)`);
+      rqLog.info(`Found ${found}/${ids.length} requirements (${cached.length} cached)`);
     }
 
     return isBatch ? merged : merged[ids[0]];
@@ -111,22 +113,21 @@ export const relatedRequirementsQuery: SkillDefinition = {
     requirementId: z.string().describe('The requirement ID to find relations for'),
   }),
   func: async (args) => {
+    const rrqLog = Log.for('skill:related_req_query');
     const requirementId = args.requirementId as string;
-    console.log(`[skill:related_requirements_query] Querying relations for ${requirementId}`);
+    rrqLog.info(`Querying relations for ${requirementId}`);
     const req = requirementRepo.get(requirementId);
     if (!req) {
-      console.warn(`[skill:related_requirements_query] Requirement ${requirementId} not found`);
+      rrqLog.warn(`Requirement ${requirementId} not found`);
       return { error: `Requirement ${requirementId} not found` };
     }
 
     const allReqs = requirementRepo.listByProject(req.projectId);
 
-    // Siblings: same parent, different ID
     const siblings = req.parentId
       ? allReqs.filter((r) => r.parentId === req.parentId && r.id !== req.id)
       : [];
 
-    // Upstream dependencies
     const dependencies = (req.dependencies || [])
       .map((depId) => {
         const dep = allReqs.find((r) => r.id === depId);
@@ -136,12 +137,11 @@ export const relatedRequirementsQuery: SkillDefinition = {
       })
       .filter(Boolean);
 
-    // Downstream dependents
     const dependents = allReqs
       .filter((r) => (r.dependencies || []).includes(requirementId))
       .map((r) => ({ id: r.id, title: r.title, level: r.level }));
 
-    console.log(`[skill:related_requirements_query] Found: ${siblings.length} siblings, ${dependencies.length} deps, ${dependents.length} dependents`);
+    rrqLog.info(`Found: ${siblings.length} siblings, ${dependencies.length} deps, ${dependents.length} dependents`);
 
     return {
       siblings: siblings.map((s) => ({
@@ -173,16 +173,16 @@ export const requirementGraphQuery: SkillDefinition = {
     const rawFlowId = args.flowId;
     const selectedFlowIds: string[] = rawFlowId ? (Array.isArray(rawFlowId) ? rawFlowId : [rawFlowId]) : [];
 
-    console.log(`[skill:requirement_graph_query] Expanding graph from ${seedIds.length} seed requirement(s)${selectedFlowIds.length > 0 ? `, ${selectedFlowIds.length} selected flow(s)` : ''}`);
+    const rgqLog = Log.for('skill:req_graph_query');
+    rgqLog.info(`Expanding graph from ${seedIds.length} seed(s)${selectedFlowIds.length > 0 ? `, ${selectedFlowIds.length} selected flow(s)` : ''}`);
 
-    // Resolve project from first valid seed
     let projectId = '';
     for (const id of seedIds) {
       const r = requirementRepo.get(id);
       if (r) { projectId = r.projectId; break; }
     }
     if (!projectId) {
-      console.warn('[skill:requirement_graph_query] No valid seed requirements found');
+      rgqLog.warn('No valid seed requirements found');
       return { error: 'No valid seed requirements found' };
     }
 
@@ -269,14 +269,12 @@ export const requirementGraphQuery: SkillDefinition = {
       .filter(Boolean)
       .map((f) => f!.name);
 
-    console.log(
-      `[skill:requirement_graph_query] Graph expanded: +${introducedReqIds.length} related requirements, +${introducedFlowsNames.length} discovered flows, ${selectedFlowIds.length} user-selected flows`,
-    );
+    rgqLog.info(`Graph expanded: +${introducedReqIds.length} related, +${introducedFlowsNames.length} flows, ${selectedFlowIds.length} user-selected`);
     if (introducedReqIds.length > 0) {
-      console.log(`[skill:requirement_graph_query] Introduced requirements: ${introducedReqIds.join(', ')}`);
+      rgqLog.info(`Introduced requirements: ${introducedReqIds.join(', ')}`);
     }
     if (introducedFlowsNames.length > 0) {
-      console.log(`[skill:requirement_graph_query] Introduced flows: ${introducedFlowsNames.join(', ')}`);
+      rgqLog.info(`Introduced flows: ${introducedFlowsNames.join(', ')}`);
     }
 
     return {
@@ -306,16 +304,16 @@ export const flowDetailQuery: SkillDefinition = {
     const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
     const isBatch = ids.length > 1 || Array.isArray(rawId);
 
-    // Dedup: separate cached vs new
+    const fdqLog = Log.for('skill:flow_detail_query');
     const cached: string[] = [];
     const newIds: string[] = [];
     for (const id of ids) {
       if (flowDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
     }
     if (cached.length > 0) {
-      console.log(`[skill:flow_detail_query] Cache hit: ${cached.length} already queried, ${newIds.length} new`);
-    } else {
-      console.log(`[skill:flow_detail_query] ${newIds.length > 1 ? `Batch querying ${newIds.length} flows` : `Querying flow ${newIds[0]}`}`);
+      fdqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
+    } else if (newIds.length > 0) {
+      fdqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} flows` : `Querying flow ${newIds[0]}`);
     }
 
     const queryOne = (flowId: string) => {
@@ -371,7 +369,7 @@ export const flowDetailQuery: SkillDefinition = {
     }
 
     if (newIds.length > 0) {
-      console.log(`[skill:flow_detail_query] Found ${found}/${ids.length} flows (${cached.length} from cache)`);
+      fdqLog.info(`Found ${found}/${ids.length} flows (${cached.length} cached)`);
     }
 
     return isBatch ? merged : merged[ids[0]];

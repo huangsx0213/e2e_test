@@ -1,3 +1,4 @@
+import { Log } from './shared/services/logger';
 import path from 'node:path';
 
 import { saveBodyTemplate } from './modules/bodies/repository.ts';
@@ -120,7 +121,7 @@ function seedBusinessConfig(): void {
 export function seedDefaults(): void {
   clearAllData();
   seedBusinessConfig();
-  console.log('✅ Database reset and business config seed data applied!');
+  Log.for('seed').info('Database reset and business config seed data applied!');
 }
 
 if (path.basename(process.argv[1] || '') === 'seed.ts') {

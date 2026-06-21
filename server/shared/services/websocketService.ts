@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import { globalEventBus } from './eventBus.ts';
+import { Log } from './logger';
 
 class WebSocketService {
   private wss: WebSocketServer | null = null;
@@ -10,7 +11,7 @@ class WebSocketService {
   initialize(server: Server) {
     this.wss = new WebSocketServer({ server });
     const AGENT_SECRET = process.env.AGENT_SECRET || '';
-    console.log(`[WS_SERVER] Initialized. Agent Security: ${AGENT_SECRET ? 'ENABLED' : 'DISABLED'}`);
+    Log.for('ws').info(`Initialized. Agent Security: ${AGENT_SECRET ? 'ENABLED' : 'DISABLED'}`);
 
     this.wss.on('connection', (ws, req) => {
       const incomingSecret = req.headers['x-agent-secret'];
@@ -32,7 +33,7 @@ class WebSocketService {
             globalEventBus.emit(parsed.event, parsed.data, ws);
           }
         } catch (e) {
-          console.error('Error handling WS message:', e);
+          Log.for('ws').error(`Error handling WS message: ${e}`);
         }
       });
 

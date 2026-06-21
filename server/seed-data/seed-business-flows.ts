@@ -1,3 +1,4 @@
+import { Log } from '../shared/services/logger';
 import { businessFlowRepo } from '../modules/business-flows/repository.ts';
 import type { BusinessFlow } from '../../shared/contracts/index.ts';
 
@@ -230,9 +231,9 @@ export function seedBusinessFlows(): void {
     count++;
   }
   if (count > 0) {
-    console.log(`Seeded ${count} new business flows (skipped ${flows.length - count} existing).`);
+    Log.for('seed').info(`Seeded ${count} new business flows (skipped ${flows.length - count} existing).`);
   } else {
-    console.log(`All ${flows.length} business flows already exist, skipped.`);
+    Log.for('seed').info(`All ${flows.length} business flows already exist, skipped.`);
   }
 }
 

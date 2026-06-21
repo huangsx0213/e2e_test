@@ -1,3 +1,4 @@
+import { Log } from '../shared/services/logger';
 import '../shared/services/fileLogger.ts';
 
 import express from 'express';
@@ -59,9 +60,7 @@ export async function startServer() {
 
   const server = app.listen(PORT, '0.0.0.0', () => {
     const internalIp = getInternalIp();
-    console.log(`Server running on:`);
-    console.log(`  - Local:   http://localhost:${PORT}`);
-    console.log(`  - Network: http://${internalIp}:${PORT}`);
+    Log.for('server').info(`Server running on:\n  - Local:   http://localhost:${PORT}\n  - Network: http://${internalIp}:${PORT}`);
   });
 
   wsService.initialize(server);
@@ -72,6 +71,6 @@ export async function startServer() {
 
   // Recover any HITL runs that were waiting before restart
   recoverInterruptedTestGenRuns().catch(err => {
-    console.error('[Server] Failed to recover interrupted test gen runs:', err);
+    Log.for('server').error(`Failed to recover interrupted test gen runs: ${err}`);
   });
 }

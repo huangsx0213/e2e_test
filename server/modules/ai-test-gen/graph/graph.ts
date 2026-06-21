@@ -8,6 +8,7 @@ import { makeQualityNode } from './nodes/quality.ts';
 import { makeCheckpoint } from './nodes/checkpoints.ts';
 import { makeCompleteNode } from './nodes/complete.ts';
 import type { AgentObserver } from './nodes/types.ts';
+import { Log } from '../../../shared/services/logger.ts';
 
 export interface BuildGraphOptions {
   provider: AIProvider;
@@ -23,10 +24,8 @@ export interface BuildGraphOptions {
 export function buildTestGenGraph(opts: BuildGraphOptions) {
   const { observer, timeoutMs = 600_000, signal, checkpointer } = opts;
 
-  // 创建 ChatModel 实例
-  // 实际使用时应根据 provider.type 创建对应的 ChatModel
-  // 这里提供接口，由上层注入 model
-  console.log(`[test-gen:graph] building LangGraph state graph with 8 nodes...`);
+  const log = Log.for('graph');
+  log.info('Building LangGraph state graph with 8 nodes...');
 
   // 创建各节点
   const preparationNode = makePreparationNode({ observer });
@@ -70,9 +69,9 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
   graph.addEdge('quality', 'checkpoint_3');
   graph.addEdge('complete', END);
 
-  console.log(`[test-gen:graph] compiling graph${checkpointer ? ' with checkpointer' : ''}...`);
+  log.info(`Compiling graph${checkpointer ? ' with checkpointer' : ''}...`);
   const compiled = graph.compile({ checkpointer });
-  console.log(`[test-gen:graph] graph compiled`);
+  log.success('Graph compiled');
 
   return compiled;
 }

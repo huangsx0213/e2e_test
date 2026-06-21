@@ -1,3 +1,4 @@
+import { Log } from '../shared/services/logger';
 import { db } from '../shared/db/client.ts';
 import type { Migration } from './types.ts';
 
@@ -15,7 +16,7 @@ export const migration002EnvironmentVariables: Migration = {
         `);
       }
     } catch (error) {
-      console.error('Migration 002 failed:', error);
+      Log.for('migrate').error(`Migration 002 failed: ${error}`);
       throw error;
     }
   },

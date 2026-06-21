@@ -1,5 +1,6 @@
+import { Log } from './shared/services/logger';
 import { runMigrations } from './migrations/index.ts';
 
 runMigrations();
 
-console.log('Migrations complete');
+Log.for('migrate').info('Migrations complete');

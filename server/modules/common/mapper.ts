@@ -1,6 +1,7 @@
 import type { TestStep } from '../../shared/contracts/index.ts';
 import type { DbStepRow } from '../../shared/db/types.ts';
 import { asId, asOptionalText, asText, textFromDb } from '../../shared/utils/index.ts';
+import { Log } from '../../shared/services/logger';
 
 export function normalizeStep(input: Partial<TestStep>): TestStep {
   return {
@@ -40,7 +41,7 @@ export function deserializeStep(row: DbStepRow): TestStep {
     if (row.network_mocks) networkMocks = JSON.parse(row.network_mocks);
     if (row.metadata) metadata = JSON.parse(row.metadata);
   } catch (e) {
-    console.error('Failed to parse step JSON fields', e);
+    Log.for('mapper').error(`Failed to parse step JSON fields: ${e}`);
   }
 
 return {

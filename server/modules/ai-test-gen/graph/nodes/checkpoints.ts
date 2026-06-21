@@ -1,6 +1,7 @@
 import { Command, interrupt } from '@langchain/langgraph';
 import { PHASE_BY_CHECKPOINT } from '../state';
 import type { TestGenState, Phase } from '../state';
+import { Log } from '../../../../shared/services/logger.ts';
 
 interface CheckpointInterruptPayload {
   checkpointNumber: number;
@@ -34,10 +35,11 @@ type CheckpointResponse = {
 
 export function makeCheckpoint(checkpointNum: number) {
   return (state: TestGenState): Command => {
+    const log = Log.for(`checkpoint_${checkpointNum}`);
     const phase = PHASE_BY_CHECKPOINT[checkpointNum] ?? `checkpoint_${checkpointNum}` as Phase;
 
     if (state.mode === 'auto') {
-      console.log(`[test-gen:graph] [checkpoint_${checkpointNum}] AUTO mode, auto-passing`);
+      log.info('AUTO mode ── auto-pass ✓');
       // Auto 模式：直接通过，数据保持不变
       if (checkpointNum === 1) {
         return new Command({
@@ -69,20 +71,20 @@ export function makeCheckpoint(checkpointNum: number) {
     switch (checkpointNum) {
       case 1: {
         const tcCount = state.testConditions?.length ?? 0;
-        console.log(`[test-gen:graph] [checkpoint_1] ENTER, ${tcCount} conditions awaiting review`);
+        log.info(`ENTER ── ${tcCount} conditions awaiting review`);
         payload.conditions = state.testConditions;
         payload.analysis = state.requirementAnalysis;
         break;
       }
       case 2: {
         const draftCount = state.draftTestCases?.length ?? 0;
-        console.log(`[test-gen:graph] [checkpoint_2] ENTER, ${draftCount} draft cases awaiting review`);
+        log.info(`ENTER ── ${draftCount} draft cases awaiting review`);
         payload.cases = state.draftTestCases;
         break;
       }
       case 3: {
         const finalCount = state.finalTestCases?.length ?? 0;
-        console.log(`[test-gen:graph] [checkpoint_3] ENTER, ${finalCount} final cases awaiting review`);
+        log.info(`ENTER ── ${finalCount} final cases awaiting review`);
         payload.cases = state.finalTestCases;
         payload.matrix = state.coverageMatrix;
         break;
@@ -92,7 +94,7 @@ export function makeCheckpoint(checkpointNum: number) {
     const response = interrupt<CheckpointResponse>(payload);
 
     if (response?.retry) {
-      console.log(`[test-gen:graph] [checkpoint_${checkpointNum}] retry requested, returning to ${RETURN_AGENT[checkpointNum]}`);
+      log.info(`Retry requested ── returning to ${RETURN_AGENT[checkpointNum]}`);
       return new Command({
         goto: RETURN_AGENT[checkpointNum],
         update: { humanReviewFeedback: response.feedback ?? '' },
@@ -103,7 +105,7 @@ export function makeCheckpoint(checkpointNum: number) {
     switch (checkpointNum) {
       case 1: {
         const approved = response?.conditions?.length ?? state.testConditions?.length ?? 0;
-        console.log(`[test-gen:graph] [checkpoint_1] EXIT, ${approved} conditions approved`);
+        log.success(`EXIT ── ${approved} conditions approved`);
         return new Command({
           goto: NEXT_AGENT[checkpointNum],
           update: {
@@ -115,7 +117,7 @@ export function makeCheckpoint(checkpointNum: number) {
       }
       case 2: {
         const approved = response?.cases?.length ?? state.draftTestCases?.length ?? 0;
-        console.log(`[test-gen:graph] [checkpoint_2] EXIT, ${approved} draft cases approved`);
+        log.success(`EXIT ── ${approved} draft cases approved`);
         return new Command({
           goto: NEXT_AGENT[checkpointNum],
           update: {
@@ -126,7 +128,7 @@ export function makeCheckpoint(checkpointNum: number) {
         });
       }
       case 3: {
-        console.log(`[test-gen:graph] [checkpoint_3] EXIT, test generation complete`);
+        log.success('EXIT ── test generation complete');
         return new Command({
           goto: NEXT_AGENT[checkpointNum],
           update: {

@@ -1,3 +1,4 @@
+import { Log } from '../../shared/services/logger';
 import { chromium, type Browser, type BrowserContext, type Page, type Locator } from 'playwright';
 import { JSONPath } from 'jsonpath-plus';
 import type { TestStep, LogLevel, StepAssertion } from '../../shared/contracts/index.ts';
@@ -359,15 +360,15 @@ export class UIExecutor {
           const target = finalLocator.first();
           if (!options?.skipActionabilityCheck) {
             await target.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {
-              console.warn(`Element found via ${methodInfo} but not visible.`);
+              Log.for('ui-exec').warn(`Element found via ${methodInfo} but not visible.`);
             });
           }
 
-          console.log(`[EXEC] Successfully resolved element via: ${methodInfo}`);
+          Log.for('ui-exec').info(`Successfully resolved element via: ${methodInfo}`);
           return target;
         } catch (e) {
           lastError = e;
-          console.warn(`[EXEC] Locator failed: ${methodInfo}. Trying next...`);
+          Log.for('ui-exec').warn(`Locator failed: ${methodInfo}. Trying next...`);
           continue;
         }
       }
@@ -837,7 +838,7 @@ break;
                 });
               }
             } catch (err) {
-              console.error(`Network Extractor ${ext.name} failed:`, err);
+              Log.for('ui-exec').error(`Network Extractor ${ext.name} failed: ${err}`);
               logs.push({
                 status: 'WARN',
                 level: 'warn',
@@ -870,7 +871,7 @@ break;
           } else {
             // For element-based extractors, we need a target
             if (!resolvedSelector) {
-              console.warn(`Extractor ${extractor.name} requires a target element.`);
+              Log.for('ui-exec').warn(`Extractor ${extractor.name} requires a target element.`);
               continue;
             }
             const locator = await getSmartLocator({ skipActionabilityCheck: true });
@@ -905,7 +906,7 @@ break;
             });
           }
         } catch (err) {
-          console.error(`UI Extractor ${extractor.name} failed:`, err);
+          Log.for('ui-exec').error(`UI Extractor ${extractor.name} failed: ${err}`);
           logs.push({
             status: 'WARN',
             level: 'warn',
@@ -982,7 +983,7 @@ const anyFailed = hasFailedAssertions(results);
       const buffer = await this.page.screenshot({ type: 'jpeg', quality: SCREENSHOT_QUALITY });
       return `data:image/jpeg;base64,${buffer.toString('base64')}`;
     } catch (e) {
-      console.error('Screenshot failed:', e);
+      Log.for('ui-exec').error(`Screenshot failed: ${e}`);
       return '';
     }
   }

@@ -4,6 +4,7 @@ import { getAgent, deleteAgent, saveAgent } from './repository.ts';
 import { agentLogBuffer } from './log-buffer.ts';
 import { createAgentPackage } from './agent-bundler.ts';
 import os from 'os';
+import { Log } from '../../shared/services/logger';
 
 const router = Router();
 
@@ -114,14 +115,14 @@ router.get('/download', async (req, res) => {
       serverUrl = `${protocol}://${host}`;
     }
 
-    console.log(`[AGENT_DOWNLOAD] Generating package for server: ${serverUrl}`);
+    Log.for('agent').info(`Generating package for server: ${serverUrl}`);
     const zipBuffer = await createAgentPackage(serverUrl);
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename=quantum-qa-agent.zip');
     res.send(zipBuffer);
   } catch (err) {
-    console.error('[AGENT_DOWNLOAD] Failed to generate package:', err);
+    Log.for('agent').error(`Failed to generate package: ${err}`);
     res.status(500).json({ error: 'Failed to generate agent package' });
   }
 });

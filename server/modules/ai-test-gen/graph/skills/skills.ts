@@ -8,6 +8,7 @@ import {
   requirementGraphQuery,
   flowDetailQuery,
 } from './data-skills.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -40,7 +41,7 @@ function createKnowledgeSkill(mdFilePath: string): SkillDefinition {
     }),
     func: async ({ context }) => {
       const content = readFileSync(mdFilePath, 'utf-8');
-      console.log(`[skill:${skillName}] Loaded knowledge (${content.length} chars)${context ? `, context: ${String(context).slice(0, 60)}` : ''}`);
+      Log.for(`skill:${skillName}`).info(`Loaded (${content.length} chars)${context ? `, context: ${String(context).slice(0, 60)}` : ''}`);
       return context ? `${content}\n\n---\nApplying to your context: ${context}` : content;
     },
   };
@@ -56,7 +57,7 @@ function loadKnowledgeSkills(): SkillDefinition[] {
     const files = readdirSync(knowledgeDir).filter((f) => f.endsWith('.md') && !f.startsWith('istqb-'));
     return files.map((f) => createKnowledgeSkill(join(knowledgeDir, f)));
   } catch (err: any) {
-    console.warn(`[skills] Knowledge directory not found or empty (${knowledgeDir}): ${err.message}`);
+    Log.for('skills').warn(`Knowledge directory not found or empty (${knowledgeDir}): ${err.message}`);
     return [];
   }
 }
@@ -122,7 +123,7 @@ const istqbGuideSkill: SkillDefinition = {
       return content;
     });
     const combined = parts.join('\n\n---\n\n');
-    console.log(`[skill:istqb_guide] Loaded ${selectedFiles.length}/${ISTQB_GUIDE_FILES.length} technique guides (${combined.length} chars total)`);
+    Log.for('skill:istqb_guide').info(`Loaded ${selectedFiles.length}/${ISTQB_GUIDE_FILES.length} guides (${combined.length} chars)`);
     return context
       ? `${combined}\n\n---\nApplying to your context: ${context}`
       : combined;

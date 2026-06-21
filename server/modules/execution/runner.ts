@@ -1,3 +1,4 @@
+import { Log } from '../../shared/services/logger';
 import type {
   TestSuite,
   ExecutionRequest,
@@ -91,7 +92,7 @@ async function executeRunAsync(
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const isAborted = signal.aborted;
-    console.error(`[EXEC] Execution failed: ${message}`);
+    Log.for('exec').error(`Execution failed: ${message}`);
 
     logger.log({
       stepId: 'error',
@@ -214,7 +215,7 @@ async function dispatchExecution(
   };
 
   if (request.agentId) {
-    console.log(`[EXEC] Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
+    Log.for('exec').info(`Dispatching task to agent ${request.agentId}: ${displayName} (${runId})`);
     const { dispatchToAgent } = await import('../agent/dispatcher.ts');
     return await dispatchToAgent(request.agentId, payload) as any;
   }
@@ -226,18 +227,18 @@ async function dispatchExecution(
   };
 
   if (request.type === 'case') {
-    console.log(`[EXEC] Starting case execution for: ${displayName}`);
+    Log.for('exec').info(`Starting case execution for: ${displayName}`);
     return executeSingleCase(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
   }
   if (request.type === 'suite') {
-    console.log(`[EXEC] Starting suite execution for: ${displayName}`);
+    Log.for('exec').info(`Starting suite execution for: ${displayName}`);
     return executeSuite(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
   }
   if (request.type === 'scenario') {
-    console.log(`[EXEC] Starting scenario execution for: ${displayName}`);
+    Log.for('exec').info(`Starting scenario execution for: ${displayName}`);
     return executeScenario(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
   }
-  console.log(`[EXEC] Starting plan execution for: ${displayName}`);
+  Log.for('exec').info(`Starting plan execution for: ${displayName}`);
   return executePlan(payload, logger, signal, uiExecutor, deps, onEnvVarExtracted);
 }
 
@@ -275,7 +276,7 @@ async function finalizeRun(
       metadata: l.metadata,
     })),
   });
-  console.log(`[EXEC] Report saved successfully: ${reportId}`);
+  Log.for('exec').info(`Report saved successfully: ${reportId}`);
 
   db.prepare(`
     UPDATE execution_runs SET status = ?, finished_at = ?, error_message = ?
@@ -283,7 +284,7 @@ async function finalizeRun(
   `).run(result.status, endTime, result.status === 'FAILED' ? 'See report logs' : null, runId);
 
   logger.complete(result);
-  console.log(`[EXEC] Task Finished: ${displayName} (${runId}) - Status: ${result.status} | Pass Rate: ${result.passRate}% | Cases: ${result.passedCases}/${result.totalCases}`);
+  Log.for('exec').info(`Task Finished: ${displayName} (${runId}) - Status: ${result.status} | Pass Rate: ${result.passRate}% | Cases: ${result.passedCases}/${result.totalCases}`);
 
   removeActiveRunLogger(reportId);
   unregisterRun(runId);

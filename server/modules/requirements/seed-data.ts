@@ -1,3 +1,4 @@
+import { Log } from '../../shared/services/logger';
 import type { Requirement } from '../../shared/contracts/index.ts';
 import { requirementRepo } from './repository.ts';
 
@@ -1376,11 +1377,11 @@ const requirements: Requirement[] = [
 export function seedRequirements(): void {
   const existing = requirementRepo.listByProject(AUT_PROJECT_ID);
   if (existing.length > 0) {
-    console.log(`ℹ️  AUT requirements already seeded (${existing.length} found), skipping.`);
+    Log.for('seed').info(`AUT requirements already seeded (${existing.length} found), skipping.`);
     return;
   }
   for (const req of requirements) {
     requirementRepo.save(req);
   }
-  console.log(`✅ Seeded ${requirements.length} AUT requirements.`);
+  Log.for('seed').info(`Seeded ${requirements.length} AUT requirements.`);
 }

@@ -1,3 +1,4 @@
+import { Log } from '../shared/services/logger';
 import { db } from '../shared/db/client.ts';
 import { migration001InitialSchema } from './001_initial_schema.ts';
 import { migration002EnvironmentVariables } from './002_environment_variables.ts';
@@ -101,9 +102,9 @@ export function runMigrations(): void {
 
   if (process.env.FORCE_SEED === 'true' || projectCount === 0) {
     if (process.env.FORCE_SEED === 'true') {
-      console.log('🔄 FORCE_SEED=true: Resetting database...');
+      Log.for('migrate').info('FORCE_SEED=true: Resetting database...');
     } else {
-      console.log('🌱 Empty database: Auto-seeding...');
+      Log.for('migrate').info('Empty database: Auto-seeding...');
     }
     seedDefaults();
   }

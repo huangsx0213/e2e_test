@@ -7,6 +7,7 @@ import { buildDesignerSystemPrompt, buildDesignerUserMessage } from '../prompts'
 import { DESIGNER_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createDesignerOutputProfile } from '../structured-output/designer.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
 // Output Schema
@@ -28,14 +29,14 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
+    const log = Log.for(agentName);
     const condCount = (state.approvedConditions ?? state.testConditions ?? []).length;
-    console.log(`[test-gen:graph] [${agentName}] ENTER, ${condCount} conditions to design, phase=${state.phase}`);
+    log.info(`ENTER ── ${condCount} conditions to design`);
 
     observer?.onStart?.(agentName);
     observer?.onStep?.(agentName, 0, 'Design test cases');
 
     try {
-      // Load custom prompt override if available
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
       const conditions = state.approvedConditions ?? state.testConditions ?? [];
@@ -45,7 +46,6 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
         { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildDesignerUserMessage(state) },
       ];
-      console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
@@ -65,9 +65,13 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       const latencyMs = Date.now() - startTime;
       const draftCount = validated.draftTestCases?.length ?? 0;
       const skillCallCount = toolCallRecords?.length ?? 0;
-      console.log(`[test-gen:graph] [${agentName}] EXIT, ${draftCount} draft test cases, avg self-review=${avgScore.toFixed(1)}/10, ${skillCallCount} skill calls, tokens=${usage.input + usage.output}, latency=${latencyMs}ms`);
+      log.success(`EXIT ── ${draftCount} draft test cases`);
+      log.kv('selfReview.avg', avgScore.toFixed(1));
+      log.kv('skill.calls', skillCallCount);
+      log.kv('tokens', usage.input + usage.output);
+      log.kv('latency', `${latencyMs}ms`);
       if (skillCallCount > 0) {
-        console.log(`[test-gen:graph] [${agentName}] Skill calls: ${toolCallRecords!.map(tc => `${tc.name}(${JSON.stringify(tc.input).slice(0, 60)})`).join(', ')}`);
+        log.kv('skill.details', toolCallRecords!.map(tc => `${tc.name}(completed)`).join(', '));
       }
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'path';
 
 import Database from 'better-sqlite3';
+import { Log } from '../services/logger';
 
 export const dbFile = path.join(process.cwd(), 'database.sqlite');
 
@@ -46,7 +47,7 @@ function createDatabase(): Database.Database {
     configureDatabase(recoveredDatabase);
 
     if (corruptFile) {
-      console.warn(`Recovered from corrupt SQLite database. Original file moved to ${corruptFile}`);
+      Log.for('db').warn(`Recovered from corrupt SQLite database. Original file moved to ${corruptFile}`);
     }
 
     return recoveredDatabase;

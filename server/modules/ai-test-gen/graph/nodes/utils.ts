@@ -2,6 +2,7 @@ import { toJSONSchema, type ZodType } from 'zod';
 import type { AIProvider, ChatMessage, ChatOptions, ToolCall } from '../../infra/provider.ts';
 import type { SkillDefinition } from './types.ts';
 import type { StructuredOutputProfile } from '../structured-output/profile.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 /**
  * 递归遍历 JSON Schema，确保所有 object 类型都有 strict 约束：
@@ -223,7 +224,8 @@ async function runAgentReActLoop(
   extra: Partial<ChatOptions> | undefined,
 ): Promise<ReActResult> {
   const skillMap = new Map(skills.map((s) => [s.name, s]));
-  console.log(`[react:${agentName}] Starting ReAct loop with ${skills.length} skills: ${skills.map(s => s.name).join(', ')}`);
+  const log = Log.for(`react:${agentName}`);
+  log.info(`ReAct loop start ── ${skills.length} skills: ${skills.map(s => s.name).join(', ')}`);
   const allMessages: ChatMessage[] = [...messages];
   let contentText = '';
   let thinkingText = '';
@@ -275,20 +277,19 @@ async function runAgentReActLoop(
     contentText += roundContent;
     thinkingText += roundThinking;
 
-    // 无 tool_calls → 推理完成
     if (pendingToolCalls.length === 0) {
-      console.log(`[react:${agentName}] Round ${round + 1}: no tool calls, exiting loop`);
+      log.info(`Round ${round + 1}: no tool calls, exiting loop`);
       break;
     }
 
-    console.log(`[react:${agentName}] Round ${round + 1}: ${pendingToolCalls.length} tool calls: ${pendingToolCalls.map(tc => tc.name).join(', ')}`);
+    log.info(`Round ${round + 1}: ${pendingToolCalls.length} tool calls: ${pendingToolCalls.map(tc => tc.name).join(', ')}`);
 
     // 执行其他 tool calls
     const toolResults: ChatMessage[] = [];
     for (const tc of pendingToolCalls) {
       const skill = skillMap.get(tc.name);
       if (!skill) {
-        console.warn(`[react:${agentName}] Unknown tool call: ${tc.name}`);
+        log.warn(`Unknown tool call: ${tc.name}`);
         toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. Continue your analysis in plain text and let the automatic extraction step produce the final structured output.` }), toolCallId: tc.id });
         continue;
       }
@@ -296,16 +297,15 @@ async function runAgentReActLoop(
       const skillStart = Date.now();
       try {
         const args = typeof tc.args === 'string' ? JSON.parse(tc.args) : tc.args;
-        console.log(`[react:${agentName}] Calling skill: ${tc.name}(${JSON.stringify(args).slice(0, 100)})`);
         const result = await skill.func(args as Record<string, unknown>);
         const latencyMs = Date.now() - skillStart;
-        console.log(`[react:${agentName}] Skill ${tc.name} completed (${latencyMs}ms)`);
+        log.kv(`${tc.name}`, `completed (${latencyMs}ms)`);
         toolCallRecords.push({ name: tc.name, input: args, output: result });
         toolResults.push({ role: 'tool', content: typeof result === 'string' ? result : JSON.stringify(result), toolCallId: tc.id });
         observer?.onStep?.(agentName, round + 1, `Called ${tc.name} (${latencyMs}ms)`);
       } catch (err: any) {
         const latencyMs = Date.now() - skillStart;
-        console.error(`[react:${agentName}] Skill ${tc.name} FAILED (${latencyMs}ms): ${err.message}`);
+        log.error(`Skill ${tc.name} FAILED (${latencyMs}ms): ${err.message}`);
         toolCallRecords.push({ name: tc.name, input: tc.args, output: { error: err.message } });
         toolResults.push({ role: 'tool', content: JSON.stringify({ error: err.message }), toolCallId: tc.id });
       }
@@ -364,37 +364,34 @@ export async function callLLMWithStructuredOutput<T>(
     throw new Error('LLM produced no content in thinking phase');
   }
 
-  // 尝试从 Phase 1 content 直接提取 JSON
+  const llmLog = Log.for(`llm:${name}`);
+
   if (contentText) {
     const extracted = tryExtractJson(contentText);
     if (extracted) {
       if (outputProfile.shouldAttemptPhase1Extraction && !outputProfile.shouldAttemptPhase1Extraction(extracted)) {
         const extractedType = typeof extracted;
         const keys = extracted && typeof extracted === 'object' ? Object.keys(extracted as Record<string, unknown>) : [];
-        console.log(`[llm:${name}] Phase 1 extracted JSON did not match expected top-level wrapper, skipping to Phase 2`);
-        console.log(`[llm:${name}] Extracted structure: type=${extractedType}, keys=[${keys.join(',')}]`);
+        llmLog.info(`Phase 1 JSON skipped ── unexpected wrapper (type=${extractedType}, keys=[${keys.join(',')}])`);
       } else {
       try {
         const normalized = outputProfile.normalize(extracted);
         const result = outputProfile.parse(normalized);
-        console.log(`[llm:${name}] Phase 1 produced valid JSON, skipping Phase 2`);
+        llmLog.success('Phase 1 JSON valid ── skipping Phase 2');
         return { output: result, usage: capturedUsage, toolCallRecords };
       } catch (parseErr: any) {
         const extractedType = typeof extracted;
         const keys = extracted && typeof extracted === 'object' ? Object.keys(extracted as Record<string, unknown>) : [];
         const draftType = (extracted as any)?.draftTestCases ? typeof (extracted as any).draftTestCases : 'missing';
-        console.warn(`[llm:${name}] Phase 1 found JSON but schema parse failed: ${parseErr.message?.slice(0, 200)}`);
-        console.warn(`[llm:${name}] Extracted structure: type=${extractedType}, keys=[${keys.join(',')}], draftTestCases type=${draftType}`);
+        llmLog.warn(`Phase 1 JSON found but schema parse failed: ${parseErr.message?.slice(0, 200)}`);
+        llmLog.kv('extracted', `type=${extractedType}, keys=[${keys.join(',')}], draftTestCases=${draftType}`);
       }
       }
     }
 
   }
 
-  // ── Phase 2: Schema-guided Extraction ──
-  // Use the ReAct conversation history plus schema-constrained output to produce
-  // a deterministic JSON payload after the free-form analysis phase.
-  console.log(`[llm:${name}] Phase 1 did not produce valid JSON, entering Phase 2 (schema-guided extraction)`);
+  llmLog.info('Phase 1 JSON invalid ── entering Phase 2 (schema extraction)');
 
   let extractionMessages: ChatMessage[] = [
     ...conversationMessages,
@@ -413,13 +410,12 @@ export async function callLLMWithStructuredOutput<T>(
       extractionMessages.splice(baseMessagesLength);
     }
 
-    // Skip retry if aborted
     if ((extra as any)?.signal?.aborted) {
-      console.error(`[llm:${name}] Phase 2 aborted on attempt ${attempt}`);
+      llmLog.error(`Phase 2 aborted on attempt ${attempt}`);
       throw lastError || new Error('Aborted');
     }
 
-    console.log(`[llm:${name}] Phase 2 attempt ${attempt}/${MAX_PHASE2_RETRIES}`);
+    llmLog.info(`Phase 2 attempt ${attempt}/${MAX_PHASE2_RETRIES}`);
     let extractContent = '';
     
     for await (const chunk of provider.streamChat(extractionMessages, buildExtractionChatOptions(outputProfile, extra))) {
@@ -443,13 +439,12 @@ export async function callLLMWithStructuredOutput<T>(
       if (parsed) {
         try {
           const result = outputProfile.parse(outputProfile.normalize(parsed));
-          console.log(`[llm:${name}] Phase 2 extraction successful on attempt ${attempt}`);
+          llmLog.success(`Phase 2 extraction successful on attempt ${attempt}`);
           return { output: result, usage: capturedUsage, toolCallRecords };
         } catch (schemaErr: any) {
-          console.warn(`[llm:${name}] Phase 2 schema validation failed on attempt ${attempt}: ${schemaErr.message?.slice(0, 200)}`);
+          llmLog.warn(`Phase 2 schema validation failed on attempt ${attempt}: ${schemaErr.message?.slice(0, 200)}`);
           lastError = schemaErr;
           
-          // Provide feedback to the model for the next attempt
           extractionMessages.push({ role: 'assistant', content: extractContent });
           extractionMessages.push({ 
             role: 'user', 
@@ -457,7 +452,7 @@ export async function callLLMWithStructuredOutput<T>(
           });
         }
       } else {
-        console.warn(`[llm:${name}] Phase 2 schema-guided extraction produced unparseable content on attempt ${attempt}`);
+        llmLog.warn(`Phase 2 produced unparseable content on attempt ${attempt}`);
         lastError = new Error('Unparseable content');
         
         extractionMessages.push({ role: 'assistant', content: extractContent });
@@ -467,7 +462,7 @@ export async function callLLMWithStructuredOutput<T>(
         });
       }
     } else {
-      console.warn(`[llm:${name}] Phase 2 produced no content at all on attempt ${attempt}`);
+      llmLog.warn(`Phase 2 produced no content on attempt ${attempt}`);
       lastError = new Error('No content produced');
       
       extractionMessages.push({ role: 'assistant', content: '(no output)' });
@@ -478,6 +473,6 @@ export async function callLLMWithStructuredOutput<T>(
     }
   }
 
-  console.error(`[llm:${name}] FAILED to extract structured output from LLM response after ${MAX_PHASE2_RETRIES} attempts`);
+  llmLog.error(`FAILED to extract structured output after ${MAX_PHASE2_RETRIES} attempts`);
   throw lastError || new Error('Failed to extract structured output from LLM response');
 }

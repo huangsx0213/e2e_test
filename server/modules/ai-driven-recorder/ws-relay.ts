@@ -18,6 +18,7 @@
 import type { WebSocket } from 'ws';
 import { globalEventBus } from '../../shared/services/eventBus.ts';
 import { wsService } from '../../shared/services/websocketService.ts';
+import { Log } from '../../shared/services/logger';
 import { SSEGateway } from '../ai-test-gen/sse-gateway.ts';
 import { AiDrivenRecorderRepository } from './repository.ts';
 import { saveDraftSuite } from './draft-suite-saver.ts';
@@ -158,7 +159,7 @@ function handleAiRecorderComplete(
 ): void {
   const run = repository.getRun(runId);
   if (!run) {
-    console.warn(`[WS_RELAY] AI_RECORDER_COMPLETE for unknown run: ${runId}`);
+    Log.for('ws-relay').warn(`AI_RECORDER_COMPLETE for unknown run: ${runId}`);
     return;
   }
 
@@ -239,7 +240,7 @@ function handleProviderConfigRequest(
 ): void {
   const { runId, providerConfigId } = data;
   if (!runId || !providerConfigId) {
-    console.warn('[WS_RELAY] PROVIDER_CONFIG_REQUEST missing runId or providerConfigId');
+    Log.for('ws-relay').warn('PROVIDER_CONFIG_REQUEST missing runId or providerConfigId');
     return;
   }
 

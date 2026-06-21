@@ -1,3 +1,4 @@
+import { Log } from './shared/services/logger';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -133,14 +134,14 @@ export function exportBusinessConfigSeed(): void {
   fs.mkdirSync(path.dirname(outputFile), { recursive: true });
   fs.writeFileSync(outputFile, source, 'utf8');
 
-  console.log(`Wrote business config seed to ${outputFile}`);
-  console.log(`Projects: ${seed.projects.length}`);
-  console.log(`Suites: ${seed.suites.length}`);
-  console.log(`Headers: ${seed.headers.length}`);
-  console.log(`Bodies: ${seed.bodies.length}`);
-  console.log(`Endpoints: ${seed.endpoints.length}`);
-  console.log(`Dynamic variables: ${seed.dynamicVariables.length}`);
-  console.log(`Requirements: ${seed.requirements.length}`);
+  Log.for('seed').info(`Wrote business config seed to ${outputFile}`);
+  Log.for('seed').info(`Projects: ${seed.projects.length}`);
+  Log.for('seed').info(`Suites: ${seed.suites.length}`);
+  Log.for('seed').info(`Headers: ${seed.headers.length}`);
+  Log.for('seed').info(`Bodies: ${seed.bodies.length}`);
+  Log.for('seed').info(`Endpoints: ${seed.endpoints.length}`);
+  Log.for('seed').info(`Dynamic variables: ${seed.dynamicVariables.length}`);
+  Log.for('seed').info(`Requirements: ${seed.requirements.length}`);
 }
 
 if (path.basename(process.argv[1] || '') === 'export-seed.ts') {

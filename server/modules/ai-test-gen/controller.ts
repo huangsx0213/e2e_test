@@ -5,6 +5,7 @@ import { Orchestrator } from './orchestrator.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
 import { deduplicateTestCases } from './helpers.ts';
 import { nlCaseRepo } from '../nl-cases/repository.ts';
+import { Log } from '../../shared/services/logger.ts';
 
 export class TestGenController {
   public readonly orchestrator: Orchestrator;
@@ -63,7 +64,7 @@ export class TestGenController {
     pipelineRepo.createRun(runId, projectId, params.mode, params);
     // 异步执行，不阻塞响应
     this.orchestrator.start(runId, projectId, params).catch(err => {
-      console.error(`[TestGenController] Pipeline ${runId} failed:`, err);
+      Log.for('controller').error(`Pipeline ${runId} failed: ${err.message}`);
     });
     return { runId };
   }
@@ -140,16 +141,17 @@ export class TestGenController {
   /** 恢复中断的运行（服务重启后调用） */
   async recoverInterruptedRuns(): Promise<void> {
     const waitingRuns = pipelineRepo.getWaitingRuns();
+    const log = Log.for('controller');
     if (waitingRuns.length === 0) {
-      console.log('[TestGenController] No interrupted test gen runs to recover');
+      log.info('No interrupted test gen runs to recover');
       return;
     }
 
-    console.log(`[TestGenController] Recovering ${waitingRuns.length} interrupted test gen run(s)...`);
+    log.info(`Recovering ${waitingRuns.length} interrupted run(s)...`);
     for (const run of waitingRuns) {
-      console.log(`[TestGenController] Resuming run ${run.id} (phase: ${run.phase})`);
+      log.info(`Resuming run ${run.id} (phase: ${run.phase})`);
       this.orchestrator.resume(run.id, 'approve').catch(err => {
-        console.error(`[TestGenController] Failed to resume run ${run.id}:`, err);
+        log.error(`Failed to resume run ${run.id}: ${err.message}`);
       });
     }
   }

@@ -7,6 +7,7 @@ import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
 import { ANALYST_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { analystOutputProfile } from '../structured-output/analyst.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
 // Output Schema
@@ -28,16 +29,17 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
+    const log = Log.for(agentName);
     const reqCount = state.currentBatch?.length ?? 0;
     const batchInfo = `${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
     const flowMode = state.includeFlowCases ? 'FLOW-LEVEL' : 'REQUIREMENT-LEVEL';
-    console.log(`[test-gen:graph] [${agentName}] ENTER, ${batchInfo}, ${reqCount} requirements, mode=${flowMode}, phase=${state.phase}`);
+    log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, mode=${flowMode}`);
+    log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
     observer?.onStep?.(agentName, 0, 'Assess risk & priority');
 
     try {
-      // Load custom prompt override if available
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildAnalystSystemPrompt(state, override?.custom_prompt ?? undefined);
 
@@ -45,7 +47,6 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
         { role: 'system' as const, content: systemPrompt },
         { role: 'user' as const, content: buildAnalystUserMessage(state) },
       ];
-      console.log(`[test-gen:graph] [${agentName}] Calling LLM with ${skills.length} skills available`);
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
@@ -68,10 +69,13 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
         acc[tc.primaryTechnique] = (acc[tc.primaryTechnique] || 0) + 1;
         return acc;
       }, {});
-      console.log(`[test-gen:graph] [${agentName}] EXIT, ${tcCount} test conditions, ${skillCallCount} skill calls, tokens=${usage.input + usage.output}, latency=${latencyMs}ms`);
-      console.log(`[test-gen:graph] [${agentName}] Techniques: ${JSON.stringify(techniqueBreakdown)}`);
+      log.success(`EXIT ── ${tcCount} test conditions`);
+      log.kv('skill.calls', skillCallCount);
+      log.kv('tokens', usage.input + usage.output);
+      log.kv('latency', `${latencyMs}ms`);
+      log.kv('techniques', JSON.stringify(techniqueBreakdown));
       if (skillCallCount > 0) {
-        console.log(`[test-gen:graph] [${agentName}] Skill calls: ${toolCallRecords!.map(tc => `${tc.name}(${JSON.stringify(tc.input).slice(0, 60)})`).join(', ')}`);
+        log.kv('skill.details', toolCallRecords!.map(tc => `${tc.name}(completed)`).join(', '));
       }
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 

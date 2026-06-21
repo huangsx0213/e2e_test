@@ -14,6 +14,7 @@ import { checkpointer } from './graph/checkpointer.ts';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import { db } from '../../shared/db/client.ts';
+import { Log } from '../../shared/services/logger.ts';
 
 function createDummyProvider(): AIProvider {
   return {
@@ -44,17 +45,17 @@ export class Orchestrator {
   }
 
   async start(runId: string, projectId: string, params: StartParams): Promise<void> {
-    console.log('══════════════════════════════════════════════');
-    console.log(`[orchestrator] PIPELINE START`);
-    console.log(`  runId         = ${runId}`);
-    console.log(`  projectId     = ${projectId}`);
-    console.log(`  mode          = ${params.mode}`);
-    console.log(`  provider      = ${params.providerConfigName ?? 'default'}`);
-    console.log(`  model         = ${params.model ?? 'default'}`);
-    console.log(`  useCache      = ${params.useCache ?? false}`);
-    console.log(`  requirements  = ${params.requirementIds?.length ?? 0} selected`);
-    console.log(`  flows         = ${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
-    console.log('══════════════════════════════════════════════');
+    const log = Log.for('orchestrator');
+    Log.banner('PIPELINE START');
+    log.kv('runId', runId);
+    log.kv('projectId', projectId);
+    log.kv('mode', params.mode);
+    log.kv('ai.provider', params.providerConfigName ?? 'default');
+    log.kv('ai.model', params.model ?? 'default');
+    log.kv('ai.cache', params.useCache ?? false ? 'on' : 'off');
+    log.kv('requirements', `${params.requirementIds?.length ?? 0} selected`);
+    log.kv('flows', `${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
+    Log.divider();
     let ctx: RunContext | null = null;
     let keepSse = false;
 
@@ -64,14 +65,15 @@ export class Orchestrator {
         model: params.model,
         useCache: params.useCache,
       });
-      console.log(`[orchestrator] Context built: model=${ctx.modelName}, tokenLimit=${ctx.tokenLimit}`);
+      log.kv('context.model', ctx.modelName);
+      log.kv('context.tokenLimit', ctx.tokenLimit ?? 'none', 0);
 
       // 构建需求索引和批次
       const allIndex = buildRequirementIndex(projectId);
       const selectedIds = new Set(params.requirementIds || []);
       const { epics, rootGroups, totalBatches, selectedIndex } = groupRequirementsByEpic(allIndex, selectedIds);
       if (epics.length === 0) throw new Error('No matching requirements found for selected IDs');
-      console.log(`[orchestrator] Requirements indexed: ${selectedIndex.length} selected, ${epics.length} epics, ${totalBatches} batch(es)`);
+      log.info(`Requirements indexed: ${selectedIndex.length} selected, ${epics.length} epics, ${totalBatches} batch(es)`);
       pipelineRepo.updateBatchCount(runId, totalBatches);
       pipelineRepo.updateModelInfo(runId, ctx.modelName, params.providerConfigName ?? null);
 
@@ -82,7 +84,7 @@ export class Orchestrator {
         ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
         : allProjectFlows;
       const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
-      console.log(`[orchestrator] Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints built`);
+      log.info(`Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints`);
 
       // 发送准备阶段事件
       ctx.sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
@@ -115,7 +117,7 @@ export class Orchestrator {
       for (let i = 0; i < epics.length; i++) {
         if (ctx.isAborted()) break;
         const epic = epics[i];
-        console.log(`[orchestrator] === Batch ${i + 1}/${epics.length} START (epic: ${epic.id ?? 'N/A'}) ===`);
+        Log.subsection(`Batch ${i + 1}/${epics.length} START ── epic: ${epic.id ?? 'N/A'}`);
         ctx.scope.setBatch(i + 1, totalBatches);
         pipelineRepo.updateCurrentBatch(runId, i + 1);
         pipelineRepo.updateThreadId(runId, `${runId}-batch-${i}`);
@@ -130,7 +132,7 @@ export class Orchestrator {
 
         const outcome = await ctx.session.startBatch(batchInput);
         if (outcome.type === 'interrupt') {
-          console.log(`[orchestrator] Batch ${i + 1} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
+          log.info(`Batch ${i + 1} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
           ctx.scope.flushAndPersistThinking();
           pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
           this.sseGateway.emit(runId, 'checkpoint:waiting', {
@@ -142,7 +144,7 @@ export class Orchestrator {
           keepSse = true;
           return;
         }
-        console.log(`[orchestrator] === Batch ${i + 1}/${epics.length} COMPLETE, ${outcome.result.cases.length} test cases ===`);
+        log.success(`Batch ${i + 1}/${epics.length} complete ── ${outcome.result.cases.length} test cases`);
         allResults.push(outcome.result);
         ctx.sendEvent('batch:complete', {
           batch: i + 1, total: totalBatches,
@@ -155,7 +157,7 @@ export class Orchestrator {
         const { allCases, removedCount } = deduplicateTestCases(
           allResults.flatMap(r => r.lastState?.finalTestCases || r.cases || []),
         );
-        console.log(`[orchestrator] ALL BATCHES DONE: ${allCases.length} final cases${removedCount > 0 ? ` (${removedCount} duplicates removed)` : ''}`);
+        log.success(`All batches done ── ${allCases.length} final cases${removedCount > 0 ? ` (${removedCount} duplicates removed)` : ''}`);
         if (removedCount > 0) {
           ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length });
         }
@@ -368,7 +370,7 @@ export class Orchestrator {
   async saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): Promise<void> {
     const row = pipelineRepo.getRunWithThreadId(runId);
     if (!row?.thread_id) {
-      console.error(`[Orchestrator] Run ${runId} missing or no thread_id`);
+      Log.for('orchestrator').error(`Run ${runId} missing or no thread_id`);
       return;
     }
 
@@ -402,7 +404,7 @@ export class Orchestrator {
       }
       if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
     } catch (err) {
-      console.error(`[Orchestrator] Failed to refresh checkpoint state after edit for ${runId}:`, err);
+      Log.for('orchestrator').error(`Failed to refresh checkpoint state after edit for ${runId}: ${err}`);
     }
   }
 

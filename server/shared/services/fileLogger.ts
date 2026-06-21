@@ -3,9 +3,6 @@ import path from 'path';
 
 const LOG_DIR = process.env.LOG_DIR || path.join(process.cwd(), 'logs', 'server');
 
-// When true (default), the current day's log file is truncated on server start
-// instead of appending to whatever was there before. Set LOG_RESET_ON_START=0
-// (or false/no/off) to keep the previous append behavior.
 const LOG_RESET_ON_START = !/^(0|false|no|off)$/i.test(
   process.env.LOG_RESET_ON_START ?? 'true'
 );
@@ -23,32 +20,50 @@ function ensureDir(): string {
   return _logDirReady;
 }
 
-export function appendServerLog(level: string, message: string) {
-  try {
-    const dir = ensureDir();
-    const date = new Date().toISOString().slice(0, 10);
-    const file = path.join(dir, `${date}.log`);
-    const time = new Date().toISOString().slice(11, 23);
-    fs.appendFileSync(file, `[${time}] [${level}] ${message}\n`);
-  } catch {}
+function ts(): string {
+  const d = new Date();
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return `[${h}:${m}:${s}.${ms}]`;
 }
 
-// Patch console on server side
+function appendLog(message: string) {
+  try {
+    const dir = ensureDir();
+    const file = path.join(dir, `${new Date().toISOString().slice(0, 10)}.log`);
+    fs.appendFileSync(file, `${message}\n`);
+  } catch (e) {
+    console.error(`[fileLogger] write failed: ${e}`);
+  }
+}
+
 const _origLog = console.log.bind(console);
 const _origWarn = console.warn.bind(console);
 const _origError = console.error.bind(console);
+
+function formatArgs(args: any[]): string {
+  return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+}
+
 console.log = (...args: any[]) => {
-  const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-  _origLog(line);
-  appendServerLog('LOG', line);
+  const line = formatArgs(args);
+  const stamped = `${ts()} ${line}`;
+  _origLog(stamped);
+  appendLog(stamped);
 };
+
 console.warn = (...args: any[]) => {
-  const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-  _origWarn(line);
-  appendServerLog('WARN', line);
+  const line = formatArgs(args);
+  const stamped = `${ts()} ${line}`;
+  _origWarn(stamped);
+  appendLog(stamped);
 };
+
 console.error = (...args: any[]) => {
-  const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-  _origError(line);
-  appendServerLog('ERROR', line);
+  const line = formatArgs(args);
+  const stamped = `${ts()} ${line}`;
+  _origError(stamped);
+  appendLog(stamped);
 };
