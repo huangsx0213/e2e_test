@@ -7,44 +7,11 @@ import { callLLMWithStructuredOutput } from './utils';
 import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
 import { QUALITY_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
-import { z } from 'zod';
+import { createQualityOutputProfile } from '../structured-output/quality.ts';
 
 // ============================================================
 // Output Schema — only finalTestCases; coverageMatrix is computed in TS
 // ============================================================
-const QualityOutputSchema = z.object({
-  finalTestCases: z.preprocess(
-    (v) => Array.isArray(v) ? v : typeof v === 'object' && v !== null ? Object.values(v) : [],
-    z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    conditionId: z.string(),
-    requirementId: z.string(),
-    priority: z.string().describe('One of: critical, high, medium, low'),
-    category: z.string(),
-    techniqueApplied: z.string().describe('Testing technique used (e.g. Equivalence Partitioning, Boundary Value Analysis)'),
-    preconditions: z.array(z.string()),
-    testData: z.array(z.string()),
-    steps: z.array(z.object({
-      stepNumber: z.preprocess(
-        (v) => (typeof v === 'number' ? v : Number(v) || 1),
-        z.number(),
-      ),
-      action: z.preprocess((v) => String(v ?? ''), z.string()),
-      expected: z.preprocess((v) => String(v ?? ''), z.string()),
-    })),
-    tags: z.array(z.string()),
-    status: z.string().describe('One of: approved, approved_with_changes, rejected').default('approved'),
-    reviewSummary: z.string().describe('Brief review note'),
-    changeLog: z.array(z.object({
-      field: z.string(),
-      from: z.string().optional(),
-      to: z.string().optional(),
-      reason: z.string(),
-    })).default([]),
-  })).min(1)),
-});
-
 /**
  * 从 finalTestCases + state 数据计算 coverageMatrix，不依赖模型输出。
  */
@@ -124,6 +91,14 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       // Load custom prompt override if available
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildQualitySystemPrompt(state, override?.custom_prompt ?? undefined);
+      const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
+      const outputProfile = createQualityOutputProfile(
+        draftCases.map((draftCase) => ({
+          id: draftCase.id,
+          conditionId: draftCase.conditionId,
+          requirementId: draftCase.requirementId,
+        })),
+      );
 
       const messages = [
         { role: 'system' as const, content: systemPrompt },
@@ -136,7 +111,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         provider,
         messages,
         skills,
-        QualityOutputSchema,
+        outputProfile,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
         { signal: nodeSignal, agentName },

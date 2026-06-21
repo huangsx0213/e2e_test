@@ -2,12 +2,23 @@ import fs from 'fs';
 import path from 'path';
 
 const LOG_DIR = process.env.LOG_DIR || path.join(process.cwd(), 'logs', 'server');
+
+// When true (default), the current day's log file is truncated on server start
+// instead of appending to whatever was there before. Set LOG_RESET_ON_START=0
+// (or false/no/off) to keep the previous append behavior.
+const LOG_RESET_ON_START = !/^(0|false|no|off)$/i.test(
+  process.env.LOG_RESET_ON_START ?? 'true'
+);
+
 let _logDirReady = '';
 
 function ensureDir(): string {
   if (!_logDirReady) {
     _logDirReady = LOG_DIR;
     try { fs.mkdirSync(_logDirReady, { recursive: true }); } catch {}
+    if (LOG_RESET_ON_START) {
+      try { fs.writeFileSync(path.join(_logDirReady, `${new Date().toISOString().slice(0, 10)}.log`), ''); } catch {}
+    }
   }
   return _logDirReady;
 }

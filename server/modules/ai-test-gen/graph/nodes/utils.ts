@@ -1,6 +1,7 @@
 import { toJSONSchema, type ZodType } from 'zod';
 import type { AIProvider, ChatMessage, ChatOptions, ToolCall } from '../../infra/provider.ts';
 import type { SkillDefinition } from './types.ts';
+import type { StructuredOutputProfile } from '../structured-output/profile.ts';
 
 /**
  * 递归遍历 JSON Schema，确保所有 object 类型都有 strict 约束：
@@ -42,7 +43,7 @@ export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
  *
  * OpenAI strict mode 要求: required 必须包含 properties 的每一个 key。
  */
-function makeSchemaOpenAICompatible(schema: Record<string, unknown>): Record<string, unknown> {
+export function makeSchemaOpenAICompatible(schema: Record<string, unknown>): Record<string, unknown> {
   if (!schema || typeof schema !== 'object') return schema;
 
   if (schema.type === 'object' && typeof schema.properties === 'object' && schema.properties) {
@@ -110,31 +111,23 @@ export function skillsToChatTools(skills: SkillDefinition[]): ChatOptions['tools
 
 /**
  * 构建 ChatOptions：Phase 1 思考 + ReAct 阶段
- * 使用 tool-based 方式保证输出格式：模型必须调用 output_result tool 提交最终结果
+ * 仅暴露业务工具；最终结构化输出统一由 Phase 2 提取。
  */
 export function buildThinkingChatOptions(
   skills: SkillDefinition[],
-  outputSchema: ZodType,
+  outputProfile: StructuredOutputProfile<unknown>,
   extra?: Partial<ChatOptions>,
 ): ChatOptions {
   const { temperature: _ignored, responseFormat: _ignoredFormat, tools: _ignoredTools, toolChoice: _ignoredChoice, ...allowedExtra } = extra ?? {};
   
-  // 构建工具列表：业务 skills + output_result tool
+  // 构建工具列表：仅业务 skills。最终 JSON 由 Phase 2 统一提取，避免 output_result 在 Responses API 中成为脆弱点。
   const businessTools = skillsToChatTools(skills);
-  const outputTool = {
-    name: 'output_result',
-    description: 'Submit the final structured result. You MUST call this tool when you are ready to output the final answer. The parameters must match the required schema exactly.',
-    strict: true,
-    parameters: makeSchemaOpenAICompatible(zodToJsonSchema(outputSchema)) as any,
-  };
-  
-  const allTools = [...(businessTools ?? []), outputTool];
   
   return {
     temperature: 0.3,
     maxTokens: 32768,
-    tools: allTools,
-    toolChoice: 'auto',
+    tools: businessTools,
+    toolChoice: businessTools && businessTools.length > 0 ? 'auto' : undefined,
     ...allowedExtra,
   };
 }
@@ -143,13 +136,13 @@ export function buildThinkingChatOptions(
  * 构建 ChatOptions：Phase 2 提取阶段，使用 json_schema response_format
  */
 export function buildExtractionChatOptions(
-  outputSchema: ZodType,
+  outputProfile: StructuredOutputProfile<unknown>,
   extra?: Partial<ChatOptions>,
 ): ChatOptions {
   const { temperature: _ignored, responseFormat: _ignoredFormat, tools: _ignoredTools, toolChoice: _ignoredChoice, ...allowedExtra } = extra ?? {};
   return {
-    jsonSchema: zodToJsonSchema(outputSchema),
-    temperature: 0.1,
+    jsonSchema: outputProfile.toolSchema,
+    temperature: 0,
     maxTokens: 32768,
     ...allowedExtra,
   };
@@ -158,8 +151,8 @@ export function buildExtractionChatOptions(
 /**
  * 构建 Phase 2 的提取 prompt，包含 schema 约束
  */
-export function buildExtractionPrompt(outputSchema: ZodType): string {
-  const schema = zodToJsonSchema(outputSchema);
+export function buildExtractionPrompt(outputProfile: StructuredOutputProfile<unknown>): string {
+  const schema = outputProfile.toolSchema;
   return `Based on the analysis above, output a single JSON object matching this schema. Do NOT include any text before or after the JSON.
 
 Schema:
@@ -208,12 +201,15 @@ function tryExtractJson(content: string): unknown | null {
 // ============================================================
 
 const MAX_REACT_ROUNDS = 15;
+const MAX_EMPTY_OUTPUT_SUBMISSIONS = 3;
 
 interface ReActResult {
   contentText: string;
   thinkingText: string;
   toolCallRecords: Array<{ name: string; input: unknown; output: unknown }>;
   usage: { input: number; output: number; reasoning: number };
+  conversationMessages: ChatMessage[];
+  forceExtraction: boolean;
 }
 
 /**
@@ -224,7 +220,7 @@ async function runAgentReActLoop(
   provider: AIProvider,
   messages: ChatMessage[],
   skills: SkillDefinition[],
-  outputSchema: ZodType,
+  outputProfile: StructuredOutputProfile<unknown>,
   observer: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
   agentName: string,
   extra: Partial<ChatOptions> | undefined,
@@ -236,6 +232,8 @@ async function runAgentReActLoop(
   let thinkingText = '';
   const toolCallRecords: ReActResult['toolCallRecords'] = [];
   let capturedUsage = { input: 0, output: 0, reasoning: 0 };
+  let consecutiveEmptyOutputSubmissions = 0;
+  let forceExtraction = false;
 
   for (let round = 0; round < MAX_REACT_ROUNDS; round++) {
     // 流式调用 LLM（带 tools）
@@ -243,7 +241,7 @@ async function runAgentReActLoop(
     let roundThinking = '';
     const pendingToolCalls: ToolCall[] = [];
 
-    for await (const chunk of provider.streamChat(allMessages, buildThinkingChatOptions(skills, outputSchema, extra))) {
+    for await (const chunk of provider.streamChat(allMessages, buildThinkingChatOptions(skills, outputProfile, extra))) {
       if (chunk.type === 'reasoning' && chunk.content) {
         roundThinking += chunk.content;
         observer?.onThinking?.(agentName, chunk.content, 'reasoning', 'react');
@@ -267,6 +265,7 @@ async function runAgentReActLoop(
         const existing = pendingToolCalls.find((tc) => tc.id === chunk.toolCall!.id);
         if (existing) {
           existing.args = chunk.toolCall.args;
+          existing.malformed = chunk.toolCall.malformed;
         }
       }
       if (chunk.type === 'done' && chunk.usage) {
@@ -297,41 +296,60 @@ async function runAgentReActLoop(
       const outputArgs = typeof outputToolCall.args === 'string' 
         ? JSON.parse(outputToolCall.args) 
         : outputToolCall.args;
+      const outputArgKeys = outputArgs && typeof outputArgs === 'object' && !Array.isArray(outputArgs)
+        ? Object.keys(outputArgs as Record<string, unknown>)
+        : [];
+      console.log(`[react:${agentName}] output_result raw args keys=[${outputArgKeys.join(',')}] isEmpty=${outputArgKeys.length === 0}`);
+
+      if (outputToolCall.malformed) {
+        toolCallRecords.push({
+          name: 'output_result',
+          input: { malformed: outputToolCall.malformed },
+          output: { status: 'malformed_output_result' },
+        });
+        console.warn(`[react:${agentName}] malformed output_result arguments from provider fallback: source=${outputToolCall.malformed.source} rawArgsLength=${outputToolCall.malformed.rawArgsLength} preview=${outputToolCall.malformed.rawArgsPreview}`);
+        allMessages.push({ role: 'assistant', content: roundContent || '(analysis completed before malformed output_result)' });
+        forceExtraction = true;
+        break;
+      }
       
       // 立即验证 schema，若失败则注入错误反馈让模型重试（避免进入 Phase 2 浪费一轮 API 调用）
       try {
-        outputSchema.parse(outputArgs);
+        const normalizedOutput = outputProfile.normalize(outputArgs);
+        const parsedOutput = outputProfile.parse(normalizedOutput);
         // 验证通过
-        contentText = JSON.stringify(outputArgs);
+        const jsonResult = JSON.stringify(parsedOutput);
+        contentText = jsonResult;
+        observer?.onThinking?.(agentName, "```json\n" + jsonResult + "\n```", 'content', 'react');
         toolCallRecords.push({ name: 'output_result', input: outputArgs, output: { status: 'success' } });
         break;
       } catch (schemaErr: any) {
-        console.warn(`[react:${agentName}] output_result validation failed: ${schemaErr.message?.slice(0, 200)}`);
         toolCallRecords.push({ name: 'output_result', input: outputArgs, output: { status: 'validation_failed', error: schemaErr.message } });
         
         // 格式化 Zod 错误为具体字段路径 + 消息，帮助模型定位问题
         const zodIssues = (schemaErr as any)?.issues;
         let feedbackToolContent: string;
+        let isEmptySubmit = false;
         if (Array.isArray(zodIssues) && zodIssues.length > 0) {
-          const parts = zodIssues.map((issue: any) => {
-            const pathStr = issue.path && Array.isArray(issue.path) && issue.path.length > 0
-              ? issue.path.join('.') : '(root)';
-            return `- ${pathStr}: ${issue.message}`;
-          });
+          // 检查提交是否为全空对象
+          isEmptySubmit = Object.keys(outputArgs).length === 0;
           
-          // 检查是否有数组字段已有部分数据（非空数组）
-          const hasSomeData = Object.values(outputArgs).some(
-            (v: any) => Array.isArray(v) && v.length > 0
-          );
-          
-          if (hasSomeData) {
-            feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nYou have some valid data but specific fields are missing or invalid. Do NOT clear the existing data — only fix the fields listed above and call output_result again with the corrected structure.`;
+          if (isEmptySubmit) {
+            consecutiveEmptyOutputSubmissions += 1;
+            feedbackToolContent = outputProfile.formatEmptySubmissionError?.()
+              ?? 'You submitted an empty object. Resubmit the COMPLETE data structure with ALL fields populated. Do not call output_result until you have the full payload ready. Refer to the tool parameters schema in the system prompt for the exact structure.';
           } else {
-            feedbackToolContent = `Schema validation failed with ${zodIssues.length} error(s):\n${parts.join('\n')}\n\nFix ALL errors above and call output_result again. Refer to the tool parameters schema in the system prompt for the exact structure.`;
+            consecutiveEmptyOutputSubmissions = 0;
+            feedbackToolContent = `${outputProfile.formatValidationError(schemaErr)}\n\nResubmit the COMPLETE data with corrections applied to ALL fields listed above. Include EVERY test case, not just the fixes. Do NOT submit a partial or empty object.`;
           }
         } else {
-          feedbackToolContent = `Schema validation failed: ${schemaErr.message?.slice(0, 300)}. Fix and call output_result again.`;
+          feedbackToolContent = `${outputProfile.formatValidationError(schemaErr)} Fix and call output_result again.`;
         }
+        
+        const warnLabel = isEmptySubmit ? 'output_result empty submission' : 'output_result validation failed';
+        console.warn(`[react:${agentName}] ${warnLabel}:\n${feedbackToolContent.slice(0, 300)}`);
+        
+        observer?.onThinking?.(agentName, `[output_result] validation failed\n${feedbackToolContent}\n\nSubmitted:\n\`\`\`json\n${JSON.stringify(outputArgs, null, 2)}\n\`\`\``, 'content', 'react');
         
         // 追加 assistant message（包含本次 output_result 调用）
         allMessages.push({
@@ -346,9 +364,14 @@ async function runAgentReActLoop(
         // 注入错误反馈（逐字段说明，可操作性更强）
         allMessages.push({
           role: 'tool',
-          content: JSON.stringify({ error: feedbackToolContent }),
+          content: JSON.stringify({ error: feedbackToolContent, submitted: outputArgs }),
           toolCallId: outputToolCall.id,
         });
+
+        if (isEmptySubmit && consecutiveEmptyOutputSubmissions >= MAX_EMPTY_OUTPUT_SUBMISSIONS) {
+          console.warn(`[react:${agentName}] repeated empty output_result submissions (${consecutiveEmptyOutputSubmissions}), falling back to Phase 2 extraction`);
+          break;
+        }
         
         continue; // 继续 ReAct 循环，让模型修正
       }
@@ -395,7 +418,7 @@ async function runAgentReActLoop(
     allMessages.push(...toolResults);
   }
 
-  return { contentText, thinkingText, toolCallRecords, usage: capturedUsage };
+  return { contentText, thinkingText, toolCallRecords, usage: capturedUsage, conversationMessages: allMessages, forceExtraction };
 }
 
 // ============================================================
@@ -411,7 +434,7 @@ export async function callLLMWithStructuredOutput<T>(
   provider: AIProvider,
   messages: ChatMessage[],
   skills: SkillDefinition[],
-  outputSchema: ZodType<T>,
+  outputProfile: StructuredOutputProfile<T>,
   observer?: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
   agentName?: string,
   extra?: Partial<ChatOptions>,
@@ -423,24 +446,31 @@ export async function callLLMWithStructuredOutput<T>(
     provider,
     messages,
     skills,
-    outputSchema,
+    outputProfile,
     { onStep: observer?.onStep, onThinking: observer?.onThinking },
     name,
     extra,
   );
 
-  const { contentText, thinkingText, toolCallRecords, usage: capturedUsage } = reactResult;
+  const { contentText, thinkingText, toolCallRecords, usage: capturedUsage, conversationMessages, forceExtraction } = reactResult;
 
   if (!contentText && !thinkingText) {
     throw new Error('LLM produced no content in thinking phase');
   }
 
   // 尝试从 Phase 1 content 直接提取 JSON
-  if (contentText) {
+  if (contentText && !forceExtraction) {
     const extracted = tryExtractJson(contentText);
     if (extracted) {
+      if (outputProfile.shouldAttemptPhase1Extraction && !outputProfile.shouldAttemptPhase1Extraction(extracted)) {
+        const extractedType = typeof extracted;
+        const keys = extracted && typeof extracted === 'object' ? Object.keys(extracted as Record<string, unknown>) : [];
+        console.log(`[llm:${name}] Phase 1 extracted JSON did not match expected top-level wrapper, skipping to Phase 2`);
+        console.log(`[llm:${name}] Extracted structure: type=${extractedType}, keys=[${keys.join(',')}]`);
+      } else {
       try {
-        const result = outputSchema.parse(extracted);
+        const normalized = outputProfile.normalize(extracted);
+        const result = outputProfile.parse(normalized);
         console.log(`[llm:${name}] Phase 1 produced valid JSON, skipping Phase 2`);
         return { output: result, usage: capturedUsage, toolCallRecords };
       } catch (parseErr: any) {
@@ -449,6 +479,7 @@ export async function callLLMWithStructuredOutput<T>(
         const draftType = (extracted as any)?.draftTestCases ? typeof (extracted as any).draftTestCases : 'missing';
         console.warn(`[llm:${name}] Phase 1 found JSON but schema parse failed: ${parseErr.message?.slice(0, 200)}`);
         console.warn(`[llm:${name}] Extracted structure: type=${extractedType}, keys=[${keys.join(',')}], draftTestCases type=${draftType}`);
+      }
       }
     }
 
@@ -461,7 +492,7 @@ export async function callLLMWithStructuredOutput<T>(
         if (extractCall?.arguments) {
           const args = typeof extractCall.arguments === 'string' ? JSON.parse(extractCall.arguments) : extractCall.arguments;
           console.log(`[llm:${name}] Phase 1 produced [TOOL_CALLS] format, extracted structured output`);
-          return { output: outputSchema.parse(args), usage: capturedUsage, toolCallRecords };
+          return { output: outputProfile.parse(outputProfile.normalize(args)), usage: capturedUsage, toolCallRecords };
         }
       } catch (parseErr: any) {
         console.warn(`[llm:${name}] Phase 1 [TOOL_CALLS] found but parse failed: ${parseErr.message?.slice(0, 120)}`);
@@ -474,49 +505,88 @@ export async function callLLMWithStructuredOutput<T>(
   // This is more reliable than Phase 1 free-form text because the API enforces JSON syntax.
   console.log(`[llm:${name}] Phase 1 did not produce valid JSON, entering Phase 2 (json_object extraction)`);
 
-  const extractionMessages: ChatMessage[] = [
-    ...messages,
-    // Include the full ReAct conversation so the model has all context
+  let extractionMessages: ChatMessage[] = [
+    ...conversationMessages,
+    // Include the final assistant content from the ReAct stage so Phase 2 sees the latest analysis.
     { role: 'assistant' as const, content: contentText || '(analysis completed in tool calls above)' },
-    { role: 'user' as const, content: buildExtractionPrompt(outputSchema) },
+    { role: 'user' as const, content: buildExtractionPrompt(outputProfile) },
   ];
 
-  let extractContent = '';
-  for await (const chunk of provider.streamChat(extractionMessages, buildExtractionChatOptions(outputSchema, extra))) {
-    if (chunk.type === 'content' && chunk.content) {
-      extractContent += chunk.content;
-      observer?.onThinking?.(name, chunk.content, 'content', 'extraction');
-    }
-    if (chunk.type === 'done' && chunk.usage) {
-      capturedUsage.input += (chunk.usage.promptTokens || 0);
-      capturedUsage.output += (chunk.usage.completionTokens || 0);
-      capturedUsage.reasoning += (chunk.usage.reasoningTokens || 0);
-    }
-  }
+  const MAX_PHASE2_RETRIES = 3;
+  let lastError: Error | null = null;
+  const baseMessagesLength = extractionMessages.length;
 
-  if (extractContent) {
-    // json_object mode should produce valid JSON, but still try parse with fallback
-    const parsed = tryExtractJson(extractContent) ?? (() => {
-      try { return JSON.parse(extractContent); } catch { return null; }
-    })();
+  for (let attempt = 1; attempt <= MAX_PHASE2_RETRIES; attempt++) {
+    // Reset to base messages to avoid token growth across retries
+    if (extractionMessages.length > baseMessagesLength) {
+      extractionMessages.splice(baseMessagesLength);
+    }
 
-    if (parsed) {
-      try {
-        const result = outputSchema.parse(parsed);
-        console.log(`[llm:${name}] Phase 2 extraction successful`);
-        return { output: result, usage: capturedUsage, toolCallRecords };
-      } catch (schemaErr: any) {
-        console.error(`[llm:${name}] Phase 2 JSON parsed but schema validation failed: ${schemaErr.message?.slice(0, 200)}`);
-        console.error(`[llm:${name}] Phase 2 parsed keys: ${parsed && typeof parsed === 'object' ? Object.keys(parsed).join(',') : 'N/A'}`);
+    // Skip retry if aborted
+    if ((extra as any)?.signal?.aborted) {
+      console.error(`[llm:${name}] Phase 2 aborted on attempt ${attempt}`);
+      throw lastError || new Error('Aborted');
+    }
+
+    console.log(`[llm:${name}] Phase 2 attempt ${attempt}/${MAX_PHASE2_RETRIES}`);
+    let extractContent = '';
+    
+    for await (const chunk of provider.streamChat(extractionMessages, buildExtractionChatOptions(outputProfile, extra))) {
+      if (chunk.type === 'content' && chunk.content) {
+        extractContent += chunk.content;
+        observer?.onThinking?.(name, chunk.content, 'content', 'extraction');
+      }
+      if (chunk.type === 'done' && chunk.usage) {
+        capturedUsage.input += (chunk.usage.promptTokens || 0);
+        capturedUsage.output += (chunk.usage.completionTokens || 0);
+        capturedUsage.reasoning += (chunk.usage.reasoningTokens || 0);
+      }
+    }
+
+    if (extractContent) {
+      // json_object mode should produce valid JSON, but still try parse with fallback
+      const parsed = tryExtractJson(extractContent) ?? (() => {
+        try { return JSON.parse(extractContent); } catch { return null; }
+      })();
+
+      if (parsed) {
+        try {
+          const result = outputProfile.parse(outputProfile.normalize(parsed));
+          console.log(`[llm:${name}] Phase 2 extraction successful on attempt ${attempt}`);
+          return { output: result, usage: capturedUsage, toolCallRecords };
+        } catch (schemaErr: any) {
+          console.warn(`[llm:${name}] Phase 2 schema validation failed on attempt ${attempt}: ${schemaErr.message?.slice(0, 200)}`);
+          lastError = schemaErr;
+          
+          // Provide feedback to the model for the next attempt
+          extractionMessages.push({ role: 'assistant', content: extractContent });
+          extractionMessages.push({ 
+            role: 'user', 
+            content: `Your JSON was valid, but schema validation failed: ${outputProfile.formatValidationError(schemaErr)} Please fix these errors and output the corrected JSON matching the schema exactly.`
+          });
+        }
+      } else {
+        console.warn(`[llm:${name}] Phase 2 json_object mode produced unparseable content on attempt ${attempt}`);
+        lastError = new Error('Unparseable content');
+        
+        extractionMessages.push({ role: 'assistant', content: extractContent });
+        extractionMessages.push({ 
+          role: 'user', 
+          content: 'The output was not valid JSON. Please output a single valid JSON object matching the required schema. Do NOT include any markdown formatting or extra text.'
+        });
       }
     } else {
-      console.error(`[llm:${name}] Phase 2 json_object mode produced unparseable content`);
-      console.error(`[llm:${name}] Phase 2 raw content preview (first 300 chars): ${extractContent.slice(0, 300)}`);
+      console.warn(`[llm:${name}] Phase 2 produced no content at all on attempt ${attempt}`);
+      lastError = new Error('No content produced');
+      
+      extractionMessages.push({ role: 'assistant', content: '(no output)' });
+      extractionMessages.push({ 
+        role: 'user', 
+        content: 'No content was generated. Please ensure you output a single valid JSON object matching the schema.'
+      });
     }
-  } else {
-    console.error(`[llm:${name}] Phase 2 produced no content at all`);
   }
 
-  console.error(`[llm:${name}] FAILED to extract structured output from LLM response`);
-  throw new Error('Failed to extract structured output from LLM response');
+  console.error(`[llm:${name}] FAILED to extract structured output from LLM response after ${MAX_PHASE2_RETRIES} attempts`);
+  throw lastError || new Error('Failed to extract structured output from LLM response');
 }

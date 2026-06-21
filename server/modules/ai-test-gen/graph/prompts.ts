@@ -54,12 +54,7 @@ If the input has "businessFlowBlueprints", call **flow_detail_query** with ALL b
 Call **requirement_graph_query** with the requirement IDs. If the input has "selectedFlowIds" or "businessFlowBlueprints", also pass them as the **flowId** parameter so the graph includes user-selected flows. This helps ensure your test conditions cover broader integration scenarios and don't miss cross-cutting concerns.
 
 ### Step 3: Load ISTQB Technique Guides
-Based on the requirement type, load the relevant ISTQB technique guide(s):
-- For input fields or data ranges → call **istqb_equivalence_partitioning** then **istqb_boundary_value_analysis**
-- For business rules with conditions → call **istqb_decision_table**
-- For state-based behavior → call **istqb_state_transition**
-- For user interaction scenarios → call **istqb_use_case_testing**
-You MUST load at least one technique guide before deriving test conditions.
+Call **istqb_guide** to load ALL ISTQB technique guides (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing) in a single call. You MUST load at least one technique guide before deriving test conditions.
 
 ### Step 4: Derive Test Conditions
 Using the requirement details and technique guidance, derive test conditions with proper technique application.
@@ -77,33 +72,61 @@ Using the requirement details and technique guidance, derive test conditions wit
 - **requirement_detail_query(requirementId)**: Get requirement details — pass a single ID string or an array of IDs for batch query
 - **requirement_graph_query(requirementId, flowId?)**: Expand the requirement graph — returns parent, children, siblings, dependencies, and associated business flows. Pass requirementId as a single ID or array. Optionally pass flowId (single or array) to include user-selected flows in the result.
 - **flow_detail_query(flowId)**: Get business flow details — pass a single ID string or an array of IDs for batch query
-- **istqb_equivalence_partitioning(context?)**: Load EP technique guide with steps and examples
-- **istqb_boundary_value_analysis(context?)**: Load BVA technique guide with steps and examples
-- **istqb_decision_table(context?)**: Load decision table technique guide with steps and examples
-- **istqb_state_transition(context?)**: Load state transition technique guide with steps and examples
-- **istqb_use_case_testing(context?)**: Load use case testing technique guide with steps and examples
+- **istqb_guide(techniques?, context?)**: Load ISTQB technique guides (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing). Omit \`techniques\` to load all.
 - **knowledge_base(context?)**: Search project knowledge base for domain-specific information
 
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-You can provide your analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-When you write the analysis text, format it as markdown:
-- Use short section headings on their own lines
+**Two-step output process:**
+
+### Step 1: Write your analysis in text
+Provide your reasoning, findings, and decisions as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+- Short section headings on their own lines
 - Separate sections with blank lines
-- Use bullet lists for steps, options, and observations
-- Wrap JSON, tool arguments, and examples in code fences when helpful
+- Bullet lists for steps, options, and observations
+- Code fences for JSON, tool arguments, and examples
 
-**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+### Step 2: Stop after the complete analysis
+After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your analysis text and the tool results.
 
-**CRITICAL: Do NOT write all your data in the text response and then call \`output_result\` with empty or incomplete data. The COMPLETE structured data must be inside the \`output_result\` tool parameters — this is the only data that will be saved. If you wrote analysis in text, you must also include the FULL data in \`output_result\`.
+**Rules:**
+- Your analysis text is the source material for the automatic extraction pass, so it must contain the full data, not placeholders.
+- Do NOT call \`output_result\`.
+- Do NOT omit top-level concepts like \`requirementAnalysis\` or \`testConditions\` from the analysis you write.
+
+For EVERY object in \`testConditions\`, these fields are mandatory and must never be missing or blank:
+- \`id\`
+- \`requirementId\` must be the exact source requirement ID from the analyzed requirement
+- \`condition\`
+- \`category\` must be explicitly set, for example \`functional\`, \`ui\`, \`api\`, \`boundary\`, \`edge\`, \`error\`, \`validation\`, or \`performance\`
+- \`priority\`
+- \`riskLevel\`
+- \`primaryTechnique\`
+- \`secondaryTechniques\`
+- \`techniqueRationale\`
+- \`coverageDimensions\`
+
+Before finishing your analysis, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`.
+
+If the automatic extraction step fails and you receive feedback, revise your analysis so the missing or incorrect fields are stated explicitly. Do NOT rewrite the analysis into a smaller partial structure.
+
+The system will perform a second structured extraction pass automatically.
 
 Tool parameters schema:
 {
   "requirementAnalysis": { "overallApproach": string, "riskAssessmentSummary": string },
   "testConditions": [{ "id": string, "requirementId": string, "condition": string, "category": string, "priority": "critical"|"high"|"medium"|"low", "riskLevel": "high"|"medium"|"low", "primaryTechnique": string, "secondaryTechniques": string[], "techniqueRationale": string, "coverageDimensions": string[], "dataRequirements": string[], "dependencies": string[], "requirementLevel": string }]
 }
+
+Example:
+{
+  "requirementAnalysis": { "overallApproach": "Equivalence partitioning for input validation, BVT for numeric fields", "riskAssessmentSummary": "Login function carries high risk due to security implications" },
+  "testConditions": [{ "id": "C-001", "requirementId": "REQ-001", "condition": "Verify login with valid username and password", "category": "functional", "priority": "critical", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "EP covers valid/invalid equivalence classes for authentication", "coverageDimensions": ["authentication", "security", "positive"], "dataRequirements": ["valid credentials"], "dependencies": [], "requirementLevel": "L1" }, { "id": "C-002", "requirementId": "REQ-001", "condition": "Reject login with an invalid password", "category": "error", "priority": "high", "riskLevel": "high", "primaryTechnique": "Equivalence Partitioning", "secondaryTechniques": ["Boundary Value Analysis"], "techniqueRationale": "A separate invalid-password partition must be captured as its own condition", "coverageDimensions": ["authentication", "security", "negative"], "dataRequirements": ["valid username", "invalid password"], "dependencies": [], "requirementLevel": "L1" }]
+}
+
+Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object. Never rely on surrounding context or the previous object to carry those fields for you.
 `;
 }
 
@@ -154,13 +177,7 @@ For EACH test condition, call **requirement_detail_query** with the condition's 
 If designing flow-level cases, call **flow_detail_query** to get step details.
 
 ### Step 2: Load ISTQB Technique Guides (MANDATORY)
-You MUST load the technique guide for EACH test condition's primaryTechnique before designing. This is not optional — the guides ensure correct technique application. Load all needed guides in a single round:
-- equivalence_partitioning → call **istqb_equivalence_partitioning**
-- boundary_value_analysis → call **istqb_boundary_value_analysis**
-- decision_table → call **istqb_decision_table**
-- state_transition → call **istqb_state_transition**
-- use_case_testing → call **istqb_use_case_testing**
-Do NOT skip this step even if you are familiar with the techniques — the guides contain structured procedures you must follow.
+Call **istqb_guide** to load ALL ISTQB technique guides in a single call. This is not optional — the guides ensure correct technique application. Do NOT skip this step even if you are familiar with the techniques.
 
 ### Step 3: Design Test Cases
 Using the requirement details and technique guidance, design detailed test cases.
@@ -178,35 +195,67 @@ Using the requirement details and technique guidance, design detailed test cases
    - Alternative paths
    - Error/exception scenarios
 5. Tag each test case with relevant categories
-6. **The \`draftTestCases\` array MUST contain at least one test case.** Calling \`output_result\` with an empty array will be rejected and retried. If you wrote test cases in your response text, you must also include them in the \`output_result\` tool parameters.
+6. **The \`draftTestCases\` array MUST contain at least one test case.** Calling \`output_result\` with an empty array will be rejected and retried.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: Get requirement details for accurate test data and preconditions
 - **requirement_graph_query(requirementId, flowId?)**: Expand the requirement graph to discover related requirements and flows for integration testing. Optionally pass flowId to include user-selected flows.
 - **flow_detail_query(flowId)**: Get flow details — pass a single ID string or an array of IDs for batch query
-- **istqb_equivalence_partitioning(context?)**: Load EP technique guide
-- **istqb_boundary_value_analysis(context?)**: Load BVA technique guide
-- **istqb_decision_table(context?)**: Load decision table technique guide
-- **istqb_state_transition(context?)**: Load state transition technique guide
-- **istqb_use_case_testing(context?)**: Load use case testing technique guide
+- **istqb_guide(techniques?, context?)**: Load ISTQB technique guides (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing). Omit \`techniques\` to load all.
 - **knowledge_base(context?)**: Search project knowledge base for domain-specific information
 
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-You can provide your design rationale step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-When you write the analysis text, format it as markdown:
-- Use short section headings on their own lines
+**Two-step output process:**
+
+### Step 1: Write your design rationale in text
+Provide your reasoning and design decisions as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+- Short section headings on their own lines
 - Separate sections with blank lines
-- Use bullet lists for steps, options, and observations
-- Wrap JSON, tool arguments, and examples in code fences when helpful
+- Bullet lists for steps, options, and observations
+- Code fences for JSON, tool arguments, and examples
 
-**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+### Step 2: Stop after the complete design analysis
+After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your analysis text and the tool results.
+
+**Rules:**
+- Your analysis text is the source material for the automatic extraction pass, so it must contain the complete test case data.
+- Do NOT call \`output_result\`.
+- The \`draftTestCases\` array MUST contain at least one test case in the design you describe.
+- An empty object \`{}\` is always invalid. If you are not ready to provide a complete \`draftTestCases\` payload yet, keep analyzing instead of ending early.
+
+For EVERY object in \`draftTestCases\`, these fields are mandatory and must never be missing or blank:
+- \`id\`
+- \`title\`
+- \`conditionId\`
+- \`requirementId\`
+- \`priority\`
+- \`category\`
+- \`techniqueApplied\`
+- \`preconditions\`
+- \`testData\`
+- \`steps\` with at least one step object containing \`stepNumber\`, \`action\`, and \`expected\`
+- \`selfReview\` with \`score\`, \`strengths\`, \`weaknesses\`, and \`suggestions\`
+
+Before finishing your analysis, do a final check that:
+- \`draftTestCases\` exists
+- \`draftTestCases.length >= 1\`
+- the first test case object is fully populated
+
+If the automatic extraction step fails and you receive feedback, revise your analysis so the missing or incorrect fields are stated explicitly. Do NOT rebuild a smaller partial structure or imply \`{}\`.
+
+The system will perform a second structured extraction pass automatically.
 
 Tool parameters schema:
 {
   "draftTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "postconditions": string[], "tags": string[], "selfReview": { "score": number, "strengths": string[], "weaknesses": string[], "suggestions": string[] } }]
+}
+
+Example:
+{
+  "draftTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page", "Browser session is clean"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter username and password", "expected": "Fields show input values" }, { "stepNumber": 2, "action": "Click Login button", "expected": "Dashboard page is displayed" }], "postconditions": ["Session token created"], "tags": ["smoke", "authentication"], "selfReview": { "score": 8, "strengths": ["Clear steps", "Covers happy path"], "weaknesses": ["No negative scenario"], "suggestions": ["Add invalid credential case"] } }]
 }
 `;
 }
@@ -263,19 +312,34 @@ You have access to the following tools — use them when you need to verify info
 ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-You can provide your review analysis step by step as plain text in your response content — this will be streamed to the user in real-time.
 
-When you write the analysis text, format it as markdown:
-- Use short section headings on their own lines
+**Two-step output process:**
+
+### Step 1: Write your review analysis in text
+Provide your review findings as plain text in your response content — this will be streamed to the user in real-time. Use markdown formatting:
+- Short section headings on their own lines
 - Separate sections with blank lines
-- Use bullet lists for steps, options, and observations
-- Wrap JSON, tool arguments, and examples in code fences when helpful
+- Bullet lists for steps, options, and observations
+- Code fences for JSON, tool arguments, and examples
 
-**However, your final structured result MUST be submitted by calling the \`output_result\` tool.** Do NOT output JSON in your response content. The tool parameters must match the required schema exactly.
+### Step 2: Stop after the complete review analysis
+After writing your analysis, stop. Do NOT call \`output_result\`. The system will perform a second structured extraction pass automatically using your review text and the tool results.
+
+**Rules:**
+- Your review analysis is the source material for the automatic extraction pass, so it must contain the complete final-case decisions.
+- Do NOT call \`output_result\`.
+- The \`finalTestCases\` array MUST contain at least one test case in the review you describe.
+
+The system will perform a second structured extraction pass automatically.
 
 Tool parameters schema:
 {
-  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": any, "to": any, "reason": string }] }]
+  "finalTestCases": [{ "id": string, "title": string, "conditionId": string, "requirementId": string, "priority": "critical"|"high"|"medium"|"low", "category": string, "techniqueApplied": string, "preconditions": string[], "testData": string[], "steps": [{ "stepNumber": number, "action": string, "expected": string }], "tags": string[], "status": "approved"|"approved_with_changes"|"rejected", "reviewSummary": string, "changeLog": [{ "field": string, "from": "string | null", "to": "string | null", "reason": string }] }]
+}
+
+Example:
+{
+  "finalTestCases": [{ "id": "TC-001", "title": "Verify login with valid credentials", "conditionId": "C-001", "requirementId": "REQ-001", "priority": "critical", "category": "functional", "techniqueApplied": "Equivalence Partitioning", "preconditions": ["User is on login page"], "testData": ["username: admin", "password: pass123"], "steps": [{ "stepNumber": 1, "action": "Enter credentials", "expected": "Values shown" }, { "stepNumber": 2, "action": "Click Login", "expected": "Dashboard shown" }], "tags": ["smoke", "login"], "status": "approved", "reviewSummary": "Clear and complete test case covering the happy path", "changeLog": [] }]
 }
 `;
 }

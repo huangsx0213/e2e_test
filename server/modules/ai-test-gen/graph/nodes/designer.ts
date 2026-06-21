@@ -6,58 +6,11 @@ import { callLLMWithStructuredOutput } from './utils';
 import { buildDesignerSystemPrompt, buildDesignerUserMessage } from '../prompts';
 import { DESIGNER_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
-import { z } from 'zod';
+import { createDesignerOutputProfile } from '../structured-output/designer.ts';
 
 // ============================================================
 // Output Schema
 // ============================================================
-const TestStepSchema = z.object({
-  stepNumber: z.preprocess(
-    (v) => (typeof v === 'number' ? v : Number(v) || 1),
-    z.number(),
-  ),
-  action: z.preprocess((v) => String(v ?? ''), z.string()),
-  expected: z.preprocess((v) => String(v ?? ''), z.string()),
-});
-
-const DesignerOutputSchema = z.preprocess(
-  // If LLM outputs a single test case object at top level (missing draftTestCases wrapper),
-  // wrap it automatically. Detect by presence of "steps" key without "draftTestCases".
-  (v) => {
-    if (v && typeof v === 'object' && !Array.isArray(v) && !('draftTestCases' in (v as Record<string, unknown>))) {
-      const obj = v as Record<string, unknown>;
-      if ('steps' in obj || 'conditionId' in obj || 'title' in obj) {
-        return { draftTestCases: [obj] };
-      }
-    }
-    return v;
-  },
-  z.object({
-  draftTestCases: z.preprocess(
-    (v) => Array.isArray(v) ? v : typeof v === 'object' && v !== null ? Object.values(v) : [],
-    z.array(z.object({
-    id: z.string(),
-    title: z.string().describe('Concise test case title'),
-    conditionId: z.string().describe('Reference to the test condition this covers'),
-    requirementId: z.string(),
-    priority: z.string().describe('One of: critical, high, medium, low'),
-    category: z.string().describe('One of: functional, ui, api, boundary, edge, error, validation'),
-    techniqueApplied: z.string(),
-    preconditions: z.array(z.string()),
-    testData: z.array(z.string()),
-    steps: z.array(TestStepSchema).min(1),
-    postconditions: z.array(z.string()).default([]),
-    tags: z.array(z.string()).default([]),
-    selfReview: z.object({
-      score: z.coerce.number().min(1).max(10).describe('Self-assessed quality score 1-10'),
-      strengths: z.array(z.string()),
-      weaknesses: z.array(z.string()),
-      suggestions: z.array(z.string()),
-    }),
-  })).min(1)),
-  }),
-);
-
 // ============================================================
 // Node
 // ============================================================
@@ -85,6 +38,8 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       // Load custom prompt override if available
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
+      const conditions = state.approvedConditions ?? state.testConditions ?? [];
+      const outputProfile = createDesignerOutputProfile(conditions.map((condition) => condition.id));
 
       const messages = [
         { role: 'system' as const, content: systemPrompt },
@@ -97,7 +52,7 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
         provider,
         messages,
         skills,
-        DesignerOutputSchema,
+        outputProfile,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
         { signal: nodeSignal, agentName },

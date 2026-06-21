@@ -6,33 +6,11 @@ import { callLLMWithStructuredOutput } from './utils';
 import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
 import { ANALYST_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
-import { z } from 'zod';
+import { analystOutputProfile } from '../structured-output/analyst.ts';
 
 // ============================================================
 // Output Schema
 // ============================================================
-const AnalystOutputSchema = z.object({
-  requirementAnalysis: z.object({
-    overallApproach: z.string().describe('Overall test strategy for this batch'),
-    riskAssessmentSummary: z.string().describe('Summary of key risks identified'),
-  }),
-  testConditions: z.array(z.object({
-    id: z.string(),
-    requirementId: z.string(),
-    condition: z.string().describe('ISTQB-style test condition description'),
-    category: z.string().describe('One of: functional, ui, api, boundary, edge, error, validation, performance'),
-    priority: z.string().describe('One of: critical, high, medium, low'),
-    riskLevel: z.string().describe('One of: high, medium, low'),
-    primaryTechnique: z.string().describe('Primary ISTQB test technique'),
-    secondaryTechniques: z.array(z.string()),
-    techniqueRationale: z.string(),
-    coverageDimensions: z.array(z.string()),
-    dataRequirements: z.array(z.string()).optional(),
-    dependencies: z.array(z.string()).default([]),
-    requirementLevel: z.string().optional(),
-  })),
-});
-
 // ============================================================
 // Node
 // ============================================================
@@ -74,7 +52,7 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
         provider,
         messages,
         skills,
-        AnalystOutputSchema,
+        analystOutputProfile,
         { onStep: observer?.onStep, onThinking: observer?.onThinking },
         agentName,
         { signal: nodeSignal, agentName },

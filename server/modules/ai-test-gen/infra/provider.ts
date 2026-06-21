@@ -16,6 +16,12 @@ export interface ToolCall {
   name: string;
   args: unknown;
   id: string;
+  malformed?: {
+    source: 'responses_output_item_done' | 'responses_stream_end';
+    rawArgsLength: number;
+    rawArgsPreview: string;
+    parseError: string;
+  };
 }
 
 export interface JsonSchema {
@@ -95,6 +101,66 @@ export interface AIProvider {
 export interface ExtendedChatResponse extends ChatResponse {
   reasoningContent?: string;
   usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
+}
+
+function logOutputResultArgsSummary(prefix: string, parsedArgs: unknown): void {
+  if (parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)) {
+    const keys = Object.keys(parsedArgs as Record<string, unknown>);
+    console.log(`${prefix} keys=[${keys.join(',')}] isEmpty=${keys.length === 0}`);
+    return;
+  }
+  console.log(`${prefix} nonObject=true`);
+}
+
+function sanitizeSchemaName(value: string | undefined): string {
+  const cleaned = String(value || 'structured_output')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || 'structured_output';
+}
+
+function normalizeStructuredOutputSchema(
+  jsonSchema: Record<string, unknown>,
+  nameHint?: string,
+): Record<string, unknown> {
+  if (
+    jsonSchema?.type === 'json_schema'
+    && typeof jsonSchema.schema === 'object'
+    && jsonSchema.schema
+  ) {
+    return {
+      ...jsonSchema,
+      name: jsonSchema.name || sanitizeSchemaName(nameHint),
+      strict: jsonSchema.strict ?? true,
+    };
+  }
+
+  return {
+    type: 'json_schema',
+    name: sanitizeSchemaName(nameHint),
+    schema: jsonSchema,
+    strict: true,
+  };
+}
+
+function buildMalformedToolCall(
+  toolCall: { id: string; name: string },
+  rawArgs: string,
+  error: unknown,
+  source: 'responses_output_item_done' | 'responses_stream_end',
+): ToolCall {
+  return {
+    id: toolCall.id,
+    name: toolCall.name,
+    args: {},
+    malformed: {
+      source,
+      rawArgsLength: rawArgs.length,
+      rawArgsPreview: rawArgs.slice(0, 200),
+      parseError: String(error),
+    },
+  };
 }
 
 export type ProviderConfig =
@@ -338,9 +404,11 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       stream: true,
     };
     if (options?.jsonSchema) {
-      body.response_format = { type: 'json_schema' as const, json_schema: options.jsonSchema };
+      body.text = {
+        format: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName),
+      };
     } else if (options?.responseFormat === 'json_object') {
-      body.response_format = { type: 'json_object' };
+      body.text = { format: { type: 'json_object' } };
     }
     if (options?.tools && options.tools.length > 0) {
       // Responses API tools format: { type: "function", name, description, parameters } (flat, not nested)
@@ -592,7 +660,7 @@ async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, d
 }
 
 /** Read SSE stream from the Responses API (Azure OpenAI GPT-5 reasoning models) */
-async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, decoder: TextDecoder): AsyncGenerator<StreamChunk> {
+export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, decoder: TextDecoder): AsyncGenerator<StreamChunk> {
   let buffer = '';
   let usageData: any = null;
   let currentToolCall: { id: string; name: string; args: string } | null = null;
@@ -636,6 +704,8 @@ async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Ui
             if (currentToolCall) {
               currentToolCall.args += data.delta;
               yield { type: 'tool_call_delta', content: data.delta, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            } else {
+              console.warn(`[provider:azure-responses] function_call_arguments.delta arrived before active tool call: deltaLen=${String(data.delta).length}`);
             }
           }
 
@@ -652,6 +722,7 @@ async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Ui
                 }
               }
               currentToolCall = { id: item.call_id || item.id, name: item.name, args: '' };
+              console.log(`[provider:azure-responses] tool_call_start for ${currentToolCall.name}: id=${currentToolCall.id}`);
               yield { type: 'tool_call_start', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
             }
           }
@@ -666,15 +737,22 @@ async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Ui
               try {
                 const parsedArgs = JSON.parse(finalArgs);
                 console.log(`[provider:azure-responses] parsed args keys: ${Object.keys(parsedArgs).join(', ')}`);
+                if (currentToolCall.name === 'output_result') {
+                  logOutputResultArgsSummary('[provider:azure-responses] output_result args summary:', parsedArgs);
+                }
                 yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
               } catch (e) {
                 console.warn(`[provider:azure-responses] Failed to parse tool call args for ${currentToolCall.name}: ${finalArgs.slice(0, 200)}, error: ${e}`);
-                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+                yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, finalArgs, e, 'responses_output_item_done') };
               }
               currentToolCall = null;
             }
           }
-        } catch {}
+        } catch (error) {
+          if (eventType.startsWith('response.function_call') || eventType === 'response.output_item.added' || eventType === 'response.output_item.done') {
+            console.warn(`[provider:azure-responses] Failed to process SSE event ${eventType}: ${String(error).slice(0, 300)}`);
+          }
+        }
         eventType = '';
       } else if (line.trim() === '') {
         eventType = '';
@@ -683,10 +761,15 @@ async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultReader<Ui
   }
 
   if (currentToolCall) {
+    console.warn(`[provider:azure-responses] fallback tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, preview=${currentToolCall.args.slice(0, 200)}`);
     try {
-      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
-    } catch {
-      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+      const parsedArgs = JSON.parse(currentToolCall.args);
+      if (currentToolCall.name === 'output_result') {
+        logOutputResultArgsSummary('[provider:azure-responses] output_result fallback args summary:', parsedArgs);
+      }
+      yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
+    } catch (error) {
+      yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, currentToolCall.args, error, 'responses_stream_end') };
     }
   }
 
