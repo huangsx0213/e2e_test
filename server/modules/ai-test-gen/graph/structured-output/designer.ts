@@ -111,9 +111,6 @@ export function createDesignerOutputProfile(expectedConditionIds: string[] = [])
       return !!raw && typeof raw === 'object' && !Array.isArray(raw)
         && 'draftTestCases' in (raw as Record<string, unknown>);
     },
-    formatEmptySubmissionError() {
-      return 'You submitted an empty object. Resubmit a COMPLETE object with this exact top-level shape: {"draftTestCases":[{"id":"TC-001","title":"...","conditionId":"C-001","requirementId":"REQ-001","priority":"high","category":"functional","techniqueApplied":"...","preconditions":[],"testData":[],"steps":[{"stepNumber":1,"action":"...","expected":"..."}],"postconditions":[],"tags":[],"selfReview":{"score":8,"strengths":[],"weaknesses":[],"suggestions":[]}}]} Do not call output_result again until draftTestCases contains at least one fully populated test case.';
-    },
     normalize(raw: unknown): unknown {
       const input = wrapDesignerRoot(raw);
       return {

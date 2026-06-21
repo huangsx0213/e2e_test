@@ -135,9 +135,6 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
       return !!raw && typeof raw === 'object' && !Array.isArray(raw)
         && 'finalTestCases' in (raw as Record<string, unknown>);
     },
-    formatEmptySubmissionError() {
-      return 'You submitted an empty object. Resubmit a COMPLETE object with this exact top-level shape: {"finalTestCases":[{"id":"TC-001","title":"...","conditionId":"C-001","requirementId":"REQ-001","priority":"high","category":"functional","techniqueApplied":"...","preconditions":[],"testData":[],"steps":[{"stepNumber":1,"action":"...","expected":"..."}],"tags":[],"status":"approved","reviewSummary":"...","changeLog":[]}]} Do not call output_result again until finalTestCases contains at least one fully populated reviewed case.';
-    },
     normalize(raw: unknown): unknown {
       const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
       const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));

@@ -98,20 +98,6 @@ export interface AIProvider {
   streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk>;
 }
 
-export interface ExtendedChatResponse extends ChatResponse {
-  reasoningContent?: string;
-  usage?: { promptTokens: number; completionTokens: number; reasoningTokens?: number };
-}
-
-function logOutputResultArgsSummary(prefix: string, parsedArgs: unknown): void {
-  if (parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)) {
-    const keys = Object.keys(parsedArgs as Record<string, unknown>);
-    console.log(`${prefix} keys=[${keys.join(',')}] isEmpty=${keys.length === 0}`);
-    return;
-  }
-  console.log(`${prefix} nonObject=true`);
-}
-
 function sanitizeSchemaName(value: string | undefined): string {
   const cleaned = String(value || 'structured_output')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
@@ -356,7 +342,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
       temperature: options?.temperature ?? 0.3,
       max_completion_tokens: options?.maxTokens ?? 4096,
       response_format: options?.jsonSchema
-        ? { type: 'json_schema' as const, json_schema: options.jsonSchema }
+        ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
         : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     }),
@@ -468,7 +454,7 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 8192,
       response_format: options?.jsonSchema
-        ? { type: 'json_schema' as const, json_schema: options.jsonSchema }
+        ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
         : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
       ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
     } as any),
@@ -488,7 +474,7 @@ export function createAIProviderWithFallback(config: ExtendedProviderConfig): AI
   }
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
-    yield* primary.streamChat(messages, options);
+    yield* tryStreamProvider(primary, fallbacks, 0, cb, (provider) => provider.streamChat(messages, options));
   }
 
   return { chat, streamChat };
@@ -515,6 +501,40 @@ async function tryProvider<T>(
     cb.recordFailure();
     if (currentIndex < fallbacks.length) {
       return tryProvider(primary, fallbacks, currentIndex + 1, cb, fn);
+    }
+    throw err;
+  }
+}
+
+async function* tryStreamProvider(
+  primary: AIProvider,
+  fallbacks: AIProvider[],
+  currentIndex: number,
+  cb: CircuitBreaker,
+  fn: (provider: AIProvider) => AsyncGenerator<StreamChunk>,
+): AsyncGenerator<StreamChunk> {
+  if (!cb.try()) {
+    if (currentIndex < fallbacks.length) {
+      yield* tryStreamProvider(primary, fallbacks, currentIndex + 1, cb, fn);
+      return;
+    }
+    throw new Error('All providers unavailable. Circuit breaker is open');
+  }
+
+  const provider = currentIndex === 0 ? primary : fallbacks[currentIndex - 1];
+  let yieldedAnyChunk = false;
+
+  try {
+    for await (const chunk of fn(provider)) {
+      yieldedAnyChunk = true;
+      yield chunk;
+    }
+    cb.recordSuccess();
+  } catch (err: any) {
+    cb.recordFailure();
+    if (!yieldedAnyChunk && currentIndex < fallbacks.length) {
+      yield* tryStreamProvider(primary, fallbacks, currentIndex + 1, cb, fn);
+      return;
     }
     throw err;
   }
@@ -737,9 +757,6 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
               try {
                 const parsedArgs = JSON.parse(finalArgs);
                 console.log(`[provider:azure-responses] parsed args keys: ${Object.keys(parsedArgs).join(', ')}`);
-                if (currentToolCall.name === 'output_result') {
-                  logOutputResultArgsSummary('[provider:azure-responses] output_result args summary:', parsedArgs);
-                }
                 yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
               } catch (e) {
                 console.warn(`[provider:azure-responses] Failed to parse tool call args for ${currentToolCall.name}: ${finalArgs.slice(0, 200)}, error: ${e}`);
@@ -764,9 +781,6 @@ export async function* readResponsesApiSSEStream(reader: ReadableStreamDefaultRe
     console.warn(`[provider:azure-responses] fallback tool_call_end for ${currentToolCall.name}: accumulated=${currentToolCall.args.length}chars, preview=${currentToolCall.args.slice(0, 200)}`);
     try {
       const parsedArgs = JSON.parse(currentToolCall.args);
-      if (currentToolCall.name === 'output_result') {
-        logOutputResultArgsSummary('[provider:azure-responses] output_result fallback args summary:', parsedArgs);
-      }
       yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: parsedArgs } };
     } catch (error) {
       yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, currentToolCall.args, error, 'responses_stream_end') };

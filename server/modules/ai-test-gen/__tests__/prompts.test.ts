@@ -39,7 +39,7 @@ describe('buildAnalystSystemPrompt', () => {
 });
 
 describe('buildDesignerSystemPrompt', () => {
-  it('explicitly forbids empty output_result submissions and requires complete draftTestCases data', () => {
+  it('requires complete draftTestCases data without relying on output_result retries', () => {
     const prompt = buildDesignerSystemPrompt({
       approvedConditions: [{
         id: 'C-1',
@@ -58,6 +58,7 @@ describe('buildDesignerSystemPrompt', () => {
     } as any);
 
     expect(prompt).toContain('An empty object `{}` is always invalid');
+    expect(prompt).toContain('Do not end your analysis until you have described at least one complete test case for extraction.');
     expect(prompt).toContain('For EVERY object in `draftTestCases`, these fields are mandatory');
     expect(prompt).toContain('If the automatic extraction step fails and you receive feedback');
     expect(prompt).toContain('Do NOT call `output_result`');

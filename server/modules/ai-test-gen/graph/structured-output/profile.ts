@@ -3,6 +3,5 @@ export interface StructuredOutputProfile<T> {
   normalize(raw: unknown): unknown;
   parse(normalized: unknown): T;
   formatValidationError(error: unknown): string;
-  formatEmptySubmissionError?: () => string;
   shouldAttemptPhase1Extraction?: (raw: unknown) => boolean;
 }

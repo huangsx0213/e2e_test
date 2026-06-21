@@ -37,9 +37,6 @@ export const analystOutputProfile: StructuredOutputProfile<AnalystRuntimeOutput>
     return !!raw && typeof raw === 'object' && !Array.isArray(raw)
       && ('requirementAnalysis' in (raw as Record<string, unknown>) || 'testConditions' in (raw as Record<string, unknown>));
   },
-  formatEmptySubmissionError() {
-    return 'You submitted an empty object. Resubmit a COMPLETE object with this exact top-level shape: {"requirementAnalysis":{"overallApproach":"...","riskAssessmentSummary":"..."},"testConditions":[{"id":"C-001","requirementId":"REQ-001","condition":"...","category":"functional","priority":"high","riskLevel":"high","primaryTechnique":"...","secondaryTechniques":[],"techniqueRationale":"...","coverageDimensions":[],"dependencies":[]}]} Do not call output_result again until both requirementAnalysis and at least one fully populated testConditions object are ready.';
-  },
   normalize(raw: unknown): unknown {
     const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
     const testConditions = Array.isArray(input.testConditions)

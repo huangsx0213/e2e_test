@@ -195,7 +195,7 @@ Using the requirement details and technique guidance, design detailed test cases
    - Alternative paths
    - Error/exception scenarios
 5. Tag each test case with relevant categories
-6. **The \`draftTestCases\` array MUST contain at least one test case.** Calling \`output_result\` with an empty array will be rejected and retried.
+6. **The \`draftTestCases\` array MUST contain at least one test case.** Do not end your analysis until you have described at least one complete test case for extraction.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: Get requirement details for accurate test data and preconditions
@@ -289,8 +289,6 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
   if (customPrompt) {
     return replacePromptVariables(customPrompt, state);
   }
-  const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
-
   return `You are a senior QA Quality Manager. Perform a comprehensive 6-dimension review of draft test cases.
 
 ## Review Dimensions

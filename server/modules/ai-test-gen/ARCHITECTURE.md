@@ -150,12 +150,12 @@ AI Test Gen 是一个基于 LangGraph StateGraph 的自动化测试用例生成�
 Round 1: LLM 思考 → 调用 tool(s) → 观察结果
 Round 2: LLM 继续思考 → 调用更多 tool(s) → 观察结果
 ...
-Round N: LLM 思考 → 无 tool calls → 输出最终结果（含 JSON）
+Round N: LLM 思考/总结 → 无 tool calls → 结束 ReAct，转入后续 JSON 提取
 ```
 
 - 最多 15 轮（`MAX_REACT_ROUNDS`）
 - 无 tool calls 时自动退出
-- 温度：0.2（Phase 1），0.1（Phase 2）
+- 温度：0.3（Phase 1），0（Phase 2）
 
 ### 两阶段 JSON 提取策略
 
@@ -164,15 +164,15 @@ Phase 1: ReAct 自由输出 → tryExtractJson() → schema.parse()
   ├─ 成功 → 直接返回
   └─ 失败 → Phase 2
 
-Phase 2: json_object 模式强制提取 → schema.parse()
+Phase 2: schema-constrained 输出提取 → schema.parse()
   ├─ 成功 → 返回
   └─ 失败 → 抛出异常
 ```
 
 **为什么需要两阶段**：
-- Phase 1 不能用 `response_format: json_object`（与 tool calls 冲突）
-- Phase 2 用 `json_object` 模式，API 层面保证 JSON 语法合法
-- `json_object` 只保证语法，不保证 schema 结构正确
+- Phase 1 需要自由分析文本和 tool calls，不适合直接强制最终结构化输出
+- Phase 2 使用 schema-constrained 输出，把前面的分析和 tool 结果整理成最终 JSON
+- 即使 API 帮助约束 JSON 形状，仍然需要运行时 schema 校验和 normalize
 
 ### JSON 容错层
 
@@ -181,7 +181,6 @@ Phase 2: json_object 模式强制提取 → schema.parse()
 | 1 | `tryExtractJson()` | markdown 包裹、混合文本中的 JSON |
 | 2 | 顶层 `z.preprocess` | LLM 输出单个对象而非 `{ draftTestCases: [...] }` 包裹 |
 | 3 | 内层 `z.preprocess` | 数组/对象混用、字符串数字、非字符串类型 |
-| 4 | `[TOOL_CALLS]` 兼容 | NVIDIA NIM 的非标准 tool call 文本格式 |
 
 ## Skill System
 
@@ -253,10 +252,10 @@ seed requirement
 |------|---|------|
 | Agent timeout | 600s (10min) | 每个 agent 节点的最大执行时间 |
 | ReAct max rounds | 15 | 单个 agent 的最大 tool call 轮次 |
-| Phase 1 temperature | 0.2 | 降低随机性，减少 JSON 格式变异 |
-| Phase 2 temperature | 0.1 | 尽量确定性输出 |
-| Phase 1 maxTokens | 8192 | ReAct 循环的 token 上限 |
-| Phase 2 maxTokens | 16384 | JSON 提取的 token 上限 |
+| Phase 1 temperature | 0.3 | 平衡分析质量与稳定性 |
+| Phase 2 temperature | 0 | 尽量确定性输出 |
+| Phase 1 maxTokens | 32768 | ReAct 循环的 token 上限 |
+| Phase 2 maxTokens | 32768 | 提取阶段的 token 上限 |
 
 ## Key Files
 

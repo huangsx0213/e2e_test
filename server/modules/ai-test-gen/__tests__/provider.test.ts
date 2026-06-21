@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
-import { createAIProvider, readResponsesApiSSEStream } from '../infra/provider.ts';
+import { createAIProvider, createAIProviderWithFallback, readResponsesApiSSEStream } from '../infra/provider.ts';
 
 describe('createAIProvider', () => {
   const originalFetch = globalThis.fetch;
@@ -69,14 +69,111 @@ describe('createAIProvider', () => {
     expect(requestBody.response_format).toBeUndefined();
   });
 
-  it('logs output_result argument diagnostics from responses api streams', async () => {
+  it('normalizes plain json schema structured output for openai-compatible streaming requests', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    });
+    globalThis.fetch = fetchSpy as any;
+
+    const provider = createAIProvider({
+      type: 'openai-compatible',
+      endpoint: 'https://example.test/v1',
+      apiKey: 'test-key',
+      model: 'gpt-4.1-mini',
+    });
+
+    for await (const _chunk of provider.streamChat(
+      [{ role: 'user', content: 'hi' }],
+      {
+        agentName: 'test_analyst',
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            testConditions: {
+              type: 'array',
+              items: { type: 'object', properties: {}, additionalProperties: false },
+            },
+          },
+          additionalProperties: false,
+        },
+      } as any,
+    )) {
+      // drain stream
+    }
+
+    const requestBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
+    expect(requestBody.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: {
+        type: 'json_schema',
+        name: 'test_analyst',
+        schema: {
+          type: 'object',
+          properties: {
+            testConditions: {
+              type: 'array',
+              items: { type: 'object', properties: {}, additionalProperties: false },
+            },
+          },
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    });
+  });
+
+  it('falls back for streamChat when the primary provider returns a 500 before streaming starts', async () => {
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('{"message":"primary failed","type":"Internal Server Error","code":500}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      });
+    globalThis.fetch = fetchSpy as any;
+
+    const provider = createAIProviderWithFallback({
+      type: 'openai-compatible',
+      endpoint: 'https://primary.example/v1',
+      apiKey: 'primary-key',
+      model: 'gpt-primary',
+      fallbackConfigs: [{
+        type: 'openai-compatible',
+        endpoint: 'https://fallback.example/v1',
+        apiKey: 'fallback-key',
+        model: 'gpt-fallback',
+      }],
+    });
+
+    for await (const _chunk of provider.streamChat([{ role: 'user', content: 'hi' }], { agentName: 'quality_manager' })) {
+      // drain stream
+    }
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('https://primary.example/v1/chat/completions');
+    expect(String(fetchSpy.mock.calls[1][0])).toContain('https://fallback.example/v1/chat/completions');
+  });
+
+  it('parses generic responses api tool calls without extra diagnostics', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const encoder = new TextEncoder();
     const chunks = [
       'event: response.output_item.added\n' +
-      'data: {"item":{"type":"function_call","call_id":"call-1","name":"output_result"}}\n\n' +
+      'data: {"item":{"type":"function_call","call_id":"call-1","name":"example_tool"}}\n\n' +
       'event: response.output_item.done\n' +
-      'data: {"item":{"type":"function_call","call_id":"call-1","name":"output_result","arguments":"{}"}}\n\n' +
+      'data: {"item":{"type":"function_call","call_id":"call-1","name":"example_tool","arguments":"{}"}}\n\n' +
       'data: [DONE]\n',
     ];
     const stream = new ReadableStream<Uint8Array>({
@@ -88,22 +185,24 @@ describe('createAIProvider', () => {
 
     const reader = stream.getReader();
     const decoder = new TextDecoder();
-    for await (const _chunk of readResponsesApiSSEStream(reader, decoder)) {
-      // drain stream
+    const emitted: any[] = [];
+    for await (const chunk of readResponsesApiSSEStream(reader, decoder)) {
+      emitted.push(chunk);
     }
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('tool_call_end for output_result'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('output_result args summary: keys=[] isEmpty=true'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('tool_call_end for example_tool'));
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('output_result args summary:'));
+    expect(emitted.some((chunk) => chunk.toolCall?.name === 'example_tool' && !chunk.toolCall?.malformed)).toBe(true);
     logSpy.mockRestore();
   });
 
-  it('logs fallback diagnostics when output_result never receives output_item.done', async () => {
+  it('does not emit extra diagnostics when a generic tool call falls back at stream end', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const encoder = new TextEncoder();
     const chunks = [
       'event: response.output_item.added\n' +
-      'data: {"item":{"type":"function_call","call_id":"call-1","name":"output_result"}}\n\n' +
+      'data: {"item":{"type":"function_call","call_id":"call-1","name":"example_tool"}}\n\n' +
       'event: response.function_call_arguments.delta\n' +
       'data: {"delta":"{}"}\n\n' +
       'data: [DONE]\n',
@@ -122,19 +221,19 @@ describe('createAIProvider', () => {
       emitted.push(chunk);
     }
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('fallback tool_call_end for output_result'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('output_result fallback args summary: keys=[] isEmpty=true'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('fallback tool_call_end for example_tool'));
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('output_result fallback args summary:'));
     expect(emitted.some((chunk) => chunk.toolCall?.malformed)).toBe(false);
     warnSpy.mockRestore();
     logSpy.mockRestore();
   });
 
-  it('marks malformed output_result fallback payloads instead of silently returning an empty object', async () => {
+  it('marks malformed generic tool call fallback payloads instead of silently returning an empty object', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const encoder = new TextEncoder();
     const chunks = [
       'event: response.output_item.added\n' +
-      'data: {"item":{"type":"function_call","call_id":"call-1","name":"output_result"}}\n\n' +
+      'data: {"item":{"type":"function_call","call_id":"call-1","name":"example_tool"}}\n\n' +
       'event: response.function_call_arguments.delta\n' +
       'data: {"delta":"{\\\"broken\\\":1"}\n\n' +
       'data: [DONE]\n',
@@ -153,7 +252,7 @@ describe('createAIProvider', () => {
       emitted.push(chunk);
     }
 
-    const malformedChunk = emitted.find((chunk) => chunk.toolCall?.name === 'output_result' && chunk.toolCall?.malformed);
+    const malformedChunk = emitted.find((chunk) => chunk.toolCall?.name === 'example_tool' && chunk.toolCall?.malformed);
     expect(malformedChunk.toolCall.malformed.source).toBe('responses_stream_end');
     expect(malformedChunk.toolCall.malformed.rawArgsPreview).toContain('{\"broken\":1');
     warnSpy.mockRestore();
