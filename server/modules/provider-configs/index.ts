@@ -48,21 +48,26 @@ crudModule.router.post('/:id/test', withErrorHandling(async (req, res) => {
       deployment: existing.deployment,
       apiVersion: existing.apiVersion,
       model: existing.models && existing.models.length > 0 ? existing.models[0] : (existing.model || undefined),
+      reasoningEffort: existing.reasoningEffort ?? undefined,
+      reasoningSummary: existing.reasoningSummary ?? undefined,
+      textVerbosity: existing.textVerbosity ?? undefined,
     } as any);
 
     const start = Date.now();
-    const response = await provider.chat(
+    let responseText = '';
+    for await (const chunk of provider.streamChat(
       [{ role: 'user', content: 'Reply with exactly: OK' }],
-      { maxTokens: 32, temperature: 0 }
-    );
+      { maxTokens: 32 },
+    )) {
+      if (chunk.type === 'content' && chunk.content) responseText += chunk.content;
+    }
     const latency = Date.now() - start;
 
     res.json({
       success: true,
       latencyMs: latency,
       model: existing.model,
-      response: response.content?.slice(0, 100) ?? '(empty response)',
-      tokenUsage: response.usage,
+      response: responseText.slice(0, 100) || '(empty response)',
     });
   } catch (err: any) {
     res.json({

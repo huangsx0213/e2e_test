@@ -20,6 +20,9 @@ export interface TestGenStartConfig {
   modelName?: string;
   includeFlowCases?: boolean;
   useCache?: boolean;
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  textVerbosity?: string;
 }
 
 interface TreeNode {
@@ -145,6 +148,9 @@ interface SavedConfig {
   useCache: boolean;
   selectedReqIds?: string[];
   selectedFlowIds?: string[];
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  textVerbosity?: string;
 }
 
 function loadConfig(): SavedConfig | null {
@@ -230,6 +236,10 @@ export function TestGenConfigPanel({
     const opt = modelOptions.find(o => o.model === selectedModel);
     return opt?.providerName || '';
   }, [modelOptions, selectedModel]);
+  const selectedProviderType = useMemo(() => {
+    const opt = modelOptions.find(o => o.model === selectedModel);
+    return opt?.providerType || '';
+  }, [modelOptions, selectedModel]);
   // Auto-select first model from active provider
   useEffect(() => {
     if (!selectedModel && modelOptions.length > 0) {
@@ -248,14 +258,18 @@ export function TestGenConfigPanel({
   }, [modelOptions, selectedModel, providerConfigs]);
   const [includeFlowCases, setIncludeFlowCases] = useState(savedConfig?.includeFlowCases ?? defaultConfig.includeFlowCases);
   const [useCache, setUseCache] = useState(savedConfig?.useCache ?? defaultConfig.useCache);
+  const [reasoningEffort, setReasoningEffort] = useState(savedConfig?.reasoningEffort ?? '');
+  const [reasoningSummary, setReasoningSummary] = useState(savedConfig?.reasoningSummary ?? '');
+  const [textVerbosity, setTextVerbosity] = useState(savedConfig?.textVerbosity ?? '');
 
   useEffect(() => {
     saveConfig({
       mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache,
       selectedReqIds: Array.from(selectedReqs),
       selectedFlowIds: Array.from(selectedFlows),
+      reasoningEffort, reasoningSummary, textVerbosity,
     });
-  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, selectedReqs, selectedFlows]);
+  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, selectedReqs, selectedFlows, reasoningEffort, reasoningSummary, textVerbosity]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 
@@ -291,6 +305,9 @@ export function TestGenConfigPanel({
     setModelName(defaultConfig.modelName);
     setIncludeFlowCases(defaultConfig.includeFlowCases);
     setUseCache(defaultConfig.useCache);
+    setReasoningEffort('');
+    setReasoningSummary('');
+    setTextVerbosity('');
     setSelectedReqs(new Set());
     setSelectedFlows(new Set());
   };
@@ -308,6 +325,9 @@ export function TestGenConfigPanel({
       modelName: modelName || undefined,
       includeFlowCases,
       useCache,
+      reasoningEffort: reasoningEffort || undefined,
+      reasoningSummary: reasoningSummary || undefined,
+      textVerbosity: textVerbosity || undefined,
     });
   };
 
@@ -539,6 +559,53 @@ export function TestGenConfigPanel({
             )}
             {modelOptions.length === 0 && (
               <p className="text-[11px] text-amber-600 mt-1.5">No models configured. Go to Settings &gt; AI Provider.</p>
+            )}
+          </div>
+
+          {/* Model Options */}
+          <div className="space-y-3">
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Reasoning Effort</label>
+              <select
+                value={reasoningEffort}
+                onChange={e => setReasoningEffort(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">Provider default</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            {selectedProviderType === 'azure-openai' && (
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Reasoning Summary</label>
+              <select
+                value={reasoningSummary}
+                onChange={e => setReasoningSummary(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">Provider default</option>
+                <option value="auto">Auto</option>
+                <option value="detailed">Detailed</option>
+                <option value="concise">Concise</option>
+              </select>
+            </div>
+            )}
+            {selectedProviderType === 'azure-openai' && (
+            <div>
+              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Text Verbosity</label>
+              <select
+                value={textVerbosity}
+                onChange={e => setTextVerbosity(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
+              >
+                <option value="">Provider default</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
             )}
           </div>
 

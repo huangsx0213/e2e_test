@@ -34,6 +34,9 @@ export interface StartParams {
   flowIds?: string[];
   includeFlowCases?: boolean;
   useCache?: boolean;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  reasoningSummary?: 'auto' | 'detailed' | 'concise';
+  textVerbosity?: 'low' | 'medium' | 'high';
 }
 
 export class ContextBuilder {
@@ -70,7 +73,7 @@ export class ContextBuilder {
     runId: string,
     projectId: string,
     mode: 'auto' | 'interactive',
-    config: { providerConfigName?: string; model?: string; useCache?: boolean; currentBatch?: number } = {},
+    config: { providerConfigName?: string; model?: string; useCache?: boolean; currentBatch?: number; reasoningEffort?: string; reasoningSummary?: string; textVerbosity?: string } = {},
   ): Promise<RunContext> {
     const abortController = new AbortController();
     this.abortControllers.set(runId, abortController);
@@ -116,6 +119,9 @@ export class ContextBuilder {
       deployment: providerConfigRow.deployment,
       apiVersion: providerConfigRow.api_version,
       model: resolvedModel,
+      reasoningEffort: (config.reasoningEffort ?? providerConfigRow.reasoning_effort ?? undefined) as any,
+      reasoningSummary: (config.reasoningSummary ?? providerConfigRow.reasoning_summary ?? undefined) as any,
+      textVerbosity: (config.textVerbosity ?? providerConfigRow.text_verbosity ?? undefined) as any,
     });
     Log.for('context').info(`AI provider ready: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}`);
 

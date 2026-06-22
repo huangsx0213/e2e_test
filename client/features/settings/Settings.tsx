@@ -594,7 +594,7 @@ function ProviderConfigsTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [form, setForm] = useState({ name: '', type: 'openai-compatible' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [] as string[] });
+  const [form, setForm] = useState({ name: '', type: 'openai-compatible' as string, endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [] as string[], reasoningEffort: '' as string, reasoningSummary: '' as string, textVerbosity: '' as string });
   const [modelInput, setModelInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -602,14 +602,14 @@ function ProviderConfigsTab() {
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; latencyMs?: number; error?: string; response?: string } | null>(null);
 
   const handleEdit = (c: any) => {
-    setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '', models: c.models || [] });
+    setForm({ name: c.name, type: c.type, endpoint: c.endpoint || '', apiKey: '', deployment: c.deployment || '', apiVersion: c.apiVersion || '', model: c.model || '', models: c.models || [], reasoningEffort: c.reasoningEffort || '', reasoningSummary: c.reasoningSummary || '', textVerbosity: c.textVerbosity || '' });
     setEditingId(c.id);
     setShowForm(true);
     setShowApiKey(false);
   };
 
   const handleCreate = () => {
-    setForm({ name: '', type: 'openai-compatible', endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [] });
+    setForm({ name: '', type: 'openai-compatible', endpoint: '', apiKey: '', deployment: '', apiVersion: '', model: '', models: [], reasoningEffort: '', reasoningSummary: '', textVerbosity: '' });
     setModelInput('');
     setEditingId(null);
     setShowForm(true);
@@ -626,6 +626,9 @@ function ProviderConfigsTab() {
         apiVersion: form.apiVersion.trim(),
         model: form.models.length > 0 ? form.models[0] : '',
         models: form.models,
+        reasoningEffort: form.reasoningEffort || undefined,
+        reasoningSummary: form.reasoningSummary || undefined,
+        textVerbosity: form.textVerbosity || undefined,
       };
       if (form.apiKey.trim()) {
         payload.encryptedApiKey = form.apiKey.trim();
@@ -801,7 +804,45 @@ function ProviderConfigsTab() {
                   <label className="block text-xs text-slate-500 mb-1">API Version</label>
                   <input type="text" value={form.apiVersion} onChange={e => setForm({ ...form, apiVersion: e.target.value })} placeholder="2024-08-01-preview" className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
                 </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Reasoning Effort</label>
+                  <select value={form.reasoningEffort} onChange={e => setForm({ ...form, reasoningEffort: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (medium)</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Reasoning Summary</label>
+                  <select value={form.reasoningSummary} onChange={e => setForm({ ...form, reasoningSummary: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (auto)</option>
+                    <option value="auto">Auto</option>
+                    <option value="detailed">Detailed</option>
+                    <option value="concise">Concise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Text Verbosity</label>
+                  <select value={form.textVerbosity} onChange={e => setForm({ ...form, textVerbosity: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (medium)</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
               </>
+            )}
+            {(form.type === 'openai-compatible') && (
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Reasoning Effort</label>
+                <select value={form.reasoningEffort} onChange={e => setForm({ ...form, reasoningEffort: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                  <option value="">Not set</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
             )}
           </div>
           <div className="flex justify-end gap-2 mt-4">

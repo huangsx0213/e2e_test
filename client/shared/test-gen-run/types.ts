@@ -67,6 +67,9 @@ export interface StartConfig {
   flowIds?: string[];
   includeFlowCases?: boolean;
   useCache?: boolean;
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  textVerbosity?: string;
 }
 
 export interface TestGenEvent {

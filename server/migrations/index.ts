@@ -30,8 +30,9 @@ import { migration027ProviderModels } from './027_provider_models.ts';
 import { migration028ThinkingData } from './028_thinking_data.ts';
 import { migration029PromptOverrides } from './029_prompt_overrides.ts';
 import { migration030AiDrivenRecorderSchema } from './030_ai_driven_recorder_schema.ts';
+import { migration031ProviderConfigOptions } from './031_provider_config_options.ts';
 
-import { seedDefaults } from '../seed.ts';
+import { migration032DefaultReasoningEffort } from './032_default_reasoning_effort.ts';
 
 export { seedDefaults };
 
@@ -64,6 +65,8 @@ migration021ProviderConfigFix,
   migration028ThinkingData,
   migration029PromptOverrides,
   migration030AiDrivenRecorderSchema,
+  migration031ProviderConfigOptions,
+  migration032DefaultReasoningEffort,
 ];
 
 function appliedMigrationIds(): Set<string> {

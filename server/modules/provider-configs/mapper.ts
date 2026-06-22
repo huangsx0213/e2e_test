@@ -15,6 +15,9 @@ export function normalizeProviderConfig(input: Partial<ProviderConfig>): Provide
     models: input.models || [],
     fallbackConfigIds: input.fallbackConfigIds || [],
     monthlyTokenLimit: input.monthlyTokenLimit ?? null,
+    reasoningEffort: input.reasoningEffort,
+    reasoningSummary: input.reasoningSummary,
+    textVerbosity: input.textVerbosity,
     isActive: input.isActive !== undefined ? input.isActive : false,
     createdAt: input.createdAt || new Date().toISOString(),
   };

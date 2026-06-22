@@ -59,6 +59,9 @@ const handleRefresh = useCallback(async () => {
         flowIds: config.flowIds,
         includeFlowCases: config.includeFlowCases,
         useCache: config.useCache,
+        reasoningEffort: config.reasoningEffort,
+        reasoningSummary: config.reasoningSummary,
+        textVerbosity: config.textVerbosity,
       });
       setActiveTab('runtime');
     } catch {

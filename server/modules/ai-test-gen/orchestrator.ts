@@ -18,7 +18,6 @@ import { Log } from '../../shared/services/logger.ts';
 
 function createDummyProvider(): AIProvider {
   return {
-    chat: async () => ({ content: '', usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 } }),
     streamChat: async function* () { /* noop */ },
   };
 }
@@ -52,6 +51,9 @@ export class Orchestrator {
     log.kv('mode', params.mode);
     log.kv('ai.provider', params.providerConfigName ?? 'default');
     log.kv('ai.model', params.model ?? 'default');
+    log.kv('ai.reasoningEffort', params.reasoningEffort ?? 'default');
+    log.kv('ai.reasoningSummary', params.reasoningSummary ?? 'default');
+    log.kv('ai.textVerbosity', params.textVerbosity ?? 'default');
     log.kv('ai.cache', params.useCache ?? false ? 'on' : 'off');
     log.kv('requirements', `${params.requirementIds?.length ?? 0} selected`);
     log.kv('flows', `${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
@@ -64,8 +66,15 @@ export class Orchestrator {
         providerConfigName: params.providerConfigName,
         model: params.model,
         useCache: params.useCache,
+        reasoningEffort: params.reasoningEffort,
+        reasoningSummary: params.reasoningSummary,
+        textVerbosity: params.textVerbosity,
       });
+      const providerRow = params.providerConfigName
+        ? pipelineRepo.getProviderConfigByName(params.providerConfigName)
+        : pipelineRepo.getActiveProviderConfig();
       log.kv('context.model', ctx.modelName);
+      log.kv('ai.apiVersion', providerRow?.api_version ?? 'default');
       log.kv('context.tokenLimit', ctx.tokenLimit ?? 'none', 0);
 
       // 构建需求索引和批次
@@ -203,6 +212,9 @@ export class Orchestrator {
         providerConfigName: config.providerConfigName,
         model: config.model,
         useCache: config.useCache,
+        reasoningEffort: config.reasoningEffort,
+        reasoningSummary: config.reasoningSummary,
+        textVerbosity: config.textVerbosity,
         currentBatch: row.current_batch || 0,
       });
 
@@ -289,6 +301,9 @@ export class Orchestrator {
         providerConfigName: config.providerConfigName,
         model: config.model,
         useCache: config.useCache,
+        reasoningEffort: config.reasoningEffort,
+        reasoningSummary: config.reasoningSummary,
+        textVerbosity: config.textVerbosity,
         currentBatch: row.current_batch || 0,
       });
 

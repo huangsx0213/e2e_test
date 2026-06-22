@@ -619,6 +619,9 @@ export interface ProviderConfig {
   models: string[];
   fallbackConfigIds: string[];
   monthlyTokenLimit: number | null;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  reasoningSummary?: 'auto' | 'detailed' | 'concise';
+  textVerbosity?: 'low' | 'medium' | 'high';
   isActive: boolean;
   createdAt: string;
 }

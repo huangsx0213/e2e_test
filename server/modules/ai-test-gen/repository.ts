@@ -37,6 +37,9 @@ export interface ProviderConfigRow {
   is_active: number;
   monthly_token_limit: number | null;
   fallback_config_ids: string | null;
+  reasoning_effort: string | null;
+  reasoning_summary: string | null;
+  text_verbosity: string | null;
 }
 
 export class TestGenRepository {

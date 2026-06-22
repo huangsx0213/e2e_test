@@ -15,6 +15,9 @@ export const providerConfigPayloadSchema = z.object({
   models: z.array(z.string()).optional(),
   fallbackConfigIds: z.array(z.string()).optional(),
   monthlyTokenLimit: z.number().int().positive().optional().nullable(),
+  reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
+  reasoningSummary: z.enum(['auto', 'detailed', 'concise']).optional(),
+  textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
   isActive: z.boolean().optional(),
 });
 
