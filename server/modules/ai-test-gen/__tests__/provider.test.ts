@@ -11,8 +11,43 @@ describe('createAIProvider', () => {
     expect(provider.streamChat).toBeDefined();
   });
 
+  function mockFetchHeaders(contentType?: string) {
+    const headers: Record<string, string> = {};
+    if (contentType) headers['content-type'] = contentType;
+    const map = new Map(Object.entries(headers));
+    return { entries: () => map.entries(), get: (k: string) => map.get(k) ?? null };
+  }
+
+  const mockResponseBase = {
+    id: 'resp_test',
+    object: 'response' as const,
+    created_at: 1234567890,
+    status: 'completed' as const,
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: {},
+    temperature: 0.3,
+    tool_choice: null,
+    tools: [],
+    parallel_tool_calls: false,
+    model: 'gpt-4o',
+  };
+
   it('azure provider calls correct endpoint', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ choices: [{ message: { content: '{"result":"ok"}' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }) }) as any;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: mockFetchHeaders('application/json'),
+      json: () => Promise.resolve({
+        ...mockResponseBase,
+        output: [{
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: '{"result":"ok"}' }],
+        }],
+        usage: { input_tokens: 10, output_tokens: 5, output_tokens_details: {} },
+      }),
+    }) as any;
     const provider = createAIProvider({ type: 'azure-openai', endpoint: 'https://test.openai.azure.com', apiKey: 'test-key', deployment: 'gpt-4o', apiVersion: '2024-02-01' });
     const response = await provider.chat([{ role: 'user', content: 'hi' }]);
     expect(response.content).toBe('{"result":"ok"}');
@@ -20,7 +55,12 @@ describe('createAIProvider', () => {
   });
 
   it('handles error responses', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 429, text: () => Promise.resolve('Rate limited') }) as any;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: mockFetchHeaders(),
+      text: () => Promise.resolve('Rate limited'),
+    }) as any;
     const provider = createAIProvider({ type: 'azure-openai', endpoint: 'https://test.openai.azure.com', apiKey: 'test-key', deployment: 'gpt-4o', apiVersion: '2024-02-01' });
     await expect(provider.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow('429');
   });
@@ -28,6 +68,7 @@ describe('createAIProvider', () => {
   it('uses text.format instead of response_format for azure responses api structured output', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
+      headers: mockFetchHeaders(),
       body: new ReadableStream<Uint8Array>({
         start(controller) {
           controller.close();

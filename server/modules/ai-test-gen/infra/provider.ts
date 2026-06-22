@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import { Log } from '../../../shared/services/logger.ts';
 
 export interface ExtendedProviderConfig {
@@ -342,40 +343,19 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
 // ─── Provider Factories ───
 
 function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-openai' }): AIProvider {
-  const chatStrategy: ProviderStrategy = {
-    name: 'azure',
-    buildUrl: () => `${config.endpoint.replace(/\/+$/, '')}/openai/deployments/${config.deployment}/chat/completions?api-version=${config.apiVersion}`,
-    buildHeaders: () => ({ 'Content-Type': 'application/json', 'api-key': config.apiKey }),
-    buildBody: (messages, options?) => ({
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_completion_tokens: options?.maxTokens ?? 65536,
-      response_format: options?.jsonSchema
-        ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
-        : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
-    }),
-  };
+  const client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: `${config.endpoint.replace(/\/+$/, '')}/openai`,
+    defaultQuery: { 'api-version': config.apiVersion },
+    defaultHeaders: { 'api-key': config.apiKey },
+    dangerouslyAllowBrowser: true,
+  });
 
-  const baseProvider = createProviderFromStrategy(chatStrategy);
-
-  // Override streamChat to use Responses API for reasoning summary support
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
-    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
-    const url = `${config.endpoint.replace(/\/+$/, '')}/openai/v1/responses`;
-    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
-    Log.for('provider').info(`POST${agentTag} ${url} messages=${messages.length}`);
-
-    // Build Responses API input from ChatMessage[]
-    // Responses API uses separate items: function_call, function_call_output (not nested tool_calls)
+  function buildInput(messages: ChatMessage[]): unknown[] {
     const input: unknown[] = [];
     for (const m of messages) {
       if (m.role === 'assistant' && m.toolCalls) {
-        // Assistant message content (if any)
-        if (m.content) {
-          input.push({ role: 'assistant', content: m.content });
-        }
-        // Each tool call becomes a separate function_call item
+        if (m.content) input.push({ role: 'assistant', content: m.content });
         for (const tc of m.toolCalls) {
           input.push({
             type: 'function_call',
@@ -390,61 +370,180 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
         input.push({ role: m.role, content: m.content || '' });
       }
     }
-
-    const body: Record<string, unknown> = {
-      model: config.deployment,
-      input,
-      reasoning: { effort: 'medium', summary: 'auto' },
-      max_output_tokens: options?.maxTokens ?? 65536,
-      stream: true,
-    };
-    if (options?.jsonSchema) {
-      body.text = {
-        format: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName),
-      };
-    } else if (options?.responseFormat === 'json_object') {
-      body.text = { format: { type: 'json_object' } };
-    }
-    if (options?.tools && options.tools.length > 0) {
-      // Responses API tools format: { type: "function", name, description, parameters } (flat, not nested)
-      body.tools = options.tools.map(t => ({
-        type: 'function' as const,
-        name: t.name,
-        description: t.description,
-        strict: t.strict ?? false,
-        parameters: t.parameters,
-      }));
-    }
-
-    let response: Response;
-    const bodyJson = JSON.stringify(body);
-    try {
-      response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'api-key': config.apiKey, 'User-Agent': 'e2e-test/1.0' },
-        body: bodyJson,
-        signal,
-      });
-    } catch (fetchErr: any) {
-      const cause = fetchErr.cause;
-      const causeMsg = cause ? ` (cause: ${cause.code || cause.message || cause})` : '';
-      Log.for('provider').error(`fetch failed${agentTag}: ${fetchErr.message}${causeMsg}, body=${(bodyJson.length / 1024).toFixed(1)}KB, input=${input.length}`);
-      throw new Error(`Azure OpenAI fetch failed${agentTag}: ${fetchErr.message}${causeMsg} url=${url} body=${(bodyJson.length / 1024).toFixed(1)}KB input=${input.length}`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      Log.for('provider').error(`stream error body: ${errorText}`);
-      throw new Error(`Azure OpenAI Responses API stream error ${response.status}: ${errorText}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-    const decoder = new TextDecoder();
-    yield* readResponsesApiSSEStream(reader, decoder);
+    return input;
   }
 
-  return { chat: baseProvider.chat, streamChat };
+  function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
+    if (options?.jsonSchema) {
+      return { format: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) };
+    }
+    if (options?.responseFormat === 'json_object') {
+      return { format: { type: 'json_object' } };
+    }
+    return undefined;
+  }
+
+  async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
+    const input = buildInput(messages);
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    Log.for('provider').info(`[azure-sdk] POST${agentTag} input=${input.length} items`);
+
+    const fetchStart = Date.now();
+    const response = await client.responses.create({
+      model: config.deployment,
+      input: input as any,
+      temperature: options?.temperature ?? 0.3,
+      max_output_tokens: options?.maxTokens ?? 65536,
+      text: buildTextConfig(options) as any,
+      ...(() => {
+        if (!options?.tools?.length) return {};
+        return {
+          tools: options.tools.map(t => ({
+            type: 'function' as const,
+            name: t.name,
+            description: t.description,
+            strict: t.strict ?? false,
+            parameters: t.parameters as any,
+          })),
+        };
+      })(),
+    });
+
+    const latency = Date.now() - fetchStart;
+    const content = response.output_text ?? '';
+    const reasoners = response.output?.filter((o): o is { type: 'reasoning'; [key: string]: unknown } => o.type === 'reasoning') ?? [];
+    const reasoningContent = reasoners.map((r: any) => r.summary || '').filter(Boolean).join('\n') || undefined;
+    const toolCalls = response.output
+      ?.filter((o): o is { type: 'function_call'; name: string; arguments: string; call_id: string } => o.type === 'function_call')
+      .map((o) => ({
+        name: o.name,
+        args: JSON.parse(o.arguments),
+        id: o.call_id,
+      }));
+
+    const formatted = formatContent(content);
+    Log.for('provider').info(`[azure-sdk] ${latency}ms${agentTag}:${formatted}  usage: ${response.usage?.input_tokens ?? '?'}in/${response.usage?.output_tokens ?? '?'}out`);
+
+    return {
+      content,
+      reasoningContent,
+      toolCalls,
+      usage: {
+        promptTokens: response.usage?.input_tokens ?? 0,
+        completionTokens: response.usage?.output_tokens ?? 0,
+        reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens ?? 0,
+      },
+    };
+  }
+
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const input = buildInput(messages);
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+    Log.for('provider').info(`[azure-sdk] POST${agentTag} input=${input.length} items`);
+
+    const stream = await client.responses.create({
+      model: config.deployment,
+      input: input as any,
+      temperature: options?.temperature ?? 0.3,
+      max_output_tokens: options?.maxTokens ?? 65536,
+      stream: true,
+      text: buildTextConfig(options) as any,
+      ...(() => {
+        if (!options?.tools?.length) return {};
+        return {
+          tools: options.tools.map(t => ({
+            type: 'function' as const,
+            name: t.name,
+            description: t.description,
+            strict: t.strict ?? false,
+            parameters: t.parameters as any,
+          })),
+        };
+      })(),
+    });
+
+    let currentToolCall: { id: string; name: string; args: string } | null = null;
+    let finishReason: string | undefined;
+    let usageData: any;
+    const abortHandler = () => { if (stream.controller) stream.controller.abort(); };
+    signal.addEventListener('abort', abortHandler);
+
+    try {
+      for await (const event of stream) {
+        switch (event.type) {
+          case 'response.output_text.delta':
+            yield { type: 'content', content: event.delta };
+            break;
+          case 'response.reasoning_summary_text.delta':
+          case 'response.reasoning_text.delta':
+            yield { type: 'reasoning', content: event.delta };
+            break;
+          case 'response.function_call_arguments.delta':
+            if (currentToolCall) {
+              currentToolCall.args += event.delta;
+              yield { type: 'tool_call_delta', content: event.delta, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+            break;
+          case 'response.output_item.added':
+            if (event.item?.type === 'function_call') {
+              if (currentToolCall) {
+                try {
+                  yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+                } catch { /* finalize on next event */ }
+              }
+              currentToolCall = { id: (event.item as any).call_id || event.item.id, name: (event.item as any).name, args: '' };
+              yield { type: 'tool_call_start', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+            break;
+          case 'response.output_item.done':
+            if (event.item?.type === 'function_call' && currentToolCall) {
+              const finalArgs = (event.item as any).arguments || currentToolCall.args;
+              try {
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(finalArgs) } };
+              } catch (e) {
+                yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, finalArgs, e, 'responses_output_item_done') };
+              }
+              currentToolCall = null;
+            }
+            break;
+          case 'response.completed':
+            if (event.response?.usage) usageData = event.response.usage;
+            if (event.response?.status === 'incomplete' && (event.response as any)?.incomplete_details?.reason === 'max_output_tokens') {
+              finishReason = 'length';
+            }
+            break;
+        }
+      }
+    } finally {
+      signal.removeEventListener('abort', abortHandler);
+    }
+
+    if (currentToolCall) {
+      try {
+        yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+      } catch (error) {
+        yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, currentToolCall.args, error, 'responses_stream_end') };
+      }
+    }
+
+    if (finishReason === 'length') {
+      Log.for('provider').warn(`[azure-sdk] Responses API stream truncated by max_output_tokens. Output may be incomplete.`);
+    }
+
+    yield {
+      type: 'done',
+      content: '',
+      finishReason,
+      usage: usageData ? {
+        promptTokens: usageData.input_tokens ?? 0,
+        completionTokens: usageData.output_tokens ?? 0,
+        reasoningTokens: usageData.output_tokens_details?.reasoning_tokens ?? 0,
+      } : undefined,
+    };
+  }
+
+  return { chat, streamChat };
 }
 
 function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai-compatible' }): AIProvider {
