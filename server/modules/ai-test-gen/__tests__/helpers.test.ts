@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deduplicateTestCases, groupRequirementsByEpic, buildFallbackConfigs } from '../helpers.ts';
+import { deduplicateTestCases, groupRequirementsByEpic } from '../helpers.ts';
 
 describe('deduplicateTestCases', () => {
   it('removes cases with the same title and identical steps', () => {
@@ -74,28 +74,3 @@ describe('groupRequirementsByEpic', () => {
   });
 });
 
-describe('buildFallbackConfigs', () => {
-  it('returns empty array when no ids', () => {
-    const result = buildFallbackConfigs({ getProviderConfig: () => undefined } as any, []);
-    expect(result).toEqual([]);
-  });
-
-  it('skips ids that have no matching config', () => {
-    const result = buildFallbackConfigs({ getProviderConfig: () => undefined } as any, ['missing']);
-    expect(result).toEqual([]);
-  });
-
-  it('maps provider config to provider config shape', () => {
-    const repo = {
-      getProviderConfig: (id: string) => ({
-        type: 'openai-compatible', endpoint: null, encrypted_api_key: 'enc',
-        deployment: null, api_version: null, model: 'gpt-4o',
-      }),
-    };
-    const result = buildFallbackConfigs(repo as any, ['cfg-1']);
-    expect(result).toEqual([{
-      type: 'openai-compatible', endpoint: undefined, apiKey: 'enc',
-      deployment: undefined, apiVersion: undefined, model: 'gpt-4o',
-    }]);
-  });
-});

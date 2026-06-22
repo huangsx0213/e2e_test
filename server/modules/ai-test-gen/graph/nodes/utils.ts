@@ -318,9 +318,19 @@ async function runAgentReActLoop(
 
     log.info(`Round ${round + 1}: ${pendingToolCalls.length} tool calls: ${pendingToolCalls.map(tc => tc.name).join(', ')}`);
 
-    // 执行其他 tool calls
+    // Filter out empty-named tool calls (hallucinated by some providers)
+    const namedToolCalls = pendingToolCalls.filter(tc => tc.name);
+    const skippedCount = pendingToolCalls.length - namedToolCalls.length;
+    if (skippedCount > 0) log.warn(`Skipped ${skippedCount} tool call(s) with empty name`);
+
+    if (namedToolCalls.length === 0) {
+      log.info(`No named tool calls, exiting loop`);
+      break;
+    }
+
+    // 执行工具调用
     const toolResults: ChatMessage[] = [];
-    for (const tc of pendingToolCalls) {
+    for (const tc of namedToolCalls) {
       const skill = skillMap.get(tc.name);
       if (!skill) {
         log.warn(`Unknown tool call: ${tc.name}`);
@@ -349,12 +359,13 @@ async function runAgentReActLoop(
     allMessages.push({
       role: 'assistant',
       content: roundContent || null as any,
-      toolCalls: pendingToolCalls.map((tc) => ({
+      toolCalls: namedToolCalls.map((tc) => ({
         type: 'function' as const,
         function: { name: tc.name, arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args) },
         id: tc.id,
       })),
     });
+
     allMessages.push(...toolResults);
   }
 

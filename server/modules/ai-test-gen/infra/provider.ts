@@ -1,19 +1,9 @@
-import OpenAI from 'openai';
+import OpenAI, { APIError } from 'openai';
 import { Log } from '../../../shared/services/logger.ts';
 
-export interface ExtendedProviderConfig {
-  type: 'azure-openai' | 'openai-compatible';
-  endpoint?: string;
-  apiKey: string;
-  deployment?: string;
-  apiVersion?: string;
-  model?: string;
-  fallbackConfigs?: ExtendedProviderConfig[];
-  circuitBreaker?: {
-    failureThreshold: number;
-    resetTimeoutMs: number;
-  };
-}
+export type ProviderConfig =
+  | { type: 'azure-openai'; endpoint: string; apiKey: string; deployment: string; apiVersion: string }
+  | { type: 'openai-compatible'; endpoint?: string; apiKey: string; model: string };
 
 export interface ToolCall {
   name: string;
@@ -133,7 +123,6 @@ function normalizeStructuredOutputSchema(
   }
 
   return {
-    type: 'json_schema',
     name: sanitizeSchemaName(nameHint),
     schema: jsonSchema,
     strict: true,
@@ -159,10 +148,6 @@ function buildMalformedToolCall(
   };
 }
 
-export type ProviderConfig =
-  | { type: 'azure-openai'; endpoint: string; apiKey: string; deployment: string; apiVersion: string }
-  | { type: 'openai-compatible'; endpoint?: string; apiKey: string; model: string };
-
 export function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): AbortSignal | undefined {
   if (!signal1 && !signal2) return undefined;
   if (!signal1) return signal2;
@@ -179,158 +164,11 @@ export function mergeSignals(signal1?: AbortSignal, signal2?: AbortSignal): Abor
   return controller.signal;
 }
 
-// ─── Logger ───
-
-export interface Logger {
-  info(msg: string): void;
-  warn(msg: string): void;
-  error(msg: string): void;
-}
-
-export const consoleLogger: Logger = {
-  info: (msg) => Log.raw(msg),
-  warn: (msg) => Log.raw(`⚠ ${msg}`),
-  error: (msg) => Log.raw(`✖ ${msg}`),
-};
-
-// ─── Circuit Breaker ───
-
-export class CircuitBreaker {
-  private failureCount = 0;
-  private lastFailureTime: number | null = null;
-  private isOpen = false;
-  private openSince: number | null = null;
-
-  constructor(
-    private failureThreshold: number,
-    private resetTimeoutMs: number,
-  ) {}
-
-  try(): boolean {
-    if (this.isOpen) {
-      const elapsed = Date.now() - (this.openSince ?? Date.now());
-      if (elapsed < this.resetTimeoutMs) return false;
-      this.isOpen = false;
-    }
-    return true;
+function formatSdkError(err: unknown, providerName: string, agentTag: string, extra?: string): Error {
+  if (err instanceof APIError) {
+    return new Error(`Provider ${providerName} error ${err.status}${agentTag}: ${err.message}${extra ? ` ${extra}` : ''}`);
   }
-
-  recordSuccess(): void {
-    this.failureCount = 0;
-    this.lastFailureTime = null;
-  }
-
-  recordFailure(): boolean {
-    this.failureCount++;
-    this.lastFailureTime = Date.now();
-    if (this.failureCount >= this.failureThreshold) {
-      this.isOpen = true;
-      this.openSince = Date.now();
-      return true;
-    }
-    return false;
-  }
-
-  get state(): { isOpen: boolean; failureCount: number; openSince: number | null } {
-    return { isOpen: this.isOpen, failureCount: this.failureCount, openSince: this.openSince };
-  }
-}
-
-// ─── Provider Strategy ───
-
-interface ProviderStrategy {
-  name: string;
-  buildUrl(): string;
-  buildHeaders(): Record<string, string>;
-  buildBody(messages: unknown[], options?: ChatOptions, stream?: boolean): Record<string, unknown>;
-}
-
-function serializeMessages(messages: ChatMessage[]): unknown[] {
-  return messages.map(m => {
-    if (m.role === 'assistant' && m.toolCalls) {
-      return {
-        role: 'assistant',
-        content: m.content ?? null,
-        tool_calls: m.toolCalls,
-      };
-    }
-    if (m.role === 'tool' && m.toolCallId) {
-      return {
-        role: 'tool',
-        content: m.content ?? '',
-        tool_call_id: m.toolCallId,
-      };
-    }
-    return { role: m.role, content: m.content };
-  });
-}
-
-function createProviderFromStrategy(strategy: ProviderStrategy, logger?: Logger): AIProvider {
-  const mergeHeaders = (providerHeaders: Record<string, string>): Record<string, string> => ({
-    'User-Agent': 'e2e-test/1.0',
-    ...providerHeaders,
-  });
-  const formatFetchError = (providerName: string, fetchErr: any, agentTag: string, url: string, bodyJson?: string): Error => {
-    const cause = fetchErr.cause;
-    const causeMsg = cause ? ` (cause: ${cause.code || cause.message || cause})` : '';
-    const sizeInfo = bodyJson ? ` body=${(bodyJson.length / 1024).toFixed(1)}KB` : '';
-    return new Error(`Provider ${providerName} fetch failed${agentTag}: ${fetchErr.message}${causeMsg} url=${url}${sizeInfo}`);
-  };
-
-  async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
-    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
-    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
-    const l = logger ?? consoleLogger;
-    const url = strategy.buildUrl();
-    l.info(`[provider:${strategy.name}] POST${agentTag} ${url} messages=${messages.length}`);
-    const fetchStart = Date.now();
-    let response: Response;
-    try {
-      const reqBody = JSON.stringify(strategy.buildBody(serializeMessages(messages), options));
-      response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: mergeHeaders(strategy.buildHeaders()),
-        body: reqBody,
-        signal,
-      });
-    } catch (fetchErr: any) {
-      throw formatFetchError(strategy.name, fetchErr, agentTag, url);
-    }
-    return parseChatResponse(response, strategy.name, fetchStart, agentTag);
-  }
-
-  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
-    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
-    const l = logger ?? consoleLogger;
-    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
-    const url = strategy.buildUrl();
-    const bodyJson = JSON.stringify({ ...strategy.buildBody(serializeMessages(messages), options, true), stream: true, stream_options: { include_usage: true } });
-    let response: Response;
-    try {
-      response = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: mergeHeaders(strategy.buildHeaders()),
-        body: bodyJson,
-        signal,
-      });
-    } catch (fetchErr: any) {
-      throw formatFetchError(strategy.name, fetchErr, agentTag, url, bodyJson);
-    }
-    if (!response.ok) {
-      const errorText = await response.text();
-      l.error(`[provider:${strategy.name}] stream error body: ${errorText}`);
-      const errorPrefix = strategy.name === 'azure' ? 'Azure OpenAI'
-      : strategy.name === 'openai-compat' ? 'OpenAI Compatible'
-      : 'Provider';
-      throw new Error(`${errorPrefix} stream error ${response.status}: ${errorText}`);
-    }
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-    const decoder = new TextDecoder();
-    yield* readSSEStream(reader, decoder);
-  }
-
-  return { chat, streamChat };
+  return err instanceof Error ? err : new Error(String(err));
 }
 
 export function createAIProvider(config: ProviderConfig): AIProvider {
@@ -349,6 +187,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     defaultQuery: { 'api-version': config.apiVersion },
     defaultHeaders: { 'api-key': config.apiKey },
     dangerouslyAllowBrowser: true,
+    maxRetries: 0,
   });
 
   function buildInput(messages: ChatMessage[]): unknown[] {
@@ -375,7 +214,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
 
   function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
     if (options?.jsonSchema) {
-      return { format: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) };
+      return { format: { type: 'json_schema' as const, ...normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) } };
     }
     if (options?.responseFormat === 'json_object') {
       return { format: { type: 'json_object' } };
@@ -389,7 +228,9 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     Log.for('provider').info(`[azure-sdk] POST${agentTag} input=${input.length} items`);
 
     const fetchStart = Date.now();
-    const response = await client.responses.create({
+    let response: Awaited<ReturnType<typeof client.responses.create>>;
+    try {
+      response = await client.responses.create({
       model: config.deployment,
       input: input as any,
       temperature: options?.temperature ?? 0.3,
@@ -408,6 +249,10 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
         };
       })(),
     });
+    } catch (err) {
+      Log.for('provider').error(`[azure-sdk] request failed${agentTag}: model=${config.deployment} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+      throw formatSdkError(err, 'azure', agentTag, `endpoint=${config.endpoint} model=${config.deployment}`);
+    }
 
     const latency = Date.now() - fetchStart;
     const content = response.output_text ?? '';
@@ -442,7 +287,9 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     Log.for('provider').info(`[azure-sdk] POST${agentTag} input=${input.length} items`);
 
-    const stream = await client.responses.create({
+    let stream: Awaited<ReturnType<typeof client.responses.create>>;
+    try {
+      stream = await client.responses.create({
       model: config.deployment,
       input: input as any,
       temperature: options?.temperature ?? 0.3,
@@ -462,6 +309,10 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
         };
       })(),
     });
+    } catch (err) {
+      Log.for('provider').error(`[azure-sdk] stream request failed${agentTag}: model=${config.deployment} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+      throw formatSdkError(err, 'azure', agentTag, `endpoint=${config.endpoint} model=${config.deployment}`);
+    }
 
     let currentToolCall: { id: string; name: string; args: string } | null = null;
     let finishReason: string | undefined;
@@ -547,105 +398,180 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
 }
 
 function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai-compatible' }): AIProvider {
-  // Normalize endpoint: ensure it ends with /v1/chat/completions
   const raw = (config.endpoint || 'https://api.openai.com/v1').replace(/\/$/, '');
   const baseUrl = raw.endsWith('/v1') ? raw : `${raw}/v1`;
-  const chatUrl = `${baseUrl}/chat/completions`;
 
-  return createProviderFromStrategy({
-    name: 'openai-compat',
-    buildUrl: () => chatUrl,
-    buildHeaders: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}`, 'User-Agent': 'e2e-test/1.0' }),
-    buildBody: (messages, options?) => ({
-      model: config.model,
-      messages,
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 65536,
-      response_format: options?.jsonSchema
-        ? { type: 'json_schema' as const, json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) }
-        : options?.responseFormat === 'json_object' ? { type: 'json_object' } : undefined,
-      ...(() => { const t = formatToolsForApi(options?.tools); return t ? { tools: t, tool_choice: options?.toolChoice } : {}; })(),
-    } as any),
+  const client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: baseUrl,
+    dangerouslyAllowBrowser: true,
+    maxRetries: 0,
   });
-}
 
-export function createAIProviderWithFallback(config: ExtendedProviderConfig): AIProvider {
-  const primary = createAIProvider(config as ProviderConfig);
-  const cb = new CircuitBreaker(
-    config.circuitBreaker?.failureThreshold ?? 5,
-    config.circuitBreaker?.resetTimeoutMs ?? 60_000,
-  );
-  const fallbacks = (config.fallbackConfigs ?? []).map(fc => createAIProvider(fc as ProviderConfig));
+  function serializeMessages(messages: ChatMessage[]): unknown[] {
+    return messages.map(m => {
+      if (m.role === 'assistant' && m.toolCalls) {
+        return {
+          role: 'assistant',
+          content: m.content ?? null,
+          tool_calls: m.toolCalls,
+        };
+      }
+      if (m.role === 'tool' && m.toolCallId) {
+        return {
+          role: 'tool',
+          content: m.content || '',
+          tool_call_id: m.toolCallId,
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+  }
+
+  function buildTools(options?: ChatOptions) {
+    const t = formatToolsForApi(options?.tools);
+    return t ? { tools: t as any, tool_choice: options?.toolChoice } : {};
+  }
+
+  function buildResponseFormat(options?: ChatOptions) {
+    if (options?.responseFormat === 'json_object') {
+      return { type: 'json_object' as const };
+    }
+    return undefined;
+  }
 
   async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
-    return tryProvider(primary, fallbacks, 0, cb, (provider) => provider.chat(messages, options));
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    Log.for('provider').info(`[openai-compat-sdk] POST${agentTag} messages=${messages.length}`);
+    const fetchStart = Date.now();
+
+    let completion: Awaited<ReturnType<typeof client.chat.completions.create>>;
+    try {
+      completion = await client.chat.completions.create({
+      model: config.model!,
+      messages: serializeMessages(messages),
+      temperature: options?.temperature ?? 0.3,
+      max_tokens: options?.maxTokens ?? 65536,
+      response_format: buildResponseFormat(options),
+      ...buildTools(options),
+    });
+    } catch (err) {
+      Log.for('provider').error(`[openai-compat-sdk] request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+      throw formatSdkError(err, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+    }
+
+    const latency = Date.now() - fetchStart;
+    const msg = completion.choices[0]?.message;
+    const content = msg?.content ?? '';
+    const toolCalls = msg?.tool_calls?.map((tc) => ({
+      name: tc.function.name,
+      args: JSON.parse(tc.function.arguments),
+      id: tc.id,
+    }));
+
+    const formatted = formatContent(content);
+    Log.for('provider').info(`[openai-compat-sdk] ${latency}ms${agentTag}:${formatted}  usage: ${completion.usage?.prompt_tokens ?? '?'}in/${completion.usage?.completion_tokens ?? '?'}out`);
+
+    return {
+      content,
+      reasoningContent: (msg as any)?.reasoning_content || (msg as any)?.reasoning || undefined,
+      toolCalls,
+      usage: {
+        promptTokens: completion.usage?.prompt_tokens ?? 0,
+        completionTokens: completion.usage?.completion_tokens ?? 0,
+        reasoningTokens: completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
+      },
+    };
   }
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
-    yield* tryStreamProvider(primary, fallbacks, 0, cb, (provider) => provider.streamChat(messages, options));
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    Log.for('provider').info(`[openai-compat-sdk] POST${agentTag} messages=${messages.length}`);
+
+    let stream: Awaited<ReturnType<typeof client.chat.completions.create>>;
+    try {
+      stream = await client.chat.completions.create({
+      model: config.model!,
+      messages: serializeMessages(messages),
+      temperature: options?.temperature ?? 0.3,
+      max_tokens: options?.maxTokens ?? 65536,
+      stream: true,
+      stream_options: { include_usage: true },
+      response_format: buildResponseFormat(options),
+      ...buildTools(options),
+    });
+    } catch (err) {
+      Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+      throw formatSdkError(err, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+    }
+
+    let currentToolCall: { id: string; name: string; args: string } | null = null;
+    let finishReason: string | undefined;
+    let usageData: any;
+
+    for await (const chunk of stream) {
+      if (chunk.usage) usageData = chunk.usage;
+      const delta = chunk.choices?.[0]?.delta;
+      const chunkFinishReason = chunk.choices?.[0]?.finish_reason;
+      if (chunkFinishReason) finishReason = chunkFinishReason;
+
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (tc.id) {
+            if (currentToolCall) {
+              try {
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+              } catch { /* finalize on next event */ }
+            }
+            currentToolCall = { id: tc.id, name: tc.function?.name ?? '', args: '' };
+            yield { type: 'tool_call_start', content: '', toolCall: { id: tc.id, name: tc.function?.name ?? '', args: {} } };
+            if (tc.function?.arguments) {
+              currentToolCall.args += tc.function.arguments;
+              yield { type: 'tool_call_delta', content: tc.function.arguments, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+          } else if (currentToolCall) {
+            if (tc.function?.name) {
+              currentToolCall.name = tc.function.name;
+            }
+            if (tc.function?.arguments !== undefined) {
+              currentToolCall.args += tc.function.arguments;
+              yield { type: 'tool_call_delta', content: tc.function.arguments, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+          }
+        }
+      }
+
+      const reasoningText = (delta as any)?.reasoning_content || (delta as any)?.reasoning;
+      if (reasoningText) yield { type: 'reasoning', content: reasoningText };
+
+      if (delta?.content) yield { type: 'content', content: delta.content };
+    }
+
+    if (currentToolCall) {
+      try {
+        yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+      } catch {
+        yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+      }
+    }
+
+    if (finishReason === 'length') {
+      Log.for('provider').warn(`[openai-compat-sdk] Chat Completions stream truncated (finish_reason='length').`);
+    }
+
+    yield {
+      type: 'done',
+      content: '',
+      finishReason,
+      usage: usageData ? {
+        promptTokens: usageData.prompt_tokens ?? 0,
+        completionTokens: usageData.completion_tokens ?? 0,
+        reasoningTokens: (usageData as any)?.completion_tokens_details?.reasoning_tokens ?? 0,
+      } : undefined,
+    };
   }
 
   return { chat, streamChat };
-}
-
-async function tryProvider<T>(
-  primary: AIProvider, fallbacks: AIProvider[], currentIndex: number,
-  cb: CircuitBreaker,
-  fn: (provider: AIProvider) => Promise<T>,
-): Promise<T> {
-  if (!cb.try()) {
-    if (currentIndex < fallbacks.length) {
-      return tryProvider(primary, fallbacks, currentIndex + 1, cb, fn);
-    }
-    throw new Error('All providers unavailable. Circuit breaker is open');
-  }
-
-  const provider = currentIndex === 0 ? primary : fallbacks[currentIndex - 1];
-  try {
-    const result = await fn(provider);
-    cb.recordSuccess();
-    return result;
-  } catch (err: any) {
-    cb.recordFailure();
-    if (currentIndex < fallbacks.length) {
-      return tryProvider(primary, fallbacks, currentIndex + 1, cb, fn);
-    }
-    throw err;
-  }
-}
-
-async function* tryStreamProvider(
-  primary: AIProvider,
-  fallbacks: AIProvider[],
-  currentIndex: number,
-  cb: CircuitBreaker,
-  fn: (provider: AIProvider) => AsyncGenerator<StreamChunk>,
-): AsyncGenerator<StreamChunk> {
-  if (!cb.try()) {
-    if (currentIndex < fallbacks.length) {
-      yield* tryStreamProvider(primary, fallbacks, currentIndex + 1, cb, fn);
-      return;
-    }
-    throw new Error('All providers unavailable. Circuit breaker is open');
-  }
-
-  const provider = currentIndex === 0 ? primary : fallbacks[currentIndex - 1];
-  let yieldedAnyChunk = false;
-
-  try {
-    for await (const chunk of fn(provider)) {
-      yieldedAnyChunk = true;
-      yield chunk;
-    }
-    cb.recordSuccess();
-  } catch (err: any) {
-    cb.recordFailure();
-    if (!yieldedAnyChunk && currentIndex < fallbacks.length) {
-      yield* tryStreamProvider(primary, fallbacks, currentIndex + 1, cb, fn);
-      return;
-    }
-    throw err;
-  }
 }
 
 function formatContent(content: string | null | undefined): string {

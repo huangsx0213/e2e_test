@@ -1,12 +1,11 @@
 import { Semaphore } from './infra/semaphore.ts';
-import { createAIProviderWithFallback } from './infra/provider.ts';
+import { createAIProvider } from './infra/provider.ts';
 import { computePromptVersion } from './infra/prompt-version.ts';
 import { useCacheStore } from './infra/cache.ts';
 import { pipelineRepo, decryptApiKey } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { RunScope } from './scope.ts';
 import { TestGenSession } from './session.ts';
-import { buildFallbackConfigs } from './helpers.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
 import type { AIProvider } from './infra/provider.ts';
 import { Log } from '../../shared/services/logger.ts';
@@ -105,24 +104,20 @@ export class ContextBuilder {
       }
     }
 
-    const fallbackIds = JSON.parse(providerConfigRow.fallback_config_ids || '[]') as string[];
-    const fallbackConfigs = buildFallbackConfigs(pipelineRepo, fallbackIds);
-
     // Resolve model: explicit param > provider config models[0] > provider config model > deployment
     const resolvedModel = config.model
       || (providerConfigRow.models ? JSON.parse(providerConfigRow.models || '[]')[0] : undefined)
       || providerConfigRow.model;
 
-    const provider = createAIProviderWithFallback({
+    const provider = createAIProvider({
       type: providerConfigRow.type as any,
       endpoint: providerConfigRow.endpoint,
       apiKey: decryptApiKey(providerConfigRow.encrypted_api_key),
       deployment: providerConfigRow.deployment,
       apiVersion: providerConfigRow.api_version,
       model: resolvedModel,
-      fallbackConfigs: fallbackConfigs as any,
     });
-    Log.for('context').info(`AI provider ready: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}, fallbacks=${fallbackConfigs.length}`);
+    Log.for('context').info(`AI provider ready: type=${providerConfigRow.type}, model=${resolvedModel || providerConfigRow.deployment || 'unknown'}`);
 
     const promptVersion = computePromptVersion();
     const modelName = resolvedModel || providerConfigRow.deployment || 'unknown';

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
-import { createAIProvider, createAIProviderWithFallback, readResponsesApiSSEStream } from '../infra/provider.ts';
+import { createAIProvider, readResponsesApiSSEStream } from '../infra/provider.ts';
 
 describe('createAIProvider', () => {
   const originalFetch = globalThis.fetch;
@@ -110,9 +110,10 @@ describe('createAIProvider', () => {
     expect(requestBody.response_format).toBeUndefined();
   });
 
-  it('normalizes plain json schema structured output for openai-compatible streaming requests', async () => {
+  it('does not send response_format for json_schema (not supported by some providers)', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
+      headers: mockFetchHeaders(),
       body: new ReadableStream<Uint8Array>({
         start(controller) {
           controller.close();
@@ -148,63 +149,7 @@ describe('createAIProvider', () => {
     }
 
     const requestBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(requestBody.response_format).toEqual({
-      type: 'json_schema',
-      json_schema: {
-        type: 'json_schema',
-        name: 'test_analyst',
-        schema: {
-          type: 'object',
-          properties: {
-            testConditions: {
-              type: 'array',
-              items: { type: 'object', properties: {}, additionalProperties: false },
-            },
-          },
-          additionalProperties: false,
-        },
-        strict: true,
-      },
-    });
-  });
-
-  it('falls back for streamChat when the primary provider returns a 500 before streaming starts', async () => {
-    const fetchSpy = vi.fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('{"message":"primary failed","type":"Internal Server Error","code":500}'),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        body: new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.close();
-          },
-        }),
-      });
-    globalThis.fetch = fetchSpy as any;
-
-    const provider = createAIProviderWithFallback({
-      type: 'openai-compatible',
-      endpoint: 'https://primary.example/v1',
-      apiKey: 'primary-key',
-      model: 'gpt-primary',
-      fallbackConfigs: [{
-        type: 'openai-compatible',
-        endpoint: 'https://fallback.example/v1',
-        apiKey: 'fallback-key',
-        model: 'gpt-fallback',
-      }],
-    });
-
-    for await (const _chunk of provider.streamChat([{ role: 'user', content: 'hi' }], { agentName: 'quality_manager' })) {
-      // drain stream
-    }
-
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(String(fetchSpy.mock.calls[0][0])).toContain('https://primary.example/v1/chat/completions');
-    expect(String(fetchSpy.mock.calls[1][0])).toContain('https://fallback.example/v1/chat/completions');
+    expect(requestBody.response_format).toBeUndefined();
   });
 
   it('parses generic responses api tool calls without extra diagnostics', async () => {
