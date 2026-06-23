@@ -647,6 +647,7 @@ function ProviderConfigsTab() {
   const typeLabels: Record<string, string> = {
     'azure-openai': 'Azure OpenAI',
     'openai-compatible': 'OpenAI Compatible',
+    'openai-responses': 'OpenAI Responses API',
   };
 
   return (
@@ -760,7 +761,7 @@ function ProviderConfigsTab() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs text-slate-500 mb-1">Endpoint URL</label>
-              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'azure-openai' ? 'https://your-resource.openai.azure.com' : 'https://api.openai.com/v1'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+              <input type="text" value={form.endpoint} onChange={e => setForm({ ...form, endpoint: e.target.value })} placeholder={form.type === 'azure-openai' ? 'https://your-resource.openai.azure.com' : form.type === 'openai-responses' ? 'https://api.openai.com/v1 (optional)' : 'https://api.openai.com/v1'} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">API Key{!editingId && ' *'}</label>
@@ -843,6 +844,37 @@ function ProviderConfigsTab() {
                   <option value="high">High</option>
                 </select>
               </div>
+            )}
+            {(form.type === 'openai-responses') && (
+              <>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Reasoning Effort</label>
+                  <select value={form.reasoningEffort} onChange={e => setForm({ ...form, reasoningEffort: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (medium)</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Reasoning Summary</label>
+                  <select value={form.reasoningSummary} onChange={e => setForm({ ...form, reasoningSummary: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (auto)</option>
+                    <option value="auto">Auto</option>
+                    <option value="detailed">Detailed</option>
+                    <option value="concise">Concise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Text Verbosity</label>
+                  <select value={form.textVerbosity} onChange={e => setForm({ ...form, textVerbosity: e.target.value })} className="w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                    <option value="">Default (medium)</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </>
             )}
           </div>
           <div className="flex justify-end gap-2 mt-4">

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const providerTypes = ['azure-openai', 'openai-compatible'] as const;
+const providerTypes = ['azure-openai', 'openai-compatible', 'openai-responses'] as const;
 
 export const providerConfigPayloadSchema = z.object({
   id: z.string().min(1).optional(),

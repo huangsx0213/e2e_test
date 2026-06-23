@@ -610,7 +610,7 @@ export interface ProviderConfig {
   id: string;
   projectId: string;
   name: string;
-  type: 'azure-openai' | 'openai-compatible';
+  type: 'azure-openai' | 'openai-compatible' | 'openai-responses';
   endpoint: string;
   encryptedApiKey: string;
   deployment: string;

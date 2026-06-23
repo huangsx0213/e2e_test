@@ -577,7 +577,7 @@ export function TestGenConfigPanel({
                 <option value="high">High</option>
               </select>
             </div>
-            {selectedProviderType === 'azure-openai' && (
+            {(selectedProviderType === 'azure-openai' || selectedProviderType === 'openai-responses') && (
             <div>
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Reasoning Summary</label>
               <select
@@ -592,7 +592,7 @@ export function TestGenConfigPanel({
               </select>
             </div>
             )}
-            {selectedProviderType === 'azure-openai' && (
+            {(selectedProviderType === 'azure-openai' || selectedProviderType === 'openai-responses') && (
             <div>
               <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Text Verbosity</label>
               <select

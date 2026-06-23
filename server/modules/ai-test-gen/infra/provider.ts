@@ -3,7 +3,8 @@ import { Log } from '../../../shared/services/logger.ts';
 
 export type ProviderConfig =
   | { type: 'azure-openai'; endpoint: string; apiKey: string; deployment: string; apiVersion: string; reasoningEffort?: 'low' | 'medium' | 'high'; reasoningSummary?: 'auto' | 'detailed' | 'concise'; textVerbosity?: 'low' | 'medium' | 'high' }
-  | { type: 'openai-compatible'; endpoint?: string; apiKey: string; model: string; reasoningEffort?: 'low' | 'medium' | 'high' };
+  | { type: 'openai-compatible'; endpoint?: string; apiKey: string; model: string; reasoningEffort?: 'low' | 'medium' | 'high' }
+  | { type: 'openai-responses'; endpoint?: string; apiKey: string; model: string; reasoningEffort?: 'low' | 'medium' | 'high'; reasoningSummary?: 'auto' | 'detailed' | 'concise'; textVerbosity?: 'low' | 'medium' | 'high' };
 
 export interface ToolCall {
   name: string;
@@ -170,6 +171,7 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
   switch (config.type) {
     case 'azure-openai': return createAzureOpenAIProvider(config);
     case 'openai-compatible': return createOpenAICompatibleProvider(config);
+    case 'openai-responses': return createOpenAIResponsesProvider(config);
   }
 }
 
@@ -466,6 +468,167 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
         promptTokens: usageData.prompt_tokens ?? 0,
         completionTokens: usageData.completion_tokens ?? 0,
         reasoningTokens: (usageData as any)?.completion_tokens_details?.reasoning_tokens ?? 0,
+      } : undefined,
+    };
+  }
+
+  return { streamChat };
+}
+
+function createOpenAIResponsesProvider(config: ProviderConfig & { type: 'openai-responses' }): AIProvider {
+  const baseUrl = (config.endpoint || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const client = new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: baseUrl,
+    dangerouslyAllowBrowser: true,
+    maxRetries: 0,
+  });
+
+  function buildInput(messages: ChatMessage[]): unknown[] {
+    const input: unknown[] = [];
+    for (const m of messages) {
+      if (m.role === 'assistant' && m.toolCalls) {
+        if (m.content) input.push({ role: 'assistant', content: m.content });
+        for (const tc of m.toolCalls) {
+          input.push({
+            type: 'function_call',
+            call_id: tc.id,
+            name: tc.function.name,
+            arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
+          });
+        }
+      } else if (m.role === 'tool' && m.toolCallId) {
+        input.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content || ' ' });
+      } else {
+        input.push({ role: m.role, content: m.content || '' });
+      }
+    }
+    return input;
+  }
+
+  function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
+    if (options?.jsonSchema) {
+      return { format: { type: 'json_schema' as const, ...normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) } };
+    }
+    if (options?.responseFormat === 'json_object') {
+      return { format: { type: 'json_object' } };
+    }
+    return undefined;
+  }
+
+  async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
+    const input = buildInput(messages);
+    const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+    Log.for('provider').info(`[openai-responses] POST${agentTag} input=${input.length} items`);
+
+    const reasoningEffort = options?.reasoningEffort ?? config.reasoningEffort ?? 'medium';
+    const reasoningSummary = options?.reasoningSummary ?? config.reasoningSummary ?? 'auto';
+    const textVerbosity = options?.textVerbosity ?? config.textVerbosity ?? 'medium';
+
+    let stream: Awaited<ReturnType<typeof client.responses.create>>;
+    try {
+      stream = await client.responses.create({
+      model: config.model,
+      input: input as any,
+      max_output_tokens: options?.maxTokens ?? 65536,
+      reasoning: { effort: reasoningEffort, summary: reasoningSummary },
+      stream: true,
+      text: { ...(buildTextConfig(options) ?? {}), verbosity: textVerbosity } as any,
+      ...(() => {
+        if (!options?.tools?.length) return {};
+        return {
+          tools: options.tools.map(t => ({
+            type: 'function' as const,
+            name: t.name,
+            description: t.description,
+            strict: t.strict ?? false,
+            parameters: t.parameters as any,
+          })),
+        };
+      })(),
+    });
+    } catch (err) {
+      Log.for('provider').error(`[openai-responses] stream request failed${agentTag}: model=${config.model} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+      throw formatSdkError(err, 'openai-responses', agentTag, `model=${config.model}`);
+    }
+
+    let currentToolCall: { id: string; name: string; args: string } | null = null;
+    let finishReason: string | undefined;
+    let usageData: any;
+    const abortHandler = () => { if (stream.controller) stream.controller.abort(); };
+    signal.addEventListener('abort', abortHandler);
+
+    try {
+      for await (const event of stream) {
+        switch (event.type) {
+          case 'response.output_text.delta':
+            yield { type: 'content', content: event.delta };
+            break;
+          case 'response.reasoning_summary_text.delta':
+          case 'response.reasoning_text.delta':
+            yield { type: 'reasoning', content: event.delta };
+            break;
+          case 'response.function_call_arguments.delta':
+            if (currentToolCall) {
+              currentToolCall.args += event.delta;
+              yield { type: 'tool_call_delta', content: event.delta, toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+            break;
+          case 'response.output_item.added':
+            if (event.item?.type === 'function_call') {
+              if (currentToolCall) {
+                try {
+                  yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+                } catch { /* finalize on next event */ }
+              }
+              currentToolCall = { id: (event.item as any).call_id || event.item.id, name: (event.item as any).name, args: '' };
+              yield { type: 'tool_call_start', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: {} } };
+            }
+            break;
+          case 'response.output_item.done':
+            if (event.item?.type === 'function_call' && currentToolCall) {
+              const finalArgs = (event.item as any).arguments || currentToolCall.args;
+              try {
+                yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(finalArgs) } };
+              } catch (e) {
+                yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, finalArgs, e, 'responses_output_item_done') };
+              }
+              currentToolCall = null;
+            }
+            break;
+          case 'response.completed':
+            if (event.response?.usage) usageData = event.response.usage;
+            if (event.response?.status === 'incomplete' && (event.response as any)?.incomplete_details?.reason === 'max_output_tokens') {
+              finishReason = 'length';
+            }
+            break;
+        }
+      }
+    } finally {
+      signal.removeEventListener('abort', abortHandler);
+    }
+
+    if (currentToolCall) {
+      try {
+        yield { type: 'tool_call_end', content: '', toolCall: { id: currentToolCall.id, name: currentToolCall.name, args: JSON.parse(currentToolCall.args) } };
+      } catch (error) {
+        yield { type: 'tool_call_end', content: '', toolCall: buildMalformedToolCall(currentToolCall, currentToolCall.args, error, 'responses_stream_end') };
+      }
+    }
+
+    if (finishReason === 'length') {
+      Log.for('provider').warn(`[openai-responses] Responses API stream truncated by max_output_tokens. Output may be incomplete.`);
+    }
+
+    yield {
+      type: 'done',
+      content: '',
+      finishReason,
+      usage: usageData ? {
+        promptTokens: usageData.input_tokens ?? 0,
+        completionTokens: usageData.output_tokens ?? 0,
+        reasoningTokens: usageData.output_tokens_details?.reasoning_tokens ?? 0,
       } : undefined,
     };
   }
