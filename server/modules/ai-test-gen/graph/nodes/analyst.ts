@@ -6,7 +6,7 @@ import { callLLMWithStructuredOutput } from './utils';
 import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
 import { ANALYST_SKILLS } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
-import { analystOutputProfile } from '../structured-output/analyst.ts';
+import { createAnalystOutputProfile } from '../structured-output/analyst.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
@@ -48,6 +48,8 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
       ];
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
+      const allowedReqIds = new Set((state.currentBatch ?? []).map(r => r.id));
+      const analystOutputProfile = createAnalystOutputProfile(allowedReqIds);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
         provider,
         messages,

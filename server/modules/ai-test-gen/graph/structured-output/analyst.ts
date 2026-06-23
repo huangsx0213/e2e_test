@@ -31,45 +31,69 @@ const AnalystRuntimeSchema = z.object({
 
 type AnalystRuntimeOutput = z.infer<typeof AnalystRuntimeSchema>;
 
-export const analystOutputProfile: StructuredOutputProfile<AnalystRuntimeOutput> = {
-  toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(AnalystRuntimeSchema)),
-  shouldAttemptPhase1Extraction(raw: unknown): boolean {
-    return !!raw && typeof raw === 'object' && !Array.isArray(raw)
-      && ('requirementAnalysis' in (raw as Record<string, unknown>) || 'testConditions' in (raw as Record<string, unknown>));
-  },
-  normalize(raw: unknown): unknown {
-    const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-    const testConditions = Array.isArray(input.testConditions)
-      ? input.testConditions.map((condition) => {
-          const normalizedCondition = condition && typeof condition === 'object'
-            ? condition as Record<string, unknown>
-            : {};
-          return {
-            ...normalizedCondition,
-            secondaryTechniques: nullToEmptyArray(normalizedCondition.secondaryTechniques as string[] | null | undefined),
-            coverageDimensions: nullToEmptyArray(normalizedCondition.coverageDimensions as string[] | null | undefined),
-            dataRequirements: nullToUndefined(normalizedCondition.dataRequirements as string[] | null | undefined),
-            dependencies: nullToEmptyArray(normalizedCondition.dependencies as string[] | null | undefined),
-            requirementLevel: nullToUndefined(normalizedCondition.requirementLevel as string | null | undefined),
-          };
-        })
-      : [];
+function validateRequirementIds(
+  parsed: AnalystRuntimeOutput,
+  allowedReqIds: Set<string>,
+): AnalystRuntimeOutput {
+  if (allowedReqIds.size === 0) return parsed;
 
-    return {
-      requirementAnalysis: input.requirementAnalysis,
-      testConditions,
-    };
-  },
-  parse(normalized: unknown): AnalystRuntimeOutput {
-    return AnalystRuntimeSchema.parse(normalized);
-  },
-  formatValidationError(error: unknown): string {
-    return formatZodValidationError(error, {
-      testConditions: 'Provide testConditions as an array with complete condition details.',
-      'testConditions.category': 'Set category explicitly, for example functional, ui, api, boundary, edge, error, validation, or performance.',
-      'testConditions.requirementId': 'Each condition must carry the source requirementId from the analyzed requirement.',
-      'testConditions.dependencies': 'Use an array, not null, for dependencies.',
-      'testConditions.dataRequirements': 'Omit dataRequirements or provide an array of strings.',
-    });
-  },
-};
+  for (const condition of parsed.testConditions) {
+    if (!allowedReqIds.has(condition.requirementId)) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['testConditions'],
+          message: `Condition ${condition.id} references requirement "${condition.requirementId}" which is not in the current batch. Conditions must only reference requirements from this batch.`,
+          input: condition,
+        },
+      ]);
+    }
+  }
+
+  return parsed;
+}
+
+export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set()): StructuredOutputProfile<AnalystRuntimeOutput> {
+  return {
+    toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(AnalystRuntimeSchema)),
+    shouldAttemptPhase1Extraction(raw: unknown): boolean {
+      return !!raw && typeof raw === 'object' && !Array.isArray(raw)
+        && ('requirementAnalysis' in (raw as Record<string, unknown>) || 'testConditions' in (raw as Record<string, unknown>));
+    },
+    normalize(raw: unknown): unknown {
+      const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      const testConditions = Array.isArray(input.testConditions)
+        ? input.testConditions.map((condition) => {
+            const normalizedCondition = condition && typeof condition === 'object'
+              ? condition as Record<string, unknown>
+              : {};
+            return {
+              ...normalizedCondition,
+              secondaryTechniques: nullToEmptyArray(normalizedCondition.secondaryTechniques as string[] | null | undefined),
+              coverageDimensions: nullToEmptyArray(normalizedCondition.coverageDimensions as string[] | null | undefined),
+              dataRequirements: nullToUndefined(normalizedCondition.dataRequirements as string[] | null | undefined),
+              dependencies: nullToEmptyArray(normalizedCondition.dependencies as string[] | null | undefined),
+              requirementLevel: nullToUndefined(normalizedCondition.requirementLevel as string | null | undefined),
+            };
+          })
+        : [];
+
+      return {
+        requirementAnalysis: input.requirementAnalysis,
+        testConditions,
+      };
+    },
+    parse(normalized: unknown): AnalystRuntimeOutput {
+      return validateRequirementIds(AnalystRuntimeSchema.parse(normalized), allowedReqIds);
+    },
+    formatValidationError(error: unknown): string {
+      return formatZodValidationError(error, {
+        testConditions: 'Provide testConditions as an array with complete condition details.',
+        'testConditions.category': 'Set category explicitly, for example functional, ui, api, boundary, edge, error, validation, or performance.',
+        'testConditions.requirementId': 'Each condition must carry the source requirementId from the analyzed requirement.',
+        'testConditions.dependencies': 'Use an array, not null, for dependencies.',
+        'testConditions.dataRequirements': 'Omit dataRequirements or provide an array of strings.',
+      });
+    },
+  };
+}

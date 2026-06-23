@@ -38,25 +38,49 @@ const DesignerRuntimeSchema = z.object({
 
 type DesignerRuntimeOutput = z.infer<typeof DesignerRuntimeSchema>;
 
+interface ConditionInfo {
+  id: string;
+  requirementId: string;
+}
+
 function validateConditionCoverage(
   parsed: DesignerRuntimeOutput,
-  expectedConditionIds: string[],
+  expectedConditions: ConditionInfo[],
 ): DesignerRuntimeOutput {
-  if (expectedConditionIds.length === 0) return parsed;
+  if (expectedConditions.length === 0) return parsed;
 
   const coveredConditionIds = new Set(parsed.draftTestCases.map((testCase) => testCase.conditionId));
-  const missingConditionIds = expectedConditionIds.filter((conditionId) => !coveredConditionIds.has(conditionId));
+  const missingConditionIds = expectedConditions
+    .filter((c) => !coveredConditionIds.has(c.id))
+    .map((c) => c.id);
 
-  if (missingConditionIds.length === 0) return parsed;
+  if (missingConditionIds.length > 0) {
+    throw new z.ZodError([
+      {
+        code: 'custom',
+        path: ['draftTestCases'],
+        message: `Missing draft test cases for conditionIds: ${missingConditionIds.join(', ')}`,
+        input: parsed,
+      },
+    ]);
+  }
 
-  throw new z.ZodError([
-    {
-      code: 'custom',
-      path: ['draftTestCases'],
-      message: `Missing draft test cases for conditionIds: ${missingConditionIds.join(', ')}`,
-      input: parsed,
-    },
-  ]);
+  const expectedReqByCondition = new Map(expectedConditions.map((c) => [c.id, c.requirementId]));
+  for (const testCase of parsed.draftTestCases) {
+    const expectedReqId = expectedReqByCondition.get(testCase.conditionId);
+    if (expectedReqId && testCase.requirementId !== expectedReqId) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['draftTestCases'],
+          message: `Draft test case ${testCase.id} has requirementId "${testCase.requirementId}" but condition ${testCase.conditionId} belongs to requirement "${expectedReqId}"`,
+          input: testCase,
+        },
+      ]);
+    }
+  }
+
+  return parsed;
 }
 
 function wrapDesignerRoot(raw: unknown): Record<string, unknown> {
@@ -70,8 +94,12 @@ function wrapDesignerRoot(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
 }
 
-function normalizeDraftTestCase(value: unknown): Record<string, unknown> {
+function normalizeDraftTestCase(
+  value: unknown,
+  expectedReqByCondition?: Map<string, string>,
+): Record<string, unknown> {
   const tc = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const expectedReqId = expectedReqByCondition?.get(String(tc.conditionId ?? ''));
   const steps = Array.isArray(tc.steps)
     ? tc.steps.map((step) => {
         const normalizedStep = step && typeof step === 'object' ? step as Record<string, unknown> : {};
@@ -89,6 +117,8 @@ function normalizeDraftTestCase(value: unknown): Record<string, unknown> {
 
   return {
     ...tc,
+    conditionId: String(tc.conditionId ?? ''),
+    requirementId: expectedReqId ?? String(tc.requirementId ?? ''),
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
     steps,
@@ -98,13 +128,13 @@ function normalizeDraftTestCase(value: unknown): Record<string, unknown> {
       ...selfReview,
       score: coerceNumber(selfReview.score, 1),
       strengths: nullToEmptyArray(selfReview.strengths as string[] | null | undefined),
-      weaknesses: nullToEmptyArray(selfReview.weaknesses as string[] | null | undefined),
       suggestions: nullToEmptyArray(selfReview.suggestions as string[] | null | undefined),
     },
   };
 }
 
-export function createDesignerOutputProfile(expectedConditionIds: string[] = []): StructuredOutputProfile<DesignerRuntimeOutput> {
+export function createDesignerOutputProfile(expectedConditions: ConditionInfo[] = []): StructuredOutputProfile<DesignerRuntimeOutput> {
+  const expectedReqByCondition = new Map(expectedConditions.map((c) => [c.id, c.requirementId]));
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(DesignerRuntimeSchema)),
     shouldAttemptPhase1Extraction(raw: unknown): boolean {
@@ -114,11 +144,13 @@ export function createDesignerOutputProfile(expectedConditionIds: string[] = [])
     normalize(raw: unknown): unknown {
       const input = wrapDesignerRoot(raw);
       return {
-        draftTestCases: arrayFromRecordValues<unknown>(input.draftTestCases).map(normalizeDraftTestCase),
+        draftTestCases: arrayFromRecordValues<unknown>(input.draftTestCases).map(
+          (tc) => normalizeDraftTestCase(tc, expectedReqByCondition),
+        ),
       };
     },
     parse(normalized: unknown): DesignerRuntimeOutput {
-      return validateConditionCoverage(DesignerRuntimeSchema.parse(normalized), expectedConditionIds);
+      return validateConditionCoverage(DesignerRuntimeSchema.parse(normalized), expectedConditions);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {

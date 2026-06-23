@@ -146,8 +146,6 @@ interface SavedConfig {
   modelName: string;
   includeFlowCases: boolean;
   useCache: boolean;
-  selectedReqIds?: string[];
-  selectedFlowIds?: string[];
   reasoningEffort?: string;
   reasoningSummary?: string;
   textVerbosity?: string;
@@ -189,18 +187,9 @@ export function TestGenConfigPanel({
   const [mode, setMode] = useState<'auto' | 'interactive'>(savedConfig?.mode ?? defaultConfig.mode);
   const [showApprovedOnly, setShowApprovedOnly] = useState(savedConfig?.showApprovedOnly ?? defaultConfig.showApprovedOnly);
 
-  useEffect(() => {
-    if (requirements.length > 0 && savedConfig?.selectedReqIds) {
-      const valid = savedConfig.selectedReqIds.filter(id => requirements.some(r => r.id === id));
-      if (valid.length > 0) setSelectedReqs(new Set(valid));
-    }
-  }, [requirements]);
-  useEffect(() => {
-    if (businessFlows.length > 0 && savedConfig?.selectedFlowIds) {
-      const valid = savedConfig.selectedFlowIds.filter(id => businessFlows.some(f => f.id === id));
-      if (valid.length > 0) setSelectedFlows(new Set(valid));
-    }
-  }, [businessFlows]);
+  // Note: requirement/flow selections are intentionally NOT restored from localStorage
+  // to avoid silently carrying over selections across sessions (which caused
+  // unexpected batch splitting when a previous run had a different epic selection).
 
   const [expandAll, setExpandAll] = useState(false);
   const [selectedModel, setSelectedModel] = useState(savedConfig?.selectedModel ?? defaultConfig.selectedModel);
@@ -265,11 +254,9 @@ export function TestGenConfigPanel({
   useEffect(() => {
     saveConfig({
       mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache,
-      selectedReqIds: Array.from(selectedReqs),
-      selectedFlowIds: Array.from(selectedFlows),
       reasoningEffort, reasoningSummary, textVerbosity,
     });
-  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, selectedReqs, selectedFlows, reasoningEffort, reasoningSummary, textVerbosity]);
+  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, reasoningEffort, reasoningSummary, textVerbosity]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 

@@ -6,7 +6,7 @@ import {
   nullToUndefined,
   wrapSingleObjectInArray,
 } from '../graph/structured-output/helpers.ts';
-import { analystOutputProfile } from '../graph/structured-output/analyst.ts';
+import { createAnalystOutputProfile } from '../graph/structured-output/analyst.ts';
 import { createDesignerOutputProfile, designerOutputProfile } from '../graph/structured-output/designer.ts';
 import { createQualityOutputProfile, qualityOutputProfile } from '../graph/structured-output/quality.ts';
 
@@ -150,7 +150,7 @@ describe('designerOutputProfile', () => {
   });
 
   it('rejects outputs that do not cover every expected condition at least once', () => {
-    const profile = createDesignerOutputProfile(['C-1', 'C-2']);
+    const profile = createDesignerOutputProfile([{ id: 'C-1', requirementId: 'REQ-1' }, { id: 'C-2', requirementId: 'REQ-2' }]);
 
     expect(() => profile.parse(profile.normalize({
       draftTestCases: [{
@@ -178,8 +178,9 @@ describe('designerOutputProfile', () => {
 });
 
 describe('analystOutputProfile', () => {
+  const profile = createAnalystOutputProfile();
   it('normalizes nullable optional fields in test conditions', () => {
-    const parsed = analystOutputProfile.parse(analystOutputProfile.normalize({
+    const parsed = profile.parse(profile.normalize({
       requirementAnalysis: {
         overallApproach: 'Use risk-based analysis',
         riskAssessmentSummary: 'High authentication risk',
@@ -208,7 +209,7 @@ describe('analystOutputProfile', () => {
   });
 
   it('formats field-specific hints for missing required condition fields', () => {
-    const message = analystOutputProfile.formatValidationError({
+    const message = profile.formatValidationError({
       issues: [{
         path: ['testConditions', 0, 'category'],
         message: 'Invalid input: expected string, received undefined',

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { buildThinkingChatOptions, callLLMWithStructuredOutput } from '../graph/nodes/utils.ts';
-import { analystOutputProfile } from '../graph/structured-output/analyst.ts';
+import { createAnalystOutputProfile } from '../graph/structured-output/analyst.ts';
 
 describe('callLLMWithStructuredOutput', () => {
   it('does not advertise an unsupported structured-output tool during the thinking phase', () => {
@@ -140,7 +140,7 @@ describe('callLLMWithStructuredOutput', () => {
       provider,
       [{ role: 'system', content: 'system prompt' }, { role: 'user', content: 'user prompt' }] as any,
       [],
-      analystOutputProfile,
+      createAnalystOutputProfile(),
       undefined,
       'test_analyst',
     );
