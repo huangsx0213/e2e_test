@@ -1539,7 +1539,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                                       {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
                                       {stepDur > 0 && <span className="text-slate-300 ml-1">(+{stepDur}ms)</span>}
                                     </span>
-                                    <span className="text-xs font-semibold text-slate-700">{entry.name || `Step ${entry.step}`}</span>
+                                    <span className="text-xs font-semibold text-slate-700 whitespace-pre-wrap font-mono">{entry.name || `Step ${entry.step}`}</span>
                                   </div>
                                 </div>
                               );

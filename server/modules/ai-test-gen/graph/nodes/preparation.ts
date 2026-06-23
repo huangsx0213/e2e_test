@@ -14,12 +14,13 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
     observer?.onStart?.(agentName);
-    observer?.onStep?.(agentName, 0, 'Initialize environment');
 
     const reqCount = state.currentBatch?.length ?? 0;
     const batchInfo = `${state.batchContext?.currentBatch ?? 1}/${state.batchContext?.totalBatches ?? 1}`;
     const flowCount = state.businessFlowBlueprints?.length ?? 0;
     const isFlowMode = state.includeFlowCases;
+
+    observer?.onStep?.(agentName, 0, `Preparing: ${reqCount} requirements, ${flowCount} flows (${batchInfo})`);
 
     log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, ${flowCount} flows`);
     log.kv('mode', state.mode);
@@ -28,6 +29,8 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
     const avgTokensPerReq = 1000;
     const estimated = reqCount * avgTokensPerReq;
     log.kv('tokenBudget.estimated', estimated);
+
+    observer?.onStep?.(agentName, 1, `Token estimation: ~${estimated} tokens`);
 
     if (flowCount > 0) {
       log.kv('flows', flowCount);

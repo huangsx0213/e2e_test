@@ -87,7 +87,6 @@ export function makeQualityNode(opts: QualityNodeOptions) {
     log.info(`ENTER ── ${draftCount} draft cases to review${fb}`);
 
     observer?.onStart?.(agentName);
-    observer?.onStep?.(agentName, 0, 'Review 6 dimensions');
 
     try {
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
@@ -117,14 +116,11 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         { signal: nodeSignal, agentName },
       );
 
-      observer?.onStep?.(agentName, 1, 'Merge human feedback');
-
       const computedCoverageMatrix = computeCoverageMatrix(
         validated.finalTestCases as Array<{ requirementId: string; techniqueApplied: string; category: string }>,
         (state.currentBatch ?? []).map(r => ({ id: r.id, title: r.title, level: (r as any).level ?? '' })),
         (state.approvedConditions ?? state.testConditions ?? []) as Array<{ requirementId: string }>,
       );
-      observer?.onStep?.(agentName, 2, 'Generate coverage matrix');
 
       const latencyMs = Date.now() - startTime;
       const finalCount = validated.finalTestCases?.length ?? 0;
@@ -133,6 +129,21 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       const approvedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved').length ?? 0;
       const changedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved_with_changes').length ?? 0;
       const rejectedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'rejected').length ?? 0;
+      observer?.onStep?.(agentName, 4, `Reviewed ${finalCount} cases (${approvedCount} approved, ${changedCount} changed, ${rejectedCount} rejected)`);
+      const matrixTable = computedCoverageMatrix.rows.length > 0
+        ? (() => {
+            const W = [4, 48, 6, 8, 8, 6];
+            const fmt = (cells: string[]) => ' ' + cells.map((c, i) => c.padStart(W[i])).join(' ') + ' ';
+            const hdr = fmt(['#', 'Requirement', 'Level', 'Cond', 'Cases', 'Cov%']);
+            const div = '─' + W.map(w => '─'.repeat(w)).join('─') + '─';
+            const rows = computedCoverageMatrix.rows.map((r, i) => {
+              const t = r.requirementTitle.length > 46 ? r.requirementTitle.slice(0, 44) + '…' : r.requirementTitle;
+              return fmt([String(i + 1), t, (r.level || '').toUpperCase(), String(r.totalConditions), String(r.testCaseCount), r.coveragePercentage + '%']);
+            });
+            return '\n\n' + hdr + '\n' + div + '\n' + rows.join('\n');
+          })()
+        : '';
+      observer?.onStep?.(agentName, 5, `Generated coverage matrix (${matrixRows} rows)${matrixTable}`);
       const coverageSummary = {
         totalRequirements: state.currentBatch?.length ?? 0,
         totalConditions: (state.approvedConditions ?? state.testConditions ?? []).length,

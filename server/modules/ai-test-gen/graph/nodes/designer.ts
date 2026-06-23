@@ -34,7 +34,6 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
     log.info(`ENTER ── ${condCount} conditions to design`);
 
     observer?.onStart?.(agentName);
-    observer?.onStep?.(agentName, 0, 'Design test cases');
 
     try {
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
@@ -58,13 +57,13 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
         { signal: nodeSignal, agentName },
       );
 
-      observer?.onStep?.(agentName, 1, 'Apply test techniques');
-      const avgScore = validated.draftTestCases.reduce((sum, tc) => sum + tc.selfReview.score, 0) / validated.draftTestCases.length;
-      observer?.onStep?.(agentName, 2, `Self-review (avg: ${avgScore.toFixed(1)}/10)`);
-
       const latencyMs = Date.now() - startTime;
       const draftCount = validated.draftTestCases?.length ?? 0;
       const skillCallCount = toolCallRecords?.length ?? 0;
+      const avgScore = draftCount > 0
+        ? validated.draftTestCases.reduce((sum, tc) => sum + tc.selfReview.score, 0) / draftCount
+        : 0;
+      observer?.onStep?.(agentName, 4, `Designed ${draftCount} cases, avg self-review ${avgScore.toFixed(1)}/10`);
       log.success(`EXIT ── ${draftCount} draft test cases`);
       log.kv('selfReview.avg', avgScore.toFixed(1));
       log.kv('skill.calls', skillCallCount);

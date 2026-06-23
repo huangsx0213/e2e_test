@@ -265,8 +265,12 @@ async function runAgentReActLoop(
   let thinkingText = '';
   const toolCallRecords: ReActResult['toolCallRecords'] = [];
   let capturedUsage = { input: 0, output: 0, reasoning: 0 };
+  let totalRounds = 0;
+
+  observer?.onStep?.(agentName, 0, 'Phase 1: Analysis started');
 
   for (let round = 0; round < MAX_REACT_ROUNDS; round++) {
+    totalRounds = round + 1;
     // 流式调用 LLM（带 tools）
     let roundContent = '';
     let roundThinking = '';
@@ -369,6 +373,11 @@ async function runAgentReActLoop(
     allMessages.push(...toolResults);
   }
 
+  const toolCallCount = toolCallRecords.length;
+  observer?.onStep?.(agentName, 1, toolCallCount > 0
+    ? `Phase 1: Analysis completed (${totalRounds} rounds, ${toolCallCount} tools)`
+    : `Phase 1: Analysis completed (${totalRounds} rounds)`);
+
   return { contentText, thinkingText, toolCallRecords, usage: capturedUsage, conversationMessages: allMessages };
 }
 
@@ -423,6 +432,7 @@ export async function callLLMWithStructuredOutput<T>(
         const normalized = outputProfile.normalize(extracted);
         const result = outputProfile.parse(normalized);
         llmLog.success('Phase 1 JSON valid ── skipping Phase 2');
+        observer?.onStep?.(name, 2, 'Phase 1: Extraction direct success');
         return { output: result, usage: capturedUsage, toolCallRecords };
       } catch (parseErr: any) {
         const extractedType = typeof extracted;
@@ -437,6 +447,8 @@ export async function callLLMWithStructuredOutput<T>(
   }
 
   llmLog.info('Phase 1 JSON invalid ── entering Phase 2 (schema extraction)');
+
+  observer?.onStep?.(name, 2, 'Phase 2: Extracting structured output');
 
   let extractionMessages: ChatMessage[] = [
     ...conversationMessages,
@@ -461,6 +473,7 @@ export async function callLLMWithStructuredOutput<T>(
     }
 
     llmLog.info(`Phase 2 attempt ${attempt}/${MAX_PHASE2_RETRIES}`);
+    observer?.onStep?.(name, 2, `Phase 2: Attempt ${attempt}/${MAX_PHASE2_RETRIES}`);
     let extractContent = '';
     
     for await (const chunk of provider.streamChat(extractionMessages, buildExtractionChatOptions(outputProfile, extra))) {
@@ -485,6 +498,7 @@ export async function callLLMWithStructuredOutput<T>(
         try {
           const result = outputProfile.parse(outputProfile.normalize(parsed));
           llmLog.success(`Phase 2 extraction successful on attempt ${attempt}`);
+          observer?.onStep?.(name, 3, 'Phase 2: Extraction successful');
           return { output: result, usage: capturedUsage, toolCallRecords };
         } catch (schemaErr: any) {
           llmLog.warn(`Phase 2 schema validation failed on attempt ${attempt}: ${schemaErr.message?.slice(0, 200)}`);
@@ -519,5 +533,6 @@ export async function callLLMWithStructuredOutput<T>(
   }
 
   llmLog.error(`FAILED to extract structured output after ${MAX_PHASE2_RETRIES} attempts`);
+  observer?.onStep?.(name, 3, 'Phase 2: Extraction failed');
   throw lastError || new Error('Failed to extract structured output from LLM response');
 }

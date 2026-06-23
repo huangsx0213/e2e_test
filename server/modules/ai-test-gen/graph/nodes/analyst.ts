@@ -37,7 +37,6 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
-    observer?.onStep?.(agentName, 0, 'Assess risk & priority');
 
     try {
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
@@ -59,12 +58,11 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
         { signal: nodeSignal, agentName },
       );
 
-      observer?.onStep?.(agentName, 1, 'Extract test conditions');
-      observer?.onStep?.(agentName, 2, 'Select ISTQB techniques');
-
       const latencyMs = Date.now() - startTime;
       const tcCount = validated.testConditions?.length ?? 0;
       const skillCallCount = toolCallRecords?.length ?? 0;
+      const techniqueNames = [...new Set((validated.testConditions ?? []).map((tc: any) => tc.primaryTechnique).filter(Boolean))] as string[];
+      observer?.onStep?.(agentName, 4, `Found ${tcCount} test conditions, ${techniqueNames.length} techniques`);
       const techniqueBreakdown = validated.testConditions?.reduce((acc: Record<string, number>, tc: any) => {
         acc[tc.primaryTechnique] = (acc[tc.primaryTechnique] || 0) + 1;
         return acc;
