@@ -3314,6 +3314,15 @@ export function TestGenDetailPanel({
     }
   }, [runId]);
 
+  // Disable Review for checkpoint_1/2/3 when "All Batches" is selected and the
+  // checkpoint is not currently waiting. For waiting checkpoints, the interrupted
+  // batch's thread_id is used. For checkpoint_0 (architect), always allow review
+  // since it runs once globally before the batch loop.
+  const reviewDisabled = nodeType === 'checkpoint'
+    && node.id !== 'checkpoint_0'
+    && selectedBatch == null
+    && node.status !== 'waiting';
+
   return (
     <div className="w-full h-full flex flex-col bg-white overflow-hidden shadow-inner">
       {/* Top Header Row with Metadata panel */}
@@ -3381,6 +3390,14 @@ export function TestGenDetailPanel({
                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Done Reviewing
+                </button>
+              ) : reviewDisabled ? (
+                <button
+                  disabled
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-400 cursor-not-allowed transition-colors"
+                  title="Select a specific batch to review and edit"
+                >
+                  Review
                 </button>
               ) : (
                 <button

@@ -24,6 +24,7 @@ interface AgentRunSnapshot {
 }
 
 const OUTPUT_SUMMARY_MAP: Record<string, { key: string; label: string }> = {
+  test_architect: { key: 'riskEpicTree', label: 'risk epics' },
   test_analyst: { key: 'testConditions', label: 'conditions' },
   test_designer: { key: 'draftTestCases', label: 'draft cases' },
 };

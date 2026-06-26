@@ -2,6 +2,35 @@ import type { TestGenRunState, TestGenReducerAction, TestGenNode, NodeId } from 
 import { createFreshNodes, buildRestoredNodes } from './types';
 
 const CHECKPOINT_NODE_IDS: Record<number, NodeId> = { 0: 'checkpoint_0', 1: 'checkpoint_1', 2: 'checkpoint_2', 3: 'checkpoint_3' };
+
+// Agent-specific output key and label for computing outputCount.
+// Must match OUTPUT_SUMMARY_MAP in server/modules/ai-test-gen/scope.ts.
+const AGENT_OUTPUT_DEF: Record<string, { key: string; label: string }> = {
+  'test-architect': { key: 'riskEpicTree', label: 'risk epics' },
+  'test-analyst': { key: 'testConditions', label: 'conditions' },
+  'test-designer': { key: 'draftTestCases', label: 'draft cases' },
+  'quality-manager': { key: 'finalTestCases', label: 'final cases' },
+};
+
+function computeAgentOutput(agentName: string, outputData: any): { count: number; label: string } {
+  const normalize = (s: string) => s.replace(/_/g, '-');
+  const target = normalize(agentName);
+  const def = AGENT_OUTPUT_DEF[target] ?? { key: 'finalTestCases', label: 'items' };
+  const count = Array.isArray(outputData?.[def.key]) ? outputData[def.key].length : 0;
+  return { count, label: def.label };
+}
+
+// Deduplicate test cases by title, matching deduplicateTestCases in helpers.ts.
+export function countUniqueCases(cases: any[]): number {
+  const seen = new Set<string>();
+  let count = 0;
+  for (const tc of cases) {
+    const key = tc.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+    if (!key) { count++; continue; }
+    if (!seen.has(key)) { seen.add(key); count++; }
+  }
+  return count;
+}
 const AGENT_NAME_TO_NODE_ID: Record<string, NodeId> = {
   test_architect: 'architect',
   'test-architect': 'architect',
@@ -338,19 +367,14 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         let totalTokens = 0;
         let totalLatencyMs = 0;
         const mergedOutputData: Record<string, any> = {};
-        const seenCaseIds = new Set<string>();
+        const allFinalCases: any[] = [];
         
         for (const log of completedLogs) {
           const od = log.output_data;
           if (od) {
             const finalCases = od.finalTestCases;
             if (Array.isArray(finalCases)) {
-              for (const tc of finalCases) {
-                if (tc.id && !seenCaseIds.has(tc.id)) {
-                  seenCaseIds.add(tc.id);
-                  totalOutputCount++;
-                }
-              }
+              allFinalCases.push(...finalCases);
             }
             for (const [key, val] of Object.entries(od)) {
               if (Array.isArray(val)) {
@@ -365,6 +389,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
           totalLatencyMs += log.latency_ms ?? 0;
         }
+        totalOutputCount = countUniqueCases(allFinalCases);
         return {
           ...n, status: 'completed' as const,
           meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
@@ -390,7 +415,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         for (const log of agentLogs) {
           const od = log.output_data;
           if (od) {
-            outputCount += (Object.values(od) as any[]).reduce((sum: number, v: any) => sum + (Array.isArray(v) ? v.length : 0), 0);
+            const { count: agentCount } = computeAgentOutput(n.agentName, od);
+            outputCount += agentCount;
             for (const [key, val] of Object.entries(od)) {
               if (Array.isArray(val)) {
                 if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
@@ -407,7 +433,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         const status = latest.status === 'COMPLETED' ? 'completed' as const :
                        latest.status === 'FAILED' ? 'error' as const :
                        n.status;
-        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
+        const { label: outputLabel } = computeAgentOutput(n.agentName, latest.output_data);
+        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputLabel, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
       // Categorize agent logs by batch for batch-filtered views.
       // Logs without a batch field default to batch 0 (legacy runs).
@@ -446,18 +473,13 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           let totalTokens = 0;
           let totalLatencyMs = 0;
           const mergedOutputData: Record<string, any> = {};
-          const seenCaseIds = new Set<string>();
+          const allFinalCases: any[] = [];
           for (const log of completedLogs) {
             const od = log.output_data;
             if (od) {
               const finalCases = od.finalTestCases;
               if (Array.isArray(finalCases)) {
-                for (const tc of finalCases) {
-                  if (tc.id && !seenCaseIds.has(tc.id)) {
-                    seenCaseIds.add(tc.id);
-                    totalOutputCount++;
-                  }
-                }
+                allFinalCases.push(...finalCases);
               }
               for (const [key, val] of Object.entries(od)) {
                 if (Array.isArray(val)) {
@@ -472,6 +494,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
             if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
             totalLatencyMs += log.latency_ms ?? 0;
           }
+          totalOutputCount = countUniqueCases(allFinalCases);
           return {
             ...n, status: 'completed' as const,
             meta: { ...n.meta, outputCount: totalOutputCount, tokenUsage: totalTokens, latencyMs: totalLatencyMs, totalCases: totalOutputCount, totalTokens, totalLatencyMs, totalBatches: n.meta?.totalBatches ?? 0, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined },
@@ -500,7 +523,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         for (const log of agentLogs) {
           const od = log.output_data;
           if (od) {
-            outputCount += (Object.values(od) as any[]).reduce((sum: number, v: any) => sum + (Array.isArray(v) ? v.length : 0), 0);
+            const { count: agentCount } = computeAgentOutput(n.agentName, od);
+            outputCount += agentCount;
             for (const [key, val] of Object.entries(od)) {
               if (Array.isArray(val)) {
                 if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
@@ -517,7 +541,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         const status = latest.status === 'COMPLETED' ? 'completed' as const :
                        latest.status === 'FAILED' ? 'error' as const :
                        n.status;
-        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
+        const { label: outputLabel } = computeAgentOutput(n.agentName, latest.output_data);
+        return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputLabel, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
       // Fix checkpoint statuses from actual agent logs (DB phase alone is unreliable for FAILED runs)
       const nextAgentAfter: Record<string, string> = {
@@ -571,12 +596,16 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
       return {
         ...state,
         selectedNodeId: action.nodeId,
+        // Clear checkpoint data so stale data from a different checkpoint
+        // is not displayed. The useTestGenRun effect will re-fetch it.
+        checkpointData: null,
       };
 
     case 'SELECT_BATCH':
       return {
         ...state,
         selectedBatch: action.batch,
+        checkpointData: null,
       };
 
     case 'AUTO_FOLLOW_ENABLE':

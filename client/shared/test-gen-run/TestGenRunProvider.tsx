@@ -12,7 +12,7 @@ export interface TestGenApiAdapter {
   logs: (runId: string, agentName?: string) => Promise<any[]>;
   abort: (runId: string) => Promise<any>;
   delete: (runId: string) => Promise<any>;
-  getCheckpointState: (runId: string) => Promise<any>;
+  getCheckpointState: (runId: string, batch?: number) => Promise<any>;
   getThinkingData: (runId: string) => Promise<Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null>;
 }
 

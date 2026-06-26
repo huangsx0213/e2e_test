@@ -62,13 +62,15 @@ router.get('/:runId/audit', withErrorHandling((req, res) => {
 
 // checkpoint 数据
 router.get('/:runId/checkpoint', withErrorHandling(async (req, res) => {
-  const state = await controller.getCheckpointState(p(req.params.runId));
+  const batch = req.query.batch ? parseInt(req.query.batch as string, 10) : undefined;
+  const state = await controller.getCheckpointState(p(req.params.runId), Number.isFinite(batch) ? batch : undefined);
   res.json(state ?? null);
 }));
 
 // checkpoint 状态
 router.get('/:runId/checkpoint-state', withErrorHandling(async (req, res) => {
-  const state = await controller.getCheckpointState(p(req.params.runId));
+  const batch = req.query.batch ? parseInt(req.query.batch as string, 10) : undefined;
+  const state = await controller.getCheckpointState(p(req.params.runId), Number.isFinite(batch) ? batch : undefined);
   res.json(state ?? null);
 }));
 

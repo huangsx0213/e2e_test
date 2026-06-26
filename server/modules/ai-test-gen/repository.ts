@@ -305,10 +305,14 @@ export class TestGenRepository {
     db.prepare("UPDATE test_gen_agent_logs SET status = 'FAILED' WHERE id = ?").run(logId);
   }
 
-  updateAgentLogOutput(runId: string, agentName: string, outputData: Record<string, unknown>): void {
-    const log = db.prepare(
-      'SELECT id, output_data FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? AND status = \'COMPLETED\' ORDER BY batch DESC LIMIT 1'
-    ).get(runId, agentName) as any;
+  updateAgentLogOutput(runId: string, agentName: string, outputData: Record<string, unknown>, batch?: number): void {
+    const log = batch !== undefined
+      ? db.prepare(
+          'SELECT id, output_data FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? AND batch = ? ORDER BY created_at DESC LIMIT 1'
+        ).get(runId, agentName, batch) as any
+      : db.prepare(
+          'SELECT id, output_data FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? AND status = \'COMPLETED\' ORDER BY batch DESC LIMIT 1'
+        ).get(runId, agentName) as any;
     if (log) {
       const existing = log.output_data ? JSON.parse(log.output_data) : {};
       const merged = { ...existing, ...outputData };

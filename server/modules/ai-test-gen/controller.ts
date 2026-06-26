@@ -84,14 +84,14 @@ export class TestGenController {
 
   /** 保存 checkpoint 编辑 */
   async saveCheckpointEdits(runId: string, body: unknown) {
-    const { editedData, checkpointNumber } = checkpointUpdateSchema.parse(body);
-    await this.orchestrator.saveCheckpointEdits(runId, editedData, checkpointNumber);
+    const { editedData, checkpointNumber, batch } = checkpointUpdateSchema.parse(body);
+    await this.orchestrator.saveCheckpointEdits(runId, editedData, checkpointNumber, batch);
     return { success: true };
   }
 
   /** 获取 checkpoint 状态 */
-  async getCheckpointState(runId: string) {
-    return this.orchestrator.getCheckpointState(runId);
+  async getCheckpointState(runId: string, batch?: number) {
+    return this.orchestrator.getCheckpointState(runId, batch);
   }
 
   /** 清除项目的持久化覆盖矩阵（同时清空 architect 缓存，下次运行将重新生成蓝图） */

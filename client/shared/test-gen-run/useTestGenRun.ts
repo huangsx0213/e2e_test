@@ -179,7 +179,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           totalBatches: runInfo.total_batches,
         });
         if (runInfo.thread_id) {
-          const cpState = await api.getCheckpointState(state.runId);
+          // For checkpoint_0, don't pass batch since the architect runs before
+          // the batch loop (its agent log has batch=0, not matching any tab).
+          const isCp0 = state.selectedNodeId === 'checkpoint_0';
+          const cpState = await api.getCheckpointState(state.runId, isCp0 ? undefined : state.selectedBatch ?? undefined);
           if (cpState?.checkpointData) {
             dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpState.checkpointData, phase: runInfo.phase });
           }
@@ -195,7 +198,13 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
         const cpNodeId = state.selectedNodeId;
         const cpAgentName = cpNodeId ? CHECKPOINT_AGENT_MAP[cpNodeId] : undefined;
         if (!state.isRunning && cpAgentName) {
-          const agentLogs = logs.filter((l: any) => l.agent_name === cpAgentName);
+          // Filter by batch when a specific batch is selected.
+          // Skip filtering for checkpoint_0 (architect) since it runs before the
+          // batch loop and its agent log has batch=0.
+          const isCp0Log = cpNodeId === 'checkpoint_0';
+          const agentLogs = !isCp0Log && state.selectedBatch != null
+            ? logs.filter((l: any) => l.agent_name === cpAgentName && l.batch === state.selectedBatch)
+            : logs.filter((l: any) => l.agent_name === cpAgentName);
           if (agentLogs.length > 0) {
             const od = mergeOutputData(agentLogs);
             let cpData: Record<string, any> | null = null;
@@ -216,14 +225,17 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
       }
     } catch {
     }
-  }, [state.runId, state.mode, api, queryClient, state.isRunning, state.selectedNodeId]);
+  }, [state.runId, state.mode, api, queryClient, state.isRunning, state.selectedNodeId, state.selectedBatch]);
 
   const refreshCheckpointData = useCallback(async () => {
     if (!state.runId) return;
     try {
+      // For checkpoint_0, don't pass batch since the architect runs before
+      // the batch loop (its agent log has batch=0, not matching any tab).
+      const isCp0 = state.selectedNodeId === 'checkpoint_0';
       const [logs, cpState] = await Promise.all([
         api.logs(state.runId),
-        api.getCheckpointState(state.runId),
+        api.getCheckpointState(state.runId, isCp0 ? undefined : state.selectedBatch ?? undefined),
       ]);
       const logsArr = logs ?? [];
       if (logsArr.length > 0) {
@@ -237,12 +249,20 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
       const cpNodeId = state.selectedNodeId;
       const cpAgentName = cpNodeId ? CHECKPOINT_AGENT_MAP[cpNodeId] : undefined;
       if (!state.isRunning && cpAgentName && logsArr.length > 0) {
-        const agentLogs = logsArr.filter((l: any) => l.agent_name === cpAgentName);
-        if (agentLogs.length > 0) {
-          const od = mergeOutputData(agentLogs);
+        // Filter by batch when a specific batch is selected.
+        // Skip filtering for checkpoint_0 (architect) since it runs before the
+        // batch loop and its agent log has batch=0.
+        const isCp0Log = cpNodeId === 'checkpoint_0';
+        const batchFiltered = !isCp0Log && state.selectedBatch != null
+          ? logsArr.filter((l: any) => l.agent_name === cpAgentName && l.batch === state.selectedBatch)
+          : logsArr.filter((l: any) => l.agent_name === cpAgentName);
+        if (batchFiltered.length > 0) {
+          const od = mergeOutputData(batchFiltered);
           let cpData: Record<string, any> | null = null;
           if (cpNodeId === 'checkpoint_0') {
-            cpData = { blueprint: od.globalBlueprint || null };
+            // The architect's output_data IS the blueprint directly (not wrapped
+            // in { globalBlueprint: ... }), so use od directly.
+            cpData = { blueprint: od || null };
           } else if (cpNodeId === 'checkpoint_1') {
             cpData = { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
           } else if (cpNodeId === 'checkpoint_2') {
@@ -257,7 +277,18 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
       }
     } catch {
     }
-  }, [state.runId, state.isRunning, state.selectedNodeId, api]);
+  }, [state.runId, state.isRunning, state.selectedNodeId, state.selectedBatch, api]);
+
+  // When the selected batch or node changes, refresh checkpoint data.
+  // The reducer clears checkpointData on SELECT_BATCH and SELECT_NODE, so this
+  // effect re-fetches it for the new batch/checkpoint.
+  useEffect(() => {
+    if (!state.runId || !state.selectedNodeId) return;
+    const node = state.nodes.find(n => n.id === state.selectedNodeId);
+    if (node?.kind !== 'checkpoint') return;
+    refreshCheckpointData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedBatch, state.selectedNodeId]);
 
   // Infer the actual phase for RUNNING runs from agent logs.
   // DB phase stays at 'analysis' since it's only updated at interrupt/completion.
@@ -478,9 +509,20 @@ const selectedAgentLog = selectedNode?.agentName
     if (!state.isRunning) {
       const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
       if (!agentName) return null;
-      const log = getMergedAgentLog(agentName);
-      if (!log?.output_data) return null;
-      const od = log.output_data;
+      // When a specific batch is selected, filter agent logs by batch
+      const normalize = (n: string) => n.replace(/_/g, '-');
+      const target = normalize(agentName);
+      let logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+      if (logs.length === 0 && !agentName.startsWith('test-')) {
+        logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === `test-${target}`);
+      }
+      // For checkpoint_0, don't filter by batch since the architect runs before
+      // the batch loop (its agent log has batch=0, not matching any tab).
+      if (state.selectedBatch != null && selectedNode.id !== 'checkpoint_0') {
+        logs = logs.filter((l: any) => l.batch === state.selectedBatch);
+      }
+      if (logs.length === 0) return null;
+      const od = mergeOutputData(logs);
       if (selectedNode.id === 'checkpoint_0') {
         return { blueprint: od };
       }

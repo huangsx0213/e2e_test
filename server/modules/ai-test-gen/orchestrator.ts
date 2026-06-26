@@ -390,14 +390,27 @@ export class Orchestrator {
     }
   }
 
-  async getCheckpointState(runId: string): Promise<any> {
+  async getCheckpointState(runId: string, batch?: number): Promise<any> {
     const run = pipelineRepo.getRunWithThreadId(runId);
-    if (!run?.thread_id) return null;
+    if (!run) return null;
+    if (!run.thread_id && batch === undefined) return null;
+
+    // Compute the correct thread_id for the requested batch.
+    // When batch is provided (1-based), map to the 0-based batchIndex used in thread_id.
+    // When batch is not provided, fall back to the DB's thread_id (last/interrupted batch).
+    // For checkpoint_0 (architect / 'review-blueprint' phase), always use batch 0's thread
+    // since the architect runs once globally before the batch loop.
+    const isArchitectPhase = run.phase === 'review-blueprint';
+    const effectiveBatch = isArchitectPhase ? 1 : batch;
+    const threadId = effectiveBatch !== undefined
+      ? `${runId}-batch-${effectiveBatch - 1}`
+      : run.thread_id;
+    if (!threadId) return null;
 
     pipelineRepo.touchRun(runId);
 
     const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
-    const snapshot = await graph.getState({ configurable: { thread_id: run.thread_id } });
+    const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
     const state = snapshot?.values;
     if (!state) return null;
 
@@ -415,10 +428,29 @@ export class Orchestrator {
     }
   }
 
-  async saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): Promise<void> {
+  async saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number, batch?: number): Promise<void> {
     const row = pipelineRepo.getRunWithThreadId(runId);
-    if (!row?.thread_id) {
+    if (!row) {
+      Log.for('orchestrator').error(`Run ${runId} not found`);
+      return;
+    }
+    if (!row.thread_id && batch === undefined) {
       Log.for('orchestrator').error(`Run ${runId} missing or no thread_id`);
+      return;
+    }
+
+    // Compute the correct thread_id for the requested batch.
+    // When batch is provided (1-based), map to the 0-based batchIndex used in thread_id.
+    // When batch is not provided, fall back to the DB's thread_id (last/interrupted batch).
+    // For checkpoint_0 (architect), always use batch 0's thread since the architect
+    // runs once globally before the batch loop (its agent log has batch=0).
+    const isArchitectCheckpoint = checkpointNumber === 0;
+    const effectiveBatch = isArchitectCheckpoint ? 1 : batch;
+    const threadId = effectiveBatch !== undefined
+      ? `${runId}-batch-${effectiveBatch - 1}`
+      : row.thread_id;
+    if (!threadId) {
+      Log.for('orchestrator').error(`Run ${runId} could not determine thread_id`);
       return;
     }
 
@@ -443,10 +475,10 @@ export class Orchestrator {
     const asNode = nodeNames[checkpointNumber] ?? undefined;
 
     const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
-    await graph.updateState({ configurable: { thread_id: row.thread_id } }, stateKeys, asNode);
+    await graph.updateState({ configurable: { thread_id: threadId } }, stateKeys, asNode);
 
     try {
-      const updatedPayload = await this.getCheckpointState(runId);
+      const updatedPayload = await this.getCheckpointState(runId, batch);
       if (updatedPayload) {
         this.sseGateway.emit(runId, 'checkpoint:waiting', {
           checkpointNumber,
@@ -455,7 +487,17 @@ export class Orchestrator {
           payload: updatedPayload.checkpointData ?? updatedPayload,
         });
       }
-      if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
+      // For checkpoint_0 (architect), don't filter agent log by batch since
+      // the architect runs before the batch loop (its log has batch=0).
+      // Also, the architect's output_data IS the blueprint directly (not wrapped
+      // in { globalBlueprint: ... }), so pass the edited blueprint directly
+      // instead of stateKeys (which wraps it under globalBlueprint for the
+      // LangGraph state update).
+      const logBatch = isArchitectCheckpoint ? undefined : batch;
+      const logOutputData = isArchitectCheckpoint && editedData.blueprint
+        ? editedData.blueprint as Record<string, unknown>
+        : stateKeys;
+      if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, logOutputData, logBatch);
     } catch (err) {
       Log.for('orchestrator').error(`Failed to refresh checkpoint state after edit for ${runId}: ${err}`);
     }

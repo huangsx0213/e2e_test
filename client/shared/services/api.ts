@@ -143,13 +143,15 @@ businessFlows: {
       }),
     checkpoint: (runId: string) =>
       apiFetch<any>(`test-gen/${runId}/checkpoint`),
-    saveCheckpointEdits: (runId: string, editedData: any, checkpointNumber: number) =>
+    saveCheckpointEdits: (runId: string, editedData: any, checkpointNumber: number, batch?: number) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/checkpoint-update`, {
         method: 'POST',
-        body: JSON.stringify({ editedData, checkpointNumber }),
+        body: JSON.stringify({ editedData, checkpointNumber, batch }),
       }),
-    getCheckpointState: (runId: string) =>
-      apiFetch<{ checkpointData: any }>(`test-gen/${runId}/checkpoint-state`),
+    getCheckpointState: (runId: string, batch?: number) => {
+      const qs = batch !== undefined ? `?batch=${batch}` : '';
+      return apiFetch<{ checkpointData: any }>(`test-gen/${runId}/checkpoint-state${qs}`);
+    },
     logs: (runId: string, agentName?: string, batch?: number) => {
       const params = new URLSearchParams();
       if (agentName) params.set('agent', agentName);

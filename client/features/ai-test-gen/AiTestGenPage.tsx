@@ -174,10 +174,14 @@ const handleRefresh = useCallback(async () => {
       };
       const cpNum = cpMap[nodeId];
       if (cpNum !== undefined) {
+        // For checkpoint_0 (architect), don't pass batch since the architect
+        // runs once globally before the batch loop (its agent log has batch=0).
+        const batch = nodeId === 'checkpoint_0' ? undefined : pipeline.selectedBatch ?? undefined;
         await api.testGen.saveCheckpointEdits(
           pipeline.runId,
           checkpointEditedData.current,
           cpNum,
+          batch,
         );
         await pipeline.refreshCheckpointData();
       }

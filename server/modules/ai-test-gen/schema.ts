@@ -23,6 +23,7 @@ export const resumePipelineSchema = z.object({
 export const checkpointUpdateSchema = z.object({
   editedData: z.record(z.string(), z.unknown()),
   checkpointNumber: z.number().min(0).max(3),
+  batch: z.number().int().min(1).optional(),
 });
 
 export const clearCoverageSchema = z.object({
