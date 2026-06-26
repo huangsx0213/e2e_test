@@ -1201,33 +1201,48 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs, selectedBatc
 
   const filteredLogs = useMemo(() => {
     if (!agentLogs?.length) return [];
-    if (selectedBatch == null) return agentLogs;
+    // Architect runs once globally before the batch loop (batch=0),
+    // so skip batch filtering for architect, same as checkpoint_0.
+    const isArchitect = node?.kind === 'architect' || node?.id === 'architect';
+    if (isArchitect || selectedBatch == null) return agentLogs;
     return agentLogs.filter(l => (l.batch ?? 0) === selectedBatch);
-  }, [agentLogs, selectedBatch]);
+  }, [agentLogs, selectedBatch, node?.kind, node?.id]);
 
   const currentAgentLog = useMemo(() => {
-    if (selectedBatch == null || isRunning || !agentLogs?.length) return agentLog;
+    // Architect runs once globally before the batch loop (batch=0),
+    // so skip batch filtering for architect, same as checkpoint_0.
+    const isArchitect = node?.kind === 'architect' || node?.id === 'architect';
+    if (isArchitect || selectedBatch == null || isRunning || !agentLogs?.length) return agentLog;
     const normalize = (n: string) => n.replace(/_/g, '-');
     const targetAgent = agentLog?.agent_name ? normalize(agentLog.agent_name) : '';
-    const batchLogs = agentLogs.filter(l => normalize(l.agent_name ?? '') === targetAgent && (l.batch ?? 0) === selectedBatch);
-    if (!batchLogs.length) return null;
+    // Single pass: filter by agent+batch, accumulate merge fields once.
+    const batchLogs: any[] = [];
     const merged: Record<string, any> = {};
-    let mergedTrace: any[] = [];
+    let mergedTrace: any[] | null = null;
     let errorMessage: string | null = null;
     let errorRawResponse: string | null = null;
     let tokens = { input: 0, output: 0, reasoning: 0 };
-    for (const l of batchLogs) {
-      if (l.output_data) {
-        for (const [key, val] of Object.entries(l.output_data)) {
+    let latest: any = null;
+    let latestBatch = -Infinity;
+    for (const l of agentLogs) {
+      if (normalize(l.agent_name ?? '') !== targetAgent) continue;
+      if ((l.batch ?? 0) !== selectedBatch) continue;
+      batchLogs.push(l);
+      const od = l.output_data;
+      if (od) {
+        for (const [key, val] of Object.entries(od)) {
           if (Array.isArray(val)) {
             if (!Array.isArray(merged[key])) merged[key] = [];
-            merged[key] = [...merged[key], ...val];
+            merged[key].push(...val);
           } else {
             merged[key] = val;
           }
         }
       }
-      if (l.raw_trace) mergedTrace.push(...l.raw_trace);
+      if (l.raw_trace) {
+        if (!mergedTrace) mergedTrace = [];
+        mergedTrace.push(...l.raw_trace);
+      }
       if (l.error_message) errorMessage = l.error_message;
       if (l.error_raw_response) errorRawResponse = l.error_raw_response;
       if (l.token_usage) {
@@ -1235,18 +1250,23 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs, selectedBatc
         tokens.output += l.token_usage.output || 0;
         tokens.reasoning += l.token_usage.reasoning || 0;
       }
+      const lBatch = l.batch ?? 0;
+      if (lBatch > latestBatch || latest == null) {
+        latest = l;
+        latestBatch = lBatch;
+      }
     }
-    mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
-    const latest = batchLogs.reduce((a, b) => (((a.batch ?? 0) > (b.batch ?? 0)) ? a : b));
+    if (!batchLogs.length) return null;
+    if (mergedTrace) mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
     return {
       ...latest,
       output_data: Object.keys(merged).length ? merged : latest.output_data,
-      raw_trace: mergedTrace,
+      raw_trace: mergedTrace ?? [],
       token_usage: tokens,
       error_message: errorMessage,
       error_raw_response: errorRawResponse,
     };
-  }, [agentLogs, agentLog, selectedBatch]);
+  }, [agentLogs, agentLog, selectedBatch, node?.kind, node?.id]);
 
   const traceGroups = useMemo(() => {
     if (!filteredLogs.length) {
@@ -1255,41 +1275,58 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs, selectedBatc
       }
       return [];
     }
+    // Group logs by agent_name in a single pass.
     const grouped: Record<string, any[]> = {};
     for (const l of filteredLogs) {
-      if (!grouped[l.agent_name]) grouped[l.agent_name] = [];
-      grouped[l.agent_name].push(l);
+      const name = l.agent_name;
+      if (!grouped[name]) grouped[name] = [l];
+      else grouped[name].push(l);
     }
-    return Object.entries(grouped).map(([, logs]) => {
-      const latest = logs.reduce((a, b) => (((a.batch ?? 0) > (b.batch ?? 0)) ? a : b));
+    const groups: any[] = [];
+    for (const logs of Object.values(grouped)) {
+      // Pick the latest by batch (one pass; ties keep the first found).
+      let latest = logs[0];
+      let latestBatch = latest.batch ?? 0;
+      for (let i = 1; i < logs.length; i++) {
+        const lb = logs[i].batch ?? 0;
+        if (lb > latestBatch) { latest = logs[i]; latestBatch = lb; }
+      }
       let totalTokens = 0;
       let totalLatency = 0;
       const mergedOutput: Record<string, any> = {};
-      const mergedTrace: any[] = [];
+      const traceParts: any[] = [];
       let errorMessage: string | null = null;
       let errorRawResponse: string | null = null;
+      let allCompleted = logs.length > 0;
+      let anyFailed = false;
       for (const l of logs) {
         const tu = l.token_usage;
         if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
         totalLatency += l.latency_ms ?? 0;
-        if (l.output_data) {
-          for (const [key, val] of Object.entries(l.output_data)) {
+        const od = l.output_data;
+        if (od) {
+          for (const [key, val] of Object.entries(od)) {
             if (Array.isArray(val)) {
               if (!Array.isArray(mergedOutput[key])) mergedOutput[key] = [];
-              mergedOutput[key] = [...mergedOutput[key], ...val];
+              mergedOutput[key].push(...val);
             } else {
               mergedOutput[key] = val;
             }
           }
         }
-        if (l.raw_trace) mergedTrace.push(...l.raw_trace);
+        if (l.raw_trace) traceParts.push(l.raw_trace);
         if (l.error_message) errorMessage = l.error_message;
         if (l.error_raw_response) errorRawResponse = l.error_raw_response;
+        if (l.status !== 'COMPLETED') allCompleted = false;
+        if (l.status === 'FAILED') anyFailed = true;
       }
-      mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
-      const allCompleted = logs.every(l => l.status === 'COMPLETED');
-      const anyFailed = logs.some(l => l.status === 'FAILED');
-      return {
+      // Flatten trace parts lazily and sort.
+      const mergedTrace: any[] = [];
+      for (const part of traceParts) {
+        for (let i = 0; i < part.length; i++) mergedTrace.push(part[i]);
+      }
+      if (mergedTrace.length > 1) mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
+      groups.push({
         id: latest.id || logs[0].id,
         agent_name: latest.agent_name,
         status: anyFailed ? 'FAILED' : allCompleted ? 'COMPLETED' : latest.status,
@@ -1299,15 +1336,19 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs, selectedBatc
         total_tokens: totalTokens,
         error_message: errorMessage,
         error_raw_response: errorRawResponse,
-      };
-    });
-  }, [filteredLogs, agentLog]);
+      });
+    }
+    return groups;
+  }, [filteredLogs, agentLog, selectedBatch]);
 
   const filteredThinkingText = useMemo(() => {
     if (!thinkingText?.length) return thinkingText;
-    if (selectedBatch == null || isRunning) return thinkingText;
+    // Architect runs once globally before the batch loop (batch=0),
+    // so skip batch filtering for architect, same as checkpoint_0.
+    const isArchitect = node?.kind === 'architect' || node?.id === 'architect';
+    if (isArchitect || selectedBatch == null || isRunning) return thinkingText;
     return thinkingText.filter(e => (e.batch ?? 0) === selectedBatch);
-  }, [thinkingText, selectedBatch, isRunning]);
+  }, [thinkingText, selectedBatch, isRunning, node?.kind, node?.id]);
 
   useEffect(() => {
     if (node?.status === 'running') setActiveTab('thinking');

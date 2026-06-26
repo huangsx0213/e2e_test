@@ -462,12 +462,25 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     return result;
   };
 
-  const getMergedAgentLog = (agentName: string): any => {
+  // Pre-build a per-agent-name index once per agentLogs change so we don't
+  // re-filter the full array inside getMergedAgentLog / selectedCheckpointData
+  // on every render.
+  const logsByAgent = useMemo(() => {
+    const normalize = (n: string) => n.replace(/_/g, '-');
+    const groups: Record<string, any[]> = {};
+    for (const l of state.agentLogs as any[]) {
+      const k = normalize(l.agent_name ?? '');
+      (groups[k] ??= []).push(l);
+    }
+    return groups;
+  }, [state.agentLogs]);
+
+  const getMergedAgentLog = useCallback((agentName: string): any => {
     const normalize = (n: string) => n.replace(/_/g, '-');
     const target = normalize(agentName);
-    let logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+    let logs = logsByAgent[target] ?? [];
     if (logs.length === 0 && !agentName.startsWith('test-')) {
-      logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === `test-${target}`);
+      logs = logsByAgent[`test-${target}`] ?? [];
     }
     if (logs.length === 0) return null;
     const latest = logs.reduce((best: any, l: any) => {
@@ -491,30 +504,36 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
       latency_ms: totalLatencyMs,
       status: latest.status,
     };
-  };
+  }, [logsByAgent]);
 
-const selectedAgentLog = selectedNode?.agentName
-  ? getMergedAgentLog(selectedNode.agentName) || null
-  : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
-  ? getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
-  : selectedNode?.kind === 'architect'
-  ? (getMergedAgentLog('architect') || (selectedNode.meta?.initLogs
-    ? { output_data: { initLogs: selectedNode.meta.initLogs, requirementCount: selectedNode.meta.requirementCount, totalBatches: selectedNode.meta.totalBatches, estimatedTokens: selectedNode.meta.estimatedTokens, flowCases: selectedNode.meta.flowCases } }
-    : null))
-  : null;
+const selectedAgentLog = useMemo(() => {
+    if (!selectedNode) return null;
+    if (selectedNode.agentName) {
+      return getMergedAgentLog(selectedNode.agentName) || null;
+    }
+    if (selectedNode.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]) {
+      return getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null;
+    }
+    if (selectedNode.kind === 'architect') {
+      return getMergedAgentLog('architect') || (selectedNode.meta?.initLogs
+        ? { output_data: { initLogs: selectedNode.meta.initLogs, requirementCount: selectedNode.meta.requirementCount, totalBatches: selectedNode.meta.totalBatches, estimatedTokens: selectedNode.meta.estimatedTokens, flowCases: selectedNode.meta.flowCases } }
+        : null);
+    }
+    return null;
+  }, [selectedNode, getMergedAgentLog]);
 
-  const selectedCheckpointData = (() => {
+  const selectedCheckpointData = useMemo(() => {
     if (selectedNode?.kind !== 'checkpoint') return null;
     if (state.checkpointData) return state.checkpointData;
     if (!state.isRunning) {
       const agentName = CHECKPOINT_AGENT_MAP[selectedNode.id];
       if (!agentName) return null;
-      // When a specific batch is selected, filter agent logs by batch
+      // Look up via pre-built index, falling back to prefixed name (test-*).
       const normalize = (n: string) => n.replace(/_/g, '-');
       const target = normalize(agentName);
-      let logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+      let logs = logsByAgent[target] ?? [];
       if (logs.length === 0 && !agentName.startsWith('test-')) {
-        logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === `test-${target}`);
+        logs = logsByAgent[`test-${target}`] ?? [];
       }
       // For checkpoint_0, don't filter by batch since the architect runs before
       // the batch loop (its agent log has batch=0, not matching any tab).
@@ -535,7 +554,7 @@ const selectedAgentLog = selectedNode?.agentName
       return { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
     }
     return null;
-  })();
+  }, [selectedNode, state.checkpointData, state.isRunning, state.selectedBatch, logsByAgent]);
 
 return {
     runId: explicitRunId ?? state.runId ?? undefined,
