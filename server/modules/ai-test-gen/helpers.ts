@@ -71,6 +71,12 @@ export function groupRequirementsByEpic(allIndex: IndexEntry[], selectedIds: Set
     }
   }
 
-  const epics = allIndex.filter(i => i.level === 0 && rootGroups.has(i.id));
+  // Only count epics that are DIRECTLY selected (level-0 items in selectedIds)
+  // If user selected specific epic-level items, use those; otherwise fall back to ancestors
+  const selectedLevel0 = selectedIndex.filter(i => i.level === 0);
+  const epics = selectedLevel0.length > 0
+    ? selectedLevel0
+    : allIndex.filter(i => i.level === 0 && rootGroups.has(i.id));
+
   return { epics, rootGroups, totalBatches: epics.length, selectedIndex };
 }

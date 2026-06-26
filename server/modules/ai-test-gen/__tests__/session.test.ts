@@ -41,7 +41,7 @@ describe('TestGenSession', () => {
 
       const outcome = await session.startBatch({
         batchIndex: 0,
-        inputState: { projectId: 'p', runId: 'r', mode: 'auto', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, includeFlowCases: false, selectedFlowIds: [], phase: 'analysis', errors: [] },
+        inputState: { projectId: 'p', runId: 'r', mode: 'auto', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
       });
       expect(outcome.type).toBe('complete');
       if (outcome.type === 'complete') {
@@ -55,7 +55,7 @@ describe('TestGenSession', () => {
 
       const outcome = await session.startBatch({
         batchIndex: 0,
-        inputState: { projectId: 'p', runId: 'r', mode: 'interactive', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, includeFlowCases: false, selectedFlowIds: [], phase: 'analysis', errors: [] },
+        inputState: { projectId: 'p', runId: 'r', mode: 'interactive', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
       });
       expect(outcome.type).toBe('interrupt');
     });

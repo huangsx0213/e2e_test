@@ -588,6 +588,41 @@ export interface CoverageMatrix {
   rows: CoverageRow[];
 }
 
+// ============================================================
+// Global Test Blueprint (Architect Agent output, CP0 review)
+// ============================================================
+
+export interface RiskEpicTreeNode {
+  epicId: string;
+  epicTitle: string;
+  riskLevel: 'high' | 'medium' | 'low';
+  notes: string;
+}
+
+export interface AnomalousFlowProposal {
+  title: string;
+  trigger: string;
+  expectedBehavior: string;
+  riskLevel: 'high' | 'medium' | 'low';
+}
+
+export interface GlobalTestBlueprint {
+  strategicGuidance: string;
+  riskEpicTree: RiskEpicTreeNode[];
+  anomalousFlowProposals: AnomalousFlowProposal[];
+  sharedStateInferences: string[];
+}
+
+// ============================================================
+// Step Atomicity Validation Warning (Quality Agent output, CP3 review)
+// ============================================================
+
+export interface ValidationWarning {
+  stepIndex: number;
+  issue: string;
+  rule: 'single-action' | 'single-assertion' | 'element-identifiable' | 'concrete-data' | 'no-implicit-state';
+}
+
 export interface PipelineState {
   projectId: string;
   requirementIds: string[];

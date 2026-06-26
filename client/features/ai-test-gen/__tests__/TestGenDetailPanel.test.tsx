@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { TestGenDetailPanel } from '../TestGenDetailPanel';
 
 describe('TestGenDetailPanel', () => {
-  it('renders preparation summary details for preparation nodes', () => {
+  it('renders architect summary details for architect nodes', () => {
     render(
       <TestGenDetailPanel
         node={{
-          id: 'preparation',
-          label: 'Preparation',
-          kind: 'preparation',
+          id: 'architect',
+          label: 'Architect',
+          kind: 'architect',
           status: 'completed',
           meta: {
             initLogs: [

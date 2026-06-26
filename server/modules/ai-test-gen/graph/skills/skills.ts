@@ -7,6 +7,7 @@ import {
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
+  coverageCheckQuery,
 } from './data-skills.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
@@ -138,11 +139,12 @@ const istqbGuideSkill: SkillDefinition = {
 // File CONTENTS are read on-demand when the skill function is invoked.
 const knowledgeSkills = loadKnowledgeSkills();
 
-/** Analyst 绑定的 skills：Data + ISTQB Guide + Knowledge Base */
+/** Analyst 绑定的 skills：Data + ISTQB Guide + Knowledge Base + Coverage Check */
 export const ANALYST_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
+  coverageCheckQuery,
   istqbGuideSkill,
   ...knowledgeSkills,
 ];

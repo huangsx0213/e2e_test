@@ -1,8 +1,10 @@
 import type { TestGenRunState, TestGenReducerAction, TestGenNode, NodeId } from './types';
 import { createFreshNodes, buildRestoredNodes } from './types';
 
-const CHECKPOINT_NODE_IDS: Record<number, NodeId> = { 1: 'checkpoint_1', 2: 'checkpoint_2', 3: 'checkpoint_3' };
+const CHECKPOINT_NODE_IDS: Record<number, NodeId> = { 0: 'checkpoint_0', 1: 'checkpoint_1', 2: 'checkpoint_2', 3: 'checkpoint_3' };
 const AGENT_NAME_TO_NODE_ID: Record<string, NodeId> = {
+  test_architect: 'architect',
+  'test-architect': 'architect',
   test_analyst: 'agent_test_analyst',
   'test-analyst': 'agent_test_analyst',
   test_designer: 'agent_test_designer',
@@ -18,6 +20,7 @@ export function createInitialState(): TestGenRunState {
     startConfig: null,
     nodes: createFreshNodes(),
     selectedNodeId: null,
+    selectedBatch: null,
     autoFollowEnabled: true,
     batchProgress: null,
     checkpointData: null,
@@ -51,12 +54,12 @@ export function testGenReducer(state: TestGenRunState, action: TestGenReducerAct
       let runSummary = state.runSummary;
 
 if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase:start') {
-  const prepNode = nodes.find(n => n.id === 'preparation');
-  if (prepNode) {
-    const initLogs = prepNode.meta?.initLogs ? [...prepNode.meta.initLogs] : [];
+  const architectNode = nodes.find(n => n.id === 'architect');
+  if (architectNode) {
+    const initLogs = architectNode.meta?.initLogs ? [...architectNode.meta.initLogs] : [];
     initLogs.push({ type, data, timestamp: new Date().toISOString() });
     
-    const updatedMeta: any = { ...prepNode.meta, initLogs };
+    const updatedMeta: any = { ...architectNode.meta, initLogs };
     
     if (type === 'pipeline:context') {
       if (data.indexEntries != null) {
@@ -81,7 +84,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
     }
     
     nodes = nodes.map(n =>
-      n.id === 'preparation'
+      n.id === 'architect'
       ? { ...n, meta: updatedMeta }
       : n
     );
@@ -115,6 +118,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
               : n,
           );
           const AGENT_TO_CHECKPOINT: Record<string, NodeId> = {
+            test_architect: 'checkpoint_0',
+            'test-architect': 'checkpoint_0',
             test_analyst: 'checkpoint_1',
             'test-analyst': 'checkpoint_1',
             test_designer: 'checkpoint_2',
@@ -163,7 +168,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           } else {
             thinkingTextByNode = {
               ...thinkingTextByNode,
-              [nodeId]: [...entries, { type: data.type ?? 'content', phase: data.phase ?? 'react', text: data.text, timestamp: data.timestamp ?? Date.now() }],
+              [nodeId]: [...entries, { type: data.type ?? 'content', phase: data.phase ?? 'react', text: data.text, timestamp: data.timestamp ?? Date.now(), batch: data.batch }],
             };
           }
           break;
@@ -198,6 +203,8 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'pipeline:retry': {
           // Map phase to the failing agent node, only reset that node
           const PHASE_TO_ERROR_NODE: Record<string, NodeId> = {
+            preparation: 'architect',
+            'review-blueprint': 'architect',
             'analysis': 'agent_test_analyst',
             'review-conditions': 'agent_test_analyst',
             'design': 'agent_test_designer',
@@ -225,6 +232,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
             totalLatencyMs: data.stats?.totalLatencyMs || 0,
             totalBatches: data.stats?.totalBatches || 0,
           };
+          batchProgress = state.batchProgress ? { ...state.batchProgress, current: 0 } : null;
           nodes = nodes.map(n => ({
             ...n,
             status: n.status === 'running' || n.status === 'waiting' || n.status === 'idle'
@@ -249,6 +257,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         modelName: action.config.modelName || action.config.model || state.modelName,
         nodes: createFreshNodes(),
         selectedNodeId: null,
+        selectedBatch: null,
         batchProgress: null,
         checkpointData: null,
         thinkingTextByNode: {},
@@ -297,6 +306,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         mode: action.mode ?? state.mode,
         nodes: restoredNodes,
         selectedNodeId: waitingNode?.id ?? state.selectedNodeId,
+        selectedBatch: null,
         isRunning,
         checkpointData: null,
         thinkingTextByNode: {},
@@ -343,7 +353,12 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
               }
             }
             for (const [key, val] of Object.entries(od)) {
-              if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+              if (Array.isArray(val)) {
+                if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
+                mergedOutputData[key] = [...mergedOutputData[key], ...val];
+              } else {
+                mergedOutputData[key] = val;
+              }
             }
           }
           const tu = log.token_usage;
@@ -394,7 +409,20 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
                        n.status;
         return { ...n, status, meta: { ...n.meta, tokenUsage: totalTokens, latencyMs: totalLatencyMs, outputCount, outputData: Object.keys(mergedOutputData).length > 0 ? mergedOutputData : undefined } };
       });
-      return { ...state, nodes, agentLogs: action.logs ?? [] };
+      // Categorize agent logs by batch for batch-filtered views.
+      // Logs without a batch field default to batch 0 (legacy runs).
+      const logsByBatch: Record<number, any[]> = {};
+      for (const log of (action.logs ?? [])) {
+        const b = log.batch ?? 0;
+        if (!logsByBatch[b]) logsByBatch[b] = [];
+        logsByBatch[b].push(log);
+      }
+      const batchCount = Object.keys(logsByBatch).length;
+      // Auto-select highest batch only on the first log merge (state.agentLogs was empty).
+      // On subsequent merges, preserve the user's explicit choice — including "All Batches" (null).
+      const maxBatch = batchCount > 0 ? Math.max(...Object.keys(logsByBatch).map(Number)) : null;
+      const selectedBatch = (state.agentLogs.length === 0 && maxBatch !== null && maxBatch > 0) ? maxBatch : state.selectedBatch;
+      return { ...state, nodes, agentLogs: action.logs ?? [], selectedBatch };
     }
 
     case 'RESTORE_RUN_COMPLETE': {
@@ -432,7 +460,12 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
                 }
               }
               for (const [key, val] of Object.entries(od)) {
-                if (!(key in mergedOutputData)) mergedOutputData[key] = val;
+                if (Array.isArray(val)) {
+                  if (!Array.isArray(mergedOutputData[key])) mergedOutputData[key] = [];
+                  mergedOutputData[key] = [...mergedOutputData[key], ...val];
+                } else {
+                  mergedOutputData[key] = val;
+                }
               }
             }
             const tu = log.token_usage;
@@ -447,7 +480,10 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         if (!n.agentName) return n;
         const normalize = (s: string) => s.replace(/_/g, '-');
         const target = normalize(n.agentName);
-        const agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === target);
+        let agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === target);
+        if (agentLogs.length === 0 && !n.agentName.startsWith('test-')) {
+          agentLogs = (action.logs ?? []).filter((l: any) => normalize(l.agent_name) === `test-${target}`);
+        }
         if (agentLogs.length === 0) return n;
         const latest = agentLogs.reduce((best: any, l: any) => {
           const lBatch = l.batch || 0;
@@ -507,12 +543,15 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         }
         return n;
       });
+      const totalBatches = action.totalBatches ?? 0;
+      const hasCompletedLogs = (action.logs ?? []).some((l: any) => l.status === 'COMPLETED');
       return {
         ...state,
         runId: action.runId,
         mode: action.mode ?? state.mode,
         nodes: fixedNodes,
         selectedNodeId: waitingNode?.id ?? state.selectedNodeId,
+        selectedBatch: null,
         isRunning,
         checkpointData: action.checkpointData ?? null,
         thinkingTextByNode: {},
@@ -521,6 +560,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         runSummary: action.summary,
         modelName: action.modelName ?? state.modelName,
         startConfig: action.startConfig ?? state.startConfig,
+        batchProgress: totalBatches > 0 ? { current: hasCompletedLogs ? 0 : totalBatches, total: totalBatches, generatedCases: action.summary?.totalCases ?? 0 } : null,
       };
     }
 
@@ -531,6 +571,12 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
       return {
         ...state,
         selectedNodeId: action.nodeId,
+      };
+
+    case 'SELECT_BATCH':
+      return {
+        ...state,
+        selectedBatch: action.batch,
       };
 
     case 'AUTO_FOLLOW_ENABLE':

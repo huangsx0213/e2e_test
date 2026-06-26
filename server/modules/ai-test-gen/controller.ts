@@ -2,7 +2,7 @@ import { randomId } from '../../shared/utils/index.ts';
 import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { Orchestrator } from './orchestrator.ts';
-import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
+import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema, clearCoverageSchema } from './schema.ts';
 import { deduplicateTestCases } from './helpers.ts';
 import { nlCaseRepo } from '../nl-cases/repository.ts';
 import { Log } from '../../shared/services/logger.ts';
@@ -27,8 +27,8 @@ export class TestGenController {
   }
 
   /** 获取运行日志 */
-  getLogs(runId: string, agent?: string) {
-    return pipelineRepo.getAgentLogs(runId, agent);
+  getLogs(runId: string, agent?: string, batch?: number) {
+    return pipelineRepo.getAgentLogs(runId, agent, batch);
   }
 
   /** 获取运行详情 */
@@ -94,6 +94,15 @@ export class TestGenController {
     return this.orchestrator.getCheckpointState(runId);
   }
 
+  /** 清除项目的持久化覆盖矩阵（同时清空 architect 缓存，下次运行将重新生成蓝图） */
+  clearCoverage(body: unknown) {
+    const { projectId } = clearCoverageSchema.parse(body);
+    const removed = pipelineRepo.clearProjectCoverage(projectId);
+    pipelineRepo.clearProjectArchitectCache(projectId);
+    Log.for('controller').info(`Cleared ${removed} coverage row(s) and architect cache for project ${projectId}`);
+    return { success: true, removed };
+  }
+
   /** 保存用例到项目 */
   saveCases(runId: string) {
     const run = pipelineRepo.getRun(runId);
@@ -112,9 +121,9 @@ export class TestGenController {
     return { saved: deduped.length, removed: removedCount };
   }
 
-  /** 获取思考数据（持久化的） */
-  getThinkingData(runId: string) {
-    return pipelineRepo.getThinkingData(runId);
+  /** 获取思考数据（持久化的，支持 batch 过滤） */
+  getThinkingData(runId: string, batch?: number) {
+    return pipelineRepo.getThinkingData(runId, batch);
   }
 
   /** 获取审核日志 */

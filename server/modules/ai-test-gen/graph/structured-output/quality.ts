@@ -38,6 +38,16 @@ const QualityRuntimeSchema = z.object({
       })).default([]),
     })).min(1),
   ),
+  // Steps the LLM could NOT auto-fix (residual atomicity violations for CP3 review).
+  // Each entry references a final test case id + the specific step index + rule violated.
+  validationWarnings: z.array(z.object({
+    caseId: z.string(),
+    warnings: z.array(z.object({
+      stepIndex: z.number(),
+      issue: z.string(),
+      rule: z.enum(['single-action', 'single-assertion', 'element-identifiable', 'concrete-data', 'no-implicit-state']),
+    })),
+  })).default([]),
 });
 
 type QualityRuntimeOutput = z.infer<typeof QualityRuntimeSchema>;
@@ -138,8 +148,22 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
     normalize(raw: unknown): unknown {
       const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
       const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));
+      const validationWarningsRaw = Array.isArray(input.validationWarnings)
+        ? input.validationWarnings
+        : [];
       return {
         finalTestCases: arrayFromRecordValues<unknown>(input.finalTestCases).map((testCase) => normalizeFinalTestCase(testCase, expectedById)),
+        validationWarnings: validationWarningsRaw.map((entry: any) => {
+          const e = entry && typeof entry === 'object' ? entry : {};
+          return {
+            caseId: String(e.caseId ?? ''),
+            warnings: nullToEmptyArray(e.warnings as any[] | null | undefined).map((w: any) => ({
+              stepIndex: coerceNumber(w?.stepIndex, 0),
+              issue: String(w?.issue ?? ''),
+              rule: (w?.rule ?? 'single-action') as 'single-action' | 'single-assertion' | 'element-identifiable' | 'concrete-data' | 'no-implicit-state',
+            })),
+          };
+        }),
       };
     },
     parse(normalized: unknown): QualityRuntimeOutput {

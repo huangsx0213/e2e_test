@@ -1,9 +1,9 @@
-import { randomId } from '../../shared/utils/index.ts';
+import { createHash } from 'crypto';
 import type { AIProvider } from './infra/provider.ts';
 import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { ContextBuilder, type RunContext, type StartParams } from './context.ts';
-import { TestGenSession, type BatchInput, type BatchResult, type InterruptInfo } from './session.ts';
+import { TestGenSession, type BatchInput, type BatchResult } from './session.ts';
 import { requirementRepo } from '../requirements/repository.ts';
 import { buildRequirementIndex } from '../requirements/index-generator.ts';
 import { businessFlowRepo } from '../business-flows/repository.ts';
@@ -13,7 +13,12 @@ import { buildBusinessFlowBlueprints } from './business-flow-blueprint.ts';
 import { checkpointer } from './graph/checkpointer.ts';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
-import { db } from '../../shared/db/client.ts';
+import type { TestGenState } from './graph/state.ts';
+import { buildArchitectSystemPrompt, buildArchitectUserMessage } from './graph/prompts.ts';
+import { callLLMWithStructuredOutput } from './graph/nodes/utils.ts';
+import { ANALYST_SKILLS } from './graph/skills/skills.ts';
+import { createArchitectOutputProfile } from './graph/structured-output/architect.ts';
+import type { GlobalTestBlueprint } from '../../../shared/contracts/index.ts';
 import { Log } from '../../shared/services/logger.ts';
 
 function createDummyProvider(): AIProvider {
@@ -55,8 +60,9 @@ export class Orchestrator {
     log.kv('ai.reasoningSummary', params.reasoningSummary ?? 'default');
     log.kv('ai.textVerbosity', params.textVerbosity ?? 'default');
     log.kv('ai.cache', params.useCache ?? false ? 'on' : 'off');
+    log.kv('ai.cleanStart', params.cleanStart ?? false ? 'yes' : 'no');
     log.kv('requirements', `${params.requirementIds?.length ?? 0} selected`);
-    log.kv('flows', `${params.flowIds?.length ?? 0} selected (includeFlowCases: ${params.includeFlowCases ?? false})`);
+    log.kv('flows', `${params.flowIds?.length ?? 0} selected`);
     Log.divider();
     let ctx: RunContext | null = null;
     let keepSse = false;
@@ -108,69 +114,94 @@ export class Orchestrator {
           : `Estimated token usage (${estimated}) within limit.`,
       });
 
-      // 记录 preparation 日志
-      const preparationLogId = randomId('log');
-      const preparationOutput = {
-        requirementCount: selectedIndex.length,
-        totalBatches,
-        estimatedTokens: estimated,
-        flowCases: businessFlows.length,
-      };
-      db.prepare(`
-        INSERT INTO test_gen_agent_logs (id, run_id, batch, agent_name, phase, input_prompt, output_data, token_usage, latency_ms, raw_trace, status)
-        VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
-      `).run(preparationLogId, runId, JSON.stringify(preparationOutput));
-
-      // 执行批次
-      const allResults: BatchResult[] = [];
-      for (let i = 0; i < epics.length; i++) {
-        if (ctx.isAborted()) break;
-        const epic = epics[i];
-        Log.subsection(`Batch ${i + 1}/${epics.length} START ── epic: ${epic.id ?? 'N/A'}`);
-        ctx.scope.setBatch(i + 1, totalBatches);
-        pipelineRepo.updateCurrentBatch(runId, i + 1);
-        pipelineRepo.updateThreadId(runId, `${runId}-batch-${i}`);
-
-        const batchInput: BatchInput = {
-          batchIndex: i,
-          inputState: this.buildBatchInputState(
-            projectId, params.requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows,
-            params.mode, params.includeFlowCases, params.flowIds,
-          ),
-        };
-
-        const outcome = await ctx.session.startBatch(batchInput);
-        if (outcome.type === 'interrupt') {
-          log.info(`Batch ${i + 1} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
-          ctx.scope.flushAndPersistThinking();
-          pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
-          this.sseGateway.emit(runId, 'checkpoint:waiting', {
-            checkpointNumber: outcome.interrupt.checkpointNumber,
-            phase: outcome.interrupt.phase,
-            summary: 'Awaiting Review',
-            payload: outcome.interrupt.payload,
-          });
-          keepSse = true;
-          return;
-        }
-        log.success(`Batch ${i + 1}/${epics.length} complete ── ${outcome.result.cases.length} test cases`);
-        allResults.push(outcome.result);
-        ctx.sendEvent('batch:complete', {
-          batch: i + 1, total: totalBatches,
-          testCases: outcome.result.cases.length,
-        });
+      // Clean Start: 清空历史覆盖矩阵
+      if (params.cleanStart) {
+        log.info('Clean start requested — clearing persistent coverage');
+        pipelineRepo.clearProjectCoverage(projectId);
+        pipelineRepo.clearProjectArchitectCache(projectId);
       }
 
-      // 完成
+      // Global Blueprint: 执行 Architect 一次（不在 per-batch 循环内）
+      Log.subsection('Global Blueprint ── Architect (once before batch loop)');
+      const globalBlueprint = await this.ensureGlobalBlueprint(ctx, projectId, params, requirements, businessFlows);
+
+      // === 3-Stage Routing ===
+      // Stage 1: Requirement batches (STAGE_1_REQUIREMENT)
+      // Stage 2: Flow batches (STAGE_2_FLOW) — only when flows are selected
+      // Stage 3: Error guessing batches (STAGE_3_ERROR_GUESSING)
+      const allResults: BatchResult[] = [];
+      let stageTotalBatches = totalBatches;
+
+      const hasFlows = filteredFlows.length > 0;
+      const flowCount = hasFlows ? 1 : 0;
+      const finalTotalBatches = totalBatches + flowCount + 1; // +1 for error‑guessing
+
+      // --- Stage 1: Requirement Analysis ---
+      {
+        ctx.sendEvent('phase:start', { phase: 'analysis', message: `Stage 1: Requirement analysis (${epics.length} batch(es))` });
+        const reqBatches = epics.map((epic, i) => ({
+          batchIndex: i,
+          inputState: this.buildBatchInputState(
+            projectId, params.requirementIds, requirements, rootGroups, epic, i, finalTotalBatches, businessFlows,
+            params.mode, params.flowIds,
+            'STAGE_1_REQUIREMENT', globalBlueprint,
+          ),
+        }));
+
+        for (const batch of reqBatches) {
+          if (ctx.isAborted()) break;
+          Log.subsection(`[Stage 1] Batch ${batch.batchIndex + 1}/${reqBatches.length} ── req analysis`);
+          const outcome = await this.runSingleBatch(ctx, runId, batch, finalTotalBatches, allResults);
+          if (!outcome) { keepSse = true; return; }
+        }
+      }
+
+      // --- Stage 2: Flow Integration (only if flows exist) ---
+      if (!ctx.isAborted() && hasFlows) {
+        const flowBatches = this.buildFlowBatches(
+          projectId, params, filteredFlows, businessFlows, requirements,
+          allResults.length, finalTotalBatches, globalBlueprint,
+        );
+        stageTotalBatches += flowBatches.length;
+        pipelineRepo.updateBatchCount(runId, stageTotalBatches);
+
+        ctx.sendEvent('phase:start', { phase: 'analysis', message: `Stage 2: Flow integration (${flowBatches.length} batch(es))` });
+        for (const batch of flowBatches) {
+          if (ctx.isAborted()) break;
+          Log.subsection(`[Stage 2] Batch ${batch.batchIndex + 1}/${flowBatches.length} ── flow analysis`);
+          const outcome = await this.runSingleBatch(ctx, runId, batch, finalTotalBatches, allResults);
+          if (!outcome) { keepSse = true; return; }
+        }
+      }
+
+      // --- Stage 3: Error Guessing ---
+      if (!ctx.isAborted()) {
+        const errorBatches = this.buildErrorGuessingBatches(
+          projectId, params, requirements, businessFlows,
+          allResults.length, finalTotalBatches, globalBlueprint,
+        );
+        stageTotalBatches += errorBatches.length;
+        pipelineRepo.updateBatchCount(runId, stageTotalBatches);
+
+        ctx.sendEvent('phase:start', { phase: 'analysis', message: `Stage 3: Error guessing (${errorBatches.length} batch(es))` });
+        for (const batch of errorBatches) {
+          if (ctx.isAborted()) break;
+          Log.subsection(`[Stage 3] Batch ${batch.batchIndex + 1}/${errorBatches.length} ── error guessing`);
+          const outcome = await this.runSingleBatch(ctx, runId, batch, finalTotalBatches, allResults);
+          if (!outcome) { keepSse = true; return; }
+        }
+      }
+
+      // 完成 — 合并所有阶段的结果
       if (!ctx.isAborted()) {
         const { allCases, removedCount } = deduplicateTestCases(
           allResults.flatMap(r => r.lastState?.finalTestCases || r.cases || []),
         );
-        log.success(`All batches done ── ${allCases.length} final cases${removedCount > 0 ? ` (${removedCount} duplicates removed)` : ''}`);
+        log.success(`All stages done ── ${allCases.length} final cases${removedCount > 0 ? ` (${removedCount} duplicates removed)` : ''}`);
         if (removedCount > 0) {
           ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allCases.length });
         }
-        ctx.scope.markComplete({ totalCases: allCases.length, totalBatches: epics.length });
+        ctx.scope.markComplete({ totalCases: allCases.length, totalBatches: stageTotalBatches });
       }
     } catch (err: any) {
       if (ctx) {
@@ -199,7 +230,7 @@ export class Orchestrator {
     pipelineRepo.insertAuditLog(runId, `checkpoint_${cpNum}`, action, editedData ?? null);
     pipelineRepo.setRunRunning(runId);
 
-    if (cpNum > 0) {
+    if (cpNum >= 0) {
       this.sseGateway.emit(runId, 'checkpoint:resolved', { checkpointNumber: cpNum, action });
     }
 
@@ -371,12 +402,14 @@ export class Orchestrator {
     if (!state) return null;
 
     switch (run.phase) {
+      case 'review-blueprint':
+        return { checkpointData: { blueprint: state.globalBlueprint ?? null } };
       case 'review-conditions':
         return { checkpointData: { conditions: state.testConditions ?? [], analysis: state.requirementAnalysis ?? null } };
       case 'review-draft':
         return { checkpointData: { cases: state.draftTestCases ?? [] } };
       case 'final-review':
-        return { checkpointData: { cases: state.finalTestCases ?? [], matrix: state.coverageMatrix ?? null } };
+        return { checkpointData: { cases: state.finalTestCases ?? [], matrix: state.coverageMatrix ?? null, validationWarnings: state.validationWarnings ?? [] } };
       default:
         return null;
     }
@@ -389,11 +422,13 @@ export class Orchestrator {
       return;
     }
 
-    const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
+    const AGENT_NAMES: Record<number, string> = { 0: 'test_architect', 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
     const agentName = AGENT_NAMES[checkpointNumber];
 
     const stateKeys: Record<string, unknown> = {};
-    if (checkpointNumber === 1) {
+    if (checkpointNumber === 0) {
+      if (editedData.blueprint) stateKeys.globalBlueprint = editedData.blueprint;
+    } else if (checkpointNumber === 1) {
       if (editedData.conditions) stateKeys.testConditions = editedData.conditions;
       if (editedData.analysis) stateKeys.requirementAnalysis = editedData.analysis;
     } else if (checkpointNumber === 2) {
@@ -404,8 +439,11 @@ export class Orchestrator {
     }
     if (Object.keys(stateKeys).length === 0) return;
 
+    const nodeNames = ['checkpoint_0', 'checkpoint_1', 'checkpoint_2', 'checkpoint_3'];
+    const asNode = nodeNames[checkpointNumber] ?? undefined;
+
     const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
-    await graph.updateState({ configurable: { thread_id: row.thread_id } }, stateKeys);
+    await graph.updateState({ configurable: { thread_id: row.thread_id } }, stateKeys, asNode);
 
     try {
       const updatedPayload = await this.getCheckpointState(runId);
@@ -414,7 +452,7 @@ export class Orchestrator {
           checkpointNumber,
           type: row.phase,
           summary: 'Awaiting Review',
-          payload: updatedPayload,
+          payload: updatedPayload.checkpointData ?? updatedPayload,
         });
       }
       if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
@@ -444,10 +482,12 @@ export class Orchestrator {
       : allProjectFlows;
     const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
 
+    const globalBlueprint = pipelineRepo.getGlobalBlueprint(runId);
+
     const remaining = epics
       .map((epic, i) => ({
         batchIndex: i,
-        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto', config.includeFlowCases, config.flowIds),
+        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto', config.flowIds, 'STAGE_1_REQUIREMENT', globalBlueprint),
       }))
       .slice(startFrom);
 
@@ -475,6 +515,215 @@ export class Orchestrator {
     return { allResults, interrupted: false };
   }
 
+  private async runSingleBatch(
+    ctx: RunContext,
+    runId: string,
+    batch: BatchInput,
+    totalBatches: number,
+    allResults: BatchResult[],
+  ): Promise<boolean> {
+    const batchNum = batch.batchIndex + 1;
+    ctx.scope.setBatch(batchNum, totalBatches);
+    pipelineRepo.updateCurrentBatch(runId, batchNum);
+    pipelineRepo.updateThreadId(runId, `${runId}-batch-${batch.batchIndex}`);
+
+    const outcome = await ctx.session.startBatch(batch);
+    if (outcome.type === 'interrupt') {
+      const log = Log.for('orchestrator');
+      log.info(`Batch ${batchNum} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
+      ctx.scope.flushAndPersistThinking();
+      pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
+      this.sseGateway.emit(runId, 'checkpoint:waiting', {
+        checkpointNumber: outcome.interrupt.checkpointNumber,
+        phase: outcome.interrupt.phase,
+        summary: 'Awaiting Review',
+        payload: outcome.interrupt.payload,
+      });
+      return false;
+    }
+    const log = Log.for('orchestrator');
+    log.success(`Batch ${batchNum} complete ── ${outcome.result.cases.length} test cases`);
+    allResults.push(outcome.result);
+    ctx.sendEvent('batch:complete', {
+      batch: batchNum, total: totalBatches,
+      testCases: outcome.result.cases.length,
+    });
+    return true;
+  }
+
+  private buildFlowBatches(
+    projectId: string,
+    params: StartParams,
+    filteredFlows: any[],
+    businessFlows: any[],
+    requirements: any[],
+    startBatchIndex: number,
+    finalTotalBatches: number,
+    globalBlueprint?: GlobalTestBlueprint,
+  ): BatchInput[] {
+    if (filteredFlows.length === 0) return [];
+    const mode = params.mode || 'auto';
+    const currentBatch = filteredFlows.map(f => ({ id: f.id, title: f.name || f.id, level: 'flow', parentId: '' }));
+    const flowNames = filteredFlows.map(f => f.name || f.id).join(', ');
+    return [{
+      batchIndex: startBatchIndex,
+      inputState: {
+        projectId,
+        runId: '',
+        mode,
+        requirementIds: params.requirementIds || [],
+        currentBatch,
+        batchContext: { currentBatch: startBatchIndex + 1, totalBatches: finalTotalBatches, processedCount: startBatchIndex },
+        projectContext: { name: `Flows: ${flowNames}`, pages: [], endpoints: [] },
+        businessFlowBlueprints: businessFlows,
+        selectedFlowIds: filteredFlows.map(f => f.id),
+        phase: 'analysis' as const,
+        analystMode: 'STAGE_2_FLOW' as const,
+        errors: [],
+        globalBlueprint,
+      },
+    }];
+  }
+
+  private buildErrorGuessingBatches(
+    projectId: string,
+    params: StartParams,
+    requirements: any[],
+    businessFlows: any[],
+    startBatchIndex: number,
+    finalTotalBatches: number,
+    globalBlueprint?: GlobalTestBlueprint,
+  ): BatchInput[] {
+    const mode: 'auto' | 'interactive' = params.mode || 'auto';
+    const allReqs = requirements.map((r: any) => ({ id: r.id, title: r.title, level: r.level ?? '', parentId: r.parentId ?? '' }));
+    const batch: BatchInput = {
+      batchIndex: startBatchIndex,
+      inputState: {
+        projectId,
+        runId: '',
+        mode,
+        requirementIds: params.requirementIds || [],
+        currentBatch: allReqs,
+        batchContext: { currentBatch: startBatchIndex + 1, totalBatches: finalTotalBatches, processedCount: startBatchIndex },
+        projectContext: { name: 'Error Guessing', pages: [], endpoints: [] },
+        businessFlowBlueprints: businessFlows,
+        selectedFlowIds: [],
+        phase: 'analysis' as const,
+        analystMode: 'STAGE_3_ERROR_GUESSING' as const,
+        errors: [],
+        globalBlueprint,
+      },
+    };
+    return [batch];
+  }
+
+  private computeRequirementHash(params: StartParams, requirements: any[]): string {
+    const sortedReqIds = [...(params.requirementIds || [])].sort();
+    const sortedFlowIds = [...(params.flowIds || [])].sort();
+    const selectedReqs = requirements
+      .filter((r: any) => sortedReqIds.includes(r.id))
+      .map((r: any) => ({ id: r.id, title: r.title, description: r.description ?? '' }))
+      .sort((a: any, b: any) => a.id.localeCompare(b.id));
+    const hashInput = { requirementIds: sortedReqIds, requirements: selectedReqs, flowIds: sortedFlowIds };
+    return createHash('sha256').update(JSON.stringify(hashInput)).digest('hex');
+  }
+
+  private async ensureGlobalBlueprint(
+    ctx: RunContext,
+    projectId: string,
+    params: StartParams,
+    allRequirements: any[],
+    businessFlows: any[],
+  ): Promise<GlobalTestBlueprint | undefined> {
+    const log = Log.for('orchestrator');
+    const hash = this.computeRequirementHash(params, allRequirements);
+
+    // 1. Check DB cache
+    if (!params.forceArchitect) {
+      const cached = pipelineRepo.getCachedBlueprint(projectId, hash);
+      if (cached) {
+        log.info(`Architect: cache HIT ── reusing cached blueprint (hash=${hash.slice(0, 12)}...)`);
+        ctx.scope.recordAgentStart('test_architect');
+        ctx.scope.recordAgentComplete('test_architect', {
+          tokenUsage: { input: 0, output: 0, reasoning: 0 },
+          latencyMs: 0,
+          outputData: cached,
+        });
+        pipelineRepo.saveGlobalBlueprint(ctx.runId, cached);
+        return cached as GlobalTestBlueprint;
+      }
+    }
+
+    log.info(`Architect: cache MISS${params.forceArchitect ? ' (forceArchitect=true)' : ''} ── generating via LLM...`);
+    ctx.sendEvent('phase:start', { phase: 'preparation', message: 'Generating Global Test Blueprint...' });
+    ctx.scope.recordAgentStart('test_architect');
+
+    // 2. Gather aggregate data for the architect
+    const coverageRows = pipelineRepo.getProjectCoverage(projectId);
+    const coverageSnapshot = coverageRows.map((row: any) => ({
+      requirementId: row.requirement_id,
+      conditionHash: row.condition_hash,
+      technique: row.technique,
+      testCaseIds: row.test_case_ids ?? [],
+    }));
+    const sortedReqIds = [...(params.requirementIds || [])].sort();
+    const allSelectedReqs = allRequirements
+      .filter((r: any) => sortedReqIds.includes(r.id))
+      .map((r: any) => ({ id: r.id, title: r.title, level: r.level ?? 'story', parentId: r.parentId ?? '' }));
+
+    // 3. Build synthetic state for architect prompts
+    const syntheticState: Partial<TestGenState> = {
+      projectId,
+      currentBatch: allSelectedReqs,
+      batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
+      projectContext: { name: projectId, pages: [], endpoints: [] },
+      businessFlowBlueprints: businessFlows as any,
+      coverageSnapshot: coverageSnapshot as any,
+    };
+
+    // 4. Generate blueprint via LLM
+    const override = pipelineRepo.getPromptOverride(projectId, 'test_architect');
+    const systemPrompt = buildArchitectSystemPrompt(syntheticState as TestGenState, override?.custom_prompt ?? undefined);
+    const userMessage = buildArchitectUserMessage(syntheticState as TestGenState);
+    const outputProfile = createArchitectOutputProfile();
+
+    const architectMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      { role: 'user' as const, content: userMessage },
+    ];
+
+    const architectStartTime = Date.now();
+    const { output: blueprint, usage } = await callLLMWithStructuredOutput(
+      ctx.provider,
+      architectMessages,
+      ANALYST_SKILLS,
+      outputProfile,
+      {
+        onStep: (name, idx, step) => ctx.scope.recordAgentStep('test_architect', idx, step),
+        onThinking: (name, text, type, phase) => ctx.scope.recordAgentThinking('test_architect', text, type, phase),
+      },
+      'test_architect',
+    );
+    const architectLatencyMs = Date.now() - architectStartTime;
+
+    const globalBlueprint = blueprint as GlobalTestBlueprint;
+    const riskCount = globalBlueprint.riskEpicTree?.length ?? 0;
+    const anomalyCount = globalBlueprint.anomalousFlowProposals?.length ?? 0;
+    log.success(`Blueprint generated ── ${riskCount} risk epics, ${anomalyCount} anomalous flows`);
+
+    // 5. Emit agent:complete with usage and persist to DB
+    ctx.scope.recordAgentComplete('test_architect', {
+      tokenUsage: { input: usage.input, output: usage.output, reasoning: usage.reasoning },
+      latencyMs: architectLatencyMs,
+      inputPrompt: architectMessages,
+      outputData: globalBlueprint,
+    });
+    pipelineRepo.saveGlobalBlueprint(ctx.runId, globalBlueprint);
+    pipelineRepo.saveCachedBlueprint(projectId, hash, globalBlueprint);
+
+    return globalBlueprint;
+  }
+
   private buildBatchInputState(
     projectId: string,
     requirementIds: string[],
@@ -485,8 +734,9 @@ export class Orchestrator {
     totalBatches: number,
     businessFlows: any[],
     mode: 'auto' | 'interactive' = 'auto',
-    includeFlowCases = false,
     selectedFlowIds: string[] = [],
+    analystMode: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING' = 'STAGE_1_REQUIREMENT',
+    globalBlueprint?: GlobalTestBlueprint,
   ) {
     return {
       projectId,
@@ -499,10 +749,11 @@ export class Orchestrator {
       batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
       projectContext: { name: epic.title, pages: [], endpoints: [] },
       businessFlowBlueprints: businessFlows,
-      includeFlowCases,
       selectedFlowIds,
       phase: 'analysis' as const,
+      analystMode,
       errors: [],
+      globalBlueprint,
     };
   }
 }

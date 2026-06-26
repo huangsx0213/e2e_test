@@ -5,6 +5,7 @@ import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
 import { ANALYST_SKILLS } from '../skills/skills.ts';
+import { bindProjectIdToCoverageQuery } from '../skills/data-skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createAnalystOutputProfile } from '../structured-output/analyst.ts';
 import { Log } from '../../../../shared/services/logger.ts';
@@ -32,13 +33,17 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     const log = Log.for(agentName);
     const reqCount = state.currentBatch?.length ?? 0;
     const batchInfo = `${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
-    const flowMode = state.includeFlowCases ? 'FLOW-LEVEL' : 'REQUIREMENT-LEVEL';
-    log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, mode=${flowMode}`);
+    const analystMode = state.analystMode || 'STAGE_1_REQUIREMENT';
+    log.info(`ENTER ── batch ${batchInfo}, ${reqCount} items, mode=${analystMode}`);
     log.kv('skills.available', skills.length);
+    log.kv('analystMode', analystMode);
 
     observer?.onStart?.(agentName);
 
     try {
+      // Bind projectId to coverage_check_query so the LLM can query the persistent matrix
+      bindProjectIdToCoverageQuery(state.projectId);
+
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildAnalystSystemPrompt(state, override?.custom_prompt ?? undefined);
 
@@ -48,7 +53,11 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
       ];
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
-      const allowedReqIds = new Set((state.currentBatch ?? []).map(r => r.id));
+      // Stage 1 (per-epic): 只允许引用当前 batch 内的 requirement
+      // Stage 2/3 (flow + error guessing): 不做验证，允许引用任何 requirement
+      const allowedReqIds = analystMode === 'STAGE_1_REQUIREMENT'
+        ? new Set((state.currentBatch ?? []).map(r => r.id))
+        : new Set();
       const analystOutputProfile = createAnalystOutputProfile(allowedReqIds);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
         provider,

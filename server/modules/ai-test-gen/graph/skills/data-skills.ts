@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { businessFlowRepo } from '../../../business-flows/repository.ts';
+import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
@@ -375,3 +376,63 @@ export const flowDetailQuery: SkillDefinition = {
     return isBatch ? merged : merged[ids[0]];
   },
 };
+
+// ============================================================
+// coverage_check_query — query the persistent coverage matrix
+// ============================================================
+/**
+ * Lets the Analyst check which test conditions are already covered in the
+ * persistent coverage matrix, so it can avoid re-deriving them (Stage 1/2/3
+ * deduplication). Filters by projectId and optionally by requirementId.
+ */
+export const coverageCheckQuery: SkillDefinition = {
+  name: 'coverage_check_query',
+  description:
+    'Query the persistent coverage matrix to see which test conditions are already covered for this project. Use this in Stage 1 (Requirement Analysis) and Stage 3 (Error-Guessing) to avoid re-deriving already-covered conditions. Pass a requirementId to filter to a single requirement, or omit to get the full project coverage.',
+  schema: z.object({
+    requirementId: z
+      .string()
+      .optional()
+      .describe('Optional: filter coverage to a single requirement. Omit to get full project coverage.'),
+  }),
+  func: async (args) => {
+    const ccqLog = Log.for('skill:coverage_check_query');
+    // projectId is injected via a closure set by the analyst node at runtime
+    const projectId = (coverageCheckQuery as any).__projectId as string | undefined;
+    if (!projectId) {
+      ccqLog.warn('No projectId bound to coverage_check_query — returning empty');
+      return { coveredConditions: [], note: 'No projectId bound; cannot query coverage.' };
+    }
+
+    const reqId = args.requirementId as string | undefined;
+    const rows = reqId
+      ? pipelineRepo.getCoverageByRequirement(projectId, reqId)
+      : pipelineRepo.getProjectCoverage(projectId);
+
+    const coveredConditions = rows.map((r: any) => ({
+      requirementId: r.requirement_id,
+      conditionHash: r.condition_hash,
+      conditionText: r.condition_text,
+      technique: r.technique,
+      testCaseIds: r.test_case_ids ?? [],
+      coveredAt: r.covered_at,
+    }));
+
+    ccqLog.info(`Returned ${coveredConditions.length} covered condition(s)${args.requirementId ? ` for ${args.requirementId}` : ''}`);
+    return {
+      coveredConditions,
+      totalCovered: coveredConditions.length,
+      note: coveredConditions.length === 0
+        ? 'No prior coverage — fresh start, derive all conditions normally.'
+        : `${coveredConditions.length} condition(s) already covered. Avoid re-deriving these; focus on uncovered aspects.`,
+    };
+  },
+};
+
+/**
+ * Bind the projectId to the coverage_check_query skill at runtime.
+ * Called by the analyst node before invoking the LLM.
+ */
+export function bindProjectIdToCoverageQuery(projectId: string): void {
+  (coverageCheckQuery as any).__projectId = projectId;
+}

@@ -28,6 +28,8 @@ export interface UseTestGenRunAPI {
   mode: 'auto' | 'interactive';
   batchProgress: BatchProgress | null;
   selectedNodeId: NodeId | undefined;
+  selectedBatch: number | null;
+  selectBatch: (batch: number | null) => void;
   selectedNode: TestGenNode | undefined;
   selectNode: (id: NodeId | null) => void;
   agentLogs: any[];
@@ -197,12 +199,14 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
           if (agentLogs.length > 0) {
             const od = mergeOutputData(agentLogs);
             let cpData: Record<string, any> | null = null;
-            if (cpNodeId === 'checkpoint_1') {
+            if (cpNodeId === 'checkpoint_0') {
+              cpData = { blueprint: od || null };
+            } else if (cpNodeId === 'checkpoint_1') {
               cpData = { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
             } else if (cpNodeId === 'checkpoint_2') {
               cpData = { cases: od.draftTestCases || [] };
             } else if (cpNodeId === 'checkpoint_3') {
-              cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+              cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null, validationWarnings: od.validationWarnings || [] };
             }
             if (cpData) {
               dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpData, phase: runInfo.phase });
@@ -237,12 +241,14 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
         if (agentLogs.length > 0) {
           const od = mergeOutputData(agentLogs);
           let cpData: Record<string, any> | null = null;
-          if (cpNodeId === 'checkpoint_1') {
+          if (cpNodeId === 'checkpoint_0') {
+            cpData = { blueprint: od.globalBlueprint || null };
+          } else if (cpNodeId === 'checkpoint_1') {
             cpData = { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
           } else if (cpNodeId === 'checkpoint_2') {
             cpData = { cases: od.draftTestCases || [] };
           } else if (cpNodeId === 'checkpoint_3') {
-            cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null };
+            cpData = { cases: od.finalTestCases || [], matrix: od.coverageMatrix || null, validationWarnings: od.validationWarnings || [] };
           }
           if (cpData) {
             dispatch({ type: 'SET_CHECKPOINT_DATA', checkpointData: cpData, phase: '' });
@@ -260,7 +266,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   const inferRunningPhase = useCallback((logs: any[]): string => {
     const normalize = (s: string) => (s || '').replace(/_/g, '-');
     const agentLogs = logs
-      .filter((l: any) => normalize(l.agent_name) !== 'preparation')
+      .filter((l: any) => {
+        const n = normalize(l.agent_name);
+        return n !== 'architect' && n !== 'test-architect';
+      })
       .sort((a: any, b: any) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0));
     if (agentLogs.length === 0) return 'analysis';
     const latest = agentLogs[0];
@@ -350,6 +359,8 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
               designer: 'agent_test_designer',
               quality: 'agent_quality_manager',
               reviewer: 'agent_quality_manager',
+              preparation: 'architect',
+              test_architect: 'architect',
             };
             const mapped: Record<string, any> = {};
             for (const [key, entries] of Object.entries(thinkingData)) {
@@ -397,6 +408,7 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
     : undefined;
 
   const CHECKPOINT_AGENT_MAP: Record<string, string> = {
+    checkpoint_0: 'test-architect',
     checkpoint_1: 'test-analyst',
     checkpoint_2: 'test-designer',
     checkpoint_3: 'quality-manager',
@@ -422,7 +434,10 @@ export function useTestGenRun(currentProjectId: string | null, options?: UseTest
   const getMergedAgentLog = (agentName: string): any => {
     const normalize = (n: string) => n.replace(/_/g, '-');
     const target = normalize(agentName);
-    const logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+    let logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+    if (logs.length === 0 && !agentName.startsWith('test-')) {
+      logs = state.agentLogs.filter((l: any) => normalize(l.agent_name) === `test-${target}`);
+    }
     if (logs.length === 0) return null;
     const latest = logs.reduce((best: any, l: any) => {
       const lBatch = l.batch || 0;
@@ -451,8 +466,8 @@ const selectedAgentLog = selectedNode?.agentName
   ? getMergedAgentLog(selectedNode.agentName) || null
   : selectedNode?.kind === 'checkpoint' && CHECKPOINT_AGENT_MAP[selectedNode.id]
   ? getMergedAgentLog(CHECKPOINT_AGENT_MAP[selectedNode.id]) || null
-  : selectedNode?.kind === 'preparation'
-  ? (getMergedAgentLog('preparation') || (selectedNode.meta?.initLogs
+  : selectedNode?.kind === 'architect'
+  ? (getMergedAgentLog('architect') || (selectedNode.meta?.initLogs
     ? { output_data: { initLogs: selectedNode.meta.initLogs, requirementCount: selectedNode.meta.requirementCount, totalBatches: selectedNode.meta.totalBatches, estimatedTokens: selectedNode.meta.estimatedTokens, flowCases: selectedNode.meta.flowCases } }
     : null))
   : null;
@@ -466,6 +481,9 @@ const selectedAgentLog = selectedNode?.agentName
       const log = getMergedAgentLog(agentName);
       if (!log?.output_data) return null;
       const od = log.output_data;
+      if (selectedNode.id === 'checkpoint_0') {
+        return { blueprint: od };
+      }
       if (selectedNode.id === 'checkpoint_1') {
         return { conditions: od.testConditions || [], analysis: od.analysis || od.requirementAnalysis || null };
       }
@@ -484,6 +502,8 @@ return {
     mode: state.mode,
     batchProgress: state.batchProgress,
     selectedNodeId: state.selectedNodeId ?? undefined,
+    selectedBatch: state.selectedBatch,
+    selectBatch: (batch: number | null) => dispatch({ type: 'SELECT_BATCH', batch }),
     selectedNode,
     selectNode,
     agentLogs: state.agentLogs,

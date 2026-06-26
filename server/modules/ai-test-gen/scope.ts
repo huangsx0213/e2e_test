@@ -48,7 +48,7 @@ export class RunScope {
   private thinkingFlushTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly THINKING_FLUSH_MS = 3000;
   // Accumulated thinking entries for persistence
-  private readonly thinkingAccumulator = new Map<string, Array<{ type: string; phase: string; text: string; timestamp: number }>>();
+  private readonly thinkingAccumulator = new Map<string, Array<{ type: string; phase: string; text: string; timestamp: number; batch?: number }>>();
 
   constructor(
     runId: string,
@@ -78,14 +78,14 @@ export class RunScope {
         // key format: agentName:phase:type
         const agentName = key.split(':').slice(0, -2).join(':') || key;
         const timestamp = Date.now();
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp });
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
         if (last && last.type === entry.type && last.phase === entry.phase) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp, batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
       }
@@ -146,14 +146,14 @@ export class RunScope {
     // Flush any remaining thinking text for this agent before marking complete
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp: Date.now() });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
         if (last && last.type === entry.type && last.phase === entry.phase) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
         this.thinkingBuffer.delete(key);
@@ -207,14 +207,14 @@ export class RunScope {
     // Flush any remaining thinking text for this agent
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp: Date.now() });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
         if (last && last.type === entry.type && last.phase === entry.phase) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
         this.thinkingBuffer.delete(key);
@@ -247,7 +247,7 @@ export class RunScope {
     const key = this.stateKey(agentName, batch);
     const snap = this.agentStates.get(key);
     if (snap) snap.rawTrace.push({ timestamp: Date.now(), step: stepIndex, name: stepName });
-    this.emit('agent:step', { agentName, stepIndex, stepName, timestamp: Date.now() });
+    this.emit('agent:step', { agentName, stepIndex, stepName, batch, timestamp: Date.now() });
   }
 
   recordAgentThinking(agentName: string, text: string, type: 'reasoning' | 'content' = 'content', phase: 'react' | 'extraction' = 'react'): void {
@@ -304,6 +304,7 @@ export class RunScope {
     if (this.thinkingAccumulator.size === 0) return;
     // Convert agentName keys to nodeId keys for client compatibility
     const AGENT_NAME_TO_NODE_ID: Record<string, string> = {
+      test_architect: 'test_architect',
       test_analyst: 'analyst',
       test_designer: 'designer',
       quality_manager: 'quality',

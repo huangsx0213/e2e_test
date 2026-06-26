@@ -28,6 +28,7 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [activeTab, setActiveTab] = useState<TabId>('new');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
   const [showRetryConfirm, setShowRetryConfirm] = useState(false);
+  const [showResetCoverageConfirm, setShowResetCoverageConfirm] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: activeTab !== 'history' });
   const queryClient = useQueryClient();
@@ -57,8 +58,8 @@ const handleRefresh = useCallback(async () => {
         modelName: config.modelName,
         mode: config.mode,
         flowIds: config.flowIds,
-        includeFlowCases: config.includeFlowCases,
         useCache: config.useCache,
+        cleanStart: config.cleanStart,
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
         textVerbosity: config.textVerbosity,
@@ -80,6 +81,17 @@ const handleRefresh = useCallback(async () => {
   const handleClear = useCallback(() => {
     pipeline.reset();
   }, [pipeline]);
+
+  const handleResetCoverage = useCallback(async () => {
+    if (!currentProjectId) return;
+    try {
+      const { api } = await import('@/shared/services/api');
+      await api.testGen.clearCoverage(currentProjectId);
+      setShowResetCoverageConfirm(false);
+    } catch (err: any) {
+      console.error('Reset coverage failed:', err);
+    }
+  }, [currentProjectId]);
 
   const handleAbort = useCallback(async () => {
     setShowAbortConfirm(false);
@@ -158,10 +170,10 @@ const handleRefresh = useCallback(async () => {
       const { api } = await import('@/shared/services/api');
       const nodeId = pipeline.selectedNode.id;
       const cpMap: Record<string, number> = {
-        checkpoint_1: 1, checkpoint_2: 2, checkpoint_3: 3,
+        checkpoint_0: 0, checkpoint_1: 1, checkpoint_2: 2, checkpoint_3: 3,
       };
       const cpNum = cpMap[nodeId];
-      if (cpNum) {
+      if (cpNum !== undefined) {
         await api.testGen.saveCheckpointEdits(
           pipeline.runId,
           checkpointEditedData.current,
@@ -222,6 +234,14 @@ const handleRefresh = useCallback(async () => {
           >
             <Trash2 size={14} />
             Clear
+          </button>
+          <button
+            onClick={() => setShowResetCoverageConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 transition-colors"
+            title="Reset persistent coverage matrix"
+          >
+            <RefreshCw size={14} />
+            Reset Coverage
           </button>
           <button
             onClick={handleRefresh}
@@ -294,6 +314,9 @@ const handleRefresh = useCallback(async () => {
                 requirements={requirements}
                 businessFlows={businessFlows}
                 modelName={pipeline.modelName}
+                selectedBatch={pipeline.selectedBatch}
+                batchProgress={pipeline.batchProgress}
+                onSelectBatch={pipeline.selectBatch}
                 onClose={handleCloseDetail}
                 onApprove={handleApprove}
                 onRetry={() => setShowRetryConfirm(true)}
@@ -338,6 +361,16 @@ const handleRefresh = useCallback(async () => {
         message="The current output will be discarded and the agent will re-run from scratch with the same inputs. Any edits made during review will be lost."
         confirmLabel="Retry Agent"
         type="warning"
+      />
+
+      <ConfirmModal
+        isOpen={showResetCoverageConfirm}
+        onClose={() => setShowResetCoverageConfirm(false)}
+        onConfirm={handleResetCoverage}
+        title="Reset Coverage?"
+        message="This will permanently delete all historical coverage data for this project. This affects coverage deduplication for future runs. This action cannot be undone."
+        confirmLabel="Reset Coverage"
+        type="danger"
       />
     </div>
   );

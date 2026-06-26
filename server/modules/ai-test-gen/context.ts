@@ -32,8 +32,9 @@ export interface StartParams {
   model?: string;
   mode: 'auto' | 'interactive';
   flowIds?: string[];
-  includeFlowCases?: boolean;
   useCache?: boolean;
+  cleanStart?: boolean;
+  forceArchitect?: boolean;
   reasoningEffort?: 'low' | 'medium' | 'high';
   reasoningSummary?: 'auto' | 'detailed' | 'concise';
   textVerbosity?: 'low' | 'medium' | 'high';

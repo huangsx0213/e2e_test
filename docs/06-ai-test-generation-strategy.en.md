@@ -28,16 +28,30 @@ To manage LLM token costs and context window limits on large-scale projects, the
 
 The execution pipeline is driven by four core agent nodes collaborating in sequence. 
 
-### 3.1 Preparation Node (Hybrid Architect Engine)
+### 3.1 Preparation Node (Per-Batch Deterministic Layer)
 
-The Preparation node acts as the "Phase 0" Global Architect. It is a Hybrid Agent that builds the global context before the Analyst begins generation.
+The Preparation node is a deterministic TS-only node in the per-batch LangGraph. It does NOT call the LLM — the blueprint is pre-computed by the Orchestrator before the batch loop begins.
 
 | Capability Layer | Execution Responsibilities | Output Artifacts |
 |-----------------|----------------------------|------------------|
 | **Pure TypeScript (Deterministic)** | **1. Frequency Scanning**: Scans all Flows to count occurrences of each `RequirementID`, tagging high-frequency nodes as `isDuplicateReference`.<br>**2. DAG Topology**: Builds explicit dependency trees of Epics/Flows via database relations.<br>**3. Coverage Snapshot**: Fetches the latest 2D CoverageMatrix from the database. | Statistical arrays, Dependency DAG, JSON Coverage Matrix |
+
+### 3.2 Orchestrator-Level Architect (Global Blueprint)
+
+The LLM-driven Architect runs **once per pipeline execution** at the Orchestrator level, **before** any batch enters the LangGraph. It operates on **all** project requirements and flows — not just the user's current selection — to produce a comprehensive blueprint that remains stable regardless of which subset is being tested. Its responsibilities:
+
+| Capability Layer | Execution Responsibilities | Output Artifacts |
+|-----------------|----------------------------|------------------|
 | **LLM Reasoning (Semantic)** | **1. Strategic Guidance**: Infers implicit shared states (e.g., Auth, Interceptors) from the TS data to guide downstream Agents.<br>**2. Preemptive Error Guessing**: Autonomously hypothesizes a bounded number of high-risk anomalous business flows (e.g., race conditions, orphan references) not explicitly defined in requirements. | `Global Test Blueprint`, Limited `Anomalous Flow Proposals` |
 
-### 3.2 Analyst Node (Test Condition Generator)
+The generated blueprint is:
+1. Saved to `test_gen_architect_cache` (cross-run cache, keyed by project + requirement hash)
+2. Injected as `globalBlueprint` into every batch's input state
+3. The per-batch Preparation node receives it and skips the LLM call (fast path via `state.globalBlueprint` cache-hit logic)
+
+**Re-run optimization**: If no project requirements or flows have changed since the last run, and the cached blueprint exists, the Orchestrator loads it from `test_gen_architect_cache` and skips the LLM call entirely. Use `forceArchitect: true` in the start config to force regeneration.
+
+### 3.3 Analyst Node (Test Condition Generator)
 
 The Analyst node is responsible for breaking down business requirements into structured "Test Conditions". Controlled by the Orchestrator, the Analyst dynamically switches between **three distinct stages (modes)** based on the input batch:
 
@@ -87,32 +101,39 @@ All generated `NlTestCaseStep` objects must comply with the requirements of down
 ## 5. Implementation Roadmap
 
 ### 5.1 Orchestrator Routing Logic
-The Orchestrator feeds batched subsets into the intact LangGraph pipeline while commanding the Analyst to assume different Stage modes:
+The Orchestrator generates the Global Blueprint **once**, then feeds batched subsets into the LangGraph pipeline while commanding the Analyst to assume different Stage modes:
 
 ```typescript
 async function runUnifiedPipeline(projectId: string, selection: SelectionCriteria) {
-  // Stage 1: Component Condition Batches
+  // Step 0: Global Blueprint (Architect runs ONCE before batch loop)
+  // Note: blueprint considers ALL project requirements & flows, not just selection
+  const blueprint = await ensureGlobalBlueprint(projectId);
+  // -> Checks test_gen_architect_cache (by project + all-requirements hash)
+  // -> If cached & !forceArchitect: loads from DB, no LLM call
+  // -> If miss or forceArchitect: calls LLM, saves to cache
+
+  // Stage 1: Component Condition Batches (only selected epics/ACs)
   const reqBatches = groupRequirementsByEpic(selection.acs);
   for (const batch of reqBatches) {
-    await runLangGraph(batch, { analystMode: 'STAGE_1_REQUIREMENT' });
+    await runLangGraph({ ...batch, globalBlueprint: blueprint }, { analystMode: 'STAGE_1_REQUIREMENT' });
   }
 
   // Stage 2: Integration Condition Batches
   const flowBatches = preprocessFlows(selection.flows);
   for (const batch of flowBatches) {
-    await runLangGraph(batch, { analystMode: 'STAGE_2_FLOW' });
+    await runLangGraph({ ...batch, globalBlueprint: blueprint }, { analystMode: 'STAGE_2_FLOW' });
   }
 
   // Stage 3: Error Guessing Batches
   const errorGuessingBatches = prepareErrorGuessingScope(selection);
   for (const batch of errorGuessingBatches) {
-    await runLangGraph(batch, { analystMode: 'STAGE_3_ERROR_GUESSING' });
+    await runLangGraph({ ...batch, globalBlueprint: blueprint }, { analystMode: 'STAGE_3_ERROR_GUESSING' });
   }
 }
 ```
 
-### 5.2 `preparation.ts` Refactoring (Hybrid Agent)
-Upgrade the entry node to calculate the latest state and intercept duplicate designs:
+### 5.2 `preparation.ts` (Per-Batch Deterministic Node)
+The per-batch Preparation node no longer calls the LLM — the blueprint arrives pre-populated from the orchestrator. It only runs the deterministic TS layer:
 
 ```typescript
 async function PreparationNode(state: TestGenState): Promise<Partial<TestGenState>> {
@@ -120,18 +141,28 @@ async function PreparationNode(state: TestGenState): Promise<Partial<TestGenStat
   const coverageMatrix = await db.fetchPersistentCoverage(state.projectId);
   const flowFrequency = computeRequirementFrequencies(state.businessFlows);
   
-  if (state.globalBlueprint && !state.forceRedesign) {
-     return { phase: 'analysis', coverageMatrix, flowFrequency };
+  // Blueprint is already in state (injected by orchestrator) — fast path
+  // Fallback: if none (e.g., forceRedesign from checkpoint_0), generate inline
+  if (!state.globalBlueprint || state.forceRedesign) {
+    const architectResult = await runArchitectAgent(state.projectData);
+    return { globalBlueprint: architectResult.blueprint, coverageMatrix, flowFrequency, phase: 'analysis' };
   }
 
-  // 2. LLM Semantic Layer: Blueprint Generation
-  const architectResult = await runArchitectAgent(state.projectData);
-  await db.persistBlueprint(state.projectId, architectResult.blueprint);
-
-  return { globalBlueprint: architectResult.blueprint, coverageMatrix, flowFrequency, phase: 'analysis' };
+  return { phase: 'analysis', coverageMatrix, flowFrequency };
 }
 ```
 
-### 5.3 Prompt Engineering & New Skills
+### 5.3 Cross-Run Architect Cache
+A dedicated DB table `test_gen_architect_cache` stores the blueprint keyed by `(project_id, requirement_hash)`:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `project_id` | TEXT | Project identifier |
+| `requirement_hash` | TEXT | SHA-256 of sorted **all** requirement IDs + content + flow IDs (not just the current selection) |
+| `blueprint` | TEXT | JSON-serialized GlobalTestBlueprint |
+
+The hash includes requirement content so that any edit to a selected requirement automatically invalidates the cached blueprint on the next run.
+
+### 5.4 Prompt Engineering & New Skills
 *   **Skill: `coverage_check_query`**: Provide the Analyst Agent with a Tool to dynamically query the `PersistentCoverageMatrix` during its ReAct loop, empowering it to autonomously skip duplicate logic.
 *   **Analyst Prompts**: Inject distinct Persona rules and constraints depending on whether the `analystMode` is `STAGE_1_REQUIREMENT`, `STAGE_2_FLOW`, or `STAGE_3_ERROR_GUESSING`.

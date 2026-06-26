@@ -18,8 +18,8 @@ export interface TestGenStartConfig {
   providerConfigName: string;
   model?: string;
   modelName?: string;
-  includeFlowCases?: boolean;
   useCache?: boolean;
+  cleanStart?: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;
   textVerbosity?: string;
@@ -144,7 +144,6 @@ interface SavedConfig {
   showApprovedOnly: boolean;
   selectedModel: string;
   modelName: string;
-  includeFlowCases: boolean;
   useCache: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;
@@ -169,7 +168,6 @@ const defaultConfig: SavedConfig = {
   showApprovedOnly: true,
   selectedModel: '',
   modelName: '',
-  includeFlowCases: false,
   useCache: false,
 };
 
@@ -245,18 +243,18 @@ export function TestGenConfigPanel({
       }
     }
   }, [modelOptions, selectedModel, providerConfigs]);
-  const [includeFlowCases, setIncludeFlowCases] = useState(savedConfig?.includeFlowCases ?? defaultConfig.includeFlowCases);
   const [useCache, setUseCache] = useState(savedConfig?.useCache ?? defaultConfig.useCache);
+  const [cleanStart, setCleanStart] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState(savedConfig?.reasoningEffort ?? '');
   const [reasoningSummary, setReasoningSummary] = useState(savedConfig?.reasoningSummary ?? '');
   const [textVerbosity, setTextVerbosity] = useState(savedConfig?.textVerbosity ?? '');
 
   useEffect(() => {
     saveConfig({
-      mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache,
+      mode, showApprovedOnly, selectedModel, modelName, useCache,
       reasoningEffort, reasoningSummary, textVerbosity,
     });
-  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, reasoningEffort, reasoningSummary, textVerbosity]);
+  }, [mode, showApprovedOnly, selectedModel, modelName, useCache, reasoningEffort, reasoningSummary, textVerbosity]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 
@@ -290,7 +288,6 @@ export function TestGenConfigPanel({
     setShowApprovedOnly(defaultConfig.showApprovedOnly);
     setSelectedModel(defaultConfig.selectedModel);
     setModelName(defaultConfig.modelName);
-    setIncludeFlowCases(defaultConfig.includeFlowCases);
     setUseCache(defaultConfig.useCache);
     setReasoningEffort('');
     setReasoningSummary('');
@@ -310,15 +307,15 @@ export function TestGenConfigPanel({
       providerConfigName: selectedProvider,
       model: selectedModel || undefined,
       modelName: modelName || undefined,
-      includeFlowCases,
       useCache,
+      cleanStart,
       reasoningEffort: reasoningEffort || undefined,
       reasoningSummary: reasoningSummary || undefined,
       textVerbosity: textVerbosity || undefined,
     });
   };
 
-  const canStart = (includeFlowCases ? selectedFlows.size > 0 : selectedReqs.size > 0) && selectedProvider !== '' && !disabled;
+  const canStart = selectedReqs.size > 0 && selectedProvider !== '' && !disabled;
 
   return (
     <div className="h-full flex overflow-hidden bg-white">
@@ -601,18 +598,6 @@ export function TestGenConfigPanel({
             <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
               <input
                 type="checkbox"
-                checked={includeFlowCases}
-                onChange={e => setIncludeFlowCases(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5"
-              />
-              <div className="flex-1">
-                <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Flow-level test cases</span>
-                <p className="text-[11px] text-slate-400 mt-0.5">Generate end-to-end flow cases instead of atomic per-requirement cases</p>
-              </div>
-            </label>
-            <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
-              <input
-                type="checkbox"
                 checked={!useCache}
                 onChange={e => setUseCache(!e.target.checked)}
                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5"
@@ -620,6 +605,18 @@ export function TestGenConfigPanel({
               <div className="flex-1">
                 <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Disable cache</span>
                 <p className="text-[11px] text-slate-400 mt-0.5">Bypass cache for fresh LLM responses each run</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
+              <input
+                type="checkbox"
+                checked={cleanStart}
+                onChange={e => setCleanStart(e.target.checked)}
+                className="rounded border-slate-300 text-orange-600 focus:ring-orange-500/20 mt-0.5"
+              />
+              <div className="flex-1">
+                <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Clean start</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Clear all historical coverage data before starting this run</p>
               </div>
             </label>
           </div>
@@ -638,10 +635,8 @@ export function TestGenConfigPanel({
           {!canStart && selectedProvider === '' && (
             <p className="text-[11px] text-amber-600 mt-1.5 text-center">Select a model to continue</p>
           )}
-          {!canStart && selectedProvider !== '' && (includeFlowCases ? selectedFlows.size === 0 : selectedReqs.size === 0) && (
-            <p className="text-[11px] text-slate-400 mt-1.5 text-center">
-              {includeFlowCases ? 'Select at least one business flow' : 'Select at least one requirement'}
-            </p>
+          {!canStart && selectedProvider !== '' && selectedReqs.size === 0 && (
+            <p className="text-[11px] text-slate-400 mt-1.5 text-center">Select at least one requirement</p>
           )}
         </div>
       </div>

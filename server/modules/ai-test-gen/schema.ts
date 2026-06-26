@@ -7,8 +7,8 @@ export const startPipelineSchema = z.object({
   mode: z.enum(['auto', 'interactive']).default('auto'),
   flowIds: z.array(z.string()).optional(),
   name: z.string().optional(),
-  includeFlowCases: z.boolean().optional().default(false),
   useCache: z.boolean().optional().default(false),
+  cleanStart: z.boolean().optional().default(false),
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   reasoningSummary: z.enum(['auto', 'detailed', 'concise']).optional(),
   textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
@@ -22,5 +22,9 @@ export const resumePipelineSchema = z.object({
 
 export const checkpointUpdateSchema = z.object({
   editedData: z.record(z.string(), z.unknown()),
-  checkpointNumber: z.number().min(1).max(3),
+  checkpointNumber: z.number().min(0).max(3),
+});
+
+export const clearCoverageSchema = z.object({
+  projectId: z.string().min(1),
 });

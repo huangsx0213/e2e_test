@@ -150,8 +150,13 @@ businessFlows: {
       }),
     getCheckpointState: (runId: string) =>
       apiFetch<{ checkpointData: any }>(`test-gen/${runId}/checkpoint-state`),
-    logs: (runId: string, agentName?: string) =>
-      apiFetch<any[]>(`test-gen/${runId}/logs${agentName ? `?agent=${agentName}` : ''}`),
+    logs: (runId: string, agentName?: string, batch?: number) => {
+      const params = new URLSearchParams();
+      if (agentName) params.set('agent', agentName);
+      if (batch !== undefined) params.set('batch', String(batch));
+      const qs = params.toString();
+      return apiFetch<any[]>(`test-gen/${runId}/logs${qs ? `?${qs}` : ''}`);
+    },
     audit: (runId: string, checkpointId?: string) =>
       apiFetch<any[]>(`test-gen/${runId}/audit${checkpointId ? `?checkpointId=${encodeURIComponent(checkpointId)}` : ''}`),
     saveCases: (runId: string) =>
@@ -162,8 +167,17 @@ businessFlows: {
       apiFetch<{ success: boolean }>(`test-gen/${runId}/retry`, { method: 'POST' }),
     delete: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}`, { method: 'DELETE' }),
-    getThinkingData: (runId: string) =>
-      apiFetch<Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null>(`test-gen/${runId}/thinking`),
+    getThinkingData: (runId: string, batch?: number) => {
+      const qs = batch !== undefined ? `?batch=${batch}` : '';
+      return apiFetch<Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null>(`test-gen/${runId}/thinking${qs}`);
+    },
+    clearCoverage: (projectId: string) =>
+      apiFetch<{ success: boolean }>(`test-gen/coverage/clear`, {
+        method: 'POST',
+        body: JSON.stringify({ projectId }),
+      }),
+    getCoverage: (projectId: string) =>
+      apiFetch<any[]>(`test-gen/coverage/${projectId}`),
     promptOverrides: (projectId: string) =>
       apiFetch<any[]>(`test-gen/prompts/${projectId}`),
     savePromptOverride: (projectId: string, agentName: string, data: { customPrompt?: string | null; modelOverride?: string | null }) =>

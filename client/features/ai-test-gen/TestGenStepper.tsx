@@ -16,7 +16,7 @@ import {
 import type { TestGenNode, NodeId } from '@/shared/test-gen-run/types';
 
 const PHASE_DEFS = [
-  { id: 'prep', label: 'Preparation', nodeIds: ['preparation'] as NodeId[], icon: Settings },
+  { id: 'prep', label: 'Architect', nodeIds: ['architect', 'checkpoint_0'] as NodeId[], icon: Settings },
   {
     id: 'analysis',
     label: 'Analysis',
@@ -39,7 +39,8 @@ const PHASE_DEFS = [
 ] as const;
 
 const nodeLabels: Record<NodeId, string> = {
-  preparation: 'Initialize Environment',
+  architect: 'Architect',
+  checkpoint_0: 'Review Blueprint',
   agent_test_analyst: 'Test Analyst',
   checkpoint_1: 'Review Conditions',
   agent_test_designer: 'Test Designer',
@@ -50,7 +51,8 @@ const nodeLabels: Record<NodeId, string> = {
 };
 
 const nodeIcons: Record<string, React.ComponentType<any>> = {
-  preparation: Settings,
+  architect: Settings,
+  checkpoint_0: ClipboardCheck,
   agent_test_analyst: Search,
   checkpoint_1: ClipboardCheck,
   agent_test_designer: FileEdit,

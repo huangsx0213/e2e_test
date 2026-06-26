@@ -2,6 +2,7 @@ import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
 import type { AIProvider } from '../../infra/provider.ts';
 import type { CoverageMatrix } from '../../../../../shared/contracts/index.ts';
+import { createHash } from 'node:crypto';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
@@ -64,6 +65,52 @@ function computeCoverageMatrix(
   return { rows };
 }
 
+/**
+ * Compute a stable SHA-256 hash for a test condition so the same condition
+ * across runs maps to the same row in test_gen_persistent_coverage.
+ */
+function hashCondition(conditionText: string): string {
+  return createHash('sha256').update(conditionText).digest('hex').slice(0, 16);
+}
+
+/**
+ * Upsert the batch's approved conditions into the persistent coverage matrix.
+ * Called once per batch when the Quality Manager finalizes cases.
+ */
+function persistCoverageForBatch(
+  state: TestGenState,
+  finalTestCases: Array<{ id: string; conditionId: string; requirementId: string; techniqueApplied: string }>,
+): number {
+  const conditions = (state.approvedConditions ?? state.testConditions ?? []) as Array<{
+    id: string;
+    requirementId: string;
+    condition: string;
+    primaryTechnique: string;
+  }>;
+  if (conditions.length === 0) return 0;
+
+  const rowType: 'requirement' | 'flow' = state.analystMode === 'STAGE_2_FLOW' ? 'flow' : 'requirement';
+
+  // Map conditionId → list of final test case ids that cover it
+  const casesByCondition: Record<string, string[]> = {};
+  for (const tc of finalTestCases) {
+    if (!casesByCondition[tc.conditionId]) casesByCondition[tc.conditionId] = [];
+    casesByCondition[tc.conditionId].push(tc.id);
+  }
+
+  const entries = conditions.map((c) => ({
+    requirementId: c.requirementId,
+    conditionHash: hashCondition(c.condition ?? c.id),
+    conditionText: c.condition ?? c.id,
+    technique: c.primaryTechnique ?? 'unknown',
+    testCaseIds: casesByCondition[c.id] ?? [],
+    rowType,
+  }));
+
+  pipelineRepo.upsertCoverageEntries(state.runId, state.projectId, entries);
+  return entries.length;
+}
+
 // ============================================================
 // Node
 // ============================================================
@@ -122,6 +169,23 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         (state.approvedConditions ?? state.testConditions ?? []) as Array<{ requirementId: string }>,
       );
 
+      // Persist this batch's coverage into the durable coverage matrix
+      const persistedCount = persistCoverageForBatch(
+        state,
+        validated.finalTestCases as Array<{ id: string; conditionId: string; requirementId: string; techniqueApplied: string }>,
+      );
+      if (persistedCount > 0) {
+        log.kv('coverage.persisted', persistedCount);
+      }
+
+      // Refresh the in-memory coverage snapshot so downstream nodes see the latest state
+      const refreshedCoverageSnapshot = pipelineRepo.getProjectCoverage(state.projectId).map((row: any) => ({
+        requirementId: row.requirement_id,
+        conditionHash: row.condition_hash,
+        technique: row.technique,
+        testCaseIds: row.test_case_ids ?? [],
+      }));
+
       const latencyMs = Date.now() - startTime;
       const finalCount = validated.finalTestCases?.length ?? 0;
       const matrixRows = computedCoverageMatrix.rows.length;
@@ -129,7 +193,8 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       const approvedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved').length ?? 0;
       const changedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved_with_changes').length ?? 0;
       const rejectedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'rejected').length ?? 0;
-      observer?.onStep?.(agentName, 4, `Reviewed ${finalCount} cases (${approvedCount} approved, ${changedCount} changed, ${rejectedCount} rejected)`);
+      const warningCount = (validated.validationWarnings ?? []).reduce((sum: number, w: any) => sum + (w.warnings?.length ?? 0), 0);
+      observer?.onStep?.(agentName, 4, `Reviewed ${finalCount} cases (${approvedCount} approved, ${changedCount} changed, ${rejectedCount} rejected, ${warningCount} warnings)`);
       const matrixTable = computedCoverageMatrix.rows.length > 0
         ? (() => {
             const W = [4, 48, 6, 8, 8, 6];
@@ -152,7 +217,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
           ? Math.round(computedCoverageMatrix.rows.reduce((sum, r) => sum + r.coveragePercentage, 0) / computedCoverageMatrix.rows.length)
           : 0,
       };
-      log.success(`EXIT ── ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount})`);
+      log.success(`EXIT ── ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount}, warnings=${warningCount})`);
       log.kv('coverage.rows', matrixRows);
       log.kv('coverage.summary', `${coverageSummary.totalRequirements} reqs / ${coverageSummary.totalConditions} conditions / ${coverageSummary.overallCoverage}% overall`);
       log.kv('skill.calls', skillCallCount);
@@ -163,6 +228,8 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       return {
         finalTestCases: validated.finalTestCases as any,
         coverageMatrix: computedCoverageMatrix as any,
+        coverageSnapshot: refreshedCoverageSnapshot,
+        validationWarnings: (validated.validationWarnings ?? []) as any,
         skillCalls: (toolCallRecords ?? []).map(tc => ({
           agent: agentName,
           skillName: tc.name,

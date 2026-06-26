@@ -21,7 +21,7 @@ function computeLevel(itemId: string, allIds: Map<string, string | null>, depth:
   const parentId = allIds.get(itemId);
   if (!parentId) return 0;
   if (depth > 10) return depth;
-  return computeLevel(parentId, allIds, depth + 1);
+  return 1 + computeLevel(parentId, allIds, depth + 1);
 }
 
 function extractTags(text: string): string[] {

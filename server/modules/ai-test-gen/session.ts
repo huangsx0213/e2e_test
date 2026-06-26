@@ -19,10 +19,11 @@ export interface BatchInput {
     batchContext: { currentBatch: number; totalBatches: number; processedCount: number };
     projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
     businessFlowBlueprints: any[] | undefined;
-    includeFlowCases: boolean;
     selectedFlowIds: string[];
     phase: TestGenState['phase'];
+    analystMode?: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING';
     errors: any[];
+    globalBlueprint?: any;
   };
 }
 
@@ -101,13 +102,14 @@ export class TestGenSession {
       batchContext: batch.inputState.batchContext,
       projectContext: batch.inputState.projectContext,
       businessFlowBlueprints: batch.inputState.businessFlowBlueprints,
-      includeFlowCases: batch.inputState.includeFlowCases,
       selectedFlowIds: batch.inputState.selectedFlowIds,
+      analystMode: batch.inputState.analystMode || 'STAGE_1_REQUIREMENT',
       phase: batch.inputState.phase,
       errors: batch.inputState.errors,
       environmentReady: false,
       initializationLogs: [],
       tokenBudget: { estimated: 0, limit: null },
+      globalBlueprint: batch.inputState.globalBlueprint,
       skillCalls: [],
       humanReviewFeedback: '',
     };
@@ -132,10 +134,12 @@ export class TestGenSession {
       resume: {
         action: resumeInput.action,
         feedback: resumeInput.feedback,
+        blueprint: resumeInput.edits?.blueprint,
         conditions: resumeInput.edits?.conditions,
         cases: resumeInput.edits?.cases,
         analysis: resumeInput.edits?.analysis,
         matrix: resumeInput.edits?.matrix,
+        forceRedesign: resumeInput.edits?.forceRedesign ?? false,
         retry: resumeInput.action === 'retry',
       },
     });

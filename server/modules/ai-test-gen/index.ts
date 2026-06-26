@@ -3,6 +3,7 @@ import { withErrorHandling } from '../../shared/http/async-handler.ts';
 import { validateWithSchema } from '../../shared/validation/validate.ts';
 import { TestGenController } from './controller.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
+import { pipelineRepo } from './repository.ts';
 
 const router = Router();
 const controller = new TestGenController();
@@ -41,13 +42,15 @@ router.get('/:runId/info', withErrorHandling((req, res) => {
 
 // agent 日志
 router.get('/:runId/logs', withErrorHandling((req, res) => {
-  const { agent } = req.query;
-  res.json(controller.getLogs(p(req.params.runId), agent as string | undefined));
+  const { agent, batch } = req.query;
+  const batchNum = batch !== undefined ? Number(batch) : undefined;
+  res.json(controller.getLogs(p(req.params.runId), agent as string | undefined, Number.isFinite(batchNum) ? batchNum : undefined));
 }));
 
-// 思考数据（持久化）
+// 思考数据（持久化，支持 ?batch=N 过滤）
 router.get('/:runId/thinking', withErrorHandling((req, res) => {
-  const data = controller.getThinkingData(p(req.params.runId));
+  const batch = req.query.batch ? parseInt(req.query.batch as string, 10) : undefined;
+  const data = controller.getThinkingData(p(req.params.runId), batch);
   res.json(data ?? null);
 }));
 
@@ -138,6 +141,21 @@ router.put('/prompts/:projectId/:agentName', withErrorHandling((req, res) => {
 // 删除 prompt override
 router.delete('/prompts/:projectId/:agentName', withErrorHandling((req, res) => {
   res.json(controller.deletePromptOverride(p(req.params.projectId), p(req.params.agentName)));
+}));
+
+// ============================================================
+// Persistent Coverage Matrix
+// ============================================================
+
+// 清除项目的持久化覆盖矩阵
+router.post('/coverage/clear', withErrorHandling((req, res) => {
+  const result = controller.clearCoverage(req.body);
+  res.json(result);
+}));
+
+// 获取项目的持久化覆盖矩阵
+router.get('/coverage/:projectId', withErrorHandling((req, res) => {
+  res.json(pipelineRepo.getProjectCoverage(p(req.params.projectId)));
 }));
 
 export const recoverInterruptedTestGenRuns = () => controller.recoverInterruptedRuns();

@@ -9,69 +9,48 @@ export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: str
     return replacePromptVariables(customPrompt, state);
   }
   const batch = state.batchContext;
-  const isFlowMode = state.includeFlowCases;
+  const analystMode = state.analystMode || 'STAGE_1_REQUIREMENT';
+  const hasBlueprint = !!state.globalBlueprint;
+  const blueprintGuidance = hasBlueprint && state.globalBlueprint
+    ? `\n## Global Test Blueprint (from Test Architect — READ FIRST)\n${JSON.stringify(state.globalBlueprint, null, 2)}\n`
+    : '';
+  const coverageHint = (state.coverageSnapshot?.length ?? 0) > 0
+    ? `\n## Existing Coverage (persistent matrix)\n${state.coverageSnapshot!.length} condition(s) already covered in prior runs. Call **coverage_check_query** to see them, and AVOID re-deriving conditions that match existing conditionHash+technique pairs.\n`
+    : '';
 
-  const modeInstruction = isFlowMode
-    ? `## Mode: Flow-Level Test Case Generation
-The selected business flows are the PRIMARY focus — derive test conditions that traverse each flow step by step. The selected requirements are REFERENCE material only, used to validate that flow steps respect the underlying business rules.`
-    : `## Mode: Requirement-Level Test Case Generation
-The selected requirements are the PRIMARY focus — derive test conditions for each requirement individually. Business flows (if any) are CONTEXT ONLY, used to understand how a requirement is exercised in a realistic end-to-end scenario; do not let flow context dilute focus on the requirement itself.`;
-
-  const workflowSteps = isFlowMode
-    ? `### Step 1 — Gather flow details
-Call **flow_detail_query** with "selectedFlowIds" (batch call, user-selected flows only).
-
-### Step 2 — Gather referenced requirement details
-Call **requirement_detail_query** with the requirement IDs attached to those flow steps, to understand the business rules each step must respect.
-
-### Step 3 — Expand the requirement graph (recommended)
-Call **requirement_graph_query** with those requirement IDs, passing "selectedFlowIds" as the \`flowId\` parameter. This surfaces cross-cutting dependencies the flow alone wouldn't reveal.
-
-### Step 4 — Load ISTQB technique guides
-Call **istqb_guide** once, loading all techniques. Flow conditions almost always need **Use Case Testing** (the flow IS the use case) and **State Transition Testing** (flows nearly always move an entity through states) — do not skip loading these two.
-
-### Step 5 — Assess risk (see Risk Assessment below), then Step 6 — select techniques (see Technique Selection below), then Step 7 — derive conditions.`
-    : `### Step 1 — Gather requirement details
-Call **requirement_detail_query** with an array of ALL requirement IDs in the batch (single call).
-
-### Step 2 — Gather flow context (optional)
-If "businessFlowBlueprints" is present in the input, call **flow_detail_query** with all blueprint IDs for context only.
-
-### Step 3 — Expand the requirement graph (recommended)
-Call **requirement_graph_query** with the requirement IDs (pass any blueprint IDs as \`flowId\`) to surface cross-cutting dependencies.
-
-### Step 4 — Load ISTQB technique guides
-Call **istqb_guide** once, loading all techniques. You must load at least one guide before deriving conditions.
-
-### Step 5 — Assess risk (see Risk Assessment below), then Step 6 — select techniques (see Technique Selection below), then Step 7 — derive conditions.`;
+  const stageInstructions = buildStageInstructions(analystMode, state);
+  const workflowSteps = buildWorkflowSteps(analystMode, state);
 
   return `You are a senior ISTQB Test Analyst (CTFL/CTAL Test Analyst level). Perform risk-based analysis of the input and derive a complete, non-redundant set of test conditions using formal ISTQB black-box test design techniques.
 
 ## Context
+- Mode: ${analystMode}
 - Batch: ${batch.currentBatch}/${batch.totalBatches}
-- Requirements: ${state.currentBatch.length} items
+- Items in scope: ${state.currentBatch.length}
 - Project: ${state.projectContext.name}
 ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
+${blueprintGuidance}${coverageHint}
 
-${modeInstruction}
+## Analysis Mode
+${stageInstructions}
 
 ## Mandatory Tool Usage Workflow
 ${workflowSteps}
 
 ## Risk Assessment (ISTQB Risk-Based Testing)
-Rate each ${isFlowMode ? 'flow' : 'requirement'} on TWO independent axes before assigning priority:
+Rate each ${analystMode === 'STAGE_2_FLOW' ? 'flow' : 'requirement'} on TWO independent axes before assigning priority:
 - **Likelihood**: complexity, novelty, change frequency, number of dependencies, history of defects in similar features.
 - **Impact**: business criticality, user/data exposure, regulatory or financial consequence, blast radius if it breaks.
 \`critical\` priority requires BOTH axes high. Routine CRUD or display-only items are usually \`medium\`/\`low\` — do not inflate everything to \`high\`/\`critical\`.
 
 ## Technique Selection (decision rule, not habit)
 | Technique | Use when... |
-|---|---|
+|---|--:--|
 | Equivalence Partitioning (EP) | An input has distinct valid/invalid value classes (format, type, range-as-group). |
 | Boundary Value Analysis (BVA) | A field has a numeric/length/date range, quota, or threshold. Always pair with EP on the same field. |
 | Decision Table | An outcome depends on 2+ independent conditions combining (pricing, eligibility, permissions, approval routing). |
-| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state)${isFlowMode ? ' — true of nearly every flow; treat as the default secondary technique unless the flow is genuinely stateless' : ''}. |
-| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input${isFlowMode ? ' — this is the default primary technique for flow-level conditions, since the flow itself is the use case' : ''}. |
+| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state)${analystMode === 'STAGE_2_FLOW' ? ' — true of nearly every flow; treat as the default secondary technique unless the flow is genuinely stateless' : ''}. |
+| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input${analystMode === 'STAGE_2_FLOW' ? ' — this is the default primary technique for flow-level conditions, since the flow itself is the use case' : ''}. |
 
 Pick the technique with the strongest fit; do not force a weak match. Record \`secondaryTechniques\` only when genuinely applicable, and justify each choice in \`techniqueRationale\` by naming the specific characteristic that triggered it (e.g., "Decision Table because role AND resource-type jointly determine access").
 
@@ -163,6 +142,7 @@ Also verify, per requirement: at least one non-happy-path condition exists; EP c
 
 export function buildAnalystUserMessage(state: TestGenState): string {
   return JSON.stringify({
+    analystMode: state.analystMode || 'STAGE_1_REQUIREMENT',
     requirements: state.currentBatch.map(r => ({
       id: r.id,
       title: r.title,
@@ -174,7 +154,7 @@ export function buildAnalystUserMessage(state: TestGenState): string {
       name: f.name,
       type: f.type,
     })),
-    includeFlowCases: state.includeFlowCases,
+    analystMode: state.analystMode,
     selectedFlowIds: state.selectedFlowIds,
   }, null, 2);
 }
@@ -190,15 +170,16 @@ export function buildDesignerSystemPrompt(state: TestGenState, customPrompt?: st
   const conditions = state.approvedConditions ?? state.testConditions ?? [];
   const criticalCount = conditions.filter(c => c.priority === 'critical').length;
   const highCount = conditions.filter(c => c.priority === 'high').length;
-  const isFlowMode = state.includeFlowCases;
+  const analystMode = state.analystMode || 'STAGE_1_REQUIREMENT';
 
   return `You are a senior ISTQB Test Designer (CTFL/CTAL Test Analyst level). Convert each test condition into a complete, executable, independently runnable test case that faithfully implements the condition's assigned technique.
 
 ## Context
+- Mode: ${analystMode}
 - Test Conditions: ${conditions.length} total (${criticalCount} critical, ${highCount} high)
 - Project: ${state.projectContext.name}
 ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-${isFlowMode ? '- Mode: Flow-level — steps must traverse the business flow end-to-end' : ''}
+${analystMode === 'STAGE_2_FLOW' ? '- Mode: Flow-level — steps must traverse the business flow end-to-end' : ''}
 
 ## Mandatory Tool Usage Workflow
 ### Step 1 — Verify requirement details
@@ -351,7 +332,21 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
 - Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
 - After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
 
-Coverage is computed automatically from \`finalTestCases\` — do not output it yourself; focus entirely on the six dimensions above.
+## Step Atomicity — Self-Correction (MANDATORY)
+Every step must satisfy the 5 Golden Rules of atomicity:
+1. **single-action** — one verb, one target element (no "click X and then click Y")
+2. **single-assertion** — one observable expected result (no "page loads and shows stats")
+3. **element-identifiable** — the target element is described by a stable property (label, placeholder, role, test-id), not vague phrasing
+4. **concrete-data** — test data values are explicit ("admin123"), not placeholders ("a valid password")
+5. **no-implicit-state** — the step states its own precondition context if it depends on a prior page state
+
+**Self-correction behavior (do this for EVERY step in EVERY case):**
+- If a step violates atomicity AND you can fix it by splitting into multiple sequential atomic steps → **SPLIT IT**. Replace the single compound step with N atomic steps (renumber subsequent steps), set \`status: approved_with_changes\`, and log the split in \`changeLog\`.
+- If a step violates atomicity but you CANNOT fix it (e.g., ambiguous element, missing data the requirement doesn't specify, genuinely unclear expected result) → **leave the step as-is** and emit a \`validationWarnings\` entry naming the caseId, stepIndex (0-based), the violated rule, and a description of the issue.
+
+The goal: most compound steps are auto-fixed by splitting. Only genuinely unfixable steps reach Checkpoint 3 as warnings for human review. Do NOT warn for steps you were able to fix yourself.
+
+Coverage is computed automatically from \`finalTestCases\` — do not output it yourself; focus entirely on the six dimensions above plus atomicity self-correction.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
@@ -418,6 +413,18 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
         }
       ]
     }
+  ],
+  "validationWarnings": [
+    {
+      "caseId": "TC-003",
+      "warnings": [
+        {
+          "stepIndex": 2,
+          "issue": "Step references 'the dynamic widget' without a stable identifier — cannot determine which element to target.",
+          "rule": "element-identifiable"
+        }
+      ]
+    }
   ]
 }
 \`\`\`
@@ -426,6 +433,7 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
 - The \`\`\`json block is the last thing in your response — nothing after it.
 - It must contain ALL final test cases, complete — never a sample. \`finalTestCases.length >= 1\`. An empty object \`{}\` is always invalid.
 - Every modified case has a non-empty, field-level \`changeLog\`; every untouched case has \`changeLog: []\`.
+- \`validationWarnings\` is an array (possibly empty) of residual unfixable atomicity issues. Omit cases you successfully auto-split — they should NOT appear here.
 `;
 }
 
@@ -455,6 +463,93 @@ export function buildQualityUserMessage(state: TestGenState): string {
 }
 
 // ============================================================
+// Analyst Mode Helpers
+// ============================================================
+
+function buildStageInstructions(
+  mode: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING',
+  state: TestGenState,
+): string {
+  switch (mode) {
+    case 'STAGE_1_REQUIREMENT':
+      return `## Stage: Requirement Analysis (component-level)
+You are operating as a **Component Analyst**. Derive conditions for each requirement IN ISOLATION. Focus on:
+- Functional behavior per the requirement text and acceptance criteria
+- Input partitions (valid + invalid) for each input field
+- Boundaries on numeric/length/date fields
+- Decision-table rules when 2+ conditions combine
+- State transitions for entities with lifecycles
+Tag conditions with \`category\` = functional / boundary / validation / error as appropriate.`;
+    case 'STAGE_2_FLOW':
+      return `## Stage: Flow Integration (cross-component)
+You are operating as an **Integration Analyst**. Derive conditions that exercise INTERACTIONS across requirements/flows. Focus on:
+- End-to-end happy paths through the selected business flows
+- Cross-requirement data handoffs (output of one feeds input of another)
+- Sequence/ordering dependencies
+- Shared-state side effects (auth, session, interceptors from the Blueprint)
+Tag conditions with \`category\` = integration`;
+    case 'STAGE_3_ERROR_GUESSING':
+      return `## Stage: Error Guessing (defect speculation)
+You are operating as a **Defect Speculation Expert**. Derive conditions targeting ANOMALIES not explicit in requirements. Use the Blueprint's \`anomalousFlowProposals\` as seed targets, then add your own. Focus on:
+- Race conditions (concurrent mutations)
+- Orphan references (deleted parent, child still active)
+- Auth/permission bypass
+- State machine violations (invalid transitions)
+- Data boundary overflow (exceeding quotas/limits)
+- Network failure / timeout / partial commit
+Tag conditions with \`category\` = error and \`priority\` >= high.
+Call **coverage_check_query** to avoid re-deriving already-covered error conditions.`;
+  }
+}
+
+function buildWorkflowSteps(
+  mode: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING',
+  state: TestGenState,
+): string {
+  switch (mode) {
+    case 'STAGE_1_REQUIREMENT':
+      return `### Step 1 — Gather requirement details
+Call **requirement_detail_query** with an array of ALL requirement IDs in the batch (single call).
+
+### Step 2 — Gather flow context (optional)
+If "businessFlowBlueprints" is present, call **flow_detail_query** with all blueprint IDs for context.
+
+### Step 3 — Expand the requirement graph
+Call **requirement_graph_query** with the requirement IDs to surface cross-cutting dependencies.
+
+### Step 4 — Load ISTQB technique guides
+Call **istqb_guide** once, loading all techniques. You must load at least one guide before deriving conditions.
+
+### Step 5 — Assess risk, Step 6 — select techniques, Step 7 — derive conditions.`;
+    case 'STAGE_2_FLOW':
+      return `### Step 1 — Gather flow details
+Call **flow_detail_query** with "selectedFlowIds" (batch call, user-selected flows only).
+
+### Step 2 — Gather referenced requirement details
+Call **requirement_detail_query** with the requirement IDs attached to those flow steps.
+
+### Step 3 — Expand the requirement graph
+Call **requirement_graph_query** with requirement IDs, passing flow IDs as the \`flowId\` parameter.
+
+### Step 4 — Load ISTQB technique guides
+Call **istqb_guide** once, loading all techniques. Flow conditions almost always need **Use Case Testing** and **State Transition Testing**.
+
+### Step 5 — Assess risk, Step 6 — select techniques, Step 7 — derive conditions.`;
+    case 'STAGE_3_ERROR_GUESSING':
+      return `### Step 1 — Load ISTQB technique guides
+Call **istqb_guide** once for Error Guessing and all other techniques.
+
+### Step 2 — Review Blueprint anomalies
+Read the \`anomalousFlowProposals\` from the Global Test Blueprint.
+
+### Step 3 — Call **coverage_check_query** to avoid re-deriving already-covered error conditions.
+
+### Step 4 — Derive error conditions
+Invent 2-5 error conditions not already covered by existing conditions.`;
+  }
+}
+
+// ============================================================
 // Shared: Variable replacement for custom prompts
 // ============================================================
 
@@ -465,5 +560,94 @@ function replacePromptVariables(template: string, state: TestGenState): string {
     .replace(/\{batch\.totalBatches\}/g, String(batch?.totalBatches ?? ''))
     .replace(/\{currentBatch\.length\}/g, String(state.currentBatch?.length ?? 0))
     .replace(/\{projectContext\.name\}/g, state.projectContext?.name ?? '')
-    .replace(/\{mode\}/g, state.includeFlowCases ? 'flow' : 'requirement');
+    .replace(/\{mode\}/g, state.analystMode === 'STAGE_2_FLOW' ? 'flow' : 'requirement');
+}
+
+// ============================================================
+// Test Architect Prompts (Checkpoint 0)
+// ============================================================
+
+export function buildArchitectSystemPrompt(state: TestGenState, customPrompt?: string): string {
+  if (customPrompt) {
+    return replacePromptVariables(customPrompt, state);
+  }
+  const batch = state.batchContext;
+  const flowCount = state.businessFlowBlueprints?.length ?? 0;
+  const reqCount = state.currentBatch?.length ?? 0;
+
+  return `You are a senior Test Architect (ISTQB CTAL Test Manager level). Your job is to produce a **Global Test Blueprint** that guides downstream Test Analyst and Test Designer agents.
+
+## Context
+- Batch: ${batch?.currentBatch ?? 1}/${batch?.totalBatches ?? 1}
+- Requirements in scope: ${reqCount}
+- Business flows in scope: ${flowCount}
+- Project: ${state.projectContext?.name ?? 'Unknown'}
+
+## Your Responsibilities
+
+### 1. Strategic Guidance
+Infer cross-cutting concerns that every downstream test must respect. This includes:
+- Implicit shared states (authentication, session, interceptors, feature flags)
+- Data setup/teardown dependencies
+- Environmental constraints (browser, API version, timezone)
+- Ordering dependencies between test cases
+
+Write this as a concise directive paragraph (3-8 sentences) that the Analyst will read before generating conditions.
+
+### 2. Risk Epic Tree
+For each Epic (top-level requirement group) in the batch, assign a risk level and notes:
+- **high**: business-critical, complex logic, regulatory/financial impact, or high change frequency
+- **medium**: standard business logic with moderate complexity
+- **low**: display-only, simple CRUD, or low-impact
+
+The notes should explain WHY the risk level was assigned and what the Analyst should focus on.
+
+### 3. Anomalous Flow Proposals
+Hypothesize 2-5 high-risk anomalous business flows NOT explicitly defined in the requirements. These are preemptive error-guessing targets for the Analyst's Stage 3. Examples:
+- Race conditions (concurrent mutations on the same entity)
+- Orphan references (deleted parent, child still active)
+- Auth bypass (accessing resources without proper role)
+- State machine violations (invalid transitions)
+- Data boundary overflow (exceeding quotas or limits)
+
+Each proposal must have: title, trigger (what causes the anomaly), expectedBehavior (what SHOULD happen), and riskLevel.
+
+### 4. Shared State Inferences
+List implicit shared states as a string array. These are states the Analyst should assume are present but not explicitly mentioned in requirements (e.g., "User must be authenticated", "CSRF token required", "Rate limiter active").
+
+## Output Rules
+- Be specific to THIS batch's requirements and flows — do not produce generic boilerplate.
+- The strategicGuidance is the single most important field; the Analyst reads it first.
+- Keep anomalousFlowProposals bounded (2-5 items) — quality over quantity.
+- Every epicId in riskEpicTree must correspond to an actual epic in the batch.`;
+}
+
+export function buildArchitectUserMessage(state: TestGenState): string {
+  const requirements = state.currentBatch ?? [];
+  const epics = requirements.filter(r => r.level === 'epic');
+  const flows = state.businessFlowBlueprints ?? [];
+  const coverageRows = state.coverageSnapshot ?? [];
+
+  return JSON.stringify({
+    requirements: requirements.map(r => ({
+      id: r.id,
+      title: r.title,
+      level: r.level,
+      parentId: r.parentId,
+    })),
+    epics: epics.map(e => ({ id: e.id, title: e.title })),
+    businessFlows: flows.map(f => ({
+      id: f.id,
+      name: f.name,
+      type: f.type,
+    })),
+    existingCoverage: coverageRows.length > 0
+      ? `${coverageRows.length} covered condition(s) already in DB — avoid re-deriving these`
+      : 'No prior coverage — fresh start',
+    projectContext: {
+      name: state.projectContext?.name,
+      pages: state.projectContext?.pages?.map(p => p.name) ?? [],
+      endpoints: state.projectContext?.endpoints?.map(e => `${e.method} ${e.name}`) ?? [],
+    },
+  }, null, 2);
 }

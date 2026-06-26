@@ -236,22 +236,37 @@ export class TestGenRepository {
     db.prepare('UPDATE test_gen_runs SET thinking_data = ? WHERE id = ?').run(thinkingJson, runId);
   }
 
-  getThinkingData(runId: string): Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> | null {
+  getThinkingData(runId: string, batch?: number): Record<string, Array<{ type: string; phase: string; text: string; timestamp: number; batch?: number }>> | null {
     const row = db.prepare('SELECT thinking_data FROM test_gen_runs WHERE id = ?').get(runId) as any;
     if (!row?.thinking_data) return null;
     try {
-      return JSON.parse(row.thinking_data);
+      const data: Record<string, Array<{ type: string; phase: string; text: string; timestamp: number; batch?: number }>> = JSON.parse(row.thinking_data);
+      if (batch === undefined) return data;
+      const filtered: Record<string, Array<any>> = {};
+      for (const [nodeId, entries] of Object.entries(data)) {
+        const matched = entries.filter(e => e.batch === batch);
+        if (matched.length > 0) filtered[nodeId] = matched;
+      }
+      return Object.keys(filtered).length > 0 ? filtered : null;
     } catch {
       return null;
     }
   }
 
-  getAgentLogs(runId: string, agent?: string): any[] {
+  getAgentLogs(runId: string, agent?: string, batch?: number): any[] {
     let rows: any[];
-    if (agent) {
+    if (agent && batch !== undefined) {
+      rows = db.prepare(
+        'SELECT * FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? AND batch = ? ORDER BY created_at'
+      ).all(runId, agent, batch);
+    } else if (agent) {
       rows = db.prepare(
         'SELECT * FROM test_gen_agent_logs WHERE run_id = ? AND agent_name = ? ORDER BY created_at'
       ).all(runId, agent);
+    } else if (batch !== undefined) {
+      rows = db.prepare(
+        'SELECT * FROM test_gen_agent_logs WHERE run_id = ? AND batch = ? ORDER BY created_at'
+      ).all(runId, batch);
     } else {
       rows = db.prepare(
         'SELECT * FROM test_gen_agent_logs WHERE run_id = ? ORDER BY created_at'
@@ -401,6 +416,134 @@ export class TestGenRepository {
     db.prepare(
       'DELETE FROM test_gen_prompt_overrides WHERE project_id = ? AND agent_name = ?'
     ).run(projectId, agentName);
+  }
+
+  // ============================================================
+  // Persistent Coverage Matrix (per-condition rows)
+  // ============================================================
+
+  getProjectCoverage(projectId: string, rowType?: 'requirement' | 'flow'): any[] {
+    const sql = rowType
+      ? 'SELECT * FROM test_gen_persistent_coverage WHERE project_id = ? AND row_type = ? ORDER BY requirement_id, technique'
+      : 'SELECT * FROM test_gen_persistent_coverage WHERE project_id = ? ORDER BY requirement_id, technique';
+    const params = rowType ? [projectId, rowType] : [projectId];
+    return db.prepare(sql).all(...params).map((r: any) => ({
+      ...r,
+      test_case_ids: r.test_case_ids ? JSON.parse(r.test_case_ids) : [],
+    }));
+  }
+
+  getCoverageByRequirement(projectId: string, requirementId: string): any[] {
+    return db.prepare(
+      'SELECT * FROM test_gen_persistent_coverage WHERE project_id = ? AND requirement_id = ?'
+    ).all(projectId, requirementId).map((r: any) => ({
+      ...r,
+      test_case_ids: r.test_case_ids ? JSON.parse(r.test_case_ids) : [],
+    }));
+  }
+
+  upsertCoverageEntries(
+    runId: string,
+    projectId: string,
+    entries: Array<{
+      requirementId: string;
+      conditionHash: string;
+      conditionText: string;
+      technique: string;
+      testCaseIds: string[];
+      rowType?: 'requirement' | 'flow';
+    }>,
+  ): void {
+    const stmt = db.prepare(`
+      INSERT INTO test_gen_persistent_coverage (id, project_id, requirement_id, condition_hash, condition_text, technique, test_case_ids, row_type, run_id, covered_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(project_id, requirement_id, condition_hash, technique) DO UPDATE SET
+        condition_text = excluded.condition_text,
+        test_case_ids = excluded.test_case_ids,
+        row_type = excluded.row_type,
+        run_id = excluded.run_id,
+        covered_at = datetime('now')
+    `);
+    const tx = db.transaction(() => {
+      for (const e of entries) {
+        stmt.run(
+          `${projectId}_${e.requirementId}_${e.conditionHash}_${e.technique}`,
+          projectId,
+          e.requirementId,
+          e.conditionHash,
+          e.conditionText,
+          e.technique,
+          JSON.stringify(e.testCaseIds),
+          e.rowType ?? 'requirement',
+          runId,
+        );
+      }
+    });
+    tx();
+  }
+
+  clearProjectCoverage(projectId: string): number {
+    const result = db.prepare(
+      'DELETE FROM test_gen_persistent_coverage WHERE project_id = ?'
+    ).run(projectId);
+    return result.changes;
+  }
+
+  // ============================================================
+  // Global Blueprint cache (on test_gen_runs)
+  // ============================================================
+
+  getGlobalBlueprint(runId: string): any | null {
+    const row = db.prepare(
+      'SELECT global_blueprint FROM test_gen_runs WHERE id = ?'
+    ).get(runId) as any;
+    if (!row?.global_blueprint) return null;
+    try {
+      return JSON.parse(row.global_blueprint);
+    } catch {
+      return null;
+    }
+  }
+
+  saveGlobalBlueprint(runId: string, blueprint: unknown): void {
+    db.prepare(
+      "UPDATE test_gen_runs SET global_blueprint = ?, updated_at = datetime('now') || 'Z' WHERE id = ?"
+    ).run(JSON.stringify(blueprint), runId);
+  }
+
+  // ============================================================
+  // Cross-run Architect Blueprint Cache (project + requirement hash)
+  // ============================================================
+
+  getCachedBlueprint(projectId: string, requirementHash: string): any | null {
+    const row = db.prepare(
+      'SELECT blueprint FROM test_gen_architect_cache WHERE project_id = ? AND requirement_hash = ?'
+    ).get(projectId, requirementHash) as any;
+    if (!row?.blueprint) return null;
+    try {
+      return JSON.parse(row.blueprint);
+    } catch {
+      return null;
+    }
+  }
+
+  saveCachedBlueprint(projectId: string, requirementHash: string, blueprint: unknown): void {
+    db.prepare(`
+      INSERT OR REPLACE INTO test_gen_architect_cache (project_id, requirement_hash, blueprint, created_at)
+      VALUES (?, ?, ?, datetime('now'))
+    `).run(projectId, requirementHash, JSON.stringify(blueprint));
+  }
+
+  deleteCachedBlueprint(projectId: string, requirementHash: string): void {
+    db.prepare(
+      'DELETE FROM test_gen_architect_cache WHERE project_id = ? AND requirement_hash = ?'
+    ).run(projectId, requirementHash);
+  }
+
+  clearProjectArchitectCache(projectId: string): void {
+    db.prepare(
+      'DELETE FROM test_gen_architect_cache WHERE project_id = ?'
+    ).run(projectId);
   }
 }
 

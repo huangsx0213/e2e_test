@@ -54,13 +54,15 @@ interface NodeDetailProps {
     mode?: string;
     requirementIds?: string[];
     flowIds?: string[];
-    includeFlowCases?: boolean;
     useCache?: boolean;
     providerConfigName?: string;
   } | null;
   requirements?: any[];
   businessFlows?: any[];
   modelName?: string | null;
+  selectedBatch?: number | null;
+  batchProgress?: { current: number; total: number; generatedCases: number } | null;
+  onSelectBatch?: (batch: number | null) => void;
   onClose: () => void;
   onApprove?: () => void;
   onRetry?: () => void;
@@ -149,149 +151,25 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
-function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, startConfig, requirements, businessFlows, modelName }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[]; startConfig?: any; requirements?: any[]; businessFlows?: any[]; modelName?: string | null }) {
-  const meta = node?.meta;
-  const output = agentLog?.output_data;
 
-  // Filter to only selected requirements/flows
-  const selectedReqs = (requirements || []).filter(r => startConfig?.requirementIds?.includes(r.id));
-  const selectedFlows = (businessFlows || []).filter(f => startConfig?.flowIds?.includes(f.id));
-
-  return (
-    <div className="p-4 space-y-4">
-      {/* Pipeline Config Header */}
-      <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/35 rounded-xl p-4 border border-indigo-100/60 shadow-sm">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3">
-          <Zap size={12} className="text-indigo-600" />
-          Pipeline Configuration
-        </div>
-        
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Mode</span>
-            <span className="font-semibold text-slate-700 capitalize">{startConfig?.mode || 'auto'}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">LLM Model</span>
-            <span className="font-semibold text-slate-700 truncate font-mono text-xs">{modelName || 'Unknown'}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Flow Cases</span>
-            <span className="font-semibold text-slate-700">{startConfig?.includeFlowCases ? 'Enabled' : 'Disabled'}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Cache</span>
-            <span className="font-semibold text-slate-700">{startConfig?.useCache ? 'Enabled' : 'Disabled'}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Requirements Table */}
-      {selectedReqs.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
-              <FileText size={12} className="text-blue-500" />
-              Requirements ({selectedReqs.length})
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/30">
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Title</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Level</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedReqs.map((req, i) => (
-                  <tr key={req.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 font-mono text-blue-600">{req.id}</td>
-                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{req.title}</td>
-                    <td className="px-3 py-2">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{req.level}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Business Flows Table */}
-      {selectedFlows.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
-              <Activity size={12} className="text-purple-500" />
-              Business Flows ({selectedFlows.length})
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/30">
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Name</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Steps</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedFlows.map((flow, i) => (
-                  <tr key={flow.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 font-mono text-purple-600">{flow.id}</td>
-                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{flow.name}</td>
-                    <td className="px-3 py-2 text-slate-600">{flow.steps?.length || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Summary */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-slate-700">
-            {output?.totalBatches || meta?.totalBatches || '-'}
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Batches</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-slate-700">
-            {output?.estimatedTokens ? formatTokens(output.estimatedTokens) : meta?.estimatedTokens ? formatTokens(meta.estimatedTokens) : '-'}
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Est. Tokens</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-emerald-600">
-            <CheckCircle2 size={18} className="inline" />
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Ready</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: string }) {
+function AgentSummaryView({ agentLog, agentName, isRunning }: { agentLog: any; agentName?: string; isRunning?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   const toggleField = (k: string) => setExpandedFields(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const output = agentLog?.output_data;
 
   if (!output) {
+    if (isRunning) {
+      return (
+        <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl m-3">
+          <Loader2 className="animate-spin text-slate-300 mb-2" size={20} />
+          <div className="text-sm text-slate-450 italic">Processing pipeline logs... Please wait.</div>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl m-3">
-        <Loader2 className="animate-spin text-slate-300 mb-2" size={20} />
-        <div className="text-sm text-slate-450 italic">Processing pipeline logs... Please wait.</div>
+        <div className="text-sm text-slate-400">No output data available for this selection.</div>
       </div>
     );
   }
@@ -582,6 +460,135 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
             <div className="text-center text-sm text-slate-400 py-4">No matching drafts found</div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  if (agentName === 'test_architect' || agentName === 'test-architect' || agentName === 'architect') {
+    const strategicGuidance = output?.strategicGuidance;
+    const riskEpicTree = output?.riskEpicTree || [];
+    const anomalousFlowProposals = output?.anomalousFlowProposals || [];
+    const sharedStateInferences = output?.sharedStateInferences || [];
+    const totalBatches = output?.totalBatches;
+    const estimatedTokens = output?.estimatedTokens;
+
+    const riskBadge = (level: string) => {
+      if (level === 'high') return 'bg-rose-50 text-rose-600 border-rose-200';
+      if (level === 'medium') return 'bg-amber-50 text-amber-600 border-amber-200';
+      return 'bg-slate-50 text-slate-500 border-slate-200';
+    };
+
+    return (
+      <div className="p-4 space-y-5 overflow-y-auto h-full">
+        {/* Stats */}
+        {(totalBatches || estimatedTokens) && (
+          <div className="flex items-center gap-2">
+            {totalBatches && (
+              <div className="bg-indigo-50/50 border border-indigo-100/65 rounded-lg px-3 py-1.5 text-indigo-600 flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider">
+                <Zap size={12} />
+                {totalBatches} Batches
+              </div>
+            )}
+            {estimatedTokens && (
+              <div className="bg-slate-50 border border-slate-150 rounded-lg px-3 py-1.5 text-slate-600 flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider">
+                <Terminal size={12} />
+                ~{formatTokens(estimatedTokens)} Tokens
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Strategic Guidance */}
+        {strategicGuidance && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles size={12} className="text-indigo-500" />
+              Strategic Guidance
+            </label>
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+              <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{strategicGuidance}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Risk Epic Tree */}
+        {riskEpicTree.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <AlertTriangle size={12} className="text-amber-500" />
+              Risk Epic Tree
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({riskEpicTree.length})</span>
+            </label>
+            <div className="space-y-2">
+              {riskEpicTree.map((epic: any, idx: number) => (
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{epic.epicId}</span>
+                    <span className="text-sm font-semibold text-slate-700">{epic.epicTitle}</span>
+                    <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${riskBadge(epic.riskLevel)}`}>{epic.riskLevel}</span>
+                  </div>
+                  {epic.notes && <p className="text-xs text-slate-500 leading-relaxed">{epic.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Anomalous Flow Proposals */}
+        {anomalousFlowProposals.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <AlertCircle size={12} className="text-rose-500" />
+              Anomalous Flow Proposals
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({anomalousFlowProposals.length})</span>
+            </label>
+            <div className="space-y-2">
+              {anomalousFlowProposals.map((a: any, idx: number) => (
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-700">{a.title}</span>
+                    <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${riskBadge(a.riskLevel)}`}>{a.riskLevel}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="font-bold text-slate-400 uppercase tracking-wider">Trigger</span>
+                      <p className="text-slate-600 mt-0.5">{a.trigger}</p>
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-400 uppercase tracking-wider">Expected</span>
+                      <p className="text-slate-600 mt-0.5">{a.expectedBehavior}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Shared State Inferences */}
+        {sharedStateInferences.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Check size={12} className="text-emerald-500" />
+              Shared State Inferences
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({sharedStateInferences.length})</span>
+            </label>
+            <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+              <ul className="space-y-1.5">
+                {sharedStateInferences.map((s: string, idx: number) => (
+                  <li key={idx} className="flex items-center gap-2 text-sm text-slate-700">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {!strategicGuidance && riskEpicTree.length === 0 && anomalousFlowProposals.length === 0 && (
+          <div className="text-center text-sm text-slate-400 py-8">No architect output data available.</div>
+        )}
       </div>
     );
   }
@@ -1185,20 +1192,71 @@ function OutputBlock({ text, isRunning }: { text: string; isRunning: boolean }) 
   );
 }
 
-function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog: any; node: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; agentLogs?: any[] }) {
+function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs, selectedBatch }: { agentLog: any; node: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; agentLogs?: any[]; selectedBatch?: number | null }) {
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [activePromptTab, setActivePromptTab] = useState(0);
   const [copied, setCopied] = useState(false);
   const isRunning = node?.status === 'running';
   const autoScroll = isRunning;
 
+  const filteredLogs = useMemo(() => {
+    if (!agentLogs?.length) return [];
+    if (selectedBatch == null) return agentLogs;
+    return agentLogs.filter(l => (l.batch ?? 0) === selectedBatch);
+  }, [agentLogs, selectedBatch]);
+
+  const currentAgentLog = useMemo(() => {
+    if (selectedBatch == null || isRunning || !agentLogs?.length) return agentLog;
+    const normalize = (n: string) => n.replace(/_/g, '-');
+    const targetAgent = agentLog?.agent_name ? normalize(agentLog.agent_name) : '';
+    const batchLogs = agentLogs.filter(l => normalize(l.agent_name ?? '') === targetAgent && (l.batch ?? 0) === selectedBatch);
+    if (!batchLogs.length) return null;
+    const merged: Record<string, any> = {};
+    let mergedTrace: any[] = [];
+    let errorMessage: string | null = null;
+    let errorRawResponse: string | null = null;
+    let tokens = { input: 0, output: 0, reasoning: 0 };
+    for (const l of batchLogs) {
+      if (l.output_data) {
+        for (const [key, val] of Object.entries(l.output_data)) {
+          if (Array.isArray(val)) {
+            if (!Array.isArray(merged[key])) merged[key] = [];
+            merged[key] = [...merged[key], ...val];
+          } else {
+            merged[key] = val;
+          }
+        }
+      }
+      if (l.raw_trace) mergedTrace.push(...l.raw_trace);
+      if (l.error_message) errorMessage = l.error_message;
+      if (l.error_raw_response) errorRawResponse = l.error_raw_response;
+      if (l.token_usage) {
+        tokens.input += l.token_usage.input || 0;
+        tokens.output += l.token_usage.output || 0;
+        tokens.reasoning += l.token_usage.reasoning || 0;
+      }
+    }
+    mergedTrace.sort((a, b) => a.timestamp - b.timestamp);
+    const latest = batchLogs.reduce((a, b) => (((a.batch ?? 0) > (b.batch ?? 0)) ? a : b));
+    return {
+      ...latest,
+      output_data: Object.keys(merged).length ? merged : latest.output_data,
+      raw_trace: mergedTrace,
+      token_usage: tokens,
+      error_message: errorMessage,
+      error_raw_response: errorRawResponse,
+    };
+  }, [agentLogs, agentLog, selectedBatch]);
+
   const traceGroups = useMemo(() => {
-    if (!agentLogs?.length) {
-      return agentLog ? [agentLog] : [];
+    if (!filteredLogs.length) {
+      if (selectedBatch == null) {
+        return agentLog ? [agentLog] : [];
+      }
+      return [];
     }
     const grouped: Record<string, any[]> = {};
-    for (const l of agentLogs) {
-      if (l.agent_name === 'preparation') continue;
+    for (const l of filteredLogs) {
       if (!grouped[l.agent_name]) grouped[l.agent_name] = [];
       grouped[l.agent_name].push(l);
     }
@@ -1214,7 +1272,16 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
         const tu = l.token_usage;
         if (tu) totalTokens += (tu.input || 0) + (tu.output || 0) + (tu.reasoning || 0);
         totalLatency += l.latency_ms ?? 0;
-        if (l.output_data) Object.assign(mergedOutput, l.output_data);
+        if (l.output_data) {
+          for (const [key, val] of Object.entries(l.output_data)) {
+            if (Array.isArray(val)) {
+              if (!Array.isArray(mergedOutput[key])) mergedOutput[key] = [];
+              mergedOutput[key] = [...mergedOutput[key], ...val];
+            } else {
+              mergedOutput[key] = val;
+            }
+          }
+        }
         if (l.raw_trace) mergedTrace.push(...l.raw_trace);
         if (l.error_message) errorMessage = l.error_message;
         if (l.error_raw_response) errorRawResponse = l.error_raw_response;
@@ -1234,7 +1301,13 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
         error_raw_response: errorRawResponse,
       };
     });
-  }, [agentLogs, agentLog]);
+  }, [filteredLogs, agentLog]);
+
+  const filteredThinkingText = useMemo(() => {
+    if (!thinkingText?.length) return thinkingText;
+    if (selectedBatch == null || isRunning) return thinkingText;
+    return thinkingText.filter(e => (e.batch ?? 0) === selectedBatch);
+  }, [thinkingText, selectedBatch, isRunning]);
 
   useEffect(() => {
     if (node?.status === 'running') setActiveTab('thinking');
@@ -1243,7 +1316,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
   useEffect(() => {
     setActivePromptTab(0);
-  }, [agentLog?.id]);
+  }, [currentAgentLog?.id]);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'summary', label: 'Summary' },
@@ -1255,12 +1328,12 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
   ];
 
   const handleCopyRawJson = useCallback(() => {
-    if (agentLog?.output_data) {
-      navigator.clipboard.writeText(JSON.stringify(agentLog.output_data, null, 2));
+    if (currentAgentLog?.output_data) {
+      navigator.clipboard.writeText(JSON.stringify(currentAgentLog.output_data, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [agentLog]);
+  }, [currentAgentLog]);
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -1277,7 +1350,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             }`}
           >
             {tab.label}
-            {tab.id === 'thinking' && isRunning && thinkingText && thinkingText.length > 0 && (
+            {tab.id === 'thinking' && isRunning && filteredThinkingText && filteredThinkingText.length > 0 && (
               <span className="absolute top-2.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
             )}
           </button>
@@ -1295,21 +1368,17 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             className="h-full overflow-y-auto"
           >
             {activeTab === 'summary' && (
-  node.kind === 'preparation' || node.agentName === 'preparation' ? (
-    <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
-  ) : (
-    <AgentSummaryView agentLog={agentLog} agentName={node.agentName} />
-  )
+  <AgentSummaryView agentLog={currentAgentLog} agentName={node.agentName} isRunning={isRunning} />
 )}
             
             {activeTab === 'thinking' && (
               <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
-                  {thinkingText && thinkingText.length > 0 ? (
+                  {filteredThinkingText && filteredThinkingText.length > 0 ? (
                     (() => {
                       // Group consecutive entries of same type+phase
                       const groups: { type: 'reasoning' | 'content'; phase: 'react' | 'extraction'; text: string; timestamp: number; lastTimestamp: number }[] = [];
-                      for (const entry of thinkingText) {
+                      for (const entry of filteredThinkingText) {
                         const last = groups[groups.length - 1];
                         if (last && last.type === entry.type && last.phase === entry.phase) {
                           last.text += entry.text;
@@ -1358,12 +1427,12 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             )}
             
             {activeTab === 'input' && (() => {
-              const messages: { role: string; content: string }[] = Array.isArray(agentLog?.input_prompt)
-                ? agentLog.input_prompt
-                : agentLog?.input_prompt
+              const messages: { role: string; content: string }[] = Array.isArray(currentAgentLog?.input_prompt)
+                ? currentAgentLog.input_prompt
+                : currentAgentLog?.input_prompt
                   ? [
-                      ...(agentLog.input_prompt.systemPrompt ? [{ role: 'system', content: agentLog.input_prompt.systemPrompt }] : []),
-                      ...(agentLog.input_prompt.userMessage ? [{ role: 'user', content: agentLog.input_prompt.userMessage }] : []),
+                      ...(currentAgentLog.input_prompt.systemPrompt ? [{ role: 'system', content: currentAgentLog.input_prompt.systemPrompt }] : []),
+                      ...(currentAgentLog.input_prompt.userMessage ? [{ role: 'user', content: currentAgentLog.input_prompt.userMessage }] : []),
                     ]
                   : [];
 
@@ -1456,7 +1525,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'output' && (
               <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
-                {agentLog?.output_data ? (
+                {currentAgentLog?.output_data ? (
                   <div className="flex flex-col flex-1 min-h-0 space-y-2">
                     <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl shrink-0">
                       <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
@@ -1478,7 +1547,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                         showLineNumbers
                         lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
                       >
-                        {JSON.stringify(agentLog.output_data, null, 2)}
+                        {JSON.stringify(currentAgentLog.output_data, null, 2)}
                       </SyntaxHighlighter>
                     </div>
                   </div>
@@ -1490,12 +1559,12 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'trace' && (
               <div className="h-full flex flex-col">
-                {agentLog ? (() => {
-                  const steps = agentLog.raw_trace || [];
-                  const tokens = agentLog.token_usage;
+                {currentAgentLog ? (() => {
+                  const steps = currentAgentLog.raw_trace || [];
+                  const tokens = currentAgentLog.token_usage;
                   const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) : 0;
-                  const statusBadge = agentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    agentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                  const statusBadge = currentAgentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    currentAgentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
                     'bg-amber-50 text-amber-700 border-amber-200';
 
                   return (
@@ -1504,15 +1573,15 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                       <div className="px-4 py-2.5 shrink-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${agentLog.status === 'COMPLETED' ? 'bg-emerald-500' : agentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                            <span className="text-sm font-bold text-slate-700">{agentLog.agent_name}</span>
+                            <div className={`w-2 h-2 rounded-full ${currentAgentLog.status === 'COMPLETED' ? 'bg-emerald-500' : currentAgentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                            <span className="text-sm font-bold text-slate-700">{currentAgentLog.agent_name}</span>
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${statusBadge}`}>
-                              {agentLog.status}
+                              {currentAgentLog.status}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
-                            {agentLog.latency_ms > 0 && (
-                              <span>{agentLog.latency_ms >= 1000 ? `${(agentLog.latency_ms / 1000).toFixed(1)}s` : `${agentLog.latency_ms}ms`}</span>
+                            {currentAgentLog.latency_ms > 0 && (
+                              <span>{currentAgentLog.latency_ms >= 1000 ? `${(currentAgentLog.latency_ms / 1000).toFixed(1)}s` : `${currentAgentLog.latency_ms}ms`}</span>
                             )}
                             {totalTokens > 0 && (
                               <span className="flex items-center gap-1">
@@ -1559,24 +1628,24 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'errors' && (
               <div className="p-4">
-                {agentLog?.error_message ? (
+                {currentAgentLog?.error_message ? (
                   <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
                     <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
                       <AlertTriangle size={14} className="text-red-500 shrink-0" />
-                      <span className="text-sm font-bold text-red-700">{agentLog.agent_name}</span>
+                      <span className="text-sm font-bold text-red-700">{currentAgentLog.agent_name}</span>
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
                     </div>
                     <div className="px-4 py-3 space-y-2">
                       <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">
-                        {agentLog.error_message}
+                        {currentAgentLog.error_message}
                       </p>
-                      {agentLog.error_raw_response && (
+                      {currentAgentLog.error_raw_response && (
                         <details className="group">
                           <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
                             <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
                           </summary>
                           <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                            {agentLog.error_raw_response}
+                            {currentAgentLog.error_raw_response}
                           </pre>
                         </details>
                       )}
@@ -1712,6 +1781,636 @@ function CheckpointStringListEditor({ items, onChange, placeholder }: { items: s
     </div>
   );
 }
+
+/** Warnings & edit console for CP3 — flags steps with atomicity warnings and allows inline editing to resolve. */
+function WarningsConsole({ checkpointData, onDataChange, readOnly }: {
+  checkpointData: any;
+  onDataChange?: (data: any) => void;
+  readOnly?: boolean;
+}) {
+  const warnings: Array<{ caseId: string; warnings: Array<{ stepIndex: number; issue: string; rule: string }> }> =
+    checkpointData?.validationWarnings ?? [];
+  const cases: any[] = checkpointData?.cases ?? [];
+
+  // Local editable copy of cases (steps only) — initialize from props
+  const [editedCases, setEditedCases] = useState<Record<string, any>>({});
+  useEffect(() => {
+    // Reset local edits when underlying data changes
+    setEditedCases({});
+  }, [checkpointData]);
+
+  // Build a lookup: caseId -> case (prefer edited, fall back to original)
+  const caseById = (caseId: string) => editedCases[caseId] ?? cases.find((c) => c.id === caseId);
+
+  // Propagate edited cases up via onDataChange (preserve other fields like matrix)
+  useEffect(() => {
+    if (Object.keys(editedCases).length === 0) return;
+    const mergedCases = cases.map((c) => editedCases[c.id] ? { ...c, ...editedCases[c.id] } : c);
+    onDataChange?.({ ...checkpointData, cases: mergedCases });
+  }, [editedCases, cases, checkpointData, onDataChange]);
+
+  const ruleLabel: Record<string, string> = {
+    'single-action': 'Single Action',
+    'single-assertion': 'Single Assertion',
+    'element-identifiable': 'Element Identifiable',
+    'concrete-data': 'Concrete Data',
+    'no-implicit-state': 'No Implicit State',
+  };
+
+  const handleStepEdit = (caseId: string, stepIndex: number, newAction: string) => {
+    setEditedCases((prev) => {
+      const existing = prev[caseId] ?? caseById(caseId) ?? {};
+      const steps = Array.isArray(existing.steps) ? [...existing.steps] : [];
+      // Ensure slot exists
+      while (steps.length <= stepIndex) steps.push({ action: '' });
+      const orig = steps[stepIndex];
+      steps[stepIndex] = typeof orig === 'object' ? { ...orig, action: newAction } : newAction;
+      return { ...prev, [caseId]: { ...existing, steps } };
+    });
+  };
+
+  if (warnings.length === 0) {
+    return (
+      <div className="px-4 py-3 border-b border-emerald-200 bg-emerald-50/50 flex items-center gap-2">
+        <CheckCircle2 size={14} className="text-emerald-600" />
+        <span className="text-xs font-medium text-emerald-700">All steps passed atomicity validation — no warnings.</span>
+      </div>
+    );
+  }
+
+  const totalWarnings = warnings.reduce((sum, w) => sum + w.warnings.length, 0);
+
+  return (
+    <div className="border-b border-amber-200 bg-amber-50/40">
+      {/* Header */}
+      <div className="px-4 py-2.5 flex items-center justify-between border-b border-amber-200/70">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={14} className="text-amber-600" />
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
+            Step Atomicity Warnings
+          </span>
+          <span className="text-[10px] font-mono text-amber-600 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-0.5">
+            {totalWarnings} across {warnings.length} case{warnings.length > 1 ? 's' : ''}
+          </span>
+        </div>
+        {!readOnly && (
+          <span className="text-[10px] text-amber-600 italic">Edit step text inline to resolve</span>
+        )}
+      </div>
+
+      {/* Warning list */}
+      <div className="max-h-64 overflow-y-auto px-4 py-2 space-y-2">
+        {warnings.map((entry) => {
+          const tc = caseById(entry.caseId);
+          if (!tc) {
+            return (
+              <div key={entry.caseId} className="text-xs text-red-500 italic">
+                Warning references unknown caseId: {entry.caseId}
+              </div>
+            );
+          }
+          return (
+            <div key={entry.caseId} className="bg-white border border-amber-200 rounded-lg p-2.5 shadow-sm">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
+                  {entry.caseId}
+                </span>
+                <span className="text-sm font-medium text-slate-700 truncate">
+                  {tc.title || tc.scenario || '(untitled)'}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {entry.warnings.map((w, i) => {
+                  const step = Array.isArray(tc.steps) ? tc.steps[w.stepIndex] : undefined;
+                  const stepText = typeof step === 'object' ? step?.action ?? '' : step ?? '';
+                  const edited = editedCases[entry.caseId]?.steps?.[w.stepIndex];
+                  const editedText = typeof edited === 'object' ? edited?.action ?? '' : edited ?? '';
+                  const isResolved = editedText && editedText !== stepText;
+                  return (
+                    <div key={i} className={`rounded border px-2 py-1.5 ${isResolved ? 'border-emerald-200 bg-emerald-50/30' : 'border-rose-200 bg-rose-50/30'}`}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-bold uppercase text-rose-600 bg-rose-100 border border-rose-200 rounded px-1.5 py-0.5">
+                          Step {w.stepIndex + 1}
+                        </span>
+                        <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                          {ruleLabel[w.rule] ?? w.rule}
+                        </span>
+                        {isResolved && (
+                          <span className="text-[10px] font-bold uppercase text-emerald-600 flex items-center gap-0.5">
+                            <Check size={10} /> Resolved
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mb-1 italic">{w.issue}</p>
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 uppercase font-bold">Original step:</div>
+                        <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-2 py-1 line-through">
+                          {stepText || '(empty)'}
+                        </div>
+                        {!readOnly && (
+                          <>
+                            <div className="text-[10px] text-amber-600 uppercase font-bold">Edit to resolve:</div>
+                            <textarea
+                              value={editedText || stepText}
+                              onChange={(e) => handleStepEdit(entry.caseId, w.stepIndex, e.target.value)}
+                              rows={2}
+                              className="w-full text-xs text-slate-700 border border-amber-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 resize-y bg-white"
+                              placeholder="Rewrite as a single atomic step..."
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BlueprintReviewView({ checkpointData, onDataChange, readOnly }: {
+  checkpointData: any;
+  onDataChange?: (data: any) => void;
+  readOnly?: boolean;
+}) {
+  const bp = checkpointData?.blueprint;
+  const [riskItems, setRiskItems] = useState<any[]>([]);
+  const [anomalyItems, setAnomalyItems] = useState<any[]>([]);
+  const [inferences, setInferences] = useState<string[]>([]);
+  const [strategicGuidance, setStrategicGuidance] = useState('');
+  const [originalRisk, setOriginalRisk] = useState<any[]>([]);
+  const [originalAnomaly, setOriginalAnomaly] = useState<any[]>([]);
+  const [originalInferences, setOriginalInferences] = useState<string[]>([]);
+  const [originalGuidance, setOriginalGuidance] = useState('');
+  const [expandedEditRisk, setExpandedEditRisk] = useState<string | null>(null);
+  const [expandedEditAnomaly, setExpandedEditAnomaly] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+  const [nextEpicId, setNextEpicId] = useState(0);
+
+  useEffect(() => {
+    if (!bp) return;
+    const risks = (bp.riskEpicTree ?? []).map((r: any) => ({ ...r, _editStatus: 'unchanged' as const }));
+    const anomalies = (bp.anomalousFlowProposals ?? []).map((a: any) => ({ ...a, _editStatus: 'unchanged' as const }));
+    setRiskItems(risks);
+    setAnomalyItems(anomalies);
+    setInferences([...(bp.sharedStateInferences ?? [])]);
+    setStrategicGuidance(bp.strategicGuidance ?? '');
+    setOriginalRisk(JSON.parse(JSON.stringify(risks)));
+    setOriginalAnomaly(JSON.parse(JSON.stringify(anomalies)));
+    setOriginalInferences([...(bp.sharedStateInferences ?? [])]);
+    setOriginalGuidance(bp.strategicGuidance ?? '');
+    setNextEpicId((bp.riskEpicTree ?? []).length + 1);
+  }, [bp]);
+
+  const stats = {
+    modified: (riskItems.filter((r: any) => r._editStatus === 'modified').length + anomalyItems.filter((a: any) => a._editStatus === 'modified').length
+      + (strategicGuidance !== originalGuidance ? 1 : 0)
+      + (JSON.stringify(inferences) !== JSON.stringify(originalInferences) ? 1 : 0)),
+    added: (riskItems.filter((r: any) => r._editStatus === 'added').length + anomalyItems.filter((a: any) => a._editStatus === 'added').length),
+    removed: (riskItems.filter((r: any) => r._editStatus === 'removed').length + anomalyItems.filter((a: any) => a._editStatus === 'removed').length),
+  };
+
+  useEffect(() => {
+    if (!bp) return;
+    const activeRisks = riskItems.filter((r: any) => r._editStatus !== 'removed');
+    const activeAnomalies = anomalyItems.filter((a: any) => a._editStatus !== 'removed');
+    const hasChanges = stats.modified > 0 || stats.added > 0 || stats.removed > 0
+      || strategicGuidance !== originalGuidance
+      || JSON.stringify(inferences) !== JSON.stringify(originalInferences);
+    if (!hasChanges) return;
+    onDataChange?.({ blueprint: {
+      strategicGuidance,
+      riskEpicTree: activeRisks.map(({ _editStatus, ...r }: any) => r),
+      anomalousFlowProposals: activeAnomalies.map(({ _editStatus, ...a }: any) => a),
+      sharedStateInferences: inferences,
+    }});
+  }, [riskItems, anomalyItems, inferences, strategicGuidance, bp, onDataChange]);
+
+  if (!bp) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="text-center text-sm text-slate-400 italic">No blueprint data available</div>
+      </div>
+    );
+  }
+
+  if (readOnly) {
+    const activeRisks = riskItems.filter((r: any) => r._editStatus !== 'removed');
+    const activeAnomalies = anomalyItems.filter((a: any) => a._editStatus !== 'removed');
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {strategicGuidance && (
+            <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100">
+                <span className="text-xs uppercase font-bold tracking-wider text-slate-500">Strategic Guidance</span>
+              </div>
+              <div className="px-3.5 py-3">
+                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{strategicGuidance}</p>
+              </div>
+            </div>
+          )}
+          {activeRisks.length > 0 && (
+            <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+                <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+                  Risk Epics <span className="text-slate-400 font-normal">({activeRisks.length})</span>
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {activeRisks.map((risk: any, i: number) => {
+                  const isExpanded = expandedEditRisk === risk.epicId;
+                  return (
+                    <div key={risk.epicId || i} className="text-sm">
+                      <button
+                        onClick={() => setExpandedEditRisk(isExpanded ? null : risk.epicId)}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-slate-50/60 transition-colors text-left"
+                      >
+                        <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        <span className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${risk.riskLevel === 'high' ? 'bg-red-50 text-red-600 border-red-100' : risk.riskLevel === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                          {risk.riskLevel}
+                        </span>
+                        <span className="flex-1 font-medium text-slate-800 truncate">{risk.epicTitle}</span>
+                        {isExpanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3.5 pb-3 ml-8">
+                          <div className="bg-slate-50 rounded p-2.5 border border-slate-100">
+                            <p className="text-xs text-slate-600 whitespace-pre-wrap">{risk.notes}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {activeAnomalies.length > 0 && (
+            <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100">
+                <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+                  Anomalous Flow Proposals <span className="text-slate-400 font-normal">({activeAnomalies.length})</span>
+                </span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {activeAnomalies.map((item: any, i: number) => {
+                  const isExpanded = expandedEditAnomaly === String(i);
+                  return (
+                    <div key={i} className="text-sm">
+                      <button
+                        onClick={() => setExpandedEditAnomaly(isExpanded ? null : String(i))}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 hover:bg-slate-50/60 transition-colors text-left"
+                      >
+                        <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{String(i + 1).padStart(2, '0')}</span>
+                        <span className={`shrink-0 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${item.riskLevel === 'high' ? 'bg-red-50 text-red-600 border-red-100' : item.riskLevel === 'medium' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                          {item.riskLevel}
+                        </span>
+                        <span className="flex-1 font-medium text-slate-800 truncate">{item.title}</span>
+                        {isExpanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3.5 pb-3 ml-8 space-y-1.5">
+                          <div className="bg-amber-50/50 rounded p-2 border border-amber-100/50">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-amber-600 block mb-0.5">Trigger</span>
+                            <p className="text-xs text-slate-700">{item.trigger}</p>
+                          </div>
+                          <div className="bg-emerald-50/50 rounded p-2 border border-emerald-100/50">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 block mb-0.5">Expected Behavior</span>
+                            <p className="text-xs text-slate-700">{item.expectedBehavior}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {inferences.length > 0 && (
+            <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100">
+                <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+                  Shared State Inferences <span className="text-slate-400 font-normal">({inferences.length})</span>
+                </span>
+              </div>
+              <div className="p-3 space-y-1.5">
+                {inferences.map((inf: string, i: number) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded mt-0.5">{String(i + 1).padStart(2, '0')}</span>
+                    <span>{inf}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!strategicGuidance && activeRisks.length === 0 && activeAnomalies.length === 0 && (
+            <div className="text-center text-sm text-slate-400 py-8 italic">Blueprint is empty</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const updateRiskField = (epicId: string, field: string, value: any) => {
+    setRiskItems(prev => prev.map(r => {
+      if (r.epicId !== epicId) return r;
+      const updated = { ...r, [field]: value };
+      const orig = originalRisk.find((o: any) => o.epicId === epicId);
+      const isModified = orig && (updated.epicTitle !== orig.epicTitle || updated.riskLevel !== orig.riskLevel || updated.notes !== orig.notes);
+      return { ...updated, _editStatus: r._editStatus === 'added' ? 'added' as const : isModified ? 'modified' as const : 'unchanged' as const };
+    }));
+  };
+
+  const removeRisk = (epicId: string) => {
+    setRiskItems(prev => prev.map(r => r.epicId === epicId ? { ...r, _editStatus: 'removed' as const } : r));
+  };
+
+  const restoreRisk = (epicId: string) => {
+    setRiskItems(prev => prev.map(r => {
+      if (r.epicId !== epicId) return r;
+      const orig = originalRisk.find((o: any) => o.epicId === epicId);
+      if (!orig) return { ...r, _editStatus: 'unchanged' as const };
+      const isModified = r.epicTitle !== orig.epicTitle || r.riskLevel !== orig.riskLevel || r.notes !== orig.notes;
+      return { ...r, _editStatus: isModified ? 'modified' as const : 'unchanged' as const };
+    }));
+  };
+
+  const addRisk = () => {
+    const id = `epic-${nextEpicId}`;
+    setRiskItems(prev => [...prev, { epicId: id, epicTitle: 'New Risk Epic', riskLevel: 'medium', notes: '', _editStatus: 'added' as const }]);
+    setNextEpicId(n => n + 1);
+  };
+
+  const updateAnomaly = (idx: number, field: string, value: any) => {
+    setAnomalyItems(prev => prev.map((a, i) => {
+      if (i !== idx) return a;
+      const updated = { ...a, [field]: value };
+      const orig = originalAnomaly[i];
+      const isModified = orig && (updated.title !== orig.title || updated.trigger !== orig.trigger || updated.expectedBehavior !== orig.expectedBehavior || updated.riskLevel !== orig.riskLevel);
+      return { ...updated, _editStatus: a._editStatus === 'added' ? 'added' as const : isModified ? 'modified' as const : 'unchanged' as const };
+    }));
+  };
+
+  const removeAnomaly = (idx: number) => {
+    setAnomalyItems(prev => prev.map((a, i) => i === idx ? { ...a, _editStatus: 'removed' as const } : a));
+  };
+
+  const restoreAnomaly = (idx: number) => {
+    setAnomalyItems(prev => prev.map((a, i) => {
+      if (i !== idx) return a;
+      const orig = originalAnomaly[i];
+      if (!orig) return { ...a, _editStatus: 'unchanged' as const };
+      const isModified = a.title !== orig.title || a.trigger !== orig.trigger || a.expectedBehavior !== orig.expectedBehavior || a.riskLevel !== orig.riskLevel;
+      return { ...a, _editStatus: isModified ? 'modified' as const : 'unchanged' as const };
+    }));
+  };
+
+  const addAnomaly = () => {
+    setAnomalyItems(prev => [...prev, { title: 'New Anomalous Flow', trigger: '', expectedBehavior: '', riskLevel: 'medium', _editStatus: 'added' as const }]);
+  };
+
+  const updateInference = (idx: number, value: string) => {
+    setInferences(prev => prev.map((s, i) => i === idx ? value : s));
+  };
+
+  const removeInference = (idx: number) => {
+    setInferences(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addInference = () => {
+    setInferences(prev => [...prev, '']);
+  };
+
+  const activeRisks = riskItems.filter((r: any) => r._editStatus !== 'removed');
+  const activeAnomalies = anomalyItems.filter((a: any) => a._editStatus !== 'removed');
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden bg-slate-50/50">
+      {/* Stats bar */}
+      <div className="flex items-center justify-between bg-white px-3 py-2 border-b border-slate-150 shadow-sm shrink-0">
+        <div className="text-xs uppercase font-bold tracking-wider text-slate-400">
+          Blueprint Items
+          {stats.modified > 0 && <span className="text-amber-600 ml-2">· {stats.modified} modified</span>}
+          {stats.added > 0 && <span className="text-emerald-600 ml-2">· {stats.added} added</span>}
+          {stats.removed > 0 && <span className="text-red-500 ml-2">· {stats.removed} deleted</span>}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={() => setShowDiff(!showDiff)}
+            className={`text-xs font-bold uppercase py-1 px-2.5 rounded-lg border transition-colors ${showDiff ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+            {showDiff ? 'Show All' : 'Filter Changed'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {/* Strategic Guidance */}
+        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs uppercase font-bold tracking-wider text-slate-500">Strategic Guidance</span>
+            {strategicGuidance !== originalGuidance && (
+              <span className="text-[10px] font-black tracking-widest text-amber-600 bg-amber-100/60 px-1.5 py-0.5 rounded border border-amber-200">EDITED</span>
+            )}
+          </div>
+          <div className="px-3.5 py-2.5">
+            <textarea value={strategicGuidance} onChange={e => setStrategicGuidance(e.target.value)}
+              className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[4rem]" />
+          </div>
+        </div>
+
+        {/* Risk Epic Tree */}
+        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+              Risk Epics <span className="text-slate-400 font-normal">({activeRisks.length})</span>
+            </span>
+            <button onClick={addRisk}
+              className="text-xs font-bold uppercase py-1 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center gap-1 shadow-sm">
+              <Plus size={12} /> New Epic
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {riskItems.filter(r => r._editStatus !== 'removed' || showDiff).map((risk: any, i: number) => {
+              if (risk._editStatus === 'removed' && showDiff) {
+                const orig = originalRisk.find((o: any) => o.epicId === risk.epicId);
+                return (
+                  <div key={risk.epicId} className="flex items-center justify-between px-3.5 py-2 border border-dashed border-red-200 bg-red-50/30 text-sm">
+                    <span className="text-red-500 line-through truncate max-w-[16rem]">{orig?.epicTitle || risk.epicTitle}</span>
+                    <button onClick={() => restoreRisk(risk.epicId)} className="text-xs font-bold uppercase text-slate-400 hover:text-blue-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md">Undo Delete</button>
+                  </div>
+                );
+              }
+              if (showDiff && risk._editStatus === 'unchanged') return null;
+              const isNew = risk._editStatus === 'added';
+              const isModified = risk._editStatus === 'modified';
+              const isExpanded = expandedEditRisk === risk.epicId;
+              const cardStyle = isNew ? 'border-emerald-300 bg-emerald-50/20' : isModified ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200/80 bg-white';
+              return (
+                <div key={risk.epicId} className={`text-sm ${cardStyle}`}>
+                  <div className="flex items-center justify-between px-3.5 py-2.5">
+                    <button onClick={() => setExpandedEditRisk(isExpanded ? null : risk.epicId)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                      <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{String(activeRisks.indexOf(risk) + 1).padStart(2, '0')}</span>
+                      {isNew && <span className="shrink-0 text-[10px] font-black tracking-widest text-emerald-600 bg-emerald-100/60 px-1.5 py-0.5 rounded border border-emerald-200">ADDED</span>}
+                      {isModified && <span className="shrink-0 text-[10px] font-black tracking-widest text-amber-600 bg-amber-100/60 px-1.5 py-0.5 rounded border border-amber-200">EDITED</span>}
+                      <span className="flex-1 font-medium text-slate-800 truncate">{risk.epicTitle || 'Untitled'}</span>
+                      {isExpanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                    </button>
+                    <button onClick={() => removeRisk(risk.epicId)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 ml-2" title="Delete"><Trash2 size={14} /></button>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-3.5 pb-3 space-y-2">
+                      <div>
+                        <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Title</label>
+                        <input value={risk.epicTitle} onChange={e => updateRiskField(risk.epicId, 'epicTitle', e.target.value)}
+                          className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Risk Level</label>
+                          <select value={risk.riskLevel} onChange={e => updateRiskField(risk.epicId, 'riskLevel', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Epic ID</label>
+                          <input value={risk.epicId} onChange={e => updateRiskField(risk.epicId, 'epicId', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Notes</label>
+                        <textarea value={risk.notes} onChange={e => updateRiskField(risk.epicId, 'notes', e.target.value)}
+                          className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {riskItems.filter(r => r._editStatus !== 'removed').length === 0 && (
+              <div className="text-center text-xs text-slate-400 py-4 italic">No risk epics</div>
+            )}
+          </div>
+        </div>
+
+        {/* Anomalous Flow Proposals */}
+        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+              Anomalous Flow Proposals <span className="text-slate-400 font-normal">({activeAnomalies.length})</span>
+            </span>
+            <button onClick={addAnomaly}
+              className="text-xs font-bold uppercase py-1 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center gap-1 shadow-sm">
+              <Plus size={12} /> New Anomaly
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {anomalyItems.filter(a => a._editStatus !== 'removed' || showDiff).map((item: any, i: number) => {
+              if (item._editStatus === 'removed' && showDiff) {
+                const orig = originalAnomaly[i];
+                return (
+                  <div key={i} className="flex items-center justify-between px-3.5 py-2 border border-dashed border-red-200 bg-red-50/30 text-sm">
+                    <span className="text-red-500 line-through truncate max-w-[16rem]">{orig?.title || item.title}</span>
+                    <button onClick={() => restoreAnomaly(i)} className="text-xs font-bold uppercase text-slate-400 hover:text-blue-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md">Undo Delete</button>
+                  </div>
+                );
+              }
+              if (showDiff && item._editStatus === 'unchanged') return null;
+              const isNew = item._editStatus === 'added';
+              const isModified = item._editStatus === 'modified';
+              const isExpanded = expandedEditAnomaly === String(i);
+              const cardStyle = isNew ? 'border-emerald-300 bg-emerald-50/20' : isModified ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200/80 bg-white';
+              return (
+                <div key={i} className={`text-sm ${cardStyle}`}>
+                  <div className="flex items-center justify-between px-3.5 py-2.5">
+                    <button onClick={() => setExpandedEditAnomaly(isExpanded ? null : String(i))}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                      <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{String(activeAnomalies.indexOf(item) + 1).padStart(2, '0')}</span>
+                      {isNew && <span className="shrink-0 text-[10px] font-black tracking-widest text-emerald-600 bg-emerald-100/60 px-1.5 py-0.5 rounded border border-emerald-200">ADDED</span>}
+                      {isModified && <span className="shrink-0 text-[10px] font-black tracking-widest text-amber-600 bg-amber-100/60 px-1.5 py-0.5 rounded border border-amber-200">EDITED</span>}
+                      <span className="flex-1 font-medium text-slate-800 truncate">{item.title || 'Untitled'}</span>
+                      {isExpanded ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronRight size={14} className="text-slate-400 shrink-0" />}
+                    </button>
+                    <button onClick={() => removeAnomaly(i)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 ml-2" title="Delete"><Trash2 size={14} /></button>
+                  </div>
+                  {isExpanded && (
+                    <div className="px-3.5 pb-3 space-y-2">
+                      <div>
+                        <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Title</label>
+                        <input value={item.title} onChange={e => updateAnomaly(i, 'title', e.target.value)}
+                          className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Trigger</label>
+                        <textarea value={item.trigger} onChange={e => updateAnomaly(i, 'trigger', e.target.value)}
+                          className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Expected Behavior</label>
+                        <textarea value={item.expectedBehavior} onChange={e => updateAnomaly(i, 'expectedBehavior', e.target.value)}
+                          className="w-full text-sm bg-white border border-slate-200 rounded p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[2.5rem]" />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div>
+                          <label className="text-xs uppercase font-bold tracking-wider text-slate-400 block mb-0.5">Risk Level</label>
+                          <select value={item.riskLevel} onChange={e => updateAnomaly(i, 'riskLevel', e.target.value)}
+                            className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {anomalyItems.filter(a => a._editStatus !== 'removed').length === 0 && (
+              <div className="text-center text-xs text-slate-400 py-4 italic">No anomalous flows</div>
+            )}
+          </div>
+        </div>
+
+        {/* Shared State Inferences */}
+        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-3.5 py-2 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between">
+            <span className="text-xs uppercase font-bold tracking-wider text-slate-500">
+              Shared State Inferences <span className="text-slate-400 font-normal">({inferences.length})</span>
+            </span>
+            <button onClick={addInference}
+              className="text-xs font-bold uppercase py-1 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center gap-1 shadow-sm">
+              <Plus size={12} /> Add
+            </button>
+          </div>
+          <div className="p-3 space-y-2">
+            {inferences.map((inf: string, i: number) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded mt-1">{String(i + 1).padStart(2, '0')}</span>
+                <div className="flex-1 flex gap-1">
+                  <input value={inf} onChange={e => updateInference(i, e.target.value)}
+                    className="w-full text-sm bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  <button onClick={() => removeInference(i)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 self-start mt-0.5" title="Remove"><X size={14} /></button>
+                </div>
+              </div>
+            ))}
+            {inferences.length === 0 && (
+              <div className="text-center text-xs text-slate-400 py-3 italic">No inferences</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Field-by-field form editor for checkpoint items (conditions / test scenarios). */
 
 function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
   checkpointData: any;
@@ -2123,7 +2822,7 @@ function CheckpointEditView({ checkpointData, onDataChange, readOnly }: {
 
 
 
-function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; node: any; agentLogs?: any[] }) {
+function CompleteNodeView({ runSummary, node, agentLogs, selectedBatch }: { runSummary: any; node: any; agentLogs?: any[]; selectedBatch?: number | null }) {
   const meta = node?.meta || {};
   const cases = runSummary?.totalCases ?? meta.totalCases ?? meta.outputCount ?? 0;
   const tokens = runSummary?.totalTokens ?? meta.totalTokens ?? meta.tokenUsage ?? 0;
@@ -2132,12 +2831,15 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
 
   const finalTestCases = useMemo(() => {
     if (!agentLogs) return [];
-    const qmLog = agentLogs.find((l: any) => {
+    const logs = selectedBatch != null
+      ? agentLogs.filter((l: any) => (l.batch ?? 0) === selectedBatch)
+      : agentLogs;
+    const qmLogs = logs.filter((l: any) => {
       const name = (l.agent_name || '').replace(/_/g, '-');
       return name === 'quality-manager' && l.output_data?.finalTestCases;
     });
-    return qmLog?.output_data?.finalTestCases || [];
-  }, [agentLogs]);
+    return qmLogs.flatMap((l: any) => l.output_data.finalTestCases);
+  }, [agentLogs, selectedBatch]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -2347,8 +3049,9 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
 
 function getNodeIcon(nodeId: string) {
   switch (nodeId) {
-    case 'preparation': return <Zap size={14} className="text-indigo-500" />;
+    case 'architect': return <Zap size={14} className="text-indigo-500" />;
     case 'agent_test_analyst': return <Brain size={14} className="text-cyan-600" />;
+    case 'checkpoint_0':
     case 'checkpoint_1': 
     case 'checkpoint_2': 
     case 'checkpoint_3': return <FileText size={14} className="text-amber-500" />;
@@ -2465,6 +3168,84 @@ const statusColors: Record<string, { badge: string; label: string }> = {
   error: { badge: 'text-red-700 bg-red-50 border-red-200', label: 'Error' },
 };
 
+/** Horizontal batch tab bar with status indicators. Shows "All Batches" + one tab per batch. */
+function BatchTabBar({
+  total,
+  current,
+  selected,
+  onSelect,
+  agentLogs,
+}: {
+  total: number;
+  current: number;
+  selected: number | null;
+  onSelect: (batch: number | null) => void;
+  agentLogs?: any[];
+}) {
+  if (total <= 1) return null;
+
+  // Compute per-batch status from agent logs
+  const batchStatus: Record<number, string> = {};
+  for (const log of (agentLogs ?? [])) {
+    const b = log.batch ?? 0;
+    const status = log.status;
+    // Promote: FAILED > RUNNING > COMPLETED
+    if (status === 'FAILED') {
+      batchStatus[b] = 'error';
+    } else if (status === 'RUNNING' && batchStatus[b] !== 'error') {
+      batchStatus[b] = 'running';
+    } else if (status === 'COMPLETED' && !batchStatus[b]) {
+      batchStatus[b] = 'completed';
+    }
+  }
+
+  const tabs: { label: string; batch: number | null; status?: string }[] = [
+    { label: 'All Batches', batch: null, status: undefined },
+  ];
+  for (let i = 1; i <= total; i++) {
+    tabs.push({ label: `Batch ${i}`, batch: i, status: batchStatus[i] });
+  }
+
+  return (
+    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-200/85 bg-slate-50/40 overflow-x-auto shrink-0">
+      {tabs.map((tab) => {
+        const isActive = selected === tab.batch;
+        const isCurrent = tab.batch !== null && tab.batch === current;
+        const status = tab.status;
+        return (
+          <button
+            key={String(tab.batch)}
+            onClick={() => onSelect(tab.batch)}
+            className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all whitespace-nowrap flex items-center gap-1.5 ${
+              isActive
+                ? isCurrent
+                  ? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm animate-pulse'
+                  : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+                : isCurrent
+                  ? 'bg-blue-50/40 border-blue-200 text-blue-600 animate-pulse'
+                  : 'bg-transparent border-transparent text-slate-500 hover:bg-white/60 hover:text-slate-700'
+            }`}
+          >
+            <span className={isCurrent ? 'text-blue-600 animate-pulse' : ''}>{tab.label}</span>
+            {isCurrent && (
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" title="Current batch" />
+            )}
+            {status === 'completed' && (
+              <CheckCircle2 size={11} className="text-emerald-500" />
+            )}
+            {status === 'running' && (
+              <Loader2 size={11} className="text-blue-500 animate-spin" />
+            )}
+            {status === 'error' && (
+              <AlertCircle size={11} className="text-red-500" />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TestGenDetailPanel({
   runId,
   node,
@@ -2477,6 +3258,9 @@ export function TestGenDetailPanel({
   requirements,
   businessFlows,
   modelName,
+  selectedBatch,
+  batchProgress,
+  onSelectBatch,
   onClose,
   onApprove,
   onRetry,
@@ -2652,57 +3436,39 @@ export function TestGenDetailPanel({
         </button>
       </div>
 
+      {/* Batch Tab Bar — only shown when totalBatches > 1, hidden for architect (runs once globally) */}
+      {batchProgress && batchProgress.total > 1 && onSelectBatch
+        && node?.id !== 'architect' && node?.id !== 'checkpoint_0' && (
+        <BatchTabBar
+          total={batchProgress.total}
+          current={batchProgress.current}
+          selected={selectedBatch ?? null}
+          onSelect={onSelectBatch}
+          agentLogs={agentLogs}
+        />
+      )}
+
       {/* Main Panel Content Body */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {nodeType === 'agent' ? (
-          <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} agentLogs={agentLogs} />
-        ) : nodeType === 'preparation' ? (
-          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} startConfig={startConfig} requirements={requirements} businessFlows={businessFlows} modelName={modelName} />
+        {nodeType === 'agent' || nodeType === 'architect' ? (
+          <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} agentLogs={agentLogs} selectedBatch={selectedBatch} />
         ) : nodeType === 'checkpoint' ? (
           <CheckpointViewWithAudit
             runId={runId}
             nodeId={node?.id ?? ''}
             isEditing={isEditing ?? false}
           >
-            <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+            {node?.id === 'checkpoint_3' && (
+              <WarningsConsole checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+            )}
+            {node?.id === 'checkpoint_0'
+              ? <BlueprintReviewView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+              : <CheckpointEditView checkpointData={checkpointData} onDataChange={onCheckpointDataChange} readOnly={!isEditing} />
+            }
           </CheckpointViewWithAudit>
         ) : nodeType === 'complete' ? (
-          <CompleteNodeView runSummary={runSummary} node={node} agentLogs={agentLogs} />
-        ) : (
-          <div className="p-4">
-            {nodeType === 'preparation' && node.subSteps && (
-              <div className="bg-white border border-slate-150 rounded-xl p-4 shadow-sm space-y-3.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mb-1">
-                  <Terminal size={10} />
-                  Initialization Checklist Trace
-                </span>
-                
-                <div className="space-y-2.5">
-                  {node.subSteps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-2.5">
-                      {step.done ? (
-                        <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
-                      ) : step.running ? (
-                        <Loader2 size={15} className="animate-spin text-blue-500 shrink-0" />
-                      ) : (
-                        <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 shrink-0 bg-slate-50" />
-                      )}
-                      <span className={`text-[11px] font-medium leading-normal ${
-                        step.done 
-                          ? 'text-emerald-700 font-bold' 
-                          : step.running 
-                            ? 'text-blue-700' 
-                            : 'text-slate-400'
-                      }`}>
-                        {step.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          <CompleteNodeView runSummary={runSummary} node={node} agentLogs={agentLogs} selectedBatch={selectedBatch} />
+        ) : null}
       </div>
     </div>
   );

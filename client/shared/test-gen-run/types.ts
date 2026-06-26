@@ -1,5 +1,6 @@
 export type NodeId =
-  | 'preparation'
+  | 'architect'
+  | 'checkpoint_0'
   | 'agent_test_analyst'
   | 'checkpoint_1'
   | 'agent_test_designer'
@@ -9,7 +10,7 @@ export type NodeId =
   | 'complete';
 
 export type NodeStatus = 'idle' | 'running' | 'waiting' | 'completed' | 'error' | 'auto-passed';
-export type NodeKind = 'preparation' | 'agent' | 'checkpoint' | 'complete';
+export type NodeKind = 'architect' | 'agent' | 'checkpoint' | 'complete';
 export type RunMode = 'auto' | 'interactive';
 
 export interface TestGenNode {
@@ -65,8 +66,9 @@ export interface StartConfig {
   modelName?: string;
   mode: RunMode;
   flowIds?: string[];
-  includeFlowCases?: boolean;
   useCache?: boolean;
+  cleanStart?: boolean;
+  forceArchitect?: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;
   textVerbosity?: string;
@@ -82,6 +84,7 @@ export interface ThinkingEntry {
   phase: 'react' | 'extraction';
   text: string;
   timestamp: number;
+  batch?: number;
 }
 
 export interface TestGenRunState {
@@ -90,6 +93,7 @@ export interface TestGenRunState {
   startConfig: StartConfig | null;
   nodes: TestGenNode[];
   selectedNodeId: NodeId | null;
+  selectedBatch: number | null;
   autoFollowEnabled: boolean;
   batchProgress: BatchProgress | null;
   checkpointData: any | null;
@@ -112,6 +116,7 @@ export type TestGenReducerAction =
   | { type: 'MERGE_AGENT_LOGS'; logs: any[] }
   | { type: 'SET_RUN_SUMMARY'; summary: RunSummary }
   | { type: 'SELECT_NODE'; nodeId: NodeId | null }
+  | { type: 'SELECT_BATCH'; batch: number | null }
   | { type: 'AUTO_FOLLOW_ENABLE'; enabled: boolean }
   | { type: 'SET_CONNECTED'; connected: boolean }
   | { type: 'SET_ERROR'; error: TestGenError | null }
@@ -123,12 +128,18 @@ export type TestGenReducerAction =
 export type TestGenNodeDef = Pick<TestGenNode, 'id' | 'label' | 'kind' | 'agentName' | 'subSteps'>;
 
 export const TEST_GEN_NODE_DEFS: TestGenNodeDef[] = [
-  { id: 'preparation', label: 'Preparation', kind: 'preparation' },
+  { id: 'architect', label: 'Architect', kind: 'architect', agentName: 'test-architect',
+    subSteps: [
+      { label: 'Analyze requirements & flows', done: false },
+      { label: 'Generate Global Test Blueprint', done: false },
+      { label: 'Cache blueprint (cross-run)', done: false },
+    ] },
+  { id: 'checkpoint_0', label: 'Review Blueprint', kind: 'checkpoint' },
   { id: 'agent_test_analyst', label: 'Test Analyst', kind: 'agent', agentName: 'test-analyst',
     subSteps: [
-      { label: 'Assess risk & priority', done: false },
-      { label: 'Extract test conditions', done: false },
-      { label: 'Select ISTQB techniques', done: false },
+      { label: 'Stage 1: Requirement analysis', done: false },
+      { label: 'Stage 2: Flow integration', done: false },
+      { label: 'Stage 3: Error guessing', done: false },
     ] },
   { id: 'checkpoint_1', label: 'Review Conditions', kind: 'checkpoint' },
   { id: 'agent_test_designer', label: 'Test Designer', kind: 'agent', agentName: 'test-designer',
@@ -141,7 +152,7 @@ export const TEST_GEN_NODE_DEFS: TestGenNodeDef[] = [
   { id: 'agent_quality_manager', label: 'Quality Manager', kind: 'agent', agentName: 'quality-manager',
     subSteps: [
       { label: 'Review 6 dimensions', done: false },
-      { label: 'Merge human feedback', done: false },
+      { label: 'Atomicity self-correction', done: false },
       { label: 'Generate coverage matrix', done: false },
     ] },
   { id: 'checkpoint_3', label: 'Final Review', kind: 'checkpoint' },
@@ -150,20 +161,25 @@ export const TEST_GEN_NODE_DEFS: TestGenNodeDef[] = [
 
 const PHASE_TO_DONE: Record<string, NodeId[]> = {
   init: [],
-  analysis: ['preparation'],
-  'review-conditions': ['preparation', 'agent_test_analyst'],
-  design: ['preparation', 'agent_test_analyst', 'checkpoint_1'],
-  'review-draft': ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer'],
-  quality: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2'],
-  'final-review': ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
-  complete: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'],
+  preparation: [],
+  'review-blueprint': ['architect'],
+  analysis: ['architect', 'checkpoint_0'],
+  'review-conditions': ['architect', 'checkpoint_0', 'agent_test_analyst'],
+  design: ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1'],
+  'review-draft': ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer'],
+  quality: ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2'],
+  'final-review': ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
+  complete: ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'],
   // Server-side phase values (backward compatibility)
-  checkpoint_1: ['preparation', 'agent_test_analyst'],
-  checkpoint_2: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer'],
-  checkpoint_3: ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
+  checkpoint_0: ['architect'],
+  checkpoint_1: ['architect', 'checkpoint_0', 'agent_test_analyst'],
+  checkpoint_2: ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer'],
+  checkpoint_3: ['architect', 'checkpoint_0', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager'],
 };
 
 const PHASE_TO_CURRENT: Record<string, NodeId> = {
+  preparation: 'architect',
+  'review-blueprint': 'checkpoint_0',
   analysis: 'agent_test_analyst',
   'review-conditions': 'checkpoint_1',
   design: 'agent_test_designer',
@@ -171,6 +187,7 @@ const PHASE_TO_CURRENT: Record<string, NodeId> = {
   quality: 'agent_quality_manager',
   'final-review': 'checkpoint_3',
   // Server-side phase values (backward compatibility)
+  checkpoint_0: 'checkpoint_0',
   checkpoint_1: 'checkpoint_1',
   checkpoint_2: 'checkpoint_2',
   checkpoint_3: 'checkpoint_3',
@@ -191,7 +208,7 @@ export function buildRestoredNodes(
 ): TestGenNode[] {
   const isWaiting = status === 'WAITING_REVIEW';
   const isCompleted = status === 'COMPLETED';
-  const doneNodes = PHASE_TO_DONE[phase] || (isCompleted ? ['preparation', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'] : []);
+  const doneNodes = PHASE_TO_DONE[phase] || (isCompleted ? ['architect', 'agent_test_analyst', 'checkpoint_1', 'agent_test_designer', 'checkpoint_2', 'agent_quality_manager', 'checkpoint_3'] : []);
   const currentNodeId = PHASE_TO_CURRENT[phase];
   
   return createFreshNodes().map(n => ({

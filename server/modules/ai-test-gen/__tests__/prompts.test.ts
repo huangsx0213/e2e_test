@@ -8,7 +8,7 @@ describe('buildAnalystSystemPrompt', () => {
       currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
+      analystMode: 'STAGE_1_REQUIREMENT',
       selectedFlowIds: [],
       humanReviewFeedback: '',
     } as any);
@@ -26,7 +26,7 @@ describe('buildAnalystSystemPrompt', () => {
       currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
+      analystMode: 'STAGE_1_REQUIREMENT',
       selectedFlowIds: [],
       humanReviewFeedback: '',
     } as any);
@@ -52,7 +52,6 @@ describe('buildDesignerSystemPrompt', () => {
       }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
       humanReviewFeedback: '',
     } as any);
 

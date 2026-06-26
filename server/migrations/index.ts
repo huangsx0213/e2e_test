@@ -1,11 +1,17 @@
 import { Log } from '../shared/services/logger';
 import { db } from '../shared/db/client.ts';
 import { migration000InitialSchema } from './000_initial_schema.ts';
+import { migration001AgentMemory } from './001_agent_memory.ts';
+import { migration002CoverageRowType } from './002_coverage_row_type.ts';
+import { migration003ArchitectCache } from './003_architect_cache.ts';
 import { seedDefaults } from '../seed.ts';
 import type { Migration } from './types.ts';
 
 export const migrations: Migration[] = [
   migration000InitialSchema,
+  migration001AgentMemory,
+  migration002CoverageRowType,
+  migration003ArchitectCache,
 ];
 
 function appliedMigrationIds(): Set<string> {

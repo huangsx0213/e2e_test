@@ -25,10 +25,15 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
   const { observer, timeoutMs = 600_000, signal, checkpointer } = opts;
 
   const log = Log.for('graph');
-  log.info('Building LangGraph state graph with 8 nodes...');
+  log.info('Building LangGraph state graph with 9 nodes (4 agents + 4 checkpoints + complete)...');
 
   // 创建各节点
-  const preparationNode = makePreparationNode({ observer });
+  const preparationNode = makePreparationNode({
+    provider: opts.provider,
+    observer,
+    timeoutMs,
+    signal,
+  });
   const analystNode = makeAnalystNode({
     provider: opts.provider,
     observer,
@@ -47,6 +52,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
     timeoutMs,
     signal,
   });
+  const checkpoint0 = makeCheckpoint(0);
   const checkpoint1 = makeCheckpoint(1);
   const checkpoint2 = makeCheckpoint(2);
   const checkpoint3 = makeCheckpoint(3);
@@ -54,6 +60,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
 
   const graph = new StateGraph(TestGenStateAnnotation)
     .addNode('preparation', preparationNode)
+    .addNode('checkpoint_0', checkpoint0, { ends: ['preparation', 'analyst'] })
     .addNode('analyst', analystNode)
     .addNode('checkpoint_1', checkpoint1, { ends: ['analyst', 'designer'] })
     .addNode('designer', designerNode)
@@ -63,7 +70,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
     .addNode('complete', completeNode);
 
   graph.addEdge(START, 'preparation');
-  graph.addEdge('preparation', 'analyst');
+  graph.addEdge('preparation', 'checkpoint_0');
   graph.addEdge('analyst', 'checkpoint_1');
   graph.addEdge('designer', 'checkpoint_2');
   graph.addEdge('quality', 'checkpoint_3');
