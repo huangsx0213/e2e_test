@@ -11,6 +11,13 @@ export function buildBusinessFlowBlueprints({ flows }: BuildBusinessFlowBlueprin
       id: flow.id,
       name: flow.name,
       type: flow.type,
-      steps: [],
+      steps: (flow.steps ?? []).map((step, idx) => ({
+        sequence: step.sequence ?? idx + 1,
+        requirementId: (step.requirementIds ?? [])[0] ?? '',
+        requirementTitle: '',
+        requirementLevel: 'story' as const,
+        actionSummary: step.actionSummary ?? '',
+        acceptanceCriteria: [],
+      })),
     }));
 }

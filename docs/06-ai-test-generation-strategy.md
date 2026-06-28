@@ -19,7 +19,7 @@
 
 为了在大型项目中有效控制大语言模型（LLM）的 Token 成本及上下文窗口限制，系统在架构上将“全局视野 (Global Vision)”与“局部执行 (Local Execution)”进行了严格解耦。
 
-1. **维持宏观管线不动 (Intact Macro Pipeline)**：底层 LangGraph 架构维持固定的四节点执行流：`Preparation (准备)` -> `Analyst (分析)` -> `Designer (设计)` -> `Quality (质量)`。
+1. **维持宏观管线不动 (Intact Macro Pipeline)**：底层 LangGraph 架构维持固定的四节点执行流：`Architect (架构)` -> `Analyst (分析)` -> `Designer (设计)` -> `Quality (质量)`。
 2. **矩阵的增量持久化 (Persistent Incremental Matrix)**：每次管线执行完毕后，生成的用例和跨节点流转记录都会被**增量写入（Upsert）**到基于数据库的二维覆盖率矩阵（`requirementRows` 和 `flowRows`）中。这个持久化数据层是跨发版生命周期中用例去重的“唯一事实来源 (Single Source of Truth)”。
 
 ---
@@ -28,9 +28,9 @@
 
 整个流水线的运转由四个按顺序协作的核心 Agent 节点驱动。
 
-### 3.1 Preparation Node（混合模式全局架构引擎）
+### 3.1 Architect Node（全局架构蓝图引擎）
 
-Preparation 节点扮演“Phase 0 (阶段零)”全局架构师的角色。它是一个混合模式（Hybrid）Agent，负责在 Analyst 启动生成之前构建全局上下文。
+Architect 节点扮演"Phase 0 (阶段零)"全局架构师的角色。它是一个混合模式（Hybrid）Agent，负责在 Analyst 启动生成之前构建全局上下文。
 
 | 能力分层 | 执行职责 | 输出产物 |
 |-----------------|----------------------------|------------------|
@@ -111,11 +111,11 @@ async function runUnifiedPipeline(projectId: string, selection: SelectionCriteri
 }
 ```
 
-### 5.2 重构 `preparation.ts` (Hybrid Agent)
+### 5.2 重构 `architect.ts` (Hybrid Agent)
 升级图谱的入口节点，计算最新状态并拦截重复设计：
 
 ```typescript
-async function PreparationNode(state: TestGenState): Promise<Partial<TestGenState>> {
+async function ArchitectNode(state: TestGenState): Promise<Partial<TestGenState>> {
   // 1. TS 计算层：提取增量覆盖率快照与节点频率
   const coverageMatrix = await db.fetchPersistentCoverage(state.projectId);
   const flowFrequency = computeRequirementFrequencies(state.businessFlows);

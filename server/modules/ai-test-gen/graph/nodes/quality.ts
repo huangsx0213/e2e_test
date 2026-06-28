@@ -2,6 +2,7 @@ import type { TestGenState } from '../state';
 import type { AgentObserver, SkillDefinition } from './types';
 import type { AIProvider } from '../../infra/provider.ts';
 import type { CoverageMatrix } from '../../../../../shared/contracts/index.ts';
+import type { DirectiveTestStrategy, TestCondition, DeviationRecord, CoverageGapRecord } from '../../../../../shared/contracts/index.ts';
 import { createHash } from 'node:crypto';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
@@ -14,6 +15,15 @@ import { Log } from '../../../../shared/services/logger.ts';
 // ============================================================
 // Output Schema — only finalTestCases; coverageMatrix is computed in TS
 // ============================================================
+
+function countBy<T>(items: T[], keyFn: (item: T) => string): Record<string, number> {
+  return items.reduce((acc, item) => {
+    const key = keyFn(item);
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+}
+
 /**
  * 从 finalTestCases + state 数据计算 coverageMatrix，不依赖模型输出。
  */
@@ -28,36 +38,22 @@ function computeCoverageMatrix(
     casesByReq[tc.requirementId].push(tc);
   }
 
-  const condCountByReq: Record<string, number> = {};
-  for (const c of conditions) {
-    condCountByReq[c.requirementId] = (condCountByReq[c.requirementId] ?? 0) + 1;
-  }
+  const condCountByReq = countBy(conditions, c => c.requirementId);
 
   const rows: CoverageMatrix['rows'] = [];
   for (const req of requirements) {
     const relatedCases = casesByReq[req.id] ?? [];
-    const totalConditions = condCountByReq[req.id] ?? 0;
-    const testCaseCount = relatedCases.length;
-
-    const techniqueBreakdown: Record<string, number> = {};
-    for (const tc of relatedCases) {
-      techniqueBreakdown[tc.techniqueApplied || 'unknown'] = (techniqueBreakdown[tc.techniqueApplied || 'unknown'] ?? 0) + 1;
-    }
-
-    const categoryBreakdown: Record<string, number> = {};
-    for (const tc of relatedCases) {
-      categoryBreakdown[tc.category || 'uncategorized'] = (categoryBreakdown[tc.category || 'uncategorized'] ?? 0) + 1;
-    }
+    const totalConditions = Number(condCountByReq[req.id] ?? 0);
 
     rows.push({
       requirementId: req.id,
       requirementTitle: req.title,
       level: req.level,
       totalConditions,
-      testCaseCount,
-      techniqueBreakdown,
-      categoryBreakdown,
-      coveragePercentage: totalConditions > 0 ? Math.min(100, Math.round((testCaseCount / totalConditions) * 100)) : 0,
+      testCaseCount: relatedCases.length,
+      techniqueBreakdown: countBy(relatedCases, tc => tc.techniqueApplied || 'unknown'),
+      categoryBreakdown: countBy(relatedCases, tc => tc.category || 'uncategorized'),
+      coveragePercentage: totalConditions > 0 ? Math.min(100, Math.round((relatedCases.length / totalConditions) * 100)) : 0,
       uncoveredRisks: [],
     });
   }
@@ -109,6 +105,108 @@ function persistCoverageForBatch(
 
   pipelineRepo.upsertCoverageEntries(state.runId, state.projectId, entries);
   return entries.length;
+}
+
+// ============================================================
+// Deviation & Coverage Gap computation (TS programmatic, no LLM)
+// ============================================================
+
+function computeDeviations(
+  conditions: TestCondition[],
+  directiveStrategy: DirectiveTestStrategy | undefined,
+  finalTestCases: Array<{ preconditions: string[] }>,
+  analystMode?: string,
+): DeviationRecord[] {
+  const deviations: DeviationRecord[] = [];
+  if (!directiveStrategy) return deviations;
+
+  // 1. technique_mismatch
+  const epicTechMap = new Map(directiveStrategy.epicDirectives.map(ed => [ed.epicId, ed.recommendedTechniques]));
+  for (const cond of conditions) {
+    const epics = directiveStrategy.epicDirectives.filter(ed => cond.requirementId.startsWith(ed.epicId) || ed.epicId === cond.requirementId);
+    for (const epic of epics) {
+      const shortTech = cond.primaryTechnique === 'equivalence-partitioning' ? 'EP'
+        : cond.primaryTechnique === 'boundary-value-analysis' ? 'BVA'
+        : cond.primaryTechnique === 'decision-table' ? 'Decision Table'
+        : cond.primaryTechnique === 'state-transition' ? 'State Transition'
+        : cond.primaryTechnique === 'use-case' ? 'Use Case'
+        : cond.primaryTechnique;
+      if (!epic.recommendedTechniques.includes(shortTech as any)) {
+        const mentionsArchitect = cond.techniqueRationale?.toLowerCase().includes('architect') ?? false;
+        deviations.push({
+          type: 'technique_mismatch',
+          architectDirective: `Architect recommended: ${epic.recommendedTechniques.join(', ')}`,
+          actualBehavior: `Analyst chose: ${shortTech}`,
+          rationale: cond.techniqueRationale ?? '',
+          severity: mentionsArchitect ? 'info' : 'warning',
+          conditionId: cond.id,
+        });
+      }
+    }
+  }
+
+  // 2. missing_preset
+  for (const preset of directiveStrategy.sharedStatePresets ?? []) {
+    const found = finalTestCases.some(tc =>
+      (tc.preconditions ?? []).some(p => p.toLowerCase().includes(preset.toLowerCase()))
+    );
+    if (!found) {
+      deviations.push({
+        type: 'missing_preset',
+        architectDirective: `Architect required shared state: ${preset}`,
+        actualBehavior: 'Not found in any test case preconditions',
+        rationale: '',
+        severity: 'warning',
+      });
+    }
+  }
+
+  // 3. category_mismatch (soft — no longer blocks parse)
+  const expectedCategory = analystMode === 'STAGE_2_FLOW' ? 'integration'
+    : analystMode === 'STAGE_3_ERROR_GUESSING' ? 'error'
+    : undefined;
+  if (expectedCategory) {
+    for (const cond of conditions) {
+      if (cond.category !== expectedCategory) {
+        deviations.push({
+          type: 'category_mismatch',
+          architectDirective: `Stage requires category "${expectedCategory}"`,
+          actualBehavior: `Analyst chose category "${cond.category}"`,
+          rationale: cond.techniqueRationale ?? '',
+          severity: 'info',
+          conditionId: cond.id,
+        });
+      }
+    }
+  }
+
+  return deviations;
+}
+
+function computeCoverageGaps(
+  directiveStrategy: DirectiveTestStrategy | undefined,
+  conditions: TestCondition[],
+): CoverageGapRecord[] {
+  const gaps: CoverageGapRecord[] = [];
+  if (!directiveStrategy) return gaps;
+
+  for (const fd of directiveStrategy.flowDirectives ?? []) {
+    for (const focus of fd.integrationFocus ?? []) {
+      const matchingConditions = conditions.filter(c =>
+        c.condition.toLowerCase().includes(focus.toLowerCase())
+      );
+      if (matchingConditions.length === 0) {
+        gaps.push({
+          flowId: fd.flowId,
+          flowName: fd.flowName,
+          missedFocus: focus,
+          relatedConditionIds: [],
+        });
+      }
+    }
+  }
+
+  return gaps;
 }
 
 // ============================================================
@@ -225,11 +323,27 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       log.kv('latency', `${latencyMs}ms`);
       observer?.onComplete?.(agentName, usage, latencyMs, messages, validated);
 
+      // TS programmatic deviation & coverage gap computation
+      const deviations = computeDeviations(
+        (state.approvedConditions ?? state.testConditions ?? []) as TestCondition[],
+        state.directiveTestStrategy,
+        validated.finalTestCases as Array<{ preconditions: string[] }>,
+        state.analystMode,
+      );
+      const coverageGaps = computeCoverageGaps(
+        state.directiveTestStrategy,
+        (state.approvedConditions ?? state.testConditions ?? []) as TestCondition[],
+      );
+      if (deviations.length > 0) log.kv('deviations', deviations.length);
+      if (coverageGaps.length > 0) log.kv('coverageGaps', coverageGaps.length);
+
       return {
         finalTestCases: validated.finalTestCases as any,
         coverageMatrix: computedCoverageMatrix as any,
         coverageSnapshot: refreshedCoverageSnapshot,
         validationWarnings: (validated.validationWarnings ?? []) as any,
+        deviations,
+        coverageGaps,
         skillCalls: (toolCallRecords ?? []).map(tc => ({
           agent: agentName,
           skillName: tc.name,

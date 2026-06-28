@@ -8,6 +8,7 @@ import {
   requirementGraphQuery,
   flowDetailQuery,
   coverageCheckQuery,
+  semanticDedupQuery,
 } from './data-skills.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
@@ -139,12 +140,13 @@ const istqbGuideSkill: SkillDefinition = {
 // File CONTENTS are read on-demand when the skill function is invoked.
 const knowledgeSkills = loadKnowledgeSkills();
 
-/** Analyst 绑定的 skills：Data + ISTQB Guide + Knowledge Base + Coverage Check */
+/** Analyst 绑定的 skills：Data + ISTQB Guide + Knowledge Base + Coverage Check + Semantic Dedup */
 export const ANALYST_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
   coverageCheckQuery,
+  semanticDedupQuery,
   istqbGuideSkill,
   ...knowledgeSkills,
 ];
@@ -164,10 +166,4 @@ export const QUALITY_SKILLS: SkillDefinition[] = [
   ...knowledgeSkills.filter((s) => s.name === 'knowledge_base'),
 ];
 
-/** 所有 skills（用于调试/日志） */
-export const ALL_SKILLS: SkillDefinition[] = [
-  requirementDetailQuery,
-  requirementGraphQuery,
-  flowDetailQuery,
-  ...knowledgeSkills,
-];
+

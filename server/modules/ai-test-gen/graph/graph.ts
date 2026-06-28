@@ -29,10 +29,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
 
   // 创建各节点
   const preparationNode = makePreparationNode({
-    provider: opts.provider,
     observer,
-    timeoutMs,
-    signal,
   });
   const analystNode = makeAnalystNode({
     provider: opts.provider,

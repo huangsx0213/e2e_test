@@ -154,7 +154,6 @@ export function buildAnalystUserMessage(state: TestGenState): string {
       name: f.name,
       type: f.type,
     })),
-    analystMode: state.analystMode,
     selectedFlowIds: state.selectedFlowIds,
   }, null, 2);
 }

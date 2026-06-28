@@ -76,19 +76,9 @@ export class RunScope {
   private flushThinking(): void {
     for (const [key, entry] of this.thinkingBuffer) {
       if (entry.text.length > 0) {
-        // key format: agentName:phase:type
         const agentName = key.split(':').slice(0, -2).join(':') || key;
-        const timestamp = Date.now();
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp });
-        // Accumulate for persistence
-        const acc = this.thinkingAccumulator.get(agentName) ?? [];
-        const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
-          last.text += entry.text;
-        } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp, batch: this.currentBatch });
-        }
-        this.thinkingAccumulator.set(agentName, acc);
+        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp: Date.now() });
+        this.accumulateThinkingEntry(agentName, entry);
       }
     }
     this.thinkingBuffer.clear();
@@ -100,6 +90,17 @@ export class RunScope {
       clearInterval(this.thinkingFlushTimer);
       this.thinkingFlushTimer = null;
     }
+  }
+
+  private accumulateThinkingEntry(agentName: string, entry: { text: string; type: string; phase: string }): void {
+    const acc = this.thinkingAccumulator.get(agentName) ?? [];
+    const last = acc[acc.length - 1];
+    if (last && last.type === entry.type && last.phase === entry.phase) {
+      last.text += entry.text;
+    } else {
+      acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
+    }
+    this.thinkingAccumulator.set(agentName, acc);
   }
 
   private stateKey(agentName: string, batch: number): string {
@@ -148,15 +149,7 @@ export class RunScope {
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
         this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp: Date.now() });
-        // Accumulate for persistence
-        const acc = this.thinkingAccumulator.get(agentName) ?? [];
-        const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
-          last.text += entry.text;
-        } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
-        }
-        this.thinkingAccumulator.set(agentName, acc);
+        this.accumulateThinkingEntry(agentName, entry);
         this.thinkingBuffer.delete(key);
       }
     }
@@ -209,15 +202,7 @@ export class RunScope {
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
         this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, batch: this.currentBatch, timestamp: Date.now() });
-        // Accumulate for persistence
-        const acc = this.thinkingAccumulator.get(agentName) ?? [];
-        const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
-          last.text += entry.text;
-        } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
-        }
-        this.thinkingAccumulator.set(agentName, acc);
+        this.accumulateThinkingEntry(agentName, entry);
         this.thinkingBuffer.delete(key);
       }
     }
@@ -319,5 +304,7 @@ export class RunScope {
       data[nodeId] = [...(data[nodeId] || []), ...entries];
     }
     pipelineRepo.saveThinkingData(this.runId, JSON.stringify(data));
+    // Clear accumulator after persisting to prevent duplicate entries
+    this.thinkingAccumulator.clear();
   }
 }

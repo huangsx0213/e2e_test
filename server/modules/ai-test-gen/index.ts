@@ -60,19 +60,14 @@ router.get('/:runId/audit', withErrorHandling((req, res) => {
   res.json(controller.getAuditLogs(p(req.params.runId), checkpointId));
 }));
 
-// checkpoint 数据
-router.get('/:runId/checkpoint', withErrorHandling(async (req, res) => {
+// checkpoint 数据 / 状态
+const handleCheckpointState = withErrorHandling(async (req: any, res: any) => {
   const batch = req.query.batch ? parseInt(req.query.batch as string, 10) : undefined;
   const state = await controller.getCheckpointState(p(req.params.runId), Number.isFinite(batch) ? batch : undefined);
   res.json(state ?? null);
-}));
-
-// checkpoint 状态
-router.get('/:runId/checkpoint-state', withErrorHandling(async (req, res) => {
-  const batch = req.query.batch ? parseInt(req.query.batch as string, 10) : undefined;
-  const state = await controller.getCheckpointState(p(req.params.runId), Number.isFinite(batch) ? batch : undefined);
-  res.json(state ?? null);
-}));
+});
+router.get('/:runId/checkpoint', handleCheckpointState);
+router.get('/:runId/checkpoint-state', handleCheckpointState);
 
 // SSE 流
 router.get('/:runId/stream', (req, res) => {

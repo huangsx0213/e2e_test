@@ -466,13 +466,21 @@ function AgentSummaryView({ agentLog, agentName, isRunning }: { agentLog: any; a
 
   if (agentName === 'test_architect' || agentName === 'test-architect' || agentName === 'architect') {
     const strategicGuidance = output?.strategicGuidance;
+    const epicDirectives = output?.epicDirectives || [];
     const riskEpicTree = output?.riskEpicTree || [];
+    const flowDirectives = output?.flowDirectives || [];
+    const crossReferenceMap = output?.crossReferenceMap || [];
     const anomalousFlowProposals = output?.anomalousFlowProposals || [];
     const sharedStateInferences = output?.sharedStateInferences || [];
+    const sharedStatePresets = output?.sharedStatePresets || [];
     const totalBatches = output?.totalBatches;
     const estimatedTokens = output?.estimatedTokens;
 
+    const activeEpicDirectives = epicDirectives.length > 0 ? epicDirectives : riskEpicTree;
+    const activeSharedState = sharedStatePresets.length > 0 ? sharedStatePresets : sharedStateInferences;
+
     const riskBadge = (level: string) => {
+      if (level === 'critical') return 'bg-purple-50 text-purple-600 border-purple-200';
       if (level === 'high') return 'bg-rose-50 text-rose-600 border-rose-200';
       if (level === 'medium') return 'bg-amber-50 text-amber-600 border-amber-200';
       return 'bg-slate-50 text-slate-500 border-slate-200';
@@ -511,25 +519,137 @@ function AgentSummaryView({ agentLog, agentName, isRunning }: { agentLog: any; a
           </div>
         )}
 
-        {/* Risk Epic Tree */}
-        {riskEpicTree.length > 0 && (
+        {/* Epic Directives */}
+        {activeEpicDirectives.length > 0 && (
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <AlertTriangle size={12} className="text-amber-500" />
-              Risk Epic Tree
-              <span className="text-slate-300 font-normal normal-case tracking-normal">({riskEpicTree.length})</span>
+              {epicDirectives.length > 0 ? 'Epic Directives' : 'Risk Epic Tree'}
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({activeEpicDirectives.length})</span>
             </label>
             <div className="space-y-2">
-              {riskEpicTree.map((epic: any, idx: number) => (
+              {activeEpicDirectives.map((epic: any, idx: number) => (
                 <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm space-y-1.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{epic.epicId}</span>
                     <span className="text-sm font-semibold text-slate-700">{epic.epicTitle}</span>
-                    <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${riskBadge(epic.riskLevel)}`}>{epic.riskLevel}</span>
+                    <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${riskBadge(epic.riskPriority || epic.riskLevel)}`}>{epic.riskPriority || epic.riskLevel}</span>
+                    {epic.coverageDirective && (
+                      <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${epic.coverageDirective === 'skip' ? 'bg-slate-100 text-slate-500 border-slate-200' : epic.coverageDirective === 'full' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-blue-50 text-blue-600 border-blue-200'}`}>{epic.coverageDirective}</span>
+                    )}
                   </div>
-                  {epic.notes && <p className="text-xs text-slate-500 leading-relaxed">{epic.notes}</p>}
+                  {(epic.riskRationale || epic.notes) && <p className="text-xs text-slate-500 leading-relaxed">{epic.riskRationale || epic.notes}</p>}
+                  {epic.recommendedTechniques?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {epic.recommendedTechniques.map((t: string, ti: number) => (
+                        <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-100">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  {epic.focusAreas?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {epic.focusAreas.map((fa: string, fi: number) => (
+                        <span key={fi} className="text-[10px] px-1.5 py-0.5 rounded border bg-cyan-50 text-cyan-600 border-cyan-100">{fa}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Flow Directives */}
+        {flowDirectives.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Activity size={12} className="text-blue-500" />
+              Flow Directives
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({flowDirectives.length})</span>
+            </label>
+            <div className="space-y-2">
+              {flowDirectives.map((fd: any, idx: number) => (
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-slate-400 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">{fd.flowId}</span>
+                    <span className="text-sm font-semibold text-slate-700">{fd.flowName}</span>
+                  </div>
+                  {fd.integrationFocus?.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Integration Focus</span>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {fd.integrationFocus.map((f: string, fi: number) => (
+                          <span key={fi} className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-100">{f}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {fd.sharedStateConcerns?.length > 0 && (
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Shared State Concerns</span>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {fd.sharedStateConcerns.map((s: string, si: number) => (
+                          <span key={si} className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-600 border-amber-100">{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {fd.recommendedTechniques?.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {fd.recommendedTechniques.map((t: string, ti: number) => (
+                        <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-100">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Cross-Reference Map */}
+        {crossReferenceMap.length > 0 && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText size={12} className="text-violet-500" />
+              Cross-Reference Map
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({crossReferenceMap.length})</span>
+            </label>
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider">Requirement</th>
+                    <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider">Shared By</th>
+                    <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider">Co-Occurring</th>
+                    <th className="text-left px-3 py-2 font-bold text-slate-500 uppercase tracking-wider">Risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crossReferenceMap.map((xref: any, idx: number) => (
+                    <tr key={idx} className="border-t border-slate-100 hover:bg-slate-50/50">
+                      <td className="px-3 py-2 font-mono text-slate-700">{xref.requirementId}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {xref.sharedByFlowIds?.map((fid: string, fi: number) => (
+                            <span key={fi} className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-600">{fid}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {xref.coOccurringReqIds?.map((rid: string, ri: number) => (
+                            <span key={ri} className="text-[10px] px-1 py-0.5 rounded bg-slate-100 text-slate-600">{rid}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`text-[10px] font-bold uppercase border rounded px-1.5 py-0.5 ${xref.conflictRisk === 'high' ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>{xref.conflictRisk}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -565,17 +685,17 @@ function AgentSummaryView({ agentLog, agentName, isRunning }: { agentLog: any; a
           </div>
         )}
 
-        {/* Shared State Inferences */}
-        {sharedStateInferences.length > 0 && (
+        {/* Shared State Presets / Inferences */}
+        {activeSharedState.length > 0 && (
           <div className="space-y-2">
             <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
               <Check size={12} className="text-emerald-500" />
-              Shared State Inferences
-              <span className="text-slate-300 font-normal normal-case tracking-normal">({sharedStateInferences.length})</span>
+              {sharedStatePresets.length > 0 ? 'Shared State Presets' : 'Shared State Inferences'}
+              <span className="text-slate-300 font-normal normal-case tracking-normal">({activeSharedState.length})</span>
             </label>
             <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
               <ul className="space-y-1.5">
-                {sharedStateInferences.map((s: string, idx: number) => (
+                {activeSharedState.map((s: string, idx: number) => (
                   <li key={idx} className="flex items-center gap-2 text-sm text-slate-700">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                     {s}
@@ -586,7 +706,7 @@ function AgentSummaryView({ agentLog, agentName, isRunning }: { agentLog: any; a
           </div>
         )}
 
-        {!strategicGuidance && riskEpicTree.length === 0 && anomalousFlowProposals.length === 0 && (
+        {!strategicGuidance && activeEpicDirectives.length === 0 && flowDirectives.length === 0 && crossReferenceMap.length === 0 && anomalousFlowProposals.length === 0 && (
           <div className="text-center text-sm text-slate-400 py-8">No architect output data available.</div>
         )}
       </div>

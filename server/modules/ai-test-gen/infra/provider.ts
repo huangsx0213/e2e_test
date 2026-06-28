@@ -177,6 +177,38 @@ export function createAIProvider(config: ProviderConfig): AIProvider {
 
 // ─── Provider Factories ───
 
+function buildInput(messages: ChatMessage[]): unknown[] {
+  const input: unknown[] = [];
+  for (const m of messages) {
+    if (m.role === 'assistant' && m.toolCalls) {
+      if (m.content) input.push({ role: 'assistant', content: m.content });
+      for (const tc of m.toolCalls) {
+        input.push({
+          type: 'function_call',
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
+        });
+      }
+    } else if (m.role === 'tool' && m.toolCallId) {
+      input.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content || ' ' });
+    } else {
+      input.push({ role: m.role, content: m.content || '' });
+    }
+  }
+  return input;
+}
+
+function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
+  if (options?.jsonSchema) {
+    return { format: { type: 'json_schema' as const, ...normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) } };
+  }
+  if (options?.responseFormat === 'json_object') {
+    return { format: { type: 'json_object' } };
+  }
+  return undefined;
+}
+
 function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-openai' }): AIProvider {
   const client = new OpenAI({
     apiKey: config.apiKey,
@@ -186,38 +218,6 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     dangerouslyAllowBrowser: true,
     maxRetries: 0,
   });
-
-  function buildInput(messages: ChatMessage[]): unknown[] {
-    const input: unknown[] = [];
-    for (const m of messages) {
-      if (m.role === 'assistant' && m.toolCalls) {
-        if (m.content) input.push({ role: 'assistant', content: m.content });
-        for (const tc of m.toolCalls) {
-          input.push({
-            type: 'function_call',
-            call_id: tc.id,
-            name: tc.function.name,
-            arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
-          });
-        }
-      } else if (m.role === 'tool' && m.toolCallId) {
-        input.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content || ' ' });
-      } else {
-        input.push({ role: m.role, content: m.content || '' });
-      }
-    }
-    return input;
-  }
-
-  function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
-    if (options?.jsonSchema) {
-      return { format: { type: 'json_schema' as const, ...normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) } };
-    }
-    if (options?.responseFormat === 'json_object') {
-      return { format: { type: 'json_object' } };
-    }
-    return undefined;
-  }
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const input = buildInput(messages);
@@ -483,38 +483,6 @@ function createOpenAIResponsesProvider(config: ProviderConfig & { type: 'openai-
     dangerouslyAllowBrowser: true,
     maxRetries: 0,
   });
-
-  function buildInput(messages: ChatMessage[]): unknown[] {
-    const input: unknown[] = [];
-    for (const m of messages) {
-      if (m.role === 'assistant' && m.toolCalls) {
-        if (m.content) input.push({ role: 'assistant', content: m.content });
-        for (const tc of m.toolCalls) {
-          input.push({
-            type: 'function_call',
-            call_id: tc.id,
-            name: tc.function.name,
-            arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments),
-          });
-        }
-      } else if (m.role === 'tool' && m.toolCallId) {
-        input.push({ type: 'function_call_output', call_id: m.toolCallId, output: m.content || ' ' });
-      } else {
-        input.push({ role: m.role, content: m.content || '' });
-      }
-    }
-    return input;
-  }
-
-  function buildTextConfig(options?: ChatOptions): Record<string, unknown> | undefined {
-    if (options?.jsonSchema) {
-      return { format: { type: 'json_schema' as const, ...normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName) } };
-    }
-    if (options?.responseFormat === 'json_object') {
-      return { format: { type: 'json_object' } };
-    }
-    return undefined;
-  }
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const input = buildInput(messages);

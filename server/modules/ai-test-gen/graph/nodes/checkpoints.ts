@@ -1,6 +1,7 @@
 import { Command, interrupt } from '@langchain/langgraph';
 import { PHASE_BY_CHECKPOINT } from '../state';
 import type { TestGenState, Phase } from '../state';
+import type { DirectiveTestStrategy, GlobalTestBlueprint } from '../../../../../shared/contracts/index.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
 interface CheckpointInterruptPayload {
@@ -12,6 +13,8 @@ interface CheckpointInterruptPayload {
   cases?: unknown[];
   matrix?: unknown;
   validationWarnings?: unknown;
+  deviations?: unknown;
+  coverageGaps?: unknown;
 }
 
 const NEXT_AGENT: Record<number, string> = {
@@ -82,11 +85,14 @@ export function makeCheckpoint(checkpointNum: number) {
 
     switch (checkpointNum) {
       case 0: {
-        const hasBlueprint = !!state.globalBlueprint;
-        const riskCount = state.globalBlueprint?.riskEpicTree?.length ?? 0;
-        const anomalyCount = state.globalBlueprint?.anomalousFlowProposals?.length ?? 0;
-        log.info(`ENTER ── blueprint ${hasBlueprint ? 'present' : 'absent'} (${riskCount} risk epics, ${anomalyCount} anomalies) awaiting review`);
-        payload.blueprint = state.globalBlueprint;
+        const strategy: DirectiveTestStrategy | GlobalTestBlueprint | undefined = state.directiveTestStrategy ?? state.globalBlueprint ?? undefined;
+        const hasBlueprint = !!strategy;
+        const epicCount = (strategy as any)?.epicDirectives?.length ?? (strategy as any)?.riskEpicTree?.length ?? 0;
+        const flowCount = (strategy as any)?.flowDirectives?.length ?? 0;
+        const xrefCount = (strategy as any)?.crossReferenceMap?.length ?? 0;
+        const anomalyCount = strategy?.anomalousFlowProposals?.length ?? 0;
+        log.info(`ENTER ── blueprint ${hasBlueprint ? 'present' : 'absent'} (${epicCount} epic directives, ${flowCount} flow directives, ${xrefCount} cross-refs, ${anomalyCount} anomalies) awaiting review`);
+        payload.blueprint = strategy;
         break;
       }
       case 1: {
@@ -105,10 +111,14 @@ export function makeCheckpoint(checkpointNum: number) {
       case 3: {
         const finalCount = state.finalTestCases?.length ?? 0;
         const warningCount = state.validationWarnings?.reduce((sum, w) => sum + w.warnings.length, 0) ?? 0;
-        log.info(`ENTER ── ${finalCount} final cases awaiting review (${warningCount} warnings)`);
+        const deviationCount = state.deviations?.length ?? 0;
+        const gapCount = state.coverageGaps?.length ?? 0;
+        log.info(`ENTER ── ${finalCount} final cases awaiting review (${warningCount} warnings, ${deviationCount} deviations, ${gapCount} coverage gaps)`);
         payload.cases = state.finalTestCases;
         payload.matrix = state.coverageMatrix;
         payload.validationWarnings = state.validationWarnings;
+        payload.deviations = state.deviations;
+        payload.coverageGaps = state.coverageGaps;
         break;
       }
     }

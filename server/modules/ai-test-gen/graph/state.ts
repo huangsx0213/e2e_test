@@ -5,6 +5,9 @@ import type {
   CoverageMatrix,
   PipelineBusinessFlowBlueprint,
   GlobalTestBlueprint,
+  DirectiveTestStrategy,
+  DeviationRecord,
+  CoverageGapRecord,
   ValidationWarning,
 } from '../../../../shared/contracts/index.ts';
 
@@ -77,7 +80,10 @@ export const TestGenStateAnnotation = Annotation.Root({
   tokenBudget: Annotation<{ estimated: number; limit: number | null }>,
 
   // === Test Architect 产物 (Checkpoint 0) ===
+  /** @deprecated Use directiveTestStrategy instead */
   globalBlueprint: Annotation<GlobalTestBlueprint | undefined>,
+  directiveTestStrategy: Annotation<DirectiveTestStrategy | undefined>,
+  requirementFrequencies: Annotation<Array<{ requirementId: string; occurrenceCount: number; isDuplicateReference: boolean }>>,
   coverageSnapshot: Annotation<Array<{ requirementId: string; conditionHash: string; technique: string; testCaseIds: string[] }> | undefined>,
   analystMode: Annotation<AnalystMode>,
   forceRedesign: Annotation<boolean>,
@@ -95,6 +101,8 @@ export const TestGenStateAnnotation = Annotation.Root({
   finalTestCases: Annotation<NlTestCase[] | undefined>,
   coverageMatrix: Annotation<CoverageMatrix | undefined>,
   validationWarnings: Annotation<Array<{ caseId: string; warnings: ValidationWarning[] }> | undefined>,
+  deviations: Annotation<DeviationRecord[]>,
+  coverageGaps: Annotation<CoverageGapRecord[]>,
 
   // === 生成模式 ===
   selectedFlowIds: Annotation<string[]>,

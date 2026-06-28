@@ -24,6 +24,9 @@ export interface BatchInput {
     analystMode?: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING';
     errors: any[];
     globalBlueprint?: any;
+    directiveTestStrategy?: any;
+    requirementFrequencies?: Array<{ requirementId: string; occurrenceCount: number; isDuplicateReference: boolean }>;
+    coverageSnapshot?: Array<{ requirementId: string; conditionHash: string; technique: string; testCaseIds: string[] }>;
   };
 }
 

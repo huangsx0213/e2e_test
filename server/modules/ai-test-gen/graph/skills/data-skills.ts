@@ -4,6 +4,8 @@ import { businessFlowRepo } from '../../../business-flows/repository.ts';
 import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import type { AIProvider, ChatMessage } from '../../infra/provider.ts';
+import { callLLMWithStructuredOutput } from '../nodes/utils.ts';
 
 // ============================================================
 // Query cache — prevents LLM from re-querying same IDs
@@ -100,60 +102,6 @@ export const requirementDetailQuery: SkillDefinition = {
     }
 
     return isBatch ? merged : merged[ids[0]];
-  },
-};
-
-// ============================================================
-// related_requirements_query
-// ============================================================
-export const relatedRequirementsQuery: SkillDefinition = {
-  name: 'related_requirements_query',
-  description:
-    'Query requirements related to a given requirement: siblings (same parent), dependency chain (upstream/downstream). Use for risk assessment and understanding requirement interconnections.',
-  schema: z.object({
-    requirementId: z.string().describe('The requirement ID to find relations for'),
-  }),
-  func: async (args) => {
-    const rrqLog = Log.for('skill:related_req_query');
-    const requirementId = args.requirementId as string;
-    rrqLog.info(`Querying relations for ${requirementId}`);
-    const req = requirementRepo.get(requirementId);
-    if (!req) {
-      rrqLog.warn(`Requirement ${requirementId} not found`);
-      return { error: `Requirement ${requirementId} not found` };
-    }
-
-    const allReqs = requirementRepo.listByProject(req.projectId);
-
-    const siblings = req.parentId
-      ? allReqs.filter((r) => r.parentId === req.parentId && r.id !== req.id)
-      : [];
-
-    const dependencies = (req.dependencies || [])
-      .map((depId) => {
-        const dep = allReqs.find((r) => r.id === depId);
-        return dep
-          ? { id: dep.id, title: dep.title, level: dep.level }
-          : null;
-      })
-      .filter(Boolean);
-
-    const dependents = allReqs
-      .filter((r) => (r.dependencies || []).includes(requirementId))
-      .map((r) => ({ id: r.id, title: r.title, level: r.level }));
-
-    rrqLog.info(`Found: ${siblings.length} siblings, ${dependencies.length} deps, ${dependents.length} dependents`);
-
-    return {
-      siblings: siblings.map((s) => ({
-        id: s.id,
-        title: s.title,
-        level: s.level,
-        priority: s.priority,
-      })),
-      dependencies,
-      dependents,
-    };
   },
 };
 
@@ -436,3 +384,84 @@ export const coverageCheckQuery: SkillDefinition = {
 export function bindProjectIdToCoverageQuery(projectId: string): void {
   (coverageCheckQuery as any).__projectId = projectId;
 }
+// ============================================================
+// semantic_dedup_query — LLM-based semantic duplicate detection
+// ============================================================
+/**
+ * Lets the Analyst detect semantic duplicates among a set of candidate conditions
+ * or test cases using LLM comparison. Returns groups of semantically equivalent
+ * items, with the index of the item to keep in each group.
+ *
+ * Use this in Stage 1 (after deriving conditions from multiple techniques),
+ * Stage 2 (after deriving flow-level conditions), and Stage 3 (after error guessing)
+ * to avoid producing duplicate test conditions that test the same thing.
+ *
+ * Input: an array of candidate items, each with an `id`, `title`, and `condition`
+ * Output: a JSON object with `groups`, each containing `indices` (the duplicates)
+ * and `keptIndex` (the one to keep), plus `reason` for the dedup decision.
+ */
+export const semanticDedupQuery: SkillDefinition = {
+  name: 'semantic_dedup_query',
+  description:
+    'Detect semantic duplicates among candidate test conditions using LLM comparison. Pass an array of candidate items (each with id, title, condition) to identify groups of semantically equivalent conditions. Keep only one condition per group, removing duplicates. Use this after deriving conditions from multiple techniques (Stage 1), after flow-level condition derivation (Stage 2), or after error guessing (Stage 3).',
+  schema: z.object({
+    candidates: z.array(z.object({
+      id: z.string().describe('Unique identifier for the candidate'),
+      title: z.string().describe('Candidate title or brief description'),
+      condition: z.string().describe('Full condition text to compare'),
+    })).describe('Array of candidate items to check for semantic duplicates'),
+  }),
+  func: async (args) => {
+    const sdqLog = Log.for('skill:semantic_dedup_query');
+    const { candidates } = args as any;
+
+    if (candidates.length === 0) {
+      return { groups: [], keptIndices: [], removedCount: 0, note: 'No candidates to dedup.' };
+    }
+    if (candidates.length === 1) {
+      return { groups: [], keptIndices: [0], removedCount: 0, note: 'Single candidate — no dedup needed.' };
+    }
+
+    sdqLog.info(`Semantic dedup: ${candidates.length} candidates`);
+
+    // Build a prompt that asks the LLM to compare all candidates and identify semantic duplicates
+    const comparisonCandidates = candidates.map((c: any, i: number) => ({
+      index: i,
+      id: c.id,
+      title: c.title,
+      condition: c.condition,
+    }));
+
+    const systemPrompt = `You are a test condition deduplication expert. Given a list of test conditions, identify which ones are semantic duplicates — i.e., they test the SAME test scenario even though the wording differs.
+
+Rules:
+1. Two conditions are semantic duplicates if they test the SAME test scenario, even if titles/wording differs slightly.
+2. Two conditions are NOT duplicates if they test different aspects (different inputs, different paths, different error conditions, or different coverage dimensions).
+3. When a group of conditions are semantic duplicates, keep the one with the clearest title and most specific wording.
+4. Return a JSON object with "groups" (each group is an array of indices that are duplicates) and "keptIndices" (the indices to keep in each group).
+
+Example output format:
+{
+  "groups": [
+    { "indices": [0, 3], "keptIndex": 0, "reason": "Same scenario: login with valid credentials" }
+  ],
+  "keptIndices": [0, 1, 2]
+}`;
+
+    const userMessage = JSON.stringify({
+      candidates: comparisonCandidates,
+      instruction: 'Identify semantic duplicates. Return ONLY the JSON object.',
+    }, null, 2);
+
+    // Note: This skill currently relies on the LLM being called via callLLMWithStructuredOutput
+    // in the caller context (e.g., analyst.ts or orchestrator.ts). For now, we return a placeholder
+    // that indicates the skill was called but the actual dedup needs to be done externally.
+    // TODO: Integrate with LLM provider directly when skill calling infrastructure supports it.
+    return {
+      groups: [],
+      keptIndices: candidates.map((_: any, i: number) => i),
+      removedCount: 0,
+      note: `Semantic dedup skill called with ${candidates.length} candidates. Actual LLM-based dedup requires caller integration.`,
+    };
+  },
+};

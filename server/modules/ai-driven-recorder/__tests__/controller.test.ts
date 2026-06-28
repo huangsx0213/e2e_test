@@ -21,6 +21,7 @@ vi.mock('../../nl-cases/repository.ts', () => ({
 
 vi.mock('../../../shared/utils/index.ts', () => ({
   randomId: (prefix: string) => `${prefix}-mock-id`,
+  asId: (value: unknown, prefix: string) => typeof value === 'string' && value.length > 0 ? value : `${prefix}-mock-id`,
 }));
 
 import { AiDrivenRecorderController } from '../controller.ts';

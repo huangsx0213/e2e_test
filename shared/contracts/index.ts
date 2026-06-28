@@ -505,20 +505,28 @@ export const PipelineBusinessFlowBlueprintSchema = z.object({
   steps: z.array(PipelineBusinessFlowBlueprintStepSchema),
 });
 
+export type TestConditionCategory = 'functional' | 'boundary' | 'error' | 'validation' | 'integration';
+export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
+
+// @deprecated Use TestConditionCategory instead. Kept for backward compat during migration.
+export type LegacyTestConditionCategory = 'happy-path' | 'alternate' | 'error' | 'boundary';
+// @deprecated Use RiskLevel (4-value) instead. Kept for backward compat.
+export type LegacyRiskLevel = 'high' | 'medium' | 'low';
+
 export interface TestCondition {
   id: string;
   requirementId: string;
   requirementLevel: 'epic' | 'feature' | 'story' | 'ac';
   condition: string;
-  category: 'happy-path' | 'alternate' | 'error' | 'boundary';
-  riskLevel: 'high' | 'medium' | 'low';
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  dataRequirements?: string;
+  category: TestConditionCategory;
+  riskLevel: RiskLevel;
+  priority: RiskLevel;
+  dataRequirements?: string[];
   dependencies?: string[];
   primaryTechnique: 'equivalence-partitioning' | 'boundary-value-analysis' | 'decision-table' | 'state-transition' | 'use-case';
   secondaryTechniques: string[];
   techniqueRationale: string;
-  coverageDimensions: { dimension: string; variants: string[] }[];
+  coverageDimensions: string[];
 }
 
 export interface NlTestCaseStep {
@@ -590,11 +598,13 @@ export interface CoverageMatrix {
 
 // ============================================================
 // Global Test Blueprint (Architect Agent output, CP0 review)
+// @deprecated Use DirectiveTestStrategy instead.
 // ============================================================
 
 export interface RiskEpicTreeNode {
   epicId: string;
   epicTitle: string;
+  /** @deprecated Use RiskLevel (4-value) */
   riskLevel: 'high' | 'medium' | 'low';
   notes: string;
 }
@@ -604,13 +614,92 @@ export interface AnomalousFlowProposal {
   trigger: string;
   expectedBehavior: string;
   riskLevel: 'high' | 'medium' | 'low';
+  /** @deprecated Not present in old blueprint. Added for DirectiveTestStrategy compat. */
+  affectedRequirementIds?: string[];
 }
 
+/** @deprecated Use DirectiveTestStrategy */
 export interface GlobalTestBlueprint {
   strategicGuidance: string;
   riskEpicTree: RiskEpicTreeNode[];
   anomalousFlowProposals: AnomalousFlowProposal[];
   sharedStateInferences: string[];
+}
+
+// ============================================================
+// DirectiveTestStrategy (Architect v2 output, replaces GlobalTestBlueprint)
+// ============================================================
+
+export interface EpicDirective {
+  epicId: string;
+  epicTitle: string;
+  riskPriority: RiskLevel;
+  riskRationale: string;
+  recommendedTechniques: ('EP' | 'BVA' | 'Decision Table' | 'State Transition' | 'Use Case')[];
+  coverageDirective: 'full' | 'standard' | 'skip';
+  focusAreas: string[];
+}
+
+export interface FlowDirective {
+  flowId: string;
+  flowName: string;
+  integrationFocus: string[];
+  sharedStateConcerns: string[];
+  recommendedTechniques: ('Use Case' | 'State Transition')[];
+}
+
+export interface CrossReferenceMapItem {
+  requirementId: string;
+  sharedByFlowIds: string[];
+  coOccurringReqIds: string[];
+  conflictRisk: 'high' | 'low';
+}
+
+export interface DirectiveAnomalousFlowProposal {
+  title: string;
+  trigger: string;
+  expectedBehavior: string;
+  riskLevel: RiskLevel;
+  affectedRequirementIds: string[];
+}
+
+export interface DirectiveTestStrategy {
+  strategicGuidance: string;
+  sharedStatePresets: string[];
+  crossReferenceMap: CrossReferenceMapItem[];
+  epicDirectives: EpicDirective[];
+  flowDirectives: FlowDirective[];
+  anomalousFlowProposals: DirectiveAnomalousFlowProposal[];
+}
+
+// ============================================================
+// Deviation & CoverageGap records (Quality agent output)
+// ============================================================
+
+export interface DeviationRecord {
+  type: 'technique_mismatch' | 'coverage_gap' | 'missing_preset' | 'category_mismatch';
+  architectDirective: string;
+  actualBehavior: string;
+  rationale: string;
+  severity: 'info' | 'warning';
+  conditionId?: string;
+}
+
+export interface CoverageGapRecord {
+  flowId: string;
+  flowName: string;
+  missedFocus: string;
+  relatedConditionIds: string[];
+}
+
+// ============================================================
+// Dedup result (Orchestrator-level)
+// ============================================================
+
+export interface DedupResult {
+  allCases: NlTestCase[];
+  conflicts: string[];
+  removedCount: number;
 }
 
 // ============================================================

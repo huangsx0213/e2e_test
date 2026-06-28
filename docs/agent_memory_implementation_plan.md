@@ -20,9 +20,9 @@ flowchart TD
     end
 
     subgraph BatchLoop["Per-Batch LangGraph (repeated N times)"]
-        Cache --> Prep["Preparation Node<br/>(TS-only: frequency + coverage)"]
-        Prep --> CP0{"Checkpoint 0<br/>(Review Blueprint)"}
-        CP0 -- Retry / Feedback --> Prep
+        Cache --> Arch["Architect Node<br/>(TS-only: frequency + coverage)"]
+        Arch --> CP0{"Checkpoint 0<br/>(Review Blueprint)"}
+        CP0 -- Retry / Feedback --> Arch
         CP0 -- Approve --> Analyst["Test Analyst Agent<br/>(Stage 1/2/3 Mode Routing)"]
         Analyst --> CP1{"Checkpoint 1<br/>(Review Conditions)"}
         CP1 -- Retry / Feedback --> Analyst
@@ -37,7 +37,7 @@ flowchart TD
 ```
 
 - **Test Architect Agent (Orchestrator-level)**: Runs once before any batch enters the graph. Uses LLM to generate the `GlobalTestBlueprint`. Result is cached in `test_gen_architect_cache` by `(project_id, requirement_hash)`. On re-runs with unchanged requirements, the cached blueprint is loaded without any LLM call.
-- **Preparation Node (Per-batch)**: Simplified to deterministic TS only (frequency scanning, coverage snapshot). Blueprint is already in `state.globalBlueprint` from the orchestrator — fast path, no LLM.
+- **Architect Node (Per-batch)**: Simplified to deterministic TS only (frequency scanning, coverage snapshot). Blueprint is already in `state.globalBlueprint` from the orchestrator — fast path, no LLM.
 - **Checkpoint 0 (Human-in-the-loop)**: Suspends pipeline execution in Interactive Mode, allowing the user to view, edit, or override the generated `Global Test Blueprint` before Analyst conditions are formulated.
 - **Test Analyst Agent (Agent 2)**: Generates conditions based on active mode (Requirements, Flows, Error-Guessing).
 - **Checkpoint 1**: Review and edit Test Conditions.
@@ -110,13 +110,13 @@ To support clean restarts and invalidation when requirements undergo massive mod
 - **Estimated scope**: S (1 file)
 
 #### Task 2.2: Test Architect Agent (Orchestrator-Level Global Blueprint)
-- **Description**: The LLM-driven Architect moves OUT of the per-batch graph and runs **once per pipeline execution** in the Orchestrator (`orchestrator.ts`). The per-batch `preparation.ts` node is simplified to only run deterministic TS (frequency scan, coverage snapshot) — the blueprint arrives pre-populated in `state.globalBlueprint` from the orchestrator.
+- **Description**: The LLM-driven Architect moves OUT of the per-batch graph and runs **once per pipeline execution** in the Orchestrator (`orchestrator.ts`). The per-batch `architect.ts` (原 `preparation.ts`) node is simplified to only run deterministic TS (frequency scan, coverage snapshot) — the blueprint arrives pre-populated in `state.globalBlueprint` from the orchestrator.
 - **Key design changes**:
   - New `ensureGlobalBlueprint()` method in `Orchestrator` class checks `test_gen_architect_cache` by `(projectId, requirementHash)` before calling the LLM.
   - Requirement hash = SHA-256 of all selected requirement IDs + content + flow IDs. Any requirement edit invalidates the cache.
   - New migration `003_architect_cache.ts` creates the `test_gen_architect_cache` table.
   - `forceArchitect?: boolean` added to `StartParams` and `StartConfig` to skip cache on re-run.
-  - `preparation.ts` retains the LLM fallback for the `forceRedesign` edge case (checkpoint 0 retry).
+  - `architect.ts` (原 `preparation.ts`) retains the LLM fallback for the `forceRedesign` edge case (checkpoint 0 retry).
 - **Acceptance criteria**:
   - [ ] On first run, Orchestrator generates blueprint once before batch loop; all batches receive the same blueprint.
   - [ ] On re-run with unchanged requirements, Orchestrator loads blueprint from `test_gen_architect_cache` (zero LLM calls).
@@ -127,7 +127,7 @@ To support clean restarts and invalidation when requirements undergo massive mod
 - **Dependencies**: Task 2.1, new migration 003
 - **Files likely touched**:
   - `server/modules/ai-test-gen/orchestrator.ts` (new `ensureGlobalBlueprint()` method, modified `start()` flow)
-  - `server/modules/ai-test-gen/graph/nodes/preparation.ts` (remove LLM generation, simplify to deterministic only)
+  - `server/modules/ai-test-gen/graph/nodes/architect.ts` (原 `preparation.ts` — remove LLM generation, simplify to deterministic only)
   - `server/modules/ai-test-gen/repository.ts` (add `getCachedBlueprint`, `saveCachedBlueprint`, `deleteCachedBlueprint`, `clearProjectArchitectCache`)
   - `server/modules/ai-test-gen/context.ts` (add `forceArchitect` to `StartParams`)
   - `client/shared/test-gen-run/types.ts` (add `forceArchitect` to `StartConfig`)
