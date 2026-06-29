@@ -18,7 +18,7 @@ import { buildArchitectSystemPrompt, buildArchitectUserMessage } from './graph/p
 import { callLLMWithStructuredOutput } from './graph/nodes/utils.ts';
 import { ANALYST_SKILLS } from './graph/skills/skills.ts';
 import { createArchitectOutputProfile } from './graph/structured-output/architect.ts';
-import type { GlobalTestBlueprint } from '../../../shared/contracts/index.ts';
+import type { GlobalTestBlueprint, ContextBoundary } from '../../../shared/contracts/index.ts';
 import { Log } from '../../shared/services/logger.ts';
 
 function createDummyProvider(): AIProvider {
@@ -98,7 +98,9 @@ export class Orchestrator {
       const filteredFlows = selectedFlowSet.size > 0
         ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
         : allProjectFlows;
-      const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
+      const requirementsMap = new Map(requirements.map((r: any) => [r.id, r]));
+      const allFlowBlueprints = buildBusinessFlowBlueprints({ flows: allProjectFlows, requirementsMap });
+      const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirementsMap });
       log.info(`Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints`);
 
       // 发送准备阶段事件
@@ -122,8 +124,11 @@ export class Orchestrator {
       }
 
       // Global Blueprint: 执行 Architect 一次（不在 per-batch 循环内）
+      // Pass ALL project data (not filtered) so Architect has full global vision
+      // selectedEpicIds is computed from the epic grouping, not raw params.requirementIds
+      const selectedEpicIds = epics.map((e: any) => e.id);
       Log.subsection('Global Blueprint ── Architect (once before batch loop)');
-      const globalBlueprint = await this.ensureGlobalBlueprint(ctx, projectId, params, requirements, businessFlows);
+      const globalBlueprint = await this.ensureGlobalBlueprint(ctx, projectId, params, requirements, allProjectFlows, allFlowBlueprints, selectedEpicIds);
 
       // === 3-Stage Routing ===
       // Stage 1: Requirement batches (STAGE_1_REQUIREMENT)
@@ -522,7 +527,8 @@ export class Orchestrator {
     const filteredFlows = selectedFlowSet.size > 0
       ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
       : allProjectFlows;
-    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
+    const requirementsMap = new Map(requirements.map((r: any) => [r.id, r]));
+    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows, requirementsMap });
 
     const globalBlueprint = pipelineRepo.getGlobalBlueprint(runId);
 
@@ -619,6 +625,7 @@ export class Orchestrator {
         projectContext: { name: `Flows: ${flowNames}`, pages: [], endpoints: [] },
         businessFlowBlueprints: businessFlows,
         selectedFlowIds: filteredFlows.map(f => f.id),
+        selectionBoundary: { selectedEpicIds: params.requirementIds ?? [], selectedFlowIds: params.flowIds ?? [] },
         phase: 'analysis' as const,
         analystMode: 'STAGE_2_FLOW' as const,
         errors: [],
@@ -650,6 +657,7 @@ export class Orchestrator {
         projectContext: { name: 'Error Guessing', pages: [], endpoints: [] },
         businessFlowBlueprints: businessFlows,
         selectedFlowIds: [],
+        selectionBoundary: { selectedEpicIds: params.requirementIds ?? [], selectedFlowIds: params.flowIds ?? [] },
         phase: 'analysis' as const,
         analystMode: 'STAGE_3_ERROR_GUESSING' as const,
         errors: [],
@@ -659,14 +667,14 @@ export class Orchestrator {
     return [batch];
   }
 
-  private computeRequirementHash(params: StartParams, requirements: any[]): string {
-    const sortedReqIds = [...(params.requirementIds || [])].sort();
-    const sortedFlowIds = [...(params.flowIds || [])].sort();
-    const selectedReqs = requirements
-      .filter((r: any) => sortedReqIds.includes(r.id))
+  private computeRequirementHash(requirements: any[], allFlows: any[]): string {
+    const sortedReqs = [...requirements]
       .map((r: any) => ({ id: r.id, title: r.title, description: r.description ?? '' }))
       .sort((a: any, b: any) => a.id.localeCompare(b.id));
-    const hashInput = { requirementIds: sortedReqIds, requirements: selectedReqs, flowIds: sortedFlowIds };
+    const sortedFlows = [...allFlows]
+      .map((f: any) => ({ id: f.id, name: f.name, steps: f.steps ?? [] }))
+      .sort((a: any, b: any) => a.id.localeCompare(b.id));
+    const hashInput = { requirements: sortedReqs, flows: sortedFlows };
     return createHash('sha256').update(JSON.stringify(hashInput)).digest('hex');
   }
 
@@ -675,28 +683,42 @@ export class Orchestrator {
     projectId: string,
     params: StartParams,
     allRequirements: any[],
-    businessFlows: any[],
+    allProjectFlows: any[],
+    allFlowBlueprints: any[],
+    computedSelectedEpicIds?: string[],
   ): Promise<GlobalTestBlueprint | undefined> {
     const log = Log.for('orchestrator');
-    const hash = this.computeRequirementHash(params, allRequirements);
+    const hash = this.computeRequirementHash(allRequirements, allProjectFlows);
 
     // 1. Check DB cache
     if (!params.forceArchitect) {
       const cached = pipelineRepo.getCachedBlueprint(projectId, hash);
       if (cached) {
         log.info(`Architect: cache HIT ── reusing cached blueprint (hash=${hash.slice(0, 12)}...)`);
+        const normalized = this.normalizeGlobalBlueprint(cached, computedSelectedEpicIds ?? params.requirementIds ?? [], params.flowIds ?? []);
+
+        // Deterministic dependency-warning backfill for cached blueprints too
+        const cachedWarnings = normalized.contextBoundary?.dependencyWarning ?? [];
+        const selectedIds = computedSelectedEpicIds ?? params.requirementIds ?? [];
+        const deterministicWarnings = this.computeDependencyWarnings(allRequirements, selectedIds, cachedWarnings);
+        if (deterministicWarnings.length > cachedWarnings.length) {
+          log.info(`dependencyWarning backfill (cached): ${cachedWarnings.length} → ${deterministicWarnings.length}`);
+          normalized.contextBoundary.dependencyWarning = deterministicWarnings;
+        }
+
         ctx.scope.recordAgentStart('test_architect');
         ctx.scope.recordAgentComplete('test_architect', {
           tokenUsage: { input: 0, output: 0, reasoning: 0 },
           latencyMs: 0,
-          outputData: cached,
+          outputData: normalized,
         });
-        pipelineRepo.saveGlobalBlueprint(ctx.runId, cached);
-        return cached as GlobalTestBlueprint;
+        pipelineRepo.saveGlobalBlueprint(ctx.runId, normalized);
+        return normalized;
       }
     }
 
     log.info(`Architect: cache MISS${params.forceArchitect ? ' (forceArchitect=true)' : ''} ── generating via LLM...`);
+    log.info(`Architect input: ${allRequirements.length} reqs (${params.requirementIds?.length ?? 0} selected), ${allProjectFlows.length} flows (${params.flowIds?.length ?? 0} selected)`);
     ctx.sendEvent('phase:start', { phase: 'preparation', message: 'Generating Global Test Blueprint...' });
     ctx.scope.recordAgentStart('test_architect');
 
@@ -708,25 +730,28 @@ export class Orchestrator {
       technique: row.technique,
       testCaseIds: row.test_case_ids ?? [],
     }));
-    const sortedReqIds = [...(params.requirementIds || [])].sort();
-    const allSelectedReqs = allRequirements
-      .filter((r: any) => sortedReqIds.includes(r.id))
-      .map((r: any) => ({ id: r.id, title: r.title, level: r.level ?? 'story', parentId: r.parentId ?? '' }));
 
-    // 3. Build synthetic state for architect prompts
+    // 3. Build synthetic state for architect prompts — include ALL data + selection boundary
+    // Use computed epic IDs (from groupRequirementsByEpic) not raw params.requirementIds
+    const selectedEpicIds = computedSelectedEpicIds ?? params.requirementIds ?? [];
+    const selectedFlowIds = params.flowIds ?? [];
+    const allEpicItems = allRequirements
+      .filter((r: any) => r.level === 'epic')
+      .map((r: any) => ({ id: r.id, title: r.title, level: r.level ?? 'epic', parentId: r.parentId ?? '' }));
     const syntheticState: Partial<TestGenState> = {
       projectId,
-      currentBatch: allSelectedReqs,
+      currentBatch: allEpicItems as any,
       batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
       projectContext: { name: projectId, pages: [], endpoints: [] },
-      businessFlowBlueprints: businessFlows as any,
+      businessFlowBlueprints: allFlowBlueprints as any,
       coverageSnapshot: coverageSnapshot as any,
+      selectionBoundary: { selectedEpicIds, selectedFlowIds },
     };
 
     // 4. Generate blueprint via LLM
     const override = pipelineRepo.getPromptOverride(projectId, 'test_architect');
     const systemPrompt = buildArchitectSystemPrompt(syntheticState as TestGenState, override?.custom_prompt ?? undefined);
-    const userMessage = buildArchitectUserMessage(syntheticState as TestGenState);
+    const userMessage = buildArchitectUserMessage(syntheticState as TestGenState, allRequirements, allFlowBlueprints);
     const outputProfile = createArchitectOutputProfile();
 
     const architectMessages = [
@@ -749,6 +774,15 @@ export class Orchestrator {
     const architectLatencyMs = Date.now() - architectStartTime;
 
     const globalBlueprint = blueprint as GlobalTestBlueprint;
+
+    // 4b. Deterministic dependency-warning backfill (override LLM omissions)
+    const llmWarnings = globalBlueprint.contextBoundary?.dependencyWarning ?? [];
+    const deterministicWarnings = this.computeDependencyWarnings(allRequirements, selectedEpicIds, llmWarnings);
+    if (deterministicWarnings.length > llmWarnings.length) {
+      log.info(`dependencyWarning backfill: LLM=${llmWarnings.length}, deterministic=${deterministicWarnings.length} ── overriding`);
+      globalBlueprint.contextBoundary.dependencyWarning = deterministicWarnings;
+    }
+
     const riskCount = globalBlueprint.riskEpicTree?.length ?? 0;
     const anomalyCount = globalBlueprint.anomalousFlowProposals?.length ?? 0;
     log.success(`Blueprint generated ── ${riskCount} risk epics, ${anomalyCount} anomalous flows`);
@@ -792,10 +826,77 @@ export class Orchestrator {
       projectContext: { name: epic.title, pages: [], endpoints: [] },
       businessFlowBlueprints: businessFlows,
       selectedFlowIds,
+      selectionBoundary: { selectedEpicIds: requirementIds, selectedFlowIds },
       phase: 'analysis' as const,
       analystMode,
       errors: [],
       globalBlueprint,
     };
+  }
+
+  /** Deterministically compute dependencyWarning from requirement data.
+   *  Dependencies are only allowed on story-level requirements (validation enforces this).
+   *  For each story belonging to a selected epic, check if its `dependencies`
+   *  reference stories in unselected epics. Merge any found into the warning.
+   */
+  private computeDependencyWarnings(
+    allRequirements: any[],
+    selectedEpicIds: string[],
+    llmWarnings: string[],
+  ): string[] {
+    const selectedSet = new Set(selectedEpicIds);
+    const reqById = new Map<string, any>();
+    const epicMap = new Map<string, string>();
+
+    for (const req of allRequirements) {
+      reqById.set(req.id, req);
+      if (req.level === 'epic') {
+        epicMap.set(req.id, req.id);
+      }
+    }
+
+    // Resolve each non-epic requirement to its root epic via parentId chain
+    for (const req of allRequirements) {
+      if (epicMap.has(req.id)) continue;
+      let cur: any = req;
+      const visited = new Set<string>();
+      while (cur.parentId && !epicMap.has(cur.id)) {
+        if (!visited.add(cur.id)) break;
+        cur = reqById.get(cur.parentId);
+        if (!cur) break;
+      }
+      const rootEpicId = epicMap.get(cur.id);
+      if (rootEpicId) epicMap.set(req.id, rootEpicId);
+    }
+
+    const warnings = new Set(llmWarnings);
+
+    for (const req of allRequirements) {
+      const reqEpicId = epicMap.get(req.id);
+      if (!reqEpicId || !selectedSet.has(reqEpicId)) continue;
+      for (const depId of req.dependencies ?? []) {
+        const depEpicId = epicMap.get(depId);
+        if (depEpicId && !selectedSet.has(depEpicId)) {
+          warnings.add(depEpicId);
+        }
+      }
+    }
+
+    return Array.from(warnings);
+  }
+
+  /** Ensure backward compatibility for cached blueprints without contextBoundary */
+  private normalizeGlobalBlueprint(bp: any, selectedEpicIds: string[], selectedFlowIds: string[]): GlobalTestBlueprint {
+    if (!bp.contextBoundary) {
+      const allEpicIds = bp.riskEpicTree?.map((n: any) => n.epicId) ?? selectedEpicIds;
+      bp.contextBoundary = {
+        selectedEpicIds,
+        selectedFlowIds,
+        allEpicIds,
+        allFlowIds: selectedFlowIds,
+        dependencyWarning: [],
+      };
+    }
+    return bp as GlobalTestBlueprint;
   }
 }

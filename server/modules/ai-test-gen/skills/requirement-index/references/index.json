@@ -26,7 +26,7 @@
   {
     "id": "req-aut-auth-login",
     "title": "Login Authentication",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-auth",
     "dependencies": [],
     "summary": "The system must validate administrator credentials and provide clear feedback on each authentication attempt.",
@@ -51,7 +51,7 @@
   {
     "id": "req-aut-auth-login-valid",
     "title": "Valid Login",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-auth-login",
     "dependencies": [],
     "summary": "An administrator submits valid credentials and the system authenticates the user and grants access to the application.",
@@ -75,7 +75,7 @@
   {
     "id": "req-aut-auth-login-valid-success",
     "title": "Successful authentication grants access",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-login-valid",
     "dependencies": [],
     "summary": "When valid credentials are submitted, the system authenticates the administrator and redirects to the main application.\nUrl: http://localhost:3000/aut/login\nUsername: admin\nPassword: admin123",
@@ -95,7 +95,7 @@
   {
     "id": "req-aut-auth-login-invalid",
     "title": "Invalid Login Validation",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-auth-login",
     "dependencies": [],
     "summary": "The system must reject authentication attempts with missing or incorrect credentials and provide clear error feedback.",
@@ -119,7 +119,7 @@
   {
     "id": "req-aut-auth-login-invalid-empty",
     "title": "Empty credentials rejected",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-login-invalid",
     "dependencies": [],
     "summary": "When the administrator submits the login form without entering credentials, the system rejects the attempt and displays a clear error message.",
@@ -141,7 +141,7 @@
   {
     "id": "req-aut-auth-login-invalid-wrong",
     "title": "Wrong credentials rejected",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-login-invalid",
     "dependencies": [],
     "summary": "When the administrator submits incorrect username or password, the system rejects the attempt and displays an invalid credentials error message.",
@@ -164,7 +164,7 @@
   {
     "id": "req-aut-auth-login-feedback",
     "title": "Login Attempt Feedback",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-auth-login",
     "dependencies": [],
     "summary": "The system must provide feedback during and after each authentication attempt so the administrator knows the operation status.",
@@ -187,7 +187,7 @@
   {
     "id": "req-aut-auth-login-feedback-loading",
     "title": "Loading state during authentication",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-login-feedback",
     "dependencies": [],
     "summary": "While authentication is in progress, the system indicates the operation is being processed and prevents duplicate submissions.",
@@ -208,7 +208,7 @@
   {
     "id": "req-aut-auth-session",
     "title": "Session Management",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-auth",
     "dependencies": [],
     "summary": "The system must establish a session on successful login and terminate it on sign out.",
@@ -232,9 +232,11 @@
   {
     "id": "req-aut-auth-session-establish",
     "title": "Session Establishment",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-auth-session",
-    "dependencies": [],
+    "dependencies": [
+      "req-aut-auth-login-valid"
+    ],
     "summary": "On successful authentication, the system establishes a session that allows the administrator to access protected areas of the application.",
     "tags": [
       "auth",
@@ -253,7 +255,7 @@
   {
     "id": "req-aut-auth-session-establish-created",
     "title": "Session created on successful login",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-session-establish",
     "dependencies": [],
     "summary": "After valid credentials are accepted, a session is created and the administrator is redirected to the main application.",
@@ -272,9 +274,11 @@
   {
     "id": "req-aut-auth-session-terminate",
     "title": "Session Termination",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-auth-session",
-    "dependencies": [],
+    "dependencies": [
+      "req-aut-auth-login-valid"
+    ],
     "summary": "The administrator can sign out, which terminates the current session and prevents further access to protected areas.",
     "tags": [
       "session",
@@ -294,7 +298,7 @@
   {
     "id": "req-aut-auth-session-terminate-clear",
     "title": "Sign out clears session",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-auth-session-terminate",
     "dependencies": [],
     "summary": "When the administrator signs out, the session is invalidated and the user is redirected to the login page.",
@@ -340,7 +344,7 @@
   {
     "id": "req-aut-users-directory",
     "title": "User Directory",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-users",
     "dependencies": [],
     "summary": "The system must provide a searchable, sortable list of all user accounts with their key attributes.",
@@ -366,9 +370,11 @@
   {
     "id": "req-aut-users-directory-list",
     "title": "User List Display",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-directory",
-    "dependencies": [],
+    "dependencies": [
+      "req-aut-auth-login-valid"
+    ],
     "summary": "The system displays all user accounts with their name, email, role, status, and timestamps.",
     "tags": [
       "email",
@@ -392,7 +398,7 @@
   {
     "id": "req-aut-users-directory-list-attributes",
     "title": "All users visible with key attributes",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-directory-list",
     "dependencies": [],
     "summary": "Each user record shows name, email, role, status, creation date, and last modification date.",
@@ -413,7 +419,7 @@
   {
     "id": "req-aut-users-directory-search",
     "title": "User Search & Filter",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-directory",
     "dependencies": [],
     "summary": "The system allows administrators to search users by name and filter by role and status.",
@@ -440,7 +446,7 @@
   {
     "id": "req-aut-users-directory-search-name",
     "title": "Search by name filters list",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-directory-search",
     "dependencies": [],
     "summary": "Entering a name in the search field and applying the filter narrows the user list to matching records.",
@@ -461,7 +467,7 @@
   {
     "id": "req-aut-users-directory-search-filter",
     "title": "Filter by role and status",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-directory-search",
     "dependencies": [],
     "summary": "Selecting a role and/or status and applying the filter narrows the user list to matching records; resetting clears all filters.",
@@ -483,7 +489,7 @@
   {
     "id": "req-aut-users-directory-sort",
     "title": "List Sorting",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-directory",
     "dependencies": [],
     "summary": "The system allows administrators to sort the user list by multiple columns in ascending or descending order.",
@@ -506,7 +512,7 @@
   {
     "id": "req-aut-users-directory-sort-columns",
     "title": "Sortable by multiple columns",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-directory-sort",
     "dependencies": [],
     "summary": "Clicking a column header toggles between ascending and descending sort order for that column.",
@@ -526,7 +532,7 @@
   {
     "id": "req-aut-users-crud",
     "title": "User CRUD Operations",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-users",
     "dependencies": [],
     "summary": "The system must allow administrators to create, read, update, suspend, and delete user accounts, including batch operations.",
@@ -553,7 +559,7 @@
   {
     "id": "req-aut-users-crud-create",
     "title": "Create User",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-crud",
     "dependencies": [],
     "summary": "An administrator can create a new user account by providing the required personal and role information.",
@@ -578,7 +584,7 @@
   {
     "id": "req-aut-users-crud-create-fields",
     "title": "New user created with required fields",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-create",
     "dependencies": [],
     "summary": "Providing full name, email, role, and status and saving creates a new user account that appears in the user list.",
@@ -601,7 +607,7 @@
   {
     "id": "req-aut-users-crud-update",
     "title": "Update User",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-crud",
     "dependencies": [],
     "summary": "An administrator can modify an existing user's personal details, job information, security settings, and permissions.",
@@ -626,7 +632,7 @@
   {
     "id": "req-aut-users-crud-update-fields",
     "title": "Existing user fields modifiable",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-update",
     "dependencies": [],
     "summary": "Opening an existing user allows the administrator to update personal, job, and security fields; saving persists the changes and reflects them in the user list.",
@@ -648,7 +654,7 @@
   {
     "id": "req-aut-users-crud-delete",
     "title": "Delete User",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-crud",
     "dependencies": [],
     "summary": "An administrator can permanently delete a user account after confirming the destructive action.",
@@ -671,7 +677,7 @@
   {
     "id": "req-aut-users-crud-delete-removed",
     "title": "User permanently removed",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-delete",
     "dependencies": [],
     "summary": "After confirming deletion, the user is removed from the system and no longer appears in the user list.",
@@ -692,7 +698,7 @@
   {
     "id": "req-aut-users-crud-status",
     "title": "User Status Management",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-crud",
     "dependencies": [],
     "summary": "An administrator can suspend an active user and activate a suspended user without deleting the account.",
@@ -716,7 +722,7 @@
   {
     "id": "req-aut-users-crud-status-suspend",
     "title": "Suspend active user",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-status",
     "dependencies": [],
     "summary": "Suspending an active user changes their status to inactive, preventing them from accessing the system.",
@@ -737,7 +743,7 @@
   {
     "id": "req-aut-users-crud-status-activate",
     "title": "Activate suspended user",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-status",
     "dependencies": [],
     "summary": "Activating a suspended user changes their status to active, restoring their access to the system.",
@@ -758,7 +764,7 @@
   {
     "id": "req-aut-users-crud-batch",
     "title": "Batch Operations",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-users-crud",
     "dependencies": [],
     "summary": "An administrator can select multiple users and perform bulk activation or deletion.",
@@ -782,7 +788,7 @@
   {
     "id": "req-aut-users-crud-batch-activate",
     "title": "Bulk activate users",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-batch",
     "dependencies": [],
     "summary": "Selecting multiple inactive users and activating them changes all selected users to active status.",
@@ -803,7 +809,7 @@
   {
     "id": "req-aut-users-crud-batch-delete",
     "title": "Bulk delete users",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-users-crud-batch",
     "dependencies": [],
     "summary": "Selecting multiple users and deleting them removes all selected users from the system after confirmation.",
@@ -848,7 +854,7 @@
   {
     "id": "req-aut-dashboard-overview",
     "title": "Dashboard Overview",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-dashboard",
     "dependencies": [],
     "summary": "The dashboard must display a personalized welcome and quick navigation to key functions.",
@@ -870,7 +876,7 @@
   {
     "id": "req-aut-dashboard-overview-welcome",
     "title": "Welcome Content",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-dashboard-overview",
     "dependencies": [],
     "summary": "The dashboard displays a personalized welcome message to the authenticated administrator.",
@@ -894,7 +900,7 @@
   {
     "id": "req-aut-dashboard-overview-welcome-message",
     "title": "Personalized welcome message",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-dashboard-overview-welcome",
     "dependencies": [],
     "summary": "The dashboard shows a welcome message addressing the authenticated administrator by name.",
@@ -913,7 +919,7 @@
   {
     "id": "req-aut-dashboard-overview-nav",
     "title": "Quick Navigation",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-dashboard-overview",
     "dependencies": [],
     "summary": "The dashboard provides quick links to key functions such as user management and reports.",
@@ -937,7 +943,7 @@
   {
     "id": "req-aut-dashboard-overview-nav-links",
     "title": "Quick links to key functions",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-dashboard-overview-nav",
     "dependencies": [],
     "summary": "The dashboard provides navigation links to User Management and Reports accessible to the authenticated administrator.",
@@ -959,7 +965,7 @@
   {
     "id": "req-aut-dashboard-status",
     "title": "System Status Monitoring",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-dashboard",
     "dependencies": [],
     "summary": "The dashboard must display key system statistics and health indicators.",
@@ -983,7 +989,7 @@
   {
     "id": "req-aut-dashboard-status-users",
     "title": "User Count Statistics",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-dashboard-status",
     "dependencies": [],
     "summary": "The dashboard displays the total number of registered users in the system.",
@@ -1008,7 +1014,7 @@
   {
     "id": "req-aut-dashboard-status-users-count",
     "title": "Total user count displayed",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-dashboard-status-users",
     "dependencies": [],
     "summary": "The dashboard shows the current total number of users registered in the system.",
@@ -1030,7 +1036,7 @@
   {
     "id": "req-aut-dashboard-status-health",
     "title": "System Health Indicator",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-dashboard-status",
     "dependencies": [],
     "summary": "The dashboard displays the current operational status of the system.",
@@ -1053,7 +1059,7 @@
   {
     "id": "req-aut-dashboard-status-health-operational",
     "title": "Operational status displayed",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-dashboard-status-health",
     "dependencies": [],
     "summary": "The dashboard shows whether the system is operational, allowing administrators to quickly assess system health.",
@@ -1099,7 +1105,7 @@
   {
     "id": "req-aut-reports-metrics",
     "title": "User Metrics Reports",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-reports",
     "dependencies": [],
     "summary": "The system must provide reports on user role distribution and account status metrics.",
@@ -1124,7 +1130,7 @@
   {
     "id": "req-aut-reports-metrics-roles",
     "title": "User Role Distribution",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-reports-metrics",
     "dependencies": [],
     "summary": "The system provides a breakdown of users by their assigned role.",
@@ -1148,7 +1154,7 @@
   {
     "id": "req-aut-reports-metrics-roles-breakdown",
     "title": "Role distribution breakdown",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-reports-metrics-roles",
     "dependencies": [],
     "summary": "The report shows the count and proportion of users for each role in the system.",
@@ -1170,7 +1176,7 @@
   {
     "id": "req-aut-reports-metrics-status",
     "title": "User Status Metrics",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-reports-metrics",
     "dependencies": [],
     "summary": "The system provides metrics on active versus inactive user accounts.",
@@ -1193,7 +1199,7 @@
   {
     "id": "req-aut-reports-metrics-status-counts",
     "title": "Active vs inactive user counts",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-reports-metrics-status",
     "dependencies": [],
     "summary": "The report shows the total number of active accounts and the engagement rate of the user base.",
@@ -1214,7 +1220,7 @@
   {
     "id": "req-aut-reports-dept",
     "title": "Department Analytics",
-    "level": 0,
+    "level": 1,
     "parent": "req-aut-reports",
     "dependencies": [],
     "summary": "The system must provide reports on user distribution by department, with export capability.",
@@ -1237,7 +1243,7 @@
   {
     "id": "req-aut-reports-dept-distribution",
     "title": "Department Distribution & Export",
-    "level": 0,
+    "level": 2,
     "parent": "req-aut-reports-dept",
     "dependencies": [],
     "summary": "The system provides a breakdown of users by department and allows exporting user data.",
@@ -1263,7 +1269,7 @@
   {
     "id": "req-aut-reports-dept-distribution-counts",
     "title": "Department user counts",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-reports-dept-distribution",
     "dependencies": [],
     "summary": "The report shows the number of users in each department.",
@@ -1284,7 +1290,7 @@
   {
     "id": "req-aut-reports-dept-distribution-export",
     "title": "Report exportable",
-    "level": 0,
+    "level": 3,
     "parent": "req-aut-reports-dept-distribution",
     "dependencies": [],
     "summary": "An administrator can export a user's data as a downloadable file for offline analysis.",

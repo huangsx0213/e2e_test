@@ -20,6 +20,7 @@ export interface BatchInput {
     projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
     businessFlowBlueprints: any[] | undefined;
     selectedFlowIds: string[];
+    selectionBoundary?: { selectedEpicIds: string[]; selectedFlowIds: string[] };
     phase: TestGenState['phase'];
     analystMode?: 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING';
     errors: any[];

@@ -166,6 +166,13 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
     } else if (!globalBlueprint) {
       log.warn('No provider and no pre-populated blueprint ── emitting stub');
       globalBlueprint = {
+        contextBoundary: {
+          selectedEpicIds: [],
+          selectedFlowIds: [],
+          allEpicIds: [],
+          allFlowIds: [],
+          dependencyWarning: [],
+        },
         strategicGuidance: 'Stub blueprint: no LLM provider configured. Configure a provider to enable Architect blueprinting.',
         riskEpicTree: [],
         anomalousFlowProposals: [],

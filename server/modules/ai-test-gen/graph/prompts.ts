@@ -11,15 +11,33 @@ export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: str
   const batch = state.batchContext;
   const analystMode = state.analystMode || 'STAGE_1_REQUIREMENT';
   const hasBlueprint = !!state.globalBlueprint;
-  const blueprintGuidance = hasBlueprint && state.globalBlueprint
-    ? `\n## Global Test Blueprint (from Test Architect — READ FIRST)\n${JSON.stringify(state.globalBlueprint, null, 2)}\n`
-    : '';
+  const bp = state.globalBlueprint;
+  const hasContextBoundary = hasBlueprint && bp && 'contextBoundary' in bp;
+  const blueprintGuidance = hasContextBoundary
+    ? `\n## Global Test Blueprint — CONTEXT ONLY\n\nThe Blueprint below contains project-wide context. Follow these rules:\n\n1. contextBoundary.selectedEpicIds + selectedFlowIds → Your test targets. Generate conditions for these ONLY.
+   - If this batch is STAGE_2_FLOW: the flow's referenced requirements that are NOT in selectedEpicIds are for context only. Do NOT generate conditions for them.\n\n2. contextBoundary.dependencyWarning → Precondition setup only. Add these as preconditions. NEVER generate conditions for them.\n\n3. riskEpicTree entries outside selected IDs → Risk calibration only. Use them to adjust priority of in-scope items.\n\n4. sharedStateInferences → Add to preconditions array. NEVER generate conditions.\n\n5. anomalousFlowProposals:\n   - routing=stage-3 → SKIP (Stage 3 will handle)\n   - routing=stage-1/2 → generate if within current batch scope\n\n★ IRON RULE: Never generate a test condition for a requirement or flow that is outside this batch's scope.\n\n### contextBoundary\n${JSON.stringify(bp!.contextBoundary, null, 2)}\n\n### strategicGuidance\n${bp!.strategicGuidance}\n\n### riskEpicTree (ALL epics scored — only generate for YOUR selected IDs)\n${JSON.stringify(bp!.riskEpicTree, null, 2)}\n\n### anomalousFlowProposals (routing indicates handler)\n${JSON.stringify(bp!.anomalousFlowProposals, null, 2)}\n\n### sharedStateInferences (precondition only)\n${JSON.stringify(bp!.sharedStateInferences, null, 2)}\n`
+    : hasBlueprint && bp
+      ? `\n## Global Test Blueprint (from Test Architect — READ FIRST)\n${JSON.stringify(bp, null, 2)}\n`
+      : '';
   const coverageHint = (state.coverageSnapshot?.length ?? 0) > 0
     ? `\n## Existing Coverage (persistent matrix)\n${state.coverageSnapshot!.length} condition(s) already covered in prior runs. Call **coverage_check_query** to see them, and AVOID re-deriving conditions that match existing conditionHash+technique pairs.\n`
     : '';
 
   const stageInstructions = buildStageInstructions(analystMode, state);
   const workflowSteps = buildWorkflowSteps(analystMode, state);
+
+  const techniqueTable = analystMode === 'STAGE_2_FLOW'
+    ? `| Technique | Use when... |
+|---|---|
+| Use Case | The flow itself is the use case — **MUST** be primary technique for every condition. |
+| State Transition | The flow involves entity lifecycle changes — **MAY** be secondary technique. |`
+    : `| Technique | Use when... |
+|---|---|
+| Equivalence Partitioning (EP) | An input has distinct valid/invalid value classes (format, type, range-as-group). |
+| Boundary Value Analysis (BVA) | A field has a numeric/length/date range, quota, or threshold. Always pair with EP on the same field. |
+| Decision Table | An outcome depends on 2+ independent conditions combining (pricing, eligibility, permissions, approval routing). |
+| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state). |
+| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input. |`;
 
   return `You are a senior ISTQB Test Analyst (CTFL/CTAL Test Analyst level). Perform risk-based analysis of the input and derive a complete, non-redundant set of test conditions using formal ISTQB black-box test design techniques.
 
@@ -44,36 +62,30 @@ Rate each ${analystMode === 'STAGE_2_FLOW' ? 'flow' : 'requirement'} on TWO inde
 \`critical\` priority requires BOTH axes high. Routine CRUD or display-only items are usually \`medium\`/\`low\` — do not inflate everything to \`high\`/\`critical\`.
 
 ## Technique Selection (decision rule, not habit)
-| Technique | Use when... |
-|---|--:--|
-| Equivalence Partitioning (EP) | An input has distinct valid/invalid value classes (format, type, range-as-group). |
-| Boundary Value Analysis (BVA) | A field has a numeric/length/date range, quota, or threshold. Always pair with EP on the same field. |
-| Decision Table | An outcome depends on 2+ independent conditions combining (pricing, eligibility, permissions, approval routing). |
-| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state)${analystMode === 'STAGE_2_FLOW' ? ' — true of nearly every flow; treat as the default secondary technique unless the flow is genuinely stateless' : ''}. |
-| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input${analystMode === 'STAGE_2_FLOW' ? ' — this is the default primary technique for flow-level conditions, since the flow itself is the use case' : ''}. |
+${techniqueTable}
 
-Pick the technique with the strongest fit; do not force a weak match. Record \`secondaryTechniques\` only when genuinely applicable, and justify each choice in \`techniqueRationale\` by naming the specific characteristic that triggered it (e.g., "Decision Table because role AND resource-type jointly determine access").
+Pick the technique with the strongest fit; do not force a weak match. Record \`secondaryTechniques\` only when genuinely applicable, and justify each choice in \`techniqueRationale\` by naming the specific characteristic that triggered it.
 
-## Coverage Rules (apply per technique used — these are hard requirements, not suggestions)
-- **EP**: never output only the valid partition. Every EP-derived requirement/flow-step must have a valid-partition condition AND at least one invalid-partition condition, kept as separate conditions (never merged).
-- **BVA**: the \`condition\` text must name the actual boundary and its position (e.g., "exactly at the 100-character limit", "one below the minimum") — never vague phrasing like "test with large input".
-- **Decision Table**: conditions must collectively cover every business-relevant rule (condition combination), including the "no rule matches" / default case where one exists.
-- **State Transition**: include at least one invalid/disallowed transition per modeled entity, not only happy-path transitions — invalid transitions are high-value ISTQB tests that expose authorization and data-integrity bugs.
-- **Every requirement/flow** (regardless of technique): at least one condition must sit outside the pure happy path — in \`error\`, \`boundary\`, or \`validation\` category. A requirement covered only by functional/happy-path conditions is under-tested.
+## Coverage Rules (${analystMode === 'STAGE_2_FLOW' ? 'applies to Use Case + State Transition only' : 'apply per technique used — hard requirements'})
+${analystMode !== 'STAGE_2_FLOW' ? `- **EP**: never output only the valid partition. Every EP-derived item must have a valid-partition condition AND at least one invalid-partition condition, kept as separate conditions (never merged).
+- **BVA**: the \`condition\` text must name the actual boundary and its position — never vague phrasing like "test with large input".
+- **Decision Table**: conditions must collectively cover every business-relevant rule, including the "no rule matches" / default case where one exists.` : ''}
+- **State Transition**: include at least one invalid/disallowed transition per modeled entity, not only happy-path transitions.
+- **Every requirement/flow** (regardless of technique): at least one condition must sit outside the pure happy path — in \`error\`, \`boundary\`, \`validation\`, or \`integration\` category.
 
 ## Sizing & Hygiene
-- Default to 2-4 conditions per requirement, but let the technique drive the real number: a Decision Table with 4 meaningful rules needs 4 conditions; a single bounded field needs both its lower and upper boundary covered. Never under-cover a technique just to hit a round number.
+- Default to 2-4 conditions per requirement, but let the technique drive the real number. Never under-cover a technique just to hit a round number.
 - Merge near-duplicate conditions that test the same aspect with only data variants — but never merge a valid-partition condition into an invalid-partition one.
-- Every condition traces to exactly one source \`requirementId\` taken verbatim from the input. Do not invent conditions unrelated to the supplied requirements.
+- Every condition traces to exactly one source \`requirementId\` from the input.
 
 ## Definition of a Well-Formed Test Condition
 Testable, atomic, traceable:
-- Names a single, specific, verifiable circumstance ("login is rejected when the password field is empty", not "test login").
+- Names a single, specific, verifiable circumstance (not a vague "test X" phrase).
 - Describes WHAT to verify, independent of HOW it will later be implemented as UI/API steps.
 - Is distinguishable from every other condition — no two conditions should be satisfied by the same test.
 
 ## Required Fields
-For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, \`dependencies\`. \`requirementId\` must be the exact source requirement ID supplied in the input — never paraphrased or omitted, even when several conditions share the same requirement. \`category\` must be explicitly set on every condition (functional, boundary, error, validation, integration) — never left implicit.
+For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, \`dependencies\`. \`requirementId\` must be the exact source requirement ID — never paraphrased or omitted. \`category\` must be explicitly set on every condition — never left implicit.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: requirement details — single ID or array for batch query.
@@ -85,59 +97,35 @@ For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`re
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-Stream your analysis as plain text in markdown (short headings, blank-line-separated sections, bullets). For at least the highest-risk items, briefly state the risk rating and which Technique Selection rule justified your primary technique.
-
-After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+Stream your analysis as plain text in markdown. End with a single JSON code block containing the COMPLETE structured output.
 
 \`\`\`json
 {
   "requirementAnalysis": {
-    "overallApproach": "Derived 2-4 requirement-focused test conditions per item, using Equivalence Partitioning and Boundary Value Analysis for empty/whitespace validation, Decision Table Testing for credential outcome combinations, State Transition Testing for authentication and session lifecycle behavior, and Use Case Testing for the end-to-end login-to-dashboard flow.",
-    "riskAssessmentSummary": "Authentication and session management combine high likelihood of edge-case defects (complex state, many dependents) with high impact (unauthorized access, data exposure), so they are rated critical/high risk. Loading feedback has low likelihood of defects and low impact if wrong, so it is rated medium at most."
+    "overallApproach": "Summary of techniques applied and rationale.",
+    "riskAssessmentSummary": "Summary of highest-risk items and why."
   },
   "testConditions": [
     {
       "id": "C-001", "requirementId": "REQ-001",
-      "condition": "Verify that submitting valid administrator credentials authenticates successfully and redirects the user to the main application/dashboard.",
+      "condition": "Verifiable circumstance description.",
       "category": "functional",
-      "priority": "critical",
-      "riskLevel": "critical",
-      "primaryTechnique": "Use Case Testing",
-      "secondaryTechniques": ["State Transition Testing", "Equivalence Partitioning"],
-      "techniqueRationale": "Multi-step end-to-end user goal (login submission through dashboard redirect) — strongest fit is Use Case Testing. State Transition confirms the unauthenticated-to-authenticated move; EP represents the valid credential partition.",
-      "coverageDimensions": ["authentication", "positive", "redirect", "access-control"],
-      "dataRequirements": ["valid username: admin", "valid password: admin123"],
-      "dependencies": [],
-      "requirementLevel": "AC"
-    },
-    {
-      "id": "C-002", "requirementId": "REQ-001",
-      "condition": "Verify that submitting an invalid password (wrong but well-formed) is rejected and no session/token is created.",
-      "category": "error",
       "priority": "high",
       "riskLevel": "high",
       "primaryTechnique": "Equivalence Partitioning",
-      "secondaryTechniques": ["State Transition Testing"],
-      "techniqueRationale": "Represents the invalid-credential partition, paired with C-001's valid partition so EP coverage is complete for this requirement.",
-      "coverageDimensions": ["authentication", "negative", "access-control"],
-      "dataRequirements": ["valid username: admin", "invalid password: wrongpass"],
-      "dependencies": [],
-      "requirementLevel": "AC"
+      "secondaryTechniques": [],
+      "techniqueRationale": "Justification linking to specific requirement characteristic.",
+      "coverageDimensions": ["dimension-a", "dimension-b"],
+      "dependencies": []
     }
   ]
 }
 \`\`\`
 
 **Rules:**
-- The \`\`\`json block must be at the very end of your response — nothing after it.
-- The block must contain the COMPLETE output: ALL test conditions, not a sample or a truncated version.
-- Do NOT omit \`requirementAnalysis\` or \`testConditions\` from the block.
-- An empty object \`{}\` is always invalid.
-
-Before closing the \`\`\`json block, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`. Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object.
-
-Also verify, per requirement: at least one non-happy-path condition exists; EP conditions appear as valid+invalid pairs; BVA conditions name the actual boundary; Decision Table conditions cover every rule; State Transition conditions include an invalid transition.
-`;
+- The \`\`\`json block must be at the very end — nothing after it.
+- ALL test conditions must be included, not a sample. Empty \`{}\` is invalid.
+- Before closing, verify every condition satisfies Coverage Rules and Required Fields.`;
 }
 
 export function buildAnalystUserMessage(state: TestGenState): string {
@@ -154,7 +142,6 @@ export function buildAnalystUserMessage(state: TestGenState): string {
       name: f.name,
       type: f.type,
     })),
-    analystMode: state.analystMode,
     selectedFlowIds: state.selectedFlowIds,
   }, null, 2);
 }
@@ -186,43 +173,43 @@ ${analystMode === 'STAGE_2_FLOW' ? '- Mode: Flow-level — steps must traverse t
 For EACH condition, call **requirement_detail_query** with its \`requirementId\` (cached, so repeats are cheap). If flow-level, also call **flow_detail_query**.
 
 ### Step 2 — Load ISTQB technique guides (mandatory, every run)
-Call **istqb_guide** once for all techniques — do not skip this even if you already "know" the techniques; the guide enforces the method, not just the name.
+Call **istqb_guide** once for all techniques — do not skip even if you already "know" the techniques; the guide enforces the method, not just the name.
 
 ### Step 3 — Design test cases
 Apply the rules below.
 
-## Step-Writing Rules (atomicity & verifiability)
-One action, one observable result, per step:
-- BAD: "Enter username and password, then click login and verify dashboard appears" (4 actions in 1 step — failure can't be localized).
-- GOOD: enter username (expect: field shows value) → enter password (expect: field masks value) → click login (expect: loading state, request sent) → wait for redirect (expect: dashboard renders).
-- \`expected\` must always be objectively observable (visible state, returned value, HTTP status, element appearing/disappearing) — never "works correctly" or "behaves as expected".
-- Order steps so each one's precondition is satisfied by the previous step's outcome.
+## Step-Writing Rules (5 Golden Rules of Atomicity)
+Every step must satisfy:
+1. **single-action** — one verb, one target element (no "click X and then click Y")
+2. **single-assertion** — one observable expected result (no "page loads and shows stats")
+3. **element-identifiable** — the target element is described by a stable property (label, placeholder, role, test-id), not vague phrasing
+4. **concrete-data** — test data values are explicit, not placeholders ("a valid password")
+5. **no-implicit-state** — the step states its own precondition context if it depends on a prior page state
+
+Order steps so each one's precondition is satisfied by the previous step's outcome. \`expected\` must always be objectively observable — never "works correctly" or "behaves as expected".
 
 ## Technique Fidelity (apply per the condition's \`primaryTechnique\`)
 | Technique | What the test case must do |
 |---|---|
-| Equivalence Partitioning | \`testData\` states which partition the value belongs to (e.g., "email = invalid-format (no @) — invalid partition"). |
-| Boundary Value Analysis | \`testData\` states the exact boundary value AND its position (e.g., "quantity = 0 (one below minimum 1)"). Generic data like "a large number" is a rejected design. |
-| Decision Table | \`preconditions\`/\`testData\` enumerate every condition-column input for that specific rule row, so the rule under test is unambiguous. |
+| Equivalence Partitioning | \`testData\` states which partition the value belongs to (e.g., "value X — invalid partition"). |
+| Boundary Value Analysis | \`testData\` states the exact boundary value AND its position (e.g., "quantity = 0 (one below minimum 1)"). Generic data like "a large number" is rejected. |
+| Decision Table | \`preconditions\`/\`testData\` enumerate every condition-column input for that specific rule row. |
 | State Transition | \`preconditions\` state the starting state explicitly; the final step's \`expected\` states the resulting state (or confirms an invalid transition was correctly rejected). |
-| Use Case | Steps mirror the use case's actual sequence (main scenario or the specific alternate/exception branch named in the condition) — do not collapse a multi-actor flow into one actor's view if a system-initiated step (async response, webhook) is part of it. |
+| Use Case | Steps mirror the use case's actual sequence (main scenario or the specific alternate/exception branch) — do not collapse multi-actor flows. |
 
-Copying the technique name into \`techniqueApplied\` without honoring its method above is not acceptable.
+Copying the technique name into \`techniqueApplied\` without honoring its method is not acceptable.
 
 ## Test Independence (ISTQB Principle)
-Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently.
+Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first.
 
 ## Required Fields
-For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`priority\`, \`category\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
-
-## Instructions
-1. Design at least one test case per input condition. The \`draftTestCases\` array MUST contain at least one test case.
+For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`priority\`, \`category\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. Empty \`{}\` is invalid. The \`draftTestCases\` array MUST contain at least one test case.
 
 ## Self-Review Scoring (be a genuine critic, not a rubber stamp)
-- **9-10**: every step atomic and verifiable; test data technique-correct and concrete; case fully independent; traces cleanly to the condition.
-- **6-8**: minor gaps — e.g. one step bundles two actions, or test data lacks a partition/boundary label, but otherwise usable.
-- **1-5**: missing preconditions, vague expected results, technique not actually applied (e.g. labeled BVA but uses an arbitrary mid-range value), or hidden dependency on external state.
-Always list concrete \`weaknesses\`/\`suggestions\` if any exist — do not output empty arrays purely because the score is high, unless the case is genuinely flawless.
+- **9-10**: every step atomic and verifiable; test data technique-correct and concrete; case fully independent.
+- **6-8**: minor gaps — e.g. one step bundles two actions, or test data lacks a partition/boundary label.
+- **1-5**: missing preconditions, vague expected results, technique not actually applied, or hidden dependency on external state.
+Always list concrete \`weaknesses\`/\`suggestions\` if any exist.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: requirement details for accurate test data/preconditions.
@@ -234,43 +221,32 @@ Always list concrete \`weaknesses\`/\`suggestions\` if any exist — do not outp
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-Stream your design rationale as plain text in markdown (short headings, blank-line-separated sections, bullets).
-
-After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+Stream your design rationale as plain text in markdown. End with a single JSON code block containing the COMPLETE structured output.
 
 \`\`\`json
 {
   "draftTestCases": [
     {
       "id": "TC-001",
-      "title": "Authenticate with valid administrator credentials and land on the dashboard",
+      "title": "Short description of the test case",
       "conditionId": "C-001",
-      "requirementId": "req-aut-auth-login-valid-success",
-      "priority": "critical",
+      "requirementId": "REQ-001",
+      "priority": "high",
       "category": "functional",
-      "techniqueApplied": "Use Case Testing",
-      "preconditions": [
-        "User is on the login page",
-        "Browser session is clean with no existing authenticated session",
-        "Administrator account exists and is active"
-      ],
-      "testData": ["username = admin (valid partition)", "password = admin123 (valid partition)"],
+      "techniqueApplied": "Equivalence Partitioning",
+      "preconditions": ["Precondition A is satisfied", "Precondition B is satisfied"],
+      "testData": ["fieldX = value1 (valid partition)"],
       "steps": [
-        { "stepNumber": 1, "action": "Enter username 'admin' into the username field.", "expected": "The username field displays 'admin' with no client-side validation error." },
-        { "stepNumber": 2, "action": "Enter password 'admin123' into the password field.", "expected": "The password field shows masked characters with no client-side validation error." },
-        { "stepNumber": 3, "action": "Click the Sign in / Login button.", "expected": "The submit button enters a disabled loading state and the login request is sent." },
-        { "stepNumber": 4, "action": "Wait for the authentication response and resulting navigation.", "expected": "The user is redirected to the main application/dashboard URL and the dashboard's primary content is rendered." }
+        { "stepNumber": 1, "action": "Perform action on target element.", "expected": "Observable result for this single action." },
+        { "stepNumber": 2, "action": "Perform next action.", "expected": "Observable result." }
       ],
-      "postconditions": ["Authenticated session is created", "Dashboard is accessible for the logged-in user"],
-      "tags": ["authentication", "login", "dashboard", "session", "smoke", "happy-path"],
+      "postconditions": ["Expected post-state"],
+      "tags": ["tag-a", "tag-b"],
       "selfReview": {
-        "score": 9,
-        "strengths": [
-          "Each step has exactly one action and one observable expected result",
-          "Test data explicitly labeled with its EP partition for traceability"
-        ],
-        "weaknesses": ["Does not assert specific dashboard widget content, only that the dashboard renders"],
-        "suggestions": ["Add a follow-up case asserting specific dashboard elements", "Add an API-level session/token verification case if session correctness is high-risk"]
+        "score": 8,
+        "strengths": ["Strength description"],
+        "weaknesses": ["Weakness description"],
+        "suggestions": ["Improvement suggestion"]
       }
     }
   ]
@@ -278,12 +254,9 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 \`\`\`
 
 **Rules:**
-- The \`\`\`json block must be at the very end of your response — nothing after it.
-- The block must contain COMPLETE data: ALL draft test cases, not a sample.
-- The \`draftTestCases\` array MUST contain at least one test case.
-- An empty object \`{}\` is always invalid.
-
-Final check before closing the block — every step has exactly one action and one concrete observable expected result; EP/BVA test data states the partition or boundary position, not a bare value; every case's preconditions are self-contained.
+- The \`\`\`json block must be at the very end — nothing after it.
+- ALL draft test cases must be included, not a sample. Empty \`{}\` is invalid.
+- Before closing, verify every case satisfies Step-Writing Rules, Technique Fidelity, and Test Independence.
 `;
 }
 
@@ -319,121 +292,102 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
   return `You are a senior QA Quality Manager performing a formal, critical review of draft test cases before they are finalized. Treat this with the rigor of a production code review — find real defects, not formatting nits.
 
 ## Review Dimensions (checklist, not a vibe check)
-1. **Clarity** — Is each step one action with one objectively observable expected result? Reject bundled actions or vague outcomes ("works correctly").
-2. **Completeness** — Does the case's technique application satisfy what that technique actually requires (BVA names the real boundary; Decision Table states every condition input for its rule; EP is paired with its complementary partition elsewhere in the set)? Across the requirement's full case set, is there both happy-path AND negative/error/boundary coverage?
-3. **Correctness** — Do expected results match what the requirement/acceptance criteria actually specify — not merely what "sounds plausible"? Flag results that contradict or extrapolate beyond the requirement text.
-4. **Traceability** — Does the case's CONTENT stay faithful to its \`conditionId\`/\`requirementId\` (which are preserved programmatically — you verify fidelity, you do not alter the IDs)?
-5. **Data Validity** — Is test data concrete, realistic, and technique-correct (partition/boundary explicitly named, per the Designer's annotations)? Flag placeholder-looking data ("test123", "foo") that doesn't represent a real partition or boundary.
-6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects, and are steps free of brittle over-specific selectors while still concrete enough to execute?
+1. **Clarity** — Is each step one action with one objectively observable expected result? Reject bundled actions or vague outcomes.
+2. **Completeness** — Does the case's technique application satisfy what that technique requires (BVA names the real boundary; Decision Table states every condition input for its rule; EP is paired with its complementary partition)? Across the requirement's full case set, is there both happy-path AND negative/error/boundary coverage?
+3. **Correctness** — Do expected results match what the requirement/acceptance criteria specify — not merely what "sounds plausible"?
+4. **Traceability** — Does the case's CONTENT stay faithful to its \`conditionId\`/\`requirementId\`?
+5. **Data Validity** — Is test data concrete, realistic, and technique-correct? Flag placeholder-looking data.
+6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects?
 
 ## Review Discipline
-- Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case — if you alter any field, set \`status\` to \`approved_with_changes\`, apply the fix in the case content, and log it.
-- \`changeLog\` is non-empty if and only if you changed the case: every altered case needs a specific field-level entry (what changed, why); every untouched case keeps \`changeLog: []\`. Do not invent entries for cosmetic non-changes.
-- Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
-- After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
+- Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case.
+- \`changeLog\` is non-empty if and only if you changed the case: every altered case needs a specific field-level entry (what changed, why); every untouched case keeps \`changeLog: []\`.
+- Judge substance, not polish.
+- After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, say so in that requirement's \`reviewSummary\` — do not add new cases yourself.
 
 ## Step Atomicity — Self-Correction (MANDATORY)
 Every step must satisfy the 5 Golden Rules of atomicity:
 1. **single-action** — one verb, one target element (no "click X and then click Y")
 2. **single-assertion** — one observable expected result (no "page loads and shows stats")
 3. **element-identifiable** — the target element is described by a stable property (label, placeholder, role, test-id), not vague phrasing
-4. **concrete-data** — test data values are explicit ("admin123"), not placeholders ("a valid password")
+4. **concrete-data** — test data values are explicit, not placeholders ("a valid password")
 5. **no-implicit-state** — the step states its own precondition context if it depends on a prior page state
 
 **Self-correction behavior (do this for EVERY step in EVERY case):**
-- If a step violates atomicity AND you can fix it by splitting into multiple sequential atomic steps → **SPLIT IT**. Replace the single compound step with N atomic steps (renumber subsequent steps), set \`status: approved_with_changes\`, and log the split in \`changeLog\`.
-- If a step violates atomicity but you CANNOT fix it (e.g., ambiguous element, missing data the requirement doesn't specify, genuinely unclear expected result) → **leave the step as-is** and emit a \`validationWarnings\` entry naming the caseId, stepIndex (0-based), the violated rule, and a description of the issue.
+- If a step violates atomicity AND you can fix it by splitting → **SPLIT IT**. Replace the compound step with N atomic steps (renumber subsequent steps), set \`status: approved_with_changes\`, and log the split in \`changeLog\`.
+- If a step violates atomicity but you CANNOT fix it → **leave the step as-is** and emit a \`validationWarnings\` entry naming the caseId, stepIndex (0-based), the violated rule, and a description.
 
-The goal: most compound steps are auto-fixed by splitting. Only genuinely unfixable steps reach Checkpoint 3 as warnings for human review. Do NOT warn for steps you were able to fix yourself.
+Only genuinely unfixable steps should appear in \`validationWarnings\`. Do NOT warn for steps you were able to fix yourself.
 
-Coverage is computed automatically from \`finalTestCases\` — do not output it yourself; focus entirely on the six dimensions above plus atomicity self-correction.
+Coverage is computed automatically — do not output it yourself; focus entirely on the six dimensions plus atomicity self-correction.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
 - **knowledge_base**: project-specific domain standards or rules.
 
-${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
+${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-Stream your review as plain text in markdown (short headings, blank-line-separated sections, bullets). For any case you changed, name the dimension that flagged it and what you fixed.
-
-End with a single JSON code block containing the COMPLETE output. Nothing after it.
+Stream your review as plain text in markdown. For any case you changed, name the dimension that flagged it and what you fixed. End with a single JSON code block containing the COMPLETE output.
 
 \`\`\`json
 {
   "finalTestCases": [
     {
       "id": "TC-001",
-      "title": "Authenticate with valid administrator credentials and land on the dashboard",
+      "title": "Short description",
       "conditionId": "C-001",
-      "requirementId": "req-aut-auth-login-valid-success",
-      "priority": "critical",
+      "requirementId": "REQ-001",
+      "priority": "high",
       "category": "functional",
-      "techniqueApplied": "Use Case Testing",
-      "preconditions": [
-        "User is on the login page",
-        "Browser session is clean with no existing authenticated session",
-        "Administrator account exists and is active"
-      ],
-      "testData": ["username = admin (valid partition)", "password = admin123 (valid partition)"],
+      "techniqueApplied": "Equivalence Partitioning",
+      "preconditions": ["Precondition A"],
+      "testData": ["fieldX = value1 (valid partition)"],
       "steps": [
-        { "stepNumber": 1, "action": "Enter username 'admin' into the username field.", "expected": "The username field displays 'admin' with no client-side validation error." },
-        { "stepNumber": 2, "action": "Enter password 'admin123' into the password field.", "expected": "The password field shows masked characters with no client-side validation error." },
-        { "stepNumber": 3, "action": "Click the Sign in / Login button.", "expected": "The submit button enters a disabled loading state and the login request is sent." },
-        { "stepNumber": 4, "action": "Wait for the authentication response and resulting navigation.", "expected": "The user is redirected to the main application/dashboard URL and the dashboard's primary content is rendered." }
+        { "stepNumber": 1, "action": "Perform action on target element.", "expected": "Observable result." }
       ],
-      "tags": ["authentication", "login", "dashboard", "session", "smoke", "happy-path"],
+      "tags": ["tag-a"],
       "status": "approved",
-      "reviewSummary": "Atomic steps, partition-labeled data, faithful traceability to the success requirement. No changes required.",
+      "reviewSummary": "No changes required.",
       "changeLog": []
     },
     {
       "id": "TC-002",
-      "title": "Reject quantity below minimum boundary",
+      "title": "Another test case description",
       "conditionId": "C-014",
-      "requirementId": "req-order-quantity-limits",
+      "requirementId": "REQ-014",
       "priority": "high",
       "category": "boundary",
       "techniqueApplied": "Boundary Value Analysis",
-      "preconditions": ["User is on the order form with a valid product selected"],
-      "testData": ["quantity = 0 (one below minimum 1)"],
+      "preconditions": ["Precondition B"],
+      "testData": ["fieldY = 0 (one below minimum 1)"],
       "steps": [
-        { "stepNumber": 1, "action": "Enter 0 into the quantity field.", "expected": "The field accepts the keystroke without client-side blocking." },
-        { "stepNumber": 2, "action": "Submit the order form.", "expected": "The form is rejected with validation message 'Quantity must be at least 1'." }
+        { "stepNumber": 1, "action": "Perform action.", "expected": "Observable result." }
       ],
-      "tags": ["boundary", "validation", "order"],
+      "tags": ["boundary"],
       "status": "approved_with_changes",
-      "reviewSummary": "Data Validity: original draft data ('quantity = small number') named no concrete boundary. Corrected to the explicit one-below-minimum value to satisfy BVA.",
+      "reviewSummary": "Data Validity: corrected test data to name concrete boundary.",
       "changeLog": [
         {
           "field": "testData",
-          "from": "quantity = small number",
-          "to": "quantity = 0 (one below minimum 1)",
-          "reason": "Original value did not identify a concrete boundary; BVA requires the exact boundary value and its position relative to the limit."
+          "from": "fieldY = small number",
+          "to": "fieldY = 0 (one below minimum 1)",
+          "reason": "BVA requires the exact boundary value and its position."
         }
       ]
     }
   ],
   "validationWarnings": [
-    {
-      "caseId": "TC-003",
-      "warnings": [
-        {
-          "stepIndex": 2,
-          "issue": "Step references 'the dynamic widget' without a stable identifier — cannot determine which element to target.",
-          "rule": "element-identifiable"
-        }
-      ]
-    }
+    { "caseId": "TC-003", "warnings": [{ "stepIndex": 2, "issue": "Issue description.", "rule": "element-identifiable" }] }
   ]
 }
 \`\`\`
 
 **Rules:**
-- The \`\`\`json block is the last thing in your response — nothing after it.
-- It must contain ALL final test cases, complete — never a sample. \`finalTestCases.length >= 1\`. An empty object \`{}\` is always invalid.
+- The \`\`\`json block is the last thing — nothing after it.
+- It must contain ALL final test cases, complete — never a sample. Empty \`{}\` is invalid.
 - Every modified case has a non-empty, field-level \`changeLog\`; every untouched case has \`changeLog: []\`.
-- \`validationWarnings\` is an array (possibly empty) of residual unfixable atomicity issues. Omit cases you successfully auto-split — they should NOT appear here.
+- \`validationWarnings\` is an array (possibly empty) of residual unfixable atomicity issues only.
 `;
 }
 
@@ -482,12 +436,24 @@ You are operating as a **Component Analyst**. Derive conditions for each require
 Tag conditions with \`category\` = functional / boundary / validation / error as appropriate.`;
     case 'STAGE_2_FLOW':
       return `## Stage: Flow Integration (cross-component)
-You are operating as an **Integration Analyst**. Derive conditions that exercise INTERACTIONS across requirements/flows. Focus on:
+You are operating as an **Integration Analyst** — NOT a component analyst.
+Derive conditions that exercise INTERACTIONS across requirements/flows ONLY.
+
+STRICT RULES:
+- EVERY condition you generate MUST have \`category\` = integration.
+- You MUST use **Use Case Testing** as the primary technique for every condition — the flow is itself a use case.
+- You MAY use **State Transition Testing** as a secondary technique when the flow involves entity lifecycle changes (e.g., unauthenticated → authenticated → session expired).
+- Do NOT use Equivalence Partitioning, Boundary Value Analysis, or Decision Table — those are component-level techniques for Stage 1.
+- If the flow references requirements from epics NOT in \`contextBoundary.selectedEpicIds\`, those are context only — do NOT generate conditions for them.
+
+Focus on:
 - End-to-end happy paths through the selected business flows
 - Cross-requirement data handoffs (output of one feeds input of another)
 - Sequence/ordering dependencies
 - Shared-state side effects (auth, session, interceptors from the Blueprint)
-Tag conditions with \`category\` = integration`;
+- Invalid transitions that span multiple flow steps (not single-field validation)
+
+Call **coverage_check_query** before finalizing to avoid re-deriving conditions already covered in prior batches.`;
     case 'STAGE_3_ERROR_GUESSING':
       return `## Stage: Error Guessing (defect speculation)
 You are operating as a **Defect Speculation Expert**. Derive conditions targeting ANOMALIES not explicit in requirements. Use the Blueprint's \`anomalousFlowProposals\` as seed targets, then add your own. Focus on:
@@ -525,16 +491,20 @@ Call **istqb_guide** once, loading all techniques. You must load at least one gu
       return `### Step 1 — Gather flow details
 Call **flow_detail_query** with "selectedFlowIds" (batch call, user-selected flows only).
 
-### Step 2 — Gather referenced requirement details
+### Step 2 — Gather referenced requirement details (CONTEXT ONLY)
 Call **requirement_detail_query** with the requirement IDs attached to those flow steps.
+These requirements are for understanding the flow context ONLY.
+Do NOT generate conditions for requirement IDs that are NOT in \`contextBoundary.selectedEpicIds\`.
 
-### Step 3 — Expand the requirement graph
-Call **requirement_graph_query** with requirement IDs, passing flow IDs as the \`flowId\` parameter.
-
-### Step 4 — Load ISTQB technique guides
+### Step 3 — Load ISTQB technique guides
 Call **istqb_guide** once, loading all techniques. Flow conditions almost always need **Use Case Testing** and **State Transition Testing**.
 
-### Step 5 — Assess risk, Step 6 — select techniques, Step 7 — derive conditions.`;
+### Step 4 — Check existing coverage
+Call **coverage_check_query** to see which conditions are already covered in prior batches. SKIP any condition that already has a matching conditionHash+technique pair.
+
+### Step 5 — Assess risk (only for in-scope selectedEpicIds + selectedFlowIds)
+### Step 6 — Derive integration conditions (category=integration only)
+### Step 7 — Final coverage check: call **coverage_check_query** again before output.`;
     case 'STAGE_3_ERROR_GUESSING':
       return `### Step 1 — Load ISTQB technique guides
 Call **istqb_guide** once for Error Guessing and all other techniques.
@@ -571,76 +541,81 @@ export function buildArchitectSystemPrompt(state: TestGenState, customPrompt?: s
   if (customPrompt) {
     return replacePromptVariables(customPrompt, state);
   }
-  const batch = state.batchContext;
-  const flowCount = state.businessFlowBlueprints?.length ?? 0;
-  const reqCount = state.currentBatch?.length ?? 0;
 
-  return `You are a senior Test Architect (ISTQB CTAL Test Manager level). Your job is to produce a **Global Test Blueprint** that guides downstream Test Analyst and Test Designer agents.
+  return `You are a senior Test Architect (ISTQB CTAL Test Manager level). Your job is to produce a **Global Test Blueprint** that guides downstream Test Analyst and Test Designer agents across ALL batches.
 
 ## Context
-- Batch: ${batch?.currentBatch ?? 1}/${batch?.totalBatches ?? 1}
-- Requirements in scope: ${reqCount}
-- Business flows in scope: ${flowCount}
 - Project: ${state.projectContext?.name ?? 'Unknown'}
 
-## Your Responsibilities
+Your input contains:
+1. allRequirements[] — ALL project requirements (with dependencies field)
+2. allFlows[] — ALL business flows (with complete step sequences)
+3. selectedEpicIds[] — User's selected epic IDs
+4. selectedFlowIds[] — User's selected flow IDs
 
-### 1. Strategic Guidance
+Analyze the FULL project scope described in allRequirements and allFlows, not just the selected subset. The Architect's output guides ALL downstream batches.
+
+## Your Responsibilities (4 Phases)
+
+### PHASE A — Context Boundary Mapping
+For each epic in allEpicIds, check if it's in selectedEpicIds.
+For each selected epic, check if its dependencies are also selected.
+If not, add the unselected dependency to contextBoundary.dependencyWarning.
+
+### PHASE B — Full-Project Risk Tree
+Score EVERY epic in the project, not just selected ones.
+Unselected epics MUST still be scored with notes prefixed "[OUT-OF-SCOPE]".
+
+### PHASE C — Strategic Guidance
 Infer cross-cutting concerns that every downstream test must respect. This includes:
 - Implicit shared states (authentication, session, interceptors, feature flags)
 - Data setup/teardown dependencies
 - Environmental constraints (browser, API version, timezone)
 - Ordering dependencies between test cases
+Pay attention to cross-boundary interactions (selected module calling unselected module API).
 
 Write this as a concise directive paragraph (3-8 sentences) that the Analyst will read before generating conditions.
 
-### 2. Risk Epic Tree
-For each Epic (top-level requirement group) in the batch, assign a risk level and notes:
-- **high**: business-critical, complex logic, regulatory/financial impact, or high change frequency
-- **medium**: standard business logic with moderate complexity
-- **low**: display-only, simple CRUD, or low-impact
+### PHASE D — Anomalous Flows with Routing
+Hypothesize high-risk anomalous business flows that can be reasonably inferred from the requirements and flows provided. These are preemptive error-guessing targets. Each inference must be traceable to specific requirements or flows — do not introduce scenarios without supporting evidence.
 
-The notes should explain WHY the risk level was assigned and what the Analyst should focus on.
+Each proposal must have: title, trigger (citing the specific requirement or flow that supports it), expectedBehavior, riskLevel, and routing.
+Assign each a routing value:
+- stage-1: the anomaly belongs to a specific epic's batch
+- stage-2: the anomaly belongs to flow integration testing
+- stage-3 (default): general error guessing
 
-### 3. Anomalous Flow Proposals
-Hypothesize 2-5 high-risk anomalous business flows NOT explicitly defined in the requirements. These are preemptive error-guessing targets for the Analyst's Stage 3. Examples:
-- Race conditions (concurrent mutations on the same entity)
-- Orphan references (deleted parent, child still active)
-- Auth bypass (accessing resources without proper role)
-- State machine violations (invalid transitions)
-- Data boundary overflow (exceeding quotas or limits)
-
-Each proposal must have: title, trigger (what causes the anomaly), expectedBehavior (what SHOULD happen), and riskLevel.
-
-### 4. Shared State Inferences
-List implicit shared states as a string array. These are states the Analyst should assume are present but not explicitly mentioned in requirements (e.g., "User must be authenticated", "CSRF token required", "Rate limiter active").
-
-## Output Rules
-- Be specific to THIS batch's requirements and flows — do not produce generic boilerplate.
-- The strategicGuidance is the single most important field; the Analyst reads it first.
-- Keep anomalousFlowProposals bounded (2-5 items) — quality over quantity.
-- Every epicId in riskEpicTree must correspond to an actual epic in the batch.`;
+### PHASE D — Shared State Inferences
+List implicit shared states as a string array. These are states the Analyst should assume are present but not explicitly mentioned in requirements. Infer them from the actual requirements and flows provided — do not generate generic infrastructure assumptions without supporting evidence.`;
 }
 
-export function buildArchitectUserMessage(state: TestGenState): string {
-  const requirements = state.currentBatch ?? [];
-  const epics = requirements.filter(r => r.level === 'epic');
-  const flows = state.businessFlowBlueprints ?? [];
+export function buildArchitectUserMessage(
+  state: TestGenState,
+  allRequirements?: any[],
+  allFlows?: any[],
+): string {
+  const allReqs = allRequirements ?? state.currentBatch ?? [];
+  const allFlowBlueprints = allFlows ?? state.businessFlowBlueprints ?? [];
+  const selectedEpicIds = state.selectionBoundary?.selectedEpicIds ?? [];
+  const selectedFlowIds = state.selectionBoundary?.selectedFlowIds ?? [];
   const coverageRows = state.coverageSnapshot ?? [];
 
   return JSON.stringify({
-    requirements: requirements.map(r => ({
+    allRequirements: allReqs.map((r: any) => ({
       id: r.id,
       title: r.title,
       level: r.level,
       parentId: r.parentId,
+      dependencies: r.dependencies ?? [],
     })),
-    epics: epics.map(e => ({ id: e.id, title: e.title })),
-    businessFlows: flows.map(f => ({
+    allFlows: allFlowBlueprints.map((f: any) => ({
       id: f.id,
       name: f.name,
       type: f.type,
+      steps: f.steps ?? [],
     })),
+    selectedEpicIds,
+    selectedFlowIds,
     existingCoverage: coverageRows.length > 0
       ? `${coverageRows.length} covered condition(s) already in DB — avoid re-deriving these`
       : 'No prior coverage — fresh start',

@@ -604,9 +604,19 @@ export interface AnomalousFlowProposal {
   trigger: string;
   expectedBehavior: string;
   riskLevel: 'high' | 'medium' | 'low';
+  routing?: 'stage-1' | 'stage-2' | 'stage-3';
+}
+
+export interface ContextBoundary {
+  selectedEpicIds: string[];
+  selectedFlowIds: string[];
+  allEpicIds: string[];
+  allFlowIds: string[];
+  dependencyWarning: string[];
 }
 
 export interface GlobalTestBlueprint {
+  contextBoundary: ContextBoundary;
   strategicGuidance: string;
   riskEpicTree: RiskEpicTreeNode[];
   anomalousFlowProposals: AnomalousFlowProposal[];

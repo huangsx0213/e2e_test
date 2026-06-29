@@ -23,6 +23,11 @@ export interface SkillCallRecord {
   timestamp: number;
 }
 
+export interface SelectionBoundary {
+  selectedEpicIds: string[];
+  selectedFlowIds: string[];
+}
+
 export type AnalystMode = 'STAGE_1_REQUIREMENT' | 'STAGE_2_FLOW' | 'STAGE_3_ERROR_GUESSING';
 
 export type Phase =
@@ -70,6 +75,9 @@ export const TestGenStateAnnotation = Annotation.Root({
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
+
+  // === 架构师边界 ===
+  selectionBoundary: Annotation<SelectionBoundary | undefined>,
 
   // === Preparation 产物 ===
   environmentReady: Annotation<boolean>,

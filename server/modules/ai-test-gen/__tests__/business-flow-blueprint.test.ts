@@ -27,13 +27,20 @@ describe('buildBusinessFlowBlueprints', () => {
       ],
     });
 
-    // Only APPROVED flows, steps omitted (LLM queries via flow_detail_query skill)
+    // Only APPROVED flows; steps populated from requirementsMap when provided
     expect(blueprints).toEqual([
       {
         id: 'flow-1',
         name: 'Checkout',
         type: 'happy-path',
-        steps: [],
+        steps: [{
+          sequence: 1,
+          requirementId: 'story-1',
+          requirementTitle: '',
+          requirementLevel: 'story',
+          actionSummary: 'User signs in',
+          acceptanceCriteria: [],
+        }],
       },
     ]);
   });
