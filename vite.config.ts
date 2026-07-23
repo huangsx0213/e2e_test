@@ -7,25 +7,26 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
-      },
-      plugins: [react()],
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, './client'),
-        }
-      },
-      build: {
-        rollupOptions: {
-          input: {
-            main: path.resolve(__dirname, 'index.html'),
-            aut: path.resolve(__dirname, 'aut/aut.html')
-          }
+  const env = loadEnv(mode, '.', '');
+  return {
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+      allowedHosts: ['qa.huangsx0212.ccwu.cc'],
+    },
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './client'),
+      }
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          aut: path.resolve(__dirname, 'aut/aut.html')
         }
       }
-    };
+    }
+  };
 });
