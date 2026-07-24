@@ -157,8 +157,35 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
   const selectedReqs = (requirements || []).filter(r => startConfig?.requirementIds?.includes(r.id));
   const selectedFlows = (businessFlows || []).filter(f => startConfig?.flowIds?.includes(f.id));
 
+  // Group requirements by Batch (Epic / Parent ID)
+  const reqsByBatch = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const req of selectedReqs) {
+      const epic = req.parent_id || 'default-group';
+      if (!groups[epic]) groups[epic] = [];
+      groups[epic].push(req);
+    }
+    return groups;
+  }, [selectedReqs]);
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 h-full overflow-y-auto">
+      {/* Stats Summary Moved to Top */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
+          <div className="text-2xl font-black text-slate-700">
+            {output?.totalBatches || meta?.totalBatches || '-'}
+          </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mt-0.5">Total Batches</div>
+        </div>
+        <div className="bg-gradient-to-b from-white to-emerald-50/30 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
+          <div className="text-2xl font-black text-emerald-500">
+            <CheckCircle2 size={24} className="inline" />
+          </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-600/70 mt-0.5">Pipeline Ready</div>
+        </div>
+      </div>
+
       {/* Pipeline Config Header */}
       <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/35 rounded-xl p-4 border border-indigo-100/60 shadow-sm">
         <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3">
@@ -186,33 +213,77 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
         </div>
       </div>
 
-      {/* Requirements Table */}
+      {/* Requirements Table grouped by Batch */}
       {selectedReqs.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50 shrink-0">
             <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
               <FileText size={12} className="text-blue-500" />
-              Requirements ({selectedReqs.length})
+              Requirements Blueprint ({selectedReqs.length})
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-y-auto min-h-0 flex-1">
+            {Object.entries(reqsByBatch).map(([epic, reqs], batchIdx) => (
+              <div key={epic} className="mb-4 last:mb-0">
+                <div className="px-4 py-1.5 bg-blue-50/50 border-y border-blue-100/50 flex items-center gap-2 sticky top-0 backdrop-blur-sm shadow-sm z-10">
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase">Batch {batchIdx + 1}</span>
+                  <span className="text-[11px] font-semibold text-slate-600 font-mono truncate">Epic: {epic}</span>
+                </div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/30 text-slate-500">
+                      <th className="text-left px-4 py-2 font-semibold w-12">#</th>
+                      <th className="text-left px-3 py-2 font-semibold w-32">ID</th>
+                      <th className="text-left px-3 py-2 font-semibold">Title</th>
+                      <th className="text-left px-3 py-2 font-semibold w-24">Level</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reqs.map((req, i) => (
+                      <tr key={req.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                        <td className="px-4 py-2 text-slate-400 font-mono">{i + 1}</td>
+                        <td className="px-3 py-2 font-mono text-blue-600 truncate max-w-[120px]">{req.id}</td>
+                        <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={req.title}>{req.title}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{req.level}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Business Flows Table */}
+      {selectedFlows.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[300px]">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
+              <Activity size={12} className="text-purple-500" />
+              Business Flows ({selectedFlows.length})
+            </div>
+          </div>
+          <div className="overflow-y-auto min-h-0 flex-1">
             <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/30">
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Title</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Level</th>
+              <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm shadow-sm z-10">
+                <tr className="border-b border-slate-100">
+                  <th className="text-left px-4 py-2 font-semibold text-slate-500 w-12">#</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500 w-32">ID</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Name</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500 w-24">Steps</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedReqs.map((req, i) => (
-                  <tr key={req.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 font-mono text-blue-600">{req.id}</td>
-                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{req.title}</td>
-                    <td className="px-3 py-2">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{req.level}</span>
+                {selectedFlows.map((flow, i) => (
+                  <tr key={flow.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-4 py-2 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 font-mono text-purple-600 truncate max-w-[120px]">{flow.id}</td>
+                    <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={flow.name}>{flow.name}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold">{flow.steps?.length || 0}</span>
                     </td>
                   </tr>
                 ))}
@@ -221,62 +292,6 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
           </div>
         </div>
       )}
-
-      {/* Business Flows Table */}
-      {selectedFlows.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
-              <Activity size={12} className="text-purple-500" />
-              Business Flows ({selectedFlows.length})
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/30">
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">#</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">ID</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Name</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Steps</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedFlows.map((flow, i) => (
-                  <tr key={flow.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
-                    <td className="px-3 py-2 font-mono text-purple-600">{flow.id}</td>
-                    <td className="px-3 py-2 text-slate-700 truncate max-w-[200px]">{flow.name}</td>
-                    <td className="px-3 py-2 text-slate-600">{flow.steps?.length || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Stats Summary */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-slate-700">
-            {output?.totalBatches || meta?.totalBatches || '-'}
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Batches</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-slate-700">
-            {output?.estimatedTokens ? formatTokens(output.estimatedTokens) : meta?.estimatedTokens ? formatTokens(meta.estimatedTokens) : '-'}
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Est. Tokens</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm text-center">
-          <div className="text-lg font-bold text-emerald-600">
-            <CheckCircle2 size={18} className="inline" />
-          </div>
-          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Ready</div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1189,15 +1204,125 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [activePromptTab, setActivePromptTab] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<'all' | number>('all');
   const isRunning = node?.status === 'running';
   const autoScroll = isRunning;
+
+  // Extract available batch numbers for the current agent
+  const availableBatches = useMemo(() => {
+    if (!agentLogs?.length) return [];
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const target = normalize(node?.agentName || '');
+    const logs = agentLogs.filter((l: any) => normalize(l.agent_name) === target);
+    const batches = Array.from(new Set(logs.map((l: any) => l.batch || 1)));
+    return batches.sort((a, b) => a - b);
+  }, [agentLogs, node?.agentName]);
+
+  // Batch status map for pill coloring
+  const batchStatusMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    if (!agentLogs?.length) return map;
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const target = normalize(node?.agentName || '');
+    for (const l of agentLogs) {
+      if (normalize(l.agent_name) !== target) continue;
+      map[l.batch || 1] = l.status;
+    }
+    return map;
+  }, [agentLogs, node?.agentName]);
+
+  const showBatchSelector = availableBatches.length > 1;
+
+  // Auto-select latest batch when running, reset to 'all' on node change
+  useEffect(() => {
+    if (isRunning && availableBatches.length > 0) {
+      setSelectedBatch(availableBatches[availableBatches.length - 1]);
+    } else if (!isRunning && availableBatches.length > 1) {
+      setSelectedBatch('all');
+    }
+  }, [node?.id, isRunning, availableBatches.length]);
+
+  const supportsAll = activeTab === 'summary';
+  const effectiveBatch = useMemo(() => {
+    if (availableBatches.length === 0) return selectedBatch;
+    if (selectedBatch === 'all' && !supportsAll) {
+      return availableBatches[availableBatches.length - 1];
+    }
+    if (selectedBatch !== 'all' && !availableBatches.includes(selectedBatch)) {
+      return availableBatches[availableBatches.length - 1];
+    }
+    return selectedBatch;
+  }, [selectedBatch, supportsAll, availableBatches]);
+
+  // Filter thinkingText by selected batch
+  const filteredThinkingText = useMemo(() => {
+    if (!thinkingText) return null;
+    if (effectiveBatch === 'all') return thinkingText;
+    return thinkingText.filter(e => (e.batch || 1) === effectiveBatch);
+  }, [thinkingText, effectiveBatch]);
+
+  // Filter agentLog by selected batch (for Prompts, Raw Output, Trace, Errors)
+  const filteredAgentLog = useMemo(() => {
+    if (!agentLog) return null;
+    if (effectiveBatch === 'all') return agentLog;
+    if (!agentLogs?.length) return agentLog;
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const target = normalize(node?.agentName || '');
+    const batchLog = agentLogs.find((l: any) => normalize(l.agent_name) === target && (l.batch || 1) === effectiveBatch);
+    return batchLog || agentLog;
+  }, [agentLog, agentLogs, effectiveBatch, node?.agentName]);
 
   const traceGroups = useMemo(() => {
     if (!agentLogs?.length) {
       return agentLog ? [agentLog] : [];
     }
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const logs = [...agentLogs].sort((a: any, b: any) => {
+      if ((a.batch || 1) !== (b.batch || 1)) return (a.batch || 1) - (b.batch || 1);
+      return (a.timestamp || 0) - (b.timestamp || 0);
+    });
+    return logs;
+  }, [agentLogs, agentLog]);
+
+  // Memoize input messages processing to prevent array manipulation on every render frame
+  const labeledInputMessages = useMemo(() => {
+    if (!filteredAgentLog?.input_prompt) return [];
+    const messages: { role: string; content: string }[] = Array.isArray(filteredAgentLog.input_prompt)
+      ? filteredAgentLog.input_prompt
+      : [
+          ...(filteredAgentLog.input_prompt.systemPrompt ? [{ role: 'system', content: filteredAgentLog.input_prompt.systemPrompt }] : []),
+          ...(filteredAgentLog.input_prompt.userMessage ? [{ role: 'user', content: filteredAgentLog.input_prompt.userMessage }] : []),
+        ];
+    const roleCounts: Record<string, number> = {};
+    const labeled = messages.map((m) => {
+      roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
+      return { ...m, label: m.role };
+    });
+    const seen: Record<string, number> = {};
+    for (const m of labeled) {
+      if (roleCounts[m.role] > 1) {
+        seen[m.role] = (seen[m.role] || 0) + 1;
+        m.label = `${m.role} ${seen[m.role]}`;
+      } else {
+        m.label = m.role;
+      }
+    }
+    return labeled;
+  }, [filteredAgentLog?.input_prompt]);
+
+  // Memoize large JSON stringification to prevent heavy blocking on every render frame
+  const outputDataJsonString = useMemo(() => {
+    if (!filteredAgentLog?.output_data) return '';
+    try {
+      return JSON.stringify(filteredAgentLog.output_data, null, 2);
+    } catch {
+      return 'Error stringifying data';
+    }
+  }, [filteredAgentLog?.output_data]);
+
+  const groupedTraceGroups = useMemo(() => {
     const grouped: Record<string, any[]> = {};
-    for (const l of agentLogs) {
+    for (const l of agentLogs || []) {
       if (l.agent_name === 'preparation') continue;
       if (!grouped[l.agent_name]) grouped[l.agent_name] = [];
       grouped[l.agent_name].push(l);
@@ -1284,6 +1409,44 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
         ))}
       </div>
 
+      {/* Batch Selector Pills — shown only when multiple batches */}
+      {showBatchSelector && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-200 bg-slate-50/40 shrink-0">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Batch</span>
+          {supportsAll && (
+            <button
+              onClick={() => setSelectedBatch('all')}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                effectiveBatch === 'all'
+                  ? 'bg-slate-700 text-white'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+            >
+              All
+            </button>
+          )}
+          {availableBatches.map(b => {
+            const status = batchStatusMap[b];
+            const isActive = effectiveBatch === b;
+            const statusColor = status === 'COMPLETED'
+              ? isActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+              : status === 'FAILED'
+              ? isActive ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+              : isActive ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200';
+            return (
+              <button
+                key={b}
+                onClick={() => setSelectedBatch(b)}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${statusColor}`}
+              >
+                {b}
+                {status === 'RUNNING' && <span className="ml-0.5 inline-block w-1 h-1 rounded-full bg-current animate-pulse" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="flex-1 overflow-hidden bg-white">
         <AnimatePresence mode="wait">
           <motion.div
@@ -1298,33 +1461,32 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
   node.kind === 'preparation' || node.agentName === 'preparation' ? (
     <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
   ) : (
-    <AgentSummaryView agentLog={agentLog} agentName={node.agentName} />
+    <AgentSummaryView agentLog={filteredAgentLog} agentName={node.agentName} />
   )
 )}
             
             {activeTab === 'thinking' && (
               <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
                 <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
-                  {thinkingText && thinkingText.length > 0 ? (
+                  {filteredThinkingText && filteredThinkingText.length > 0 ? (
                     (() => {
-                      // Group consecutive entries of same type+phase
-                      const groups: { type: 'reasoning' | 'content'; phase: 'react' | 'extraction'; text: string; timestamp: number; lastTimestamp: number }[] = [];
-                      for (const entry of thinkingText) {
-                        const last = groups[groups.length - 1];
-                        if (last && last.type === entry.type && last.phase === entry.phase) {
-                          last.text += entry.text;
-                          last.lastTimestamp = entry.timestamp;
-                        } else {
-                          groups.push({ ...entry, lastTimestamp: entry.timestamp });
-                        }
-                      }
                       let lastPhase: string | null = null;
-                      return groups.map((g, i) => {
+                      let lastBatch: number | undefined = undefined;
+                      return filteredThinkingText.map((g, i) => {
                         const phaseChanged = g.phase !== lastPhase;
+                        const batchChanged = effectiveBatch === 'all' && g.batch !== undefined && g.batch !== lastBatch && lastBatch !== undefined;
                         lastPhase = g.phase;
+                        lastBatch = g.batch;
                         return (
                           <div key={i}>
-                            {phaseChanged && i > 0 && (
+                            {batchChanged && (
+                              <div className="flex items-center gap-2 py-2">
+                                <div className="flex-1 border-t border-blue-200" />
+                                <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">Batch {g.batch}</span>
+                                <div className="flex-1 border-t border-blue-200" />
+                              </div>
+                            )}
+                            {phaseChanged && i > 0 && !batchChanged && (
                               <div className="flex items-center gap-2 py-1.5">
                                 <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
                                 <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
@@ -1334,9 +1496,9 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                               </div>
                             )}
                             {g.type === 'reasoning' ? (
-                              <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === groups.length - 1} startTime={g.timestamp} endTime={g.lastTimestamp !== g.timestamp ? g.lastTimestamp : undefined} />
+                              <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} startTime={g.timestamp} />
                             ) : (
-                              <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === groups.length - 1} />
+                              <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} />
                             )}
                           </div>
                         );
@@ -1358,34 +1520,12 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             )}
             
             {activeTab === 'input' && (() => {
-              const messages: { role: string; content: string }[] = Array.isArray(agentLog?.input_prompt)
-                ? agentLog.input_prompt
-                : agentLog?.input_prompt
-                  ? [
-                      ...(agentLog.input_prompt.systemPrompt ? [{ role: 'system', content: agentLog.input_prompt.systemPrompt }] : []),
-                      ...(agentLog.input_prompt.userMessage ? [{ role: 'user', content: agentLog.input_prompt.userMessage }] : []),
-                    ]
-                  : [];
+              const labeled = labeledInputMessages;
 
-              if (messages.length === 0) {
+              if (labeled.length === 0) {
                 return (
                   <div className="p-4 text-center text-xs text-slate-400 italic py-10">No prompts available.</div>
                 );
-              }
-
-              const roleCounts: Record<string, number> = {};
-              const labeled = messages.map((m) => {
-                roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
-                return { ...m, label: m.role };
-              });
-              const seen: Record<string, number> = {};
-              for (const m of labeled) {
-                if (roleCounts[m.role] > 1) {
-                  seen[m.role] = (seen[m.role] || 0) + 1;
-                  m.label = `${m.role} ${seen[m.role]}`;
-                } else {
-                  m.label = m.role;
-                }
               }
 
               const safeIndex = Math.min(activePromptTab, labeled.length - 1);
@@ -1456,7 +1596,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'output' && (
               <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
-                {agentLog?.output_data ? (
+                {filteredAgentLog?.output_data ? (
                   <div className="flex flex-col flex-1 min-h-0 space-y-2">
                     <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl shrink-0">
                       <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
@@ -1478,7 +1618,7 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                         showLineNumbers
                         lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
                       >
-                        {JSON.stringify(agentLog.output_data, null, 2)}
+                        {outputDataJsonString}
                       </SyntaxHighlighter>
                     </div>
                   </div>
@@ -1490,12 +1630,12 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'trace' && (
               <div className="h-full flex flex-col">
-                {agentLog ? (() => {
-                  const steps = agentLog.raw_trace || [];
-                  const tokens = agentLog.token_usage;
+                {filteredAgentLog ? (() => {
+                  const steps = filteredAgentLog.raw_trace || [];
+                  const tokens = filteredAgentLog.token_usage;
                   const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) : 0;
-                  const statusBadge = agentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    agentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                  const statusBadge = filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    filteredAgentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
                     'bg-amber-50 text-amber-700 border-amber-200';
 
                   return (
@@ -1504,15 +1644,15 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
                       <div className="px-4 py-2.5 shrink-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${agentLog.status === 'COMPLETED' ? 'bg-emerald-500' : agentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                            <span className="text-sm font-bold text-slate-700">{agentLog.agent_name}</span>
+                            <div className={`w-2 h-2 rounded-full ${filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-500' : filteredAgentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                            <span className="text-sm font-bold text-slate-700">{filteredAgentLog.agent_name}</span>
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${statusBadge}`}>
-                              {agentLog.status}
+                              {filteredAgentLog.status}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
-                            {agentLog.latency_ms > 0 && (
-                              <span>{agentLog.latency_ms >= 1000 ? `${(agentLog.latency_ms / 1000).toFixed(1)}s` : `${agentLog.latency_ms}ms`}</span>
+                            {filteredAgentLog.latency_ms > 0 && (
+                              <span>{filteredAgentLog.latency_ms >= 1000 ? `${(filteredAgentLog.latency_ms / 1000).toFixed(1)}s` : `${filteredAgentLog.latency_ms}ms`}</span>
                             )}
                             {totalTokens > 0 && (
                               <span className="flex items-center gap-1">
@@ -1559,24 +1699,24 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
             {activeTab === 'errors' && (
               <div className="p-4">
-                {agentLog?.error_message ? (
+                {filteredAgentLog?.error_message ? (
                   <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
                     <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
                       <AlertTriangle size={14} className="text-red-500 shrink-0" />
-                      <span className="text-sm font-bold text-red-700">{agentLog.agent_name}</span>
+                      <span className="text-sm font-bold text-red-700">{filteredAgentLog.agent_name}</span>
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
                     </div>
                     <div className="px-4 py-3 space-y-2">
                       <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">
-                        {agentLog.error_message}
+                        {filteredAgentLog.error_message}
                       </p>
-                      {agentLog.error_raw_response && (
+                      {filteredAgentLog.error_raw_response && (
                         <details className="group">
                           <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
                             <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
                           </summary>
                           <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                            {agentLog.error_raw_response}
+                            {filteredAgentLog.error_raw_response}
                           </pre>
                         </details>
                       )}
@@ -2132,11 +2272,11 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
 
   const finalTestCases = useMemo(() => {
     if (!agentLogs) return [];
-    const qmLog = agentLogs.find((l: any) => {
+    const qmLogs = agentLogs.filter((l: any) => {
       const name = (l.agent_name || '').replace(/_/g, '-');
       return name === 'quality-manager' && l.output_data?.finalTestCases;
     });
-    return qmLog?.output_data?.finalTestCases || [];
+    return qmLogs.flatMap((l: any) => l.output_data.finalTestCases);
   }, [agentLogs]);
 
   return (

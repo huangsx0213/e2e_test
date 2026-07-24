@@ -83,6 +83,7 @@ export interface ThinkingEntry {
   phase: 'react' | 'extraction';
   text: string;
   timestamp: number;
+  batch?: number;
 }
 
 export interface TestGenRunState {

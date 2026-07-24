@@ -48,7 +48,7 @@ export class RunScope {
   private thinkingFlushTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly THINKING_FLUSH_MS = 3000;
   // Accumulated thinking entries for persistence
-  private readonly thinkingAccumulator = new Map<string, Array<{ type: string; phase: string; text: string; timestamp: number }>>();
+  private readonly thinkingAccumulator = new Map<string, Array<{ type: string; phase: string; text: string; timestamp: number; batch?: number }>>();
 
   constructor(
     runId: string,
@@ -78,14 +78,14 @@ export class RunScope {
         // key format: agentName:phase:type
         const agentName = key.split(':').slice(0, -2).join(':') || key;
         const timestamp = Date.now();
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp });
+        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
+        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp, batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
       }
@@ -146,14 +146,14 @@ export class RunScope {
     // Flush any remaining thinking text for this agent before marking complete
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
+        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
         this.thinkingBuffer.delete(key);
@@ -207,14 +207,14 @@ export class RunScope {
     // Flush any remaining thinking text for this agent
     for (const [key, entry] of this.thinkingBuffer) {
       if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
         // Accumulate for persistence
         const acc = this.thinkingAccumulator.get(agentName) ?? [];
         const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase) {
+        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
           last.text += entry.text;
         } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now() });
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
         }
         this.thinkingAccumulator.set(agentName, acc);
         this.thinkingBuffer.delete(key);
@@ -311,7 +311,7 @@ export class RunScope {
     };
     // Merge with existing persisted data (for resume/retry scenarios)
     const existing = pipelineRepo.getThinkingData(this.runId) || {};
-    const data: Record<string, Array<{ type: string; phase: string; text: string; timestamp: number }>> = { ...existing };
+    const data: Record<string, Array<{ type: string; phase: string; text: string; timestamp: number; batch?: number }>> = { ...existing };
     for (const [agentName, entries] of this.thinkingAccumulator) {
       const nodeId = AGENT_NAME_TO_NODE_ID[agentName] || agentName;
       data[nodeId] = [...(data[nodeId] || []), ...entries];

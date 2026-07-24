@@ -92,7 +92,12 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         case 'agent:start': {
           const nodeId = AGENT_NAME_TO_NODE_ID[data.agentName];
           if (!nodeId) return state;
-          thinkingTextByNode = { ...thinkingTextByNode, [nodeId]: [] };
+          const currentBatch = data.batch ?? batchProgress?.current ?? 1;
+          const existingText = thinkingTextByNode[nodeId] ?? [];
+          thinkingTextByNode = {
+            ...thinkingTextByNode,
+            [nodeId]: existingText.filter(t => (t.batch || 1) !== currentBatch)
+          };
           nodes = markPrecedingDone(nodes, nodeId);
           nodes = nodes.map(n =>
             n.id === nodeId
@@ -154,8 +159,9 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           if (!nodeId) return state;
           const entries = thinkingTextByNode[nodeId] ?? [];
           const lastEntry = entries[entries.length - 1];
-          // Merge into last entry if same type+phase, otherwise start a new entry
-          if (lastEntry && lastEntry.type === (data.type ?? 'content') && lastEntry.phase === (data.phase ?? 'react')) {
+          const batch = data.batch ?? batchProgress?.current ?? undefined;
+          // Merge into last entry if same type+phase+batch, otherwise start a new entry
+          if (lastEntry && lastEntry.type === (data.type ?? 'content') && lastEntry.phase === (data.phase ?? 'react') && lastEntry.batch === batch) {
             thinkingTextByNode = {
               ...thinkingTextByNode,
               [nodeId]: [...entries.slice(0, -1), { ...lastEntry, text: lastEntry.text + data.text }],
@@ -163,7 +169,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
           } else {
             thinkingTextByNode = {
               ...thinkingTextByNode,
-              [nodeId]: [...entries, { type: data.type ?? 'content', phase: data.phase ?? 'react', text: data.text, timestamp: data.timestamp ?? Date.now() }],
+              [nodeId]: [...entries, { type: data.type ?? 'content', phase: data.phase ?? 'react', text: data.text, timestamp: data.timestamp ?? Date.now(), batch }],
             };
           }
           break;
@@ -264,7 +270,6 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         isRunning: false,
         isConnected: false,
         error: null,
-        thinkingTextByNode: {},
       };
 
     case 'RETRY_STARTED': {
@@ -279,7 +284,6 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         nodes: retryNodes,
         isRunning: true,
         error: null,
-        thinkingTextByNode: {},
       };
     }
 
