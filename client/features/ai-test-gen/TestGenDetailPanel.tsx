@@ -1242,17 +1242,14 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
     }
   }, [node?.id, isRunning, availableBatches.length]);
 
-  const supportsAll = activeTab === 'summary';
   const effectiveBatch = useMemo(() => {
     if (availableBatches.length === 0) return selectedBatch;
-    if (selectedBatch === 'all' && !supportsAll) {
-      return availableBatches[availableBatches.length - 1];
-    }
-    if (selectedBatch !== 'all' && !availableBatches.includes(selectedBatch)) {
+    if (selectedBatch === 'all') return selectedBatch;
+    if (!availableBatches.includes(selectedBatch)) {
       return availableBatches[availableBatches.length - 1];
     }
     return selectedBatch;
-  }, [selectedBatch, supportsAll, availableBatches]);
+  }, [selectedBatch, availableBatches]);
 
   // Filter thinkingText by selected batch
   const filteredThinkingText = useMemo(() => {
@@ -1286,29 +1283,8 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
 
   // Memoize input messages processing to prevent array manipulation on every render frame
   const labeledInputMessages = useMemo(() => {
-    if (!filteredAgentLog?.input_prompt) return [];
-    const messages: { role: string; content: string }[] = Array.isArray(filteredAgentLog.input_prompt)
-      ? filteredAgentLog.input_prompt
-      : [
-          ...(filteredAgentLog.input_prompt.systemPrompt ? [{ role: 'system', content: filteredAgentLog.input_prompt.systemPrompt }] : []),
-          ...(filteredAgentLog.input_prompt.userMessage ? [{ role: 'user', content: filteredAgentLog.input_prompt.userMessage }] : []),
-        ];
-    const roleCounts: Record<string, number> = {};
-    const labeled = messages.map((m) => {
-      roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
-      return { ...m, label: m.role };
-    });
-    const seen: Record<string, number> = {};
-    for (const m of labeled) {
-      if (roleCounts[m.role] > 1) {
-        seen[m.role] = (seen[m.role] || 0) + 1;
-        m.label = `${m.role} ${seen[m.role]}`;
-      } else {
-        m.label = m.role;
-      }
-    }
-    return labeled;
-  }, [filteredAgentLog?.input_prompt]);
+    return getLabeledMessages(filteredAgentLog);
+  }, [filteredAgentLog]);
 
   // Memoize large JSON stringification to prevent heavy blocking on every render frame
   const outputDataJsonString = useMemo(() => {
@@ -1319,6 +1295,32 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
       return 'Error stringifying data';
     }
   }, [filteredAgentLog?.output_data]);
+
+  // Group agent logs by batch for multi-batch view across all tabs
+  const batchAgentLogs = useMemo(() => {
+    if (!agentLogs?.length) return [];
+    const normalize = (s: string) => (s || '').replace(/_/g, '-');
+    const target = normalize(node?.agentName || '');
+    const grouped = new Map<number, any>();
+    for (const l of agentLogs) {
+      if (normalize(l.agent_name) !== target) continue;
+      const b = l.batch || 1;
+      grouped.set(b, l);
+    }
+    return Array.from(grouped.entries())
+      .map(([batch, log]) => ({ batch: Number(batch), log }))
+      .sort((a, b) => a.batch - b.batch);
+  }, [agentLogs, node?.agentName]);
+
+  function BatchSeparator({ batch }: { batch: number }) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <div className="flex-1 border-t border-blue-200" />
+        <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">Batch {batch}</span>
+        <div className="flex-1 border-t border-blue-200" />
+      </div>
+    );
+  }
 
   const groupedTraceGroups = useMemo(() => {
     const grouped: Record<string, any[]> = {};
@@ -1413,7 +1415,6 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
       {showBatchSelector && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-slate-200 bg-slate-50/40 shrink-0">
           <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Batch</span>
-          {supportsAll && (
             <button
               onClick={() => setSelectedBatch('all')}
               className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
@@ -1424,7 +1425,6 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             >
               All
             </button>
-          )}
           {availableBatches.map(b => {
             const status = batchStatusMap[b];
             const isActive = effectiveBatch === b;
@@ -1465,71 +1465,163 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
   )
 )}
             
-            {activeTab === 'thinking' && (
-              <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
-                <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
-                  {filteredThinkingText && filteredThinkingText.length > 0 ? (
-                    (() => {
-                      let lastPhase: string | null = null;
-                      let lastBatch: number | undefined = undefined;
-                      return filteredThinkingText.map((g, i) => {
-                        const phaseChanged = g.phase !== lastPhase;
-                        const batchChanged = effectiveBatch === 'all' && g.batch !== undefined && g.batch !== lastBatch && lastBatch !== undefined;
-                        lastPhase = g.phase;
-                        lastBatch = g.batch;
-                        return (
-                          <div key={i}>
-                            {batchChanged && (
-                              <div className="flex items-center gap-2 py-2">
-                                <div className="flex-1 border-t border-blue-200" />
-                                <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">Batch {g.batch}</span>
-                                <div className="flex-1 border-t border-blue-200" />
-                              </div>
-                            )}
-                            {phaseChanged && i > 0 && !batchChanged && (
-                              <div className="flex items-center gap-2 py-1.5">
-                                <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
-                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                                  {g.phase === 'extraction' ? 'Phase 2 · Extraction' : 'Phase 1 · Reasoning'}
-                                </span>
-                                <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
-                              </div>
-                            )}
-                            {g.type === 'reasoning' ? (
-                              <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} startTime={g.timestamp} />
-                            ) : (
-                              <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} />
-                            )}
-                          </div>
-                        );
-                      });
-                    })()
-                  ) : (
-                    <div className="text-slate-400 dark:text-slate-500 italic py-10 text-center flex flex-col items-center justify-center gap-2">
-                      {isRunning ? (
-                        <>
-                          <Loader2 size={20} className="animate-spin text-slate-400" />
-                          <span className="text-xs">Waiting for agent output...</span>
-                        </>
-                      ) : <span className="text-xs">No thinking logs available.</span>}
-                    </div>
-                  )}
-                  <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
-                </div>
-              </div>
-            )}
-            
-            {activeTab === 'input' && (() => {
-              const labeled = labeledInputMessages;
-
-              if (labeled.length === 0) {
+            {activeTab === 'thinking' && (() => {
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                const batchGroups = new Map<number, any[]>();
+                for (const entry of filteredThinkingText || []) {
+                  const b = entry.batch || 1;
+                  if (!batchGroups.has(b)) batchGroups.set(b, []);
+                  batchGroups.get(b)!.push(entry);
+                }
+                const sortedBatches = Array.from(batchGroups.entries()).sort(([a], [b]) => a - b);
                 return (
-                  <div className="p-4 text-center text-xs text-slate-400 italic py-10">No prompts available.</div>
+                  <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
+                    <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
+                      {sortedBatches.map(([batch, entries]) => (
+                        <div key={batch}>
+                          <BatchSeparator batch={batch} />
+                          {(() => {
+                            let lastPhase: string | null = null;
+                            return entries.map((g: any, i: number) => {
+                              const phaseChanged = g.phase !== lastPhase;
+                              lastPhase = g.phase;
+                              return (
+                                <div key={i}>
+                                  {phaseChanged && i > 0 && (
+                                    <div className="flex items-center gap-2 py-1.5">
+                                      <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                                      <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                                        {g.phase === 'extraction' ? 'Phase 2 · Extraction' : 'Phase 1 · Reasoning'}
+                                      </span>
+                                      <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                                    </div>
+                                  )}
+                                  {g.type === 'reasoning' ? (
+                                    <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === entries.length - 1} startTime={g.timestamp} />
+                                  ) : (
+                                    <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === entries.length - 1} />
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 );
               }
-
+              return (
+                <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
+                  <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
+                    {filteredThinkingText && filteredThinkingText.length > 0 ? (
+                      (() => {
+                        let lastPhase: string | null = null;
+                        return filteredThinkingText.map((g, i) => {
+                          const phaseChanged = g.phase !== lastPhase;
+                          lastPhase = g.phase;
+                          return (
+                            <div key={i}>
+                              {phaseChanged && i > 0 && (
+                                <div className="flex items-center gap-2 py-1.5">
+                                  <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                                  <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                                    {g.phase === 'extraction' ? 'Phase 2 · Extraction' : 'Phase 1 · Reasoning'}
+                                  </span>
+                                  <div className="flex-1 border-t border-slate-200 dark:border-slate-700/50" />
+                                </div>
+                              )}
+                              {g.type === 'reasoning' ? (
+                                <ThinkingBlock key={`r-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} startTime={g.timestamp} />
+                              ) : (
+                                <OutputBlock key={`o-${i}`} text={g.text} isRunning={isRunning && i === filteredThinkingText.length - 1} />
+                              )}
+                            </div>
+                          );
+                        });
+                      })()
+                    ) : (
+                      <div className="text-slate-400 dark:text-slate-500 italic py-10 text-center flex flex-col items-center justify-center gap-2">
+                        {isRunning ? (
+                          <>
+                            <Loader2 size={20} className="animate-spin text-slate-400" />
+                            <span className="text-xs">Waiting for agent output...</span>
+                          </>
+                        ) : <span className="text-xs">No thinking logs available.</span>}
+                      </div>
+                    )}
+                    <div ref={(el) => { if (el && autoScroll) el.scrollIntoView({ behavior: 'instant' }); }} />
+                  </div>
+                </div>
+              );
+            })()}
+            
+            {activeTab === 'input' && (() => {
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                const allHavePrompts = batchAgentLogs.some(({ log }) => getLabeledMessages(log).length > 0);
+                if (!allHavePrompts) {
+                  return <div className="p-4 text-center text-xs text-slate-400 italic py-10">No prompts available.</div>;
+                }
+                return (
+                  <div className="h-full overflow-y-auto">
+                    {batchAgentLogs.map(({ batch, log }) => {
+                      const batchLabeled = getLabeledMessages(log);
+                      if (batchLabeled.length === 0) return null;
+                      const safeIndex = Math.min(activePromptTab, batchLabeled.length - 1);
+                      return (
+                        <div key={batch} className="pb-4 border-b border-slate-100 last:border-b-0">
+                          <div className="sticky top-0 bg-white z-10 px-4 py-1.5">
+                            <BatchSeparator batch={batch} />
+                          </div>
+                          <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 overflow-x-auto scrollbar-none shrink-0">
+                            {batchLabeled.map((m, i) => (
+                              <button key={i} className={`px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider border-b-2 transition-all shrink-0 -mb-px ${safeIndex === i ? 'border-blue-600 text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}>
+                                {m.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="p-4">
+                            <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 px-3 py-2 thinking-markdown text-[12px] leading-relaxed text-slate-700 dark:text-slate-300">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}
+                                components={{
+                                  code({ className, children, ...props }) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    const codeStr = String(children).replace(/\n$/, '');
+                                    if (match) return <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div" customStyle={{ fontSize: '11px', borderRadius: '6px', margin: '6px 0', padding: '10px 12px' }}>{codeStr}</SyntaxHighlighter>;
+                                    if (className === 'language-') return <pre className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/50 rounded-lg px-3 py-2 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{codeStr}</pre>;
+                                    return <code className="bg-slate-100 dark:bg-slate-700/70 px-1 py-0.5 rounded text-[11px] font-mono text-slate-700 dark:text-slate-200 border border-slate-200/60 dark:border-slate-600/50" {...props}>{children}</code>;
+                                  },
+                                  pre({ children }) { return <div className="my-1.5">{children}</div>; },
+                                  p({ children }) { return <p className="mb-1.5 last:mb-0">{children}</p>; },
+                                  ul({ children }) { return <ul className="list-disc pl-4 mb-1.5">{children}</ul>; },
+                                  ol({ children }) { return <ol className="list-decimal pl-4 mb-1.5">{children}</ol>; },
+                                  li({ children }) { return <li className="mb-0.5">{children}</li>; },
+                                  blockquote({ children }) { return <blockquote className="border-l-2 border-slate-300 dark:border-slate-600 pl-2 my-1 text-slate-500 italic">{children}</blockquote>; },
+                                  h1({ children }) { return <h1 className="text-sm font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h1>; },
+                                  h2({ children }) { return <h2 className="text-[13px] font-bold mb-1 text-slate-800 dark:text-slate-200">{children}</h2>; },
+                                  h3({ children }) { return <h3 className="text-[12px] font-semibold mb-1 text-slate-800 dark:text-slate-200">{children}</h3>; },
+                                  table({ children }) { return <table className="w-full border-collapse text-[11px] my-1.5">{children}</table>; },
+                                  th({ children }) { return <th className="border border-slate-300 dark:border-slate-600 px-2 py-1 bg-slate-50 dark:bg-slate-800 text-left font-semibold">{children}</th>; },
+                                  td({ children }) { return <td className="border border-slate-300 dark:border-slate-600 px-2 py-1">{children}</td>; },
+                                }}
+                              >
+                                {batchLabeled[safeIndex]?.content || 'N/A'}
+                              </ReactMarkdown>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              const labeled = labeledInputMessages;
+              if (labeled.length === 0) {
+                return <div className="p-4 text-center text-xs text-slate-400 italic py-10">No prompts available.</div>;
+              }
               const safeIndex = Math.min(activePromptTab, labeled.length - 1);
-
               return (
                 <div className="h-full flex flex-col">
                   <div className="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 overflow-x-auto scrollbar-none shrink-0">
@@ -1594,147 +1686,275 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
               );
             })()}
 
-            {activeTab === 'output' && (
-              <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
-                {filteredAgentLog?.output_data ? (
-                  <div className="flex flex-col flex-1 min-h-0 space-y-2">
-                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl shrink-0">
-                      <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
-                      <button 
-                        onClick={handleCopyRawJson}
-                        className="flex items-center gap-1 text-[10px] uppercase font-bold py-1 px-2.5 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors rounded-lg"
-                      >
-                        {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
-                        {copied ? 'Copied' : 'Copy JSON'}
-                      </button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto min-h-0">
-                      <SyntaxHighlighter
-                        style={vscDarkPlus}
-                        language="json"
-                        PreTag="div"
-                        customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px', height: '100%' }}
-                        showLineNumbers
-                        lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
-                      >
-                        {outputDataJsonString}
-                      </SyntaxHighlighter>
+            {activeTab === 'output' && (() => {
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                return (
+                  <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
+                    <div className="flex-1 overflow-y-auto min-h-0 space-y-2">
+                      {batchAgentLogs.map(({ batch, log }) => (
+                        <div key={batch}>
+                          <BatchSeparator batch={batch} />
+                          {log?.output_data ? (
+                            <div className="pb-4">
+                              <SyntaxHighlighter
+                                style={vscDarkPlus} language="json" PreTag="div"
+                                customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px' }}
+                                showLineNumbers lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
+                              >
+                                {(() => { try { return JSON.stringify(log.output_data, null, 2); } catch { return 'Error stringifying data'; }})()}
+                              </SyntaxHighlighter>
+                            </div>
+                          ) : (
+                            <div className="pb-4 text-center text-xs text-slate-400">No output for this batch.</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <div className="text-center text-xs text-slate-400 py-10">No compilation output yet</div>
-                )}
-              </div>
-            )}
+                );
+              }
+              return (
+                <div className="p-4 h-full flex flex-col overflow-hidden min-h-0">
+                  {filteredAgentLog?.output_data ? (
+                    <div className="flex flex-col flex-1 min-h-0 space-y-2">
+                      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl shrink-0">
+                        <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Click to duplicate compiled raw JSON telemetry data structure.</span>
+                        <button 
+                          onClick={handleCopyRawJson}
+                          className="flex items-center gap-1 text-[10px] uppercase font-bold py-1 px-2.5 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 transition-colors rounded-lg"
+                        >
+                          {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                          {copied ? 'Copied' : 'Copy JSON'}
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto min-h-0">
+                        <SyntaxHighlighter
+                          style={vscDarkPlus} language="json" PreTag="div"
+                          customStyle={{ fontSize: '10px', borderRadius: '8px', margin: 0, padding: '12px', height: '100%' }}
+                          showLineNumbers lineNumberStyle={{ color: '#4a5568', fontSize: '9px' }}
+                        >
+                          {outputDataJsonString}
+                        </SyntaxHighlighter>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-slate-400 py-10">No compilation output yet</div>
+                  )}
+                </div>
+              );
+            })()}
 
-            {activeTab === 'trace' && (
-              <div className="h-full flex flex-col">
-                {filteredAgentLog ? (() => {
-                  const steps = filteredAgentLog.raw_trace || [];
-                  const tokens = filteredAgentLog.token_usage;
-                  const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) : 0;
-                  const statusBadge = filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    filteredAgentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
-                    'bg-amber-50 text-amber-700 border-amber-200';
-
-                  return (
-                    <div className="flex flex-col flex-1 min-h-0">
-                      {/* Agent header — fixed */}
-                      <div className="px-4 py-2.5 shrink-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-500' : filteredAgentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
-                            <span className="text-sm font-bold text-slate-700">{filteredAgentLog.agent_name}</span>
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${statusBadge}`}>
-                              {filteredAgentLog.status}
-                            </span>
+            {activeTab === 'trace' && (() => {
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                return (
+                  <div className="h-full overflow-y-auto">
+                    {batchAgentLogs.map(({ batch, log }) => {
+                      const steps = log?.raw_trace || [];
+                      return (
+                        <div key={batch}>
+                          <div className="px-4">
+                            <BatchSeparator batch={batch} />
                           </div>
-                          <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
-                            {filteredAgentLog.latency_ms > 0 && (
-                              <span>{filteredAgentLog.latency_ms >= 1000 ? `${(filteredAgentLog.latency_ms / 1000).toFixed(1)}s` : `${filteredAgentLog.latency_ms}ms`}</span>
-                            )}
-                            {totalTokens > 0 && (
-                              <span className="flex items-center gap-1">
-                                <Zap size={10} />
-                                {totalTokens.toLocaleString()} tk
-                              </span>
-                            )}
+                          {steps.length > 0 ? (
+                            <div className="px-4 pb-4">
+                              <div className="border-l-2 border-slate-200 pl-3 space-y-2">
+                                {steps.map((entry: any, i: number) => {
+                                  const prevTs = i > 0 ? steps[i - 1].timestamp : null;
+                                  const stepDur = prevTs ? entry.timestamp - prevTs : 0;
+                                  return (
+                                    <div key={i} className="relative flex items-start gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-blue-100 mt-1.5 shrink-0" />
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-[10px] font-mono text-slate-400">
+                                          {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
+                                          {stepDur > 0 && <span className="text-slate-300 ml-1">(+{stepDur}ms)</span>}
+                                        </span>
+                                        <span className="text-xs font-semibold text-slate-700 whitespace-pre-wrap font-mono">{entry.name || `Step ${entry.step}`}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="px-4 pb-4 text-center text-xs text-slate-400 italic">No trace steps for this batch.</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              return (
+                <div className="h-full flex flex-col">
+                  {filteredAgentLog ? (() => {
+                    const steps = filteredAgentLog.raw_trace || [];
+                    const tokens = filteredAgentLog.token_usage;
+                    const totalTokens = tokens ? (tokens.input || 0) + (tokens.output || 0) + (tokens.reasoning || 0) : 0;
+                    const statusBadge = filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      filteredAgentLog.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                      'bg-amber-50 text-amber-700 border-amber-200';
+                    return (
+                      <div className="flex flex-col flex-1 min-h-0">
+                        <div className="px-4 py-2.5 shrink-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${filteredAgentLog.status === 'COMPLETED' ? 'bg-emerald-500' : filteredAgentLog.status === 'FAILED' ? 'bg-red-500' : 'bg-amber-400'}`} />
+                              <span className="text-sm font-bold text-slate-700">{filteredAgentLog.agent_name}</span>
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${statusBadge}`}>{filteredAgentLog.status}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
+                              {filteredAgentLog.latency_ms > 0 && <span>{filteredAgentLog.latency_ms >= 1000 ? `${(filteredAgentLog.latency_ms / 1000).toFixed(1)}s` : `${filteredAgentLog.latency_ms}ms`}</span>}
+                              {totalTokens > 0 && <span className="flex items-center gap-1"><Zap size={10} />{totalTokens.toLocaleString()} tk</span>}
+                            </div>
                           </div>
                         </div>
+                        {steps.length > 0 && (
+                          <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+                            <div className="border-l-2 border-slate-200 pl-3 space-y-2">
+                              {steps.map((entry: any, i: number) => {
+                                const prevTs = i > 0 ? steps[i - 1].timestamp : null;
+                                const stepDur = prevTs ? entry.timestamp - prevTs : 0;
+                                return (
+                                  <div key={i} className="relative flex items-start gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-blue-100 mt-1.5 shrink-0" />
+                                    <div className="flex flex-col min-w-0">
+                                      <span className="text-[10px] font-mono text-slate-400">
+                                        {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
+                                        {stepDur > 0 && <span className="text-slate-300 ml-1">(+{stepDur}ms)</span>}
+                                      </span>
+                                      <span className="text-xs font-semibold text-slate-700 whitespace-pre-wrap font-mono">{entry.name || `Step ${entry.step}`}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    );
+                  })() : (
+                    <div className="text-center text-xs text-slate-400 italic py-10">Select an agent node to view its execution trace.</div>
+                  )}
+                </div>
+              );
+            })()}
 
-                      {/* Steps — fixed */}
-                      {steps.length > 0 && (
-                        <div className="px-4 py-3 border-t border-slate-100 shrink-0">
-                          <div className="border-l-2 border-slate-200 pl-3 space-y-2">
-                            {steps.map((entry: any, i: number) => {
-                              const prevTs = i > 0 ? steps[i - 1].timestamp : null;
-                              const stepDur = prevTs ? entry.timestamp - prevTs : 0;
-                              return (
-                                <div key={i} className="relative flex items-start gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-blue-100 mt-1.5 shrink-0" />
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="text-[10px] font-mono text-slate-400">
-                                      {entry.timestamp ? new Date(entry.timestamp).toISOString().slice(11, 19) : `Step ${i + 1}`}
-                                      {stepDur > 0 && <span className="text-slate-300 ml-1">(+{stepDur}ms)</span>}
-                                    </span>
-                                    <span className="text-xs font-semibold text-slate-700 whitespace-pre-wrap font-mono">{entry.name || `Step ${entry.step}`}</span>
+            {activeTab === 'errors' && (() => {
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                const hasAnyError = batchAgentLogs.some(({ log }) => log?.error_message);
+                return (
+                  <div className="p-4">
+                    {hasAnyError ? (
+                      <div className="space-y-4">
+                        {batchAgentLogs.map(({ batch, log }) => (
+                          <div key={batch}>
+                            {log?.error_message ? (
+                              <div>
+                                <BatchSeparator batch={batch} />
+                                <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
+                                  <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
+                                    <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                                    <span className="text-sm font-bold text-red-700">{log.agent_name}</span>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
+                                  </div>
+                                  <div className="px-4 py-3 space-y-2">
+                                    <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">{log.error_message}</p>
+                                    {log.error_raw_response && (
+                                      <details className="group">
+                                        <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
+                                          <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
+                                        </summary>
+                                        <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">{log.error_raw_response}</pre>
+                                      </details>
+                                    )}
                                   </div>
                                 </div>
-                              );
-                            })}
+                              </div>
+                            ) : (
+                              <div>
+                                <BatchSeparator batch={batch} />
+                                <div className="text-center text-xs text-emerald-600 py-10 flex flex-col items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50/60">
+                                  <CheckCircle2 size={24} className="text-emerald-500" />
+                                  <span className="font-bold">No errors detected. Perfect health.</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-
-
-                    </div>
-                  );
-                })() : (
-                  <div className="text-center text-xs text-slate-400 italic py-10">Select an agent node to view its execution trace.</div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'errors' && (
-              <div className="p-4">
-                {filteredAgentLog?.error_message ? (
-                  <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
-                    <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
-                      <AlertTriangle size={14} className="text-red-500 shrink-0" />
-                      <span className="text-sm font-bold text-red-700">{filteredAgentLog.agent_name}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
-                    </div>
-                    <div className="px-4 py-3 space-y-2">
-                      <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">
-                        {filteredAgentLog.error_message}
-                      </p>
-                      {filteredAgentLog.error_raw_response && (
-                        <details className="group">
-                          <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
-                            <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
-                          </summary>
-                          <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                            {filteredAgentLog.error_raw_response}
-                          </pre>
-                        </details>
-                      )}
-                    </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-xs text-emerald-600 py-10 flex flex-col items-center gap-1">
+                        <CheckCircle2 size={24} className="text-emerald-500 animate-pulse" />
+                        <span className="font-bold">No errors detected. Perfect health.</span>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center text-xs text-emerald-600 py-10 flex flex-col items-center gap-1">
-                    <CheckCircle2 size={24} className="text-emerald-500 animate-pulse" />
-                    <span className="font-bold">No errors detected. Perfect health.</span>
-                  </div>
-                )}
-              </div>
-            )}
+                );
+              }
+              return (
+                <div className="p-4">
+                  {filteredAgentLog?.error_message ? (
+                    <div className="border border-red-200 rounded-xl overflow-hidden bg-red-50/60">
+                      <div className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border-b border-red-100">
+                        <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                        <span className="text-sm font-bold text-red-700">{filteredAgentLog.agent_name}</span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">FAILED</span>
+                      </div>
+                      <div className="px-4 py-3 space-y-2">
+                        <p className="text-xs text-red-700 font-mono bg-white/80 p-2 rounded border border-red-100">{filteredAgentLog.error_message}</p>
+                        {filteredAgentLog.error_raw_response && (
+                          <details className="group">
+                            <summary className="text-[10px] font-bold uppercase tracking-wider text-red-400 cursor-pointer hover:text-red-600 select-none flex items-center gap-1.5">
+                              <ChevronRight size={12} className="group-open:rotate-90 transition-transform" /> Raw Response
+                            </summary>
+                            <pre className="text-[10px] font-mono bg-slate-950 text-red-300 p-2 rounded-lg mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap">{filteredAgentLog.error_raw_response}</pre>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-xs text-emerald-600 py-10 flex flex-col items-center gap-1">
+                      <CheckCircle2 size={24} className="text-emerald-500 animate-pulse" />
+                      <span className="font-bold">No errors detected. Perfect health.</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </motion.div>
         </AnimatePresence>
       </div>
     </div>
   );
+}
+
+function getLabeledMessages(log: any): { role: string; content: string; label: string }[] {
+  if (!log?.input_prompt) return [];
+  const messages: { role: string; content: string }[] = Array.isArray(log.input_prompt)
+    ? log.input_prompt
+    : [
+        ...(log.input_prompt.systemPrompt ? [{ role: 'system', content: log.input_prompt.systemPrompt }] : []),
+        ...(log.input_prompt.userMessage ? [{ role: 'user', content: log.input_prompt.userMessage }] : []),
+      ];
+  const roleCounts: Record<string, number> = {};
+  const labeled = messages.map((m) => {
+    roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
+    return { ...m, label: m.role };
+  });
+  const seen: Record<string, number> = {};
+  for (const m of labeled) {
+    if (roleCounts[m.role] > 1) {
+      seen[m.role] = (seen[m.role] || 0) + 1;
+      m.label = `${m.role} ${seen[m.role]}`;
+    } else {
+      m.label = m.role;
+    }
+  }
+  return labeled;
 }
 
 interface CheckpointEditItem {
