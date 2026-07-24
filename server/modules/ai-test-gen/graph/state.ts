@@ -50,6 +50,22 @@ export const AGENT_NAME_BY_CHECKPOINT: Readonly<Record<number, string>> = {
   3: 'quality_manager',
 };
 
+export interface GlobalRequirementEntry {
+  id: string;
+  title: string;
+  level: string;
+  parentId: string | null;
+  epicId: string | null;  // 所属 epic 的 ID，方便 AI 理解层级
+}
+
+export interface PreviousBatchConditionSummary {
+  id: string;
+  condition: string;
+  requirementId: string;
+  category: string;
+  primaryTechnique: string;
+}
+
 export const TestGenStateAnnotation = Annotation.Root({
   // === 运行标识 ===
   projectId: Annotation<string>,
@@ -62,6 +78,13 @@ export const TestGenStateAnnotation = Annotation.Root({
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
+
+  // === 全局需求索引（所有批次共享，用于跨 Epic 感知） ===
+  globalRequirementIndex: Annotation<GlobalRequirementEntry[] | undefined>,
+  globalStats: Annotation<{ totalRequirements: number; totalEpics: number; totalFlows: number } | undefined>,
+
+  // === 跨批次感知：已完成批次的 test conditions 摘要 ===
+  previousBatchConditions: Annotation<PreviousBatchConditionSummary[] | undefined>,
 
   // === Preparation 产物 ===
   environmentReady: Annotation<boolean>,

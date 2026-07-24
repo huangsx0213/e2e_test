@@ -62,6 +62,7 @@ const handleRefresh = useCallback(async () => {
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
         textVerbosity: config.textVerbosity,
+        referenceRunIds: config.referenceRunIds,
       });
       setActiveTab('runtime');
     } catch {
@@ -263,6 +264,7 @@ const handleRefresh = useCallback(async () => {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'new' && (
           <TestGenConfigPanel
+            projectId={currentProjectId}
             requirements={requirements}
             businessFlows={businessFlows}
             onStart={handleStart}

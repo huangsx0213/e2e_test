@@ -70,6 +70,7 @@ export interface StartConfig {
   reasoningEffort?: string;
   reasoningSummary?: string;
   textVerbosity?: string;
+  referenceRunIds?: string[];
 }
 
 export interface TestGenEvent {

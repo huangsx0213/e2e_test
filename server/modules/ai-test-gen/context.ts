@@ -37,6 +37,7 @@ export interface StartParams {
   reasoningEffort?: 'low' | 'medium' | 'high';
   reasoningSummary?: 'auto' | 'detailed' | 'concise';
   textVerbosity?: 'low' | 'medium' | 'high';
+  referenceRunIds?: string[];
 }
 
 export class ContextBuilder {

@@ -21,6 +21,9 @@ export interface BatchInput {
     businessFlowBlueprints: any[] | undefined;
     includeFlowCases: boolean;
     selectedFlowIds: string[];
+    globalRequirementIndex?: import('./graph/state.ts').GlobalRequirementEntry[];
+    globalStats?: { totalRequirements: number; totalEpics: number; totalFlows: number };
+    previousBatchConditions?: import('./graph/state.ts').PreviousBatchConditionSummary[];
     phase: TestGenState['phase'];
     errors: any[];
   };

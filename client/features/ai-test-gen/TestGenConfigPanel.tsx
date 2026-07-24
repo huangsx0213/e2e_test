@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ChevronRight, ChevronDown, Play, FileText, GitBranch, Settings2, Zap, CheckCircle } from 'lucide-react';
+import { ChevronRight, ChevronDown, Play, FileText, GitBranch, Settings2, Zap, CheckCircle, History } from 'lucide-react';
 import type { Requirement, BusinessFlow } from '../../../shared/contracts/index';
-import { useProviderConfigs } from '../../shared/hooks/useQueryHooks';
+import { useProviderConfigs, useTestGenRuns } from '../../shared/hooks/useQueryHooks';
 
 interface TestGenConfigPanelProps {
+  projectId: string;
   requirements: Requirement[];
   businessFlows: BusinessFlow[];
   onStart: (config: TestGenStartConfig) => void;
@@ -23,6 +24,7 @@ export interface TestGenStartConfig {
   reasoningEffort?: string;
   reasoningSummary?: string;
   textVerbosity?: string;
+  referenceRunIds?: string[];
 }
 
 interface TreeNode {
@@ -174,16 +176,19 @@ const defaultConfig: SavedConfig = {
 };
 
 export function TestGenConfigPanel({
+  projectId,
   requirements,
   businessFlows,
   onStart,
   disabled,
 }: TestGenConfigPanelProps) {
   const { data: providerConfigs = [] } = useProviderConfigs();
+  const { data: pastRuns = [] } = useTestGenRuns(projectId);
   const savedConfig = useMemo(() => loadConfig(), []);
 
   const [selectedReqs, setSelectedReqs] = useState<Set<string>>(new Set());
   const [selectedFlows, setSelectedFlows] = useState<Set<string>>(new Set());
+  const [referenceRunIds, setReferenceRunIds] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<'auto' | 'interactive'>(savedConfig?.mode ?? defaultConfig.mode);
   const [showApprovedOnly, setShowApprovedOnly] = useState(savedConfig?.showApprovedOnly ?? defaultConfig.showApprovedOnly);
 
@@ -264,6 +269,10 @@ export function TestGenConfigPanel({
     ? businessFlows.filter(f => f.status === 'APPROVED')
     : businessFlows;
 
+  const completedRuns = useMemo(() => {
+    return pastRuns.filter((r: any) => r.status === 'COMPLETED');
+  }, [pastRuns]);
+
   const handleReqToggle = (ids: string[]) => {
     setSelectedReqs(prev => {
       const next = new Set(prev);
@@ -297,6 +306,7 @@ export function TestGenConfigPanel({
     setTextVerbosity('');
     setSelectedReqs(new Set());
     setSelectedFlows(new Set());
+    setReferenceRunIds(new Set());
   };
 
   const handleStart = () => {
@@ -315,6 +325,7 @@ export function TestGenConfigPanel({
       reasoningEffort: reasoningEffort || undefined,
       reasoningSummary: reasoningSummary || undefined,
       textVerbosity: textVerbosity || undefined,
+      referenceRunIds: Array.from(referenceRunIds),
     });
   };
 
@@ -596,8 +607,85 @@ export function TestGenConfigPanel({
             )}
           </div>
 
+          {/* Reference Runs */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <History size={13} className="text-slate-500" />
+                  <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Reference Previous Runs</label>
+                  {referenceRunIds.size > 0 && (
+                    <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded-full">
+                      {referenceRunIds.size}
+                    </span>
+                  )}
+                </div>
+                {completedRuns.length > 0 && (
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (completedRuns.length > 0) {
+                          setReferenceRunIds(new Set([completedRuns[0].id]));
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-1.5 py-0.5 rounded font-medium transition-colors"
+                    >
+                      Latest 1
+                    </button>
+                    {referenceRunIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setReferenceRunIds(new Set())}
+                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 px-1.5 py-0.5 rounded transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-slate-200 rounded-lg bg-white overflow-hidden max-h-[96px] overflow-y-auto shadow-inner">
+                {completedRuns.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 p-3 text-center">No completed runs available</p>
+                ) : (
+                  completedRuns.map((run: any) => (
+                    <label
+                      key={run.id}
+                      className={`flex items-start gap-2.5 px-3 py-2 text-xs cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${
+                        referenceRunIds.has(run.id) ? 'bg-blue-50/60' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={referenceRunIds.has(run.id)}
+                        onChange={(e) => {
+                          const next = new Set(referenceRunIds);
+                          if (e.target.checked) next.add(run.id); else next.delete(run.id);
+                          setReferenceRunIds(next);
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className={`truncate font-medium ${referenceRunIds.has(run.id) ? 'text-blue-900' : 'text-slate-700'}`} title={run.config?.name || run.id}>
+                          {run.config?.name || run.id}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                          <span>{new Date(run.created_at).toLocaleString()}</span>
+                          {run.total_batches > 0 && <span>• {run.total_batches} batch(es)</span>}
+                        </div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">Select previous runs to avoid generating duplicate test conditions.</p>
+            </div>
+          </div>
+
           {/* Options */}
-          <div className="space-y-2.5 pt-1">
+          <div className="space-y-2.5 pt-2 border-t border-slate-100">
             <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
               <input
                 type="checkbox"

@@ -12,6 +12,7 @@ export const startPipelineSchema = z.object({
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   reasoningSummary: z.enum(['auto', 'detailed', 'concise']).optional(),
   textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
+  referenceRunIds: z.array(z.string()).optional(),
 });
 
 export const resumePipelineSchema = z.object({

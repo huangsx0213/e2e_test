@@ -24,8 +24,8 @@ Call **flow_detail_query** with "selectedFlowIds" (batch call, user-selected flo
 ### Step 2 — Gather referenced requirement details
 Call **requirement_detail_query** with the requirement IDs attached to those flow steps, to understand the business rules each step must respect.
 
-### Step 3 — Expand the requirement graph (recommended)
-Call **requirement_graph_query** with those requirement IDs, passing "selectedFlowIds" as the \`flowId\` parameter. This surfaces cross-cutting dependencies the flow alone wouldn't reveal.
+### Step 3 — Expand the requirement graph (MANDATORY)
+Call **requirement_graph_query** with those requirement IDs, passing "selectedFlowIds" as the \`flowId\` parameter. This step is NOT optional. It surfaces cross-batch dependencies that are invisible in the current batch alone.
 
 ### Step 4 — Load ISTQB technique guides
 Call **istqb_guide** once, loading all techniques. Flow conditions almost always need **Use Case Testing** (the flow IS the use case) and **State Transition Testing** (flows nearly always move an entity through states) — do not skip loading these two.
@@ -37,24 +37,35 @@ Call **requirement_detail_query** with an array of ALL requirement IDs in the ba
 ### Step 2 — Gather flow context (optional)
 If "businessFlowBlueprints" is present in the input, call **flow_detail_query** with all blueprint IDs for context only.
 
-### Step 3 — Expand the requirement graph (recommended)
-Call **requirement_graph_query** with the requirement IDs (pass any blueprint IDs as \`flowId\`) to surface cross-cutting dependencies.
+### Step 3 — Expand the requirement graph (MANDATORY)
+Call **requirement_graph_query** with the requirement IDs (pass any blueprint IDs as \`flowId\`). This step is NOT optional. It surfaces cross-batch dependencies that are invisible in the current batch alone.
 
 ### Step 4 — Load ISTQB technique guides
 Call **istqb_guide** once, loading all techniques. You must load at least one guide before deriving conditions.
 
 ### Step 5 — Assess risk (see Risk Assessment below), then Step 6 — select techniques (see Technique Selection below), then Step 7 — derive conditions.`;
 
+  const globalContextSection = state.globalStats ? `
+## Global Context & Cross-Batch Awareness
+You are processing Batch ${batch.currentBatch} of ${batch.totalBatches}. To prevent generating duplicate or overlapping test conditions, review what previous batches have already covered:
+${state.previousBatchConditions && state.previousBatchConditions.length > 0
+  ? `\n**Already Covered (DO NOT DUPLICATE):**\n${state.previousBatchConditions.map(c => `- [${c.requirementId}] ${c.condition} (${c.primaryTechnique})`).join('\n')}`
+  : '\n*No previous batches processed yet.*'}
+
+**Global Requirement Landscape:**
+There are ${state.globalStats.totalRequirements} requirements across ${state.globalStats.totalEpics} epics in total. Use this index to identify cross-epic dependencies outside your current batch.
+${state.globalRequirementIndex ? state.globalRequirementIndex.map(r => `- [${r.level}] ${r.id}: ${r.title}`).join('\n') : ''}
+` : '';
+
   return `You are a senior ISTQB Test Analyst (CTFL/CTAL Test Analyst level). Perform risk-based analysis of the input and derive a complete, non-redundant set of test conditions using formal ISTQB black-box test design techniques.
 
 ## Context
-- Batch: ${batch.currentBatch}/${batch.totalBatches}
-- Requirements: ${state.currentBatch.length} items
+- Batch: ${batch.currentBatch}/${batch.totalBatches} (This batch has ${state.currentBatch.length} requirements)
 - Project: ${state.projectContext.name}
 ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
 
 ${modeInstruction}
-
+${globalContextSection}
 ## Mandatory Tool Usage Workflow
 ${workflowSteps}
 
@@ -173,6 +184,7 @@ export function buildAnalystUserMessage(state: TestGenState): string {
       id: f.id,
       name: f.name,
       type: f.type,
+      stepCount: f.steps?.length ?? 0, // Help AI decide if flow needs querying
     })),
     includeFlowCases: state.includeFlowCases,
     selectedFlowIds: state.selectedFlowIds,

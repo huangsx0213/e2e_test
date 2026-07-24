@@ -13,6 +13,7 @@ import { buildBusinessFlowBlueprints } from './business-flow-blueprint.ts';
 import { checkpointer } from './graph/checkpointer.ts';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
+import type { GlobalRequirementEntry, PreviousBatchConditionSummary } from './graph/state.ts';
 import { db } from '../../shared/db/client.ts';
 import { Log } from '../../shared/services/logger.ts';
 
@@ -95,6 +96,25 @@ export class Orchestrator {
       const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
       log.info(`Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints`);
 
+      // ── 构建全局需求快照（所有批次共享，解决 Epic 信息孤岛问题）──
+      const epicIdMap = new Map<string, string>(); // reqId → epicId
+      for (const [epicId, childIds] of rootGroups) {
+        for (const id of childIds) epicIdMap.set(id, epicId);
+      }
+      const globalRequirementIndex: GlobalRequirementEntry[] = requirements.map(r => ({
+        id: r.id,
+        title: r.title,
+        level: r.level,
+        parentId: r.parentId ?? null,
+        epicId: epicIdMap.get(r.id) ?? null,
+      }));
+      const globalStats = {
+        totalRequirements: requirements.length,
+        totalEpics: epics.length,
+        totalFlows: allProjectFlows.length,
+      };
+      log.info(`Global snapshot: ${globalRequirementIndex.length} requirements, ${globalStats.totalEpics} epics, ${globalStats.totalFlows} flows`);
+
       // 发送准备阶段事件
       ctx.sendEvent('phase:start', { phase: 'preparation', message: `Processing ${selectedIndex.length} requirements in ${totalBatches} batch(es)` });
       ctx.sendEvent('pipeline:context', { flows: businessFlows.length, indexEntries: selectedIndex.length });
@@ -121,8 +141,37 @@ export class Orchestrator {
         VALUES (?, ?, 0, 'preparation', '', NULL, ?, NULL, 0, NULL, 'COMPLETED')
       `).run(preparationLogId, runId, JSON.stringify(preparationOutput));
 
-      // 执行批次
+      // 执行批次（累积 previousBatchConditions 给后续批次使用）
       const allResults: BatchResult[] = [];
+      const accumulatedConditions: PreviousBatchConditionSummary[] = [];
+
+      // 如果指定了参考的其他 Runs，则从其历史中提取已生成的 test conditions，避免生成重复用例
+      if (params.referenceRunIds && params.referenceRunIds.length > 0) {
+        for (const refId of params.referenceRunIds) {
+          try {
+            const refLogs = pipelineRepo.getAgentLogs(refId, 'test_analyst');
+            for (const refLog of refLogs) {
+              const batchConditions: any[] = refLog.output_data?.testConditions ?? [];
+              for (const tc of batchConditions) {
+                if (tc.id && tc.condition && tc.requirementId) {
+                  accumulatedConditions.push({
+                    id: tc.id,
+                    condition: tc.condition,
+                    requirementId: tc.requirementId,
+                    category: tc.category ?? 'functional',
+                    primaryTechnique: tc.primaryTechnique ?? 'Unknown',
+                  });
+                }
+              }
+            }
+            log.info(`Loaded conditions from reference run ${refId}`);
+          } catch (e) {
+            log.error(`Failed to load reference conditions from run ${refId}: ${e}`);
+          }
+        }
+        log.info(`Total accumulated reference conditions: ${accumulatedConditions.length}`);
+      }
+
       for (let i = 0; i < epics.length; i++) {
         if (ctx.isAborted()) break;
         const epic = epics[i];
@@ -133,10 +182,17 @@ export class Orchestrator {
 
         const batchInput: BatchInput = {
           batchIndex: i,
-          inputState: this.buildBatchInputState(
-            projectId, params.requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows,
-            params.mode, params.includeFlowCases, params.flowIds,
-          ),
+          inputState: {
+            ...this.buildBatchInputState(
+              projectId, params.requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows,
+              params.mode, params.includeFlowCases, params.flowIds,
+            ),
+            // 注入全局上下文
+            globalRequirementIndex,
+            globalStats,
+            // 注入已完成批次的 test conditions（防止重复生成）
+            previousBatchConditions: accumulatedConditions.length > 0 ? [...accumulatedConditions] : undefined,
+          },
         };
 
         const outcome = await ctx.session.startBatch(batchInput);
@@ -153,7 +209,19 @@ export class Orchestrator {
           keepSse = true;
           return;
         }
-        log.success(`Batch ${i + 1}/${epics.length} complete ── ${outcome.result.cases.length} test cases`);
+
+        // 累积本批次已生成的 conditions，供后续批次参考
+        const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
+        for (const tc of batchConditions) {
+          accumulatedConditions.push({
+            id: tc.id,
+            condition: tc.condition,
+            requirementId: tc.requirementId,
+            category: tc.category,
+            primaryTechnique: tc.primaryTechnique,
+          });
+        }
+        log.success(`Batch ${i + 1}/${epics.length} complete ── ${outcome.result.cases.length} test cases, ${batchConditions.length} conditions accumulated`);
         allResults.push(outcome.result);
         ctx.sendEvent('batch:complete', {
           batch: i + 1, total: totalBatches,
@@ -444,31 +512,74 @@ export class Orchestrator {
       : allProjectFlows;
     const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
 
-    const remaining = epics
-      .map((epic, i) => ({
-        batchIndex: i,
-        inputState: this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, i, totalBatches, businessFlows, config.mode || 'auto', config.includeFlowCases, config.flowIds),
-      }))
-      .slice(startFrom);
+    // Rebuild global context
+    const epicIdMap = new Map<string, string>();
+    for (const [epicId, childIds] of rootGroups) {
+      for (const id of childIds) epicIdMap.set(id, epicId);
+    }
+    const globalRequirementIndex: GlobalRequirementEntry[] = requirements.map(r => ({
+      id: r.id,
+      title: r.title,
+      level: r.level,
+      parentId: r.parentId ?? null,
+      epicId: epicIdMap.get(r.id) ?? null,
+    }));
+    const globalStats = {
+      totalRequirements: requirements.length,
+      totalEpics: epics.length,
+      totalFlows: allProjectFlows.length,
+    };
 
-    if (remaining.length === 0) return { allResults: [], interrupted: false };
+    const remainingEpics = epics.slice(startFrom);
+    if (remainingEpics.length === 0) return { allResults: [], interrupted: false };
 
     const allResults: BatchResult[] = [];
-    for (const batch of remaining) {
-      if (ctx.isAborted()) break;
-      ctx.scope.setBatch(batch.batchIndex + 1, totalBatches);
-      pipelineRepo.updateCurrentBatch(runId, batch.batchIndex + 1);
-      pipelineRepo.updateThreadId(runId, `${runId}-batch-${batch.batchIndex}`);
+    const accumulatedConditions: PreviousBatchConditionSummary[] = [];
 
-      const outcome = await ctx.session.startBatch(batch);
+    // Optionally: could load past batches' conditions here, but keeping it simple for now
+    // and accumulating from the resume point onwards.
+
+    for (let i = 0; i < remainingEpics.length; i++) {
+      if (ctx.isAborted()) break;
+      const actualBatchIndex = startFrom + i;
+      const epic = remainingEpics[i];
+
+      ctx.scope.setBatch(actualBatchIndex + 1, totalBatches);
+      pipelineRepo.updateCurrentBatch(runId, actualBatchIndex + 1);
+      pipelineRepo.updateThreadId(runId, `${runId}-batch-${actualBatchIndex}`);
+
+      const batchInput = {
+        batchIndex: actualBatchIndex,
+        inputState: {
+          ...this.buildBatchInputState(projectId, requirementIds, requirements, rootGroups, epic, actualBatchIndex, totalBatches, businessFlows, config.mode || 'auto', config.includeFlowCases, config.flowIds),
+          globalRequirementIndex,
+          globalStats,
+          previousBatchConditions: accumulatedConditions.length > 0 ? [...accumulatedConditions] : undefined,
+        },
+      };
+
+      const outcome = await ctx.session.startBatch(batchInput);
       if (outcome.type === 'interrupt') {
         ctx.scope.flushAndPersistThinking();
         pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
         return { allResults, interrupted: true };
       }
+
+      // 累积本批次 conditions
+      const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
+      for (const tc of batchConditions) {
+        accumulatedConditions.push({
+          id: tc.id,
+          condition: tc.condition,
+          requirementId: tc.requirementId,
+          category: tc.category,
+          primaryTechnique: tc.primaryTechnique,
+        });
+      }
+
       allResults.push(outcome.result);
       ctx.sendEvent('batch:complete', {
-        batch: batch.batchIndex + 1, total: totalBatches,
+        batch: actualBatchIndex + 1, total: totalBatches,
         testCases: outcome.result.cases.length,
       });
     }

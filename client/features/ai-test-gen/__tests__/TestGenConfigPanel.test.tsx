@@ -82,6 +82,7 @@ describe('TestGenConfigPanel', () => {
   afterEach(cleanup);
 
   const defaultProps = {
+    projectId: 'proj-1',
     requirements: [],
     businessFlows: [],
     onStart: vi.fn() as (config: TestGenStartConfig) => void,
