@@ -226,8 +226,9 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
             {Object.entries(reqsByBatch).map(([epic, reqs], batchIdx) => (
               <div key={epic} className="mb-4 last:mb-0">
                 <div className="px-4 py-1.5 bg-blue-50/50 border-y border-blue-100/50 flex items-center gap-2 sticky top-0 backdrop-blur-sm shadow-sm z-10">
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full uppercase">Batch {batchIdx + 1}</span>
-                  <span className="text-[11px] font-semibold text-slate-600 font-mono truncate">Epic: {epic}</span>
+                  {epic !== 'default-group' && (
+                    <span className="text-[11px] font-semibold text-slate-600 font-mono truncate">Epic: {epic}</span>
+                  )}
                 </div>
                 <table className="w-full text-xs">
                   <thead>
@@ -1457,13 +1458,45 @@ function AgentDetailTabs({ agentLog, node, thinkingText, agentLogs }: { agentLog
             transition={{ duration: 0.15 }}
             className="h-full overflow-y-auto"
           >
-            {activeTab === 'summary' && (
-  node.kind === 'preparation' || node.agentName === 'preparation' ? (
-    <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />
-  ) : (
-    <AgentSummaryView agentLog={filteredAgentLog} agentName={node.agentName} />
-  )
-)}
+            {activeTab === 'summary' && (() => {
+              if (node.kind === 'preparation' || node.agentName === 'preparation') {
+                return <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} />;
+              }
+              const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
+              if (isAllBatches) {
+                const agentNameNorm = (node?.agentName || '').replace(/_/g, '-');
+                type Stat = { label: string; value: number };
+                const stats: Stat[] = [{ label: 'Batches for this Agent', value: batchAgentLogs.length }];
+                if (agentNameNorm === 'test-analyst') {
+                  stats.push({ label: 'Total Conditions', value: batchAgentLogs.reduce((sum, { log }) => sum + (log?.output_data?.testConditions?.length || 0), 0) });
+                } else if (agentNameNorm === 'test-designer') {
+                  stats.push({ label: 'Draft Scenarios', value: batchAgentLogs.reduce((sum, { log }) => sum + (log?.output_data?.draftTestCases?.length || 0), 0) });
+                } else if (agentNameNorm === 'quality-manager') {
+                  stats.push({ label: 'Final Test Cases', value: batchAgentLogs.reduce((sum, { log }) => sum + (log?.output_data?.finalTestCases?.length || 0), 0) });
+                }
+                return (
+                  <div className="space-y-4">
+                    <div className="grid gap-3 px-4 pt-4" style={{ gridTemplateColumns: `repeat(${Math.min(stats.length, 3)}, 1fr)` }}>
+                      {stats.map((s, i) => (
+                        <div key={i} className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
+                          <div className="text-2xl font-black text-slate-700">{s.value}</div>
+                          <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mt-0.5">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {batchAgentLogs.map(({ batch, log }) => (
+                      <div key={batch}>
+                        <div className="px-4">
+                          <BatchSeparator batch={batch} />
+                        </div>
+                        <AgentSummaryView agentLog={log} agentName={node.agentName} />
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+              return <AgentSummaryView agentLog={filteredAgentLog} agentName={node.agentName} />;
+            })()}
             
             {activeTab === 'thinking' && (() => {
               const isAllBatches = effectiveBatch === 'all' && batchAgentLogs.length > 1;
