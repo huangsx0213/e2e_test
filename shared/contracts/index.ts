@@ -475,7 +475,8 @@ export interface BusinessFlow {
 
 export interface PipelineBusinessFlowBlueprintStep {
   sequence: number;
-  requirementId: string;
+  requirementId: string;           // primary requirement（用于展示/排序）
+  requirementIds: string[];         // 全量关联需求 ID（用于相关 flow 过滤）
   requirementTitle: string;
   requirementLevel: Requirement['level'];
   actionSummary: string;
@@ -492,6 +493,7 @@ export interface PipelineBusinessFlowBlueprint {
 export const PipelineBusinessFlowBlueprintStepSchema = z.object({
   sequence: z.number(),
   requirementId: z.string(),
+  requirementIds: z.array(z.string()),
   requirementTitle: z.string(),
   requirementLevel: z.enum(['epic', 'feature', 'story', 'ac']),
   actionSummary: z.string(),
@@ -551,6 +553,8 @@ export interface NlTestCaseChangeLog {
   changes: string;
 }
 
+export type TestLevel = 'component' | 'integration';
+
 export interface NlTestCase {
   id: string;
   projectId: string;
@@ -560,6 +564,7 @@ export interface NlTestCase {
   techniqueApplied?: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
   category?: string;
+  testLevel?: TestLevel;
   preconditions: string[];
   testData: NlTestCaseTestData[];
   steps: NlTestCaseStep[];
@@ -580,6 +585,7 @@ export interface CoverageRow {
   testCaseCount: number;
   techniqueBreakdown: Record<string, number>;
   categoryBreakdown: Record<string, number>;
+  testLevelBreakdown?: Partial<Record<TestLevel, number>>;
   coveragePercentage: number;
   uncoveredRisks: string[];
 }

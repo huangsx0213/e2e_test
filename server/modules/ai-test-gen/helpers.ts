@@ -14,13 +14,28 @@ export function deduplicateTestCases(rawCases: any[]): DedupResult {
   const conflicts: string[] = [];
 
   for (const tc of rawCases) {
-    const key = tc.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+    // 优先用 conditionId + testLevel 作为去重 key：同一条件同一级别不应有两个用例。
+    // conditionId 缺失时回退到 title + testLevel（语义较弱，但好过无去重）。
+    const levelKey = (tc.testLevel || '').toLowerCase();
+    const condKey = (tc.conditionId || '').toLowerCase().trim();
+    const titleKey = tc.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+    const key = condKey
+      ? `${condKey}::${levelKey}`
+      : (levelKey ? `${titleKey}::${levelKey}` : titleKey);
     if (!key) { allCases.push(tc); continue; }
     if (seen.has(key)) {
-      const dup = allCases.find(c => c.title?.toLowerCase().trim().replace(/\s+/g, ' ') === key);
+      const dup = allCases.find(c => {
+        const dupLevel = (c.testLevel || '').toLowerCase();
+        const dupCond = (c.conditionId || '').toLowerCase().trim();
+        const dupTitle = c.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+        const dupKey = dupCond
+          ? `${dupCond}::${dupLevel}`
+          : (dupLevel ? `${dupTitle}::${dupLevel}` : dupTitle);
+        return dupKey === key;
+      });
       const stepsDiff = dup && JSON.stringify(dup.steps) !== JSON.stringify(tc.steps);
       if (stepsDiff) {
-        conflicts.push(`Duplicate title "${tc.title}" with different steps across batches`);
+        conflicts.push(`Duplicate (${condKey ? `condition ${condKey}` : `title "${tc.title}"`}, ${levelKey || 'unleveled'}) with different steps across batches`);
       }
       continue;
     }

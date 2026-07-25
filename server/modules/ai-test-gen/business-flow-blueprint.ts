@@ -14,12 +14,15 @@ export function buildBusinessFlowBlueprints({ flows }: BuildBusinessFlowBlueprin
       type: flow.type,
       // 填充步骤摘要（含关联需求标题），让 AI 知道每个流程的规模和内容
       steps: flow.steps.map((step) => {
-        // 取第一个关联需求作为代表（减少 token 消耗）
-        const primaryReqId = step.requirementIds[0];
+        // 保留全量 requirementIds（用于 preparation 节点过滤相关 flow），
+        // 同时取第一个作为 primary 用于展示/排序
+        const requirementIds = step.requirementIds ?? [];
+        const primaryReqId = requirementIds[0] ?? '';
         const primaryReq = primaryReqId ? requirementRepo.get(primaryReqId) : null;
         return {
           sequence: step.sequence,
-          requirementId: primaryReqId ?? '',
+          requirementId: primaryReqId,
+          requirementIds,
           requirementTitle: primaryReq?.title ?? step.actionSummary,
           requirementLevel: (primaryReq?.level ?? 'story') as any,
           actionSummary: step.actionSummary,

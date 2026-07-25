@@ -17,6 +17,7 @@ const DesignerRuntimeSchema = z.object({
     requirementId: z.string(),
     priority: z.string(),
     category: z.string(),
+    testLevel: z.enum(['component', 'integration']),
     techniqueApplied: z.string(),
     preconditions: z.array(z.string()),
     testData: z.array(z.string()),
@@ -115,10 +116,14 @@ function normalizeDraftTestCase(
     ? tc.selfReview as Record<string, unknown>
     : {};
 
+  const rawLevel = String(tc.testLevel ?? '').toLowerCase();
+  const testLevel: 'component' | 'integration' = rawLevel === 'integration' ? 'integration' : 'component';
+
   return {
     ...tc,
     conditionId: String(tc.conditionId ?? ''),
     requirementId: expectedReqId ?? String(tc.requirementId ?? ''),
+    testLevel,
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
     steps,
@@ -155,6 +160,7 @@ export function createDesignerOutputProfile(expectedConditions: ConditionInfo[] 
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
         draftTestCases: 'Provide draftTestCases as a non-empty array of test cases and ensure every input conditionId is covered by at least one case.',
+        'draftTestCases.testLevel': 'Each draft test case must declare testLevel as either "component" or "integration".',
         'draftTestCases.steps': 'Each draft test case needs a non-empty steps array.',
         'draftTestCases.postconditions': 'Use an array, not null, for postconditions.',
         'draftTestCases.tags': 'Use an array, not null, for tags.',

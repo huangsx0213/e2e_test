@@ -155,7 +155,7 @@ businessFlows: {
     audit: (runId: string, checkpointId?: string) =>
       apiFetch<any[]>(`test-gen/${runId}/audit${checkpointId ? `?checkpointId=${encodeURIComponent(checkpointId)}` : ''}`),
     saveCases: (runId: string) =>
-      apiFetch<{ saved: number; removed: number }>(`test-gen/${runId}/save-cases`, { method: 'POST' }),
+      apiFetch<{ saved: number }>(`test-gen/${runId}/save-cases`, { method: 'POST' }),
     abort: (runId: string) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/abort`, { method: 'POST' }),
     retry: (runId: string) =>

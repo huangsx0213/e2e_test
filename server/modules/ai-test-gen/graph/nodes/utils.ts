@@ -334,6 +334,8 @@ async function runAgentReActLoop(
 
     // 执行工具调用
     const toolResults: ChatMessage[] = [];
+    const criticalTools = new Set(['requirement_detail_query', 'istqb_guide', 'requirement_graph_query', 'flow_detail_query']);
+    
     for (const tc of namedToolCalls) {
       const skill = skillMap.get(tc.name);
       if (!skill) {
@@ -354,6 +356,13 @@ async function runAgentReActLoop(
       } catch (err: any) {
         const latencyMs = Date.now() - skillStart;
         log.error(`Skill ${tc.name} FAILED (${latencyMs}ms): ${err.message}`);
+        
+        // Critical Tool Failure - Abort immediately instead of letting the LLM hallucinate
+        if (criticalTools.has(tc.name)) {
+          log.error(`CRITICAL TOOL FAILURE: ${tc.name} failed. Aborting ReAct loop to prevent hallucination.`);
+          throw new Error(`Critical tool execution failed: [${tc.name}] ${err.message}. Aborting to prevent context hallucination.`);
+        }
+
         toolCallRecords.push({ name: tc.name, input: tc.args, output: { error: err.message } });
         toolResults.push({ role: 'tool', content: JSON.stringify({ error: err.message }), toolCallId: tc.id });
       }

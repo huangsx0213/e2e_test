@@ -28,8 +28,8 @@ vi.mock('@/shared/hooks/useQueryHooks', async (importOriginal) => {
     ...actual,
     useProviderConfigs: vi.fn().mockReturnValue({
       data: [
-        { id: 'p1', name: 'Azure OpenAI', type: 'azure-openai', model: 'gpt-4o', isActive: true },
-        { id: 'p2', name: 'OpenAI Compatible', type: 'openai-compatible', model: 'gpt-4', isActive: false },
+        { id: 'p1', name: 'Azure OpenAI', type: 'azure-openai', model: 'gpt-4o', models: ['gpt-4o'], isActive: true },
+        { id: 'p2', name: 'OpenAI Compatible', type: 'openai-compatible', model: 'gpt-4', models: ['gpt-4'], isActive: false },
       ],
     }),
   };
@@ -125,28 +125,27 @@ describe('TestGenConfigPanel', () => {
     ];
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, businessFlows: flows }));
 
-    const checkbox = screen.getByLabelText('Show approved flows only');
+    const checkbox = screen.getByLabelText('Approved only');
     fireEvent.click(checkbox);
     expect(screen.getByText('Draft Flow')).toBeTruthy();
   });
 
   it('TC-1.6: mode toggle switches Auto/Interactive', () => {
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
-    expect(screen.getByText('Auto')).toBeTruthy();
-    expect(screen.getByText('Interactive')).toBeTruthy();
-    fireEvent.click(screen.getByText('Interactive'));
+    const autoBtn = screen.getByRole('button', { name: /Auto/ });
+    const interactiveBtn = screen.getByRole('button', { name: /Interactive/ });
+    expect(autoBtn).toBeTruthy();
+    expect(interactiveBtn).toBeTruthy();
+    fireEvent.click(interactiveBtn);
     expect(screen.getByText('Pause at each checkpoint for review')).toBeTruthy();
-    fireEvent.click(screen.getByText('Auto'));
-    expect(screen.getByText('Automatically complete all stages')).toBeTruthy();
+    fireEvent.click(autoBtn);
+    expect(screen.getByText('Run all stages automatically')).toBeTruthy();
   });
 
-  it('TC-1.7: AI Provider dropdown shows configs', () => {
+  it('TC-1.7: Model dropdown auto-selects from active provider config', () => {
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
-    const select = screen.getByRole('combobox');
-    expect(select).toBeTruthy();
-    const options = screen.getAllByRole('option');
-    const providerOption = options.find(o => o.textContent?.includes('Azure OpenAI'));
-    expect(providerOption).toBeTruthy();
+    // Active provider 'Azure OpenAI' has model 'gpt-4o' — auto-selected on mount
+    expect(screen.getByText('gpt-4o')).toBeTruthy();
   });
 
   it('TC-1.8: Start button disabled when no requirements/flows selected', () => {
@@ -159,25 +158,29 @@ describe('TestGenConfigPanel', () => {
     const reqs = buildTreeSample();
     const onStart = vi.fn();
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: reqs, onStart }));
+    // Model auto-selects from active provider on mount; only requirements need selection
     fireEvent.click(screen.getAllByLabelText('Select all')[0]);
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: 'Azure OpenAI' } });
     const startBtn = screen.getByText('Start Test Gen');
     expect(startBtn.closest('button')).not.toBeDisabled();
     fireEvent.click(startBtn);
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('TC-1.10: Test Gen name input works', () => {
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
-    const nameInput = screen.getByPlaceholderText('e.g. User Management Test');
-    fireEvent.change(nameInput, { target: { value: 'My Test Gen' } });
-    expect((nameInput as HTMLInputElement).value).toBe('My Test Gen');
+  it('TC-1.10: Start passes an auto-generated run name', () => {
+    const reqs = buildTreeSample();
+    const onStart = vi.fn();
+    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: reqs, onStart }));
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+    fireEvent.click(screen.getByText('Start Test Gen'));
+    expect(onStart).toHaveBeenCalledTimes(1);
+    const config = onStart.mock.calls[0][0] as TestGenStartConfig;
+    expect(typeof config.name).toBe('string');
+    expect(config.name.length).toBeGreaterThan(0);
   });
 
   it('TC-8.2: shows warning when no providers configured', () => {
     vi.mocked(useProviderConfigs).mockReturnValueOnce({ data: [] } as any);
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
-    expect(screen.getByText(/No providers configured/)).toBeTruthy();
+    expect(screen.getByText(/No models configured/)).toBeTruthy();
   });
 });

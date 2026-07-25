@@ -4,7 +4,7 @@ import { checkpointer } from './graph/checkpointer.ts';
 import type { AIProvider } from './infra/provider.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
-import type { TestGenState } from './graph/state.ts';
+import type { TestGenState, GlobalEpicEntry, CrossEpicDependency, PreviousBatchCoverageSummary } from './graph/state.ts';
 import { clearQueryCache } from './graph/skills/data-skills.ts';
 import { Log } from '../../shared/services/logger.ts';
 
@@ -19,11 +19,13 @@ export interface BatchInput {
     batchContext: { currentBatch: number; totalBatches: number; processedCount: number };
     projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
     businessFlowBlueprints: any[] | undefined;
-    includeFlowCases: boolean;
     selectedFlowIds: string[];
-    globalRequirementIndex?: import('./graph/state.ts').GlobalRequirementEntry[];
     globalStats?: { totalRequirements: number; totalEpics: number; totalFlows: number };
-    previousBatchConditions?: import('./graph/state.ts').PreviousBatchConditionSummary[];
+    // L1/L2 字段
+    globalEpicIndex?: GlobalEpicEntry[];
+    crossEpicDependencies?: CrossEpicDependency[];
+    previousBatchCoverageSummary?: PreviousBatchCoverageSummary[];
+    relevantFlowBlueprints?: any[];
     phase: TestGenState['phase'];
     errors: any[];
   };
@@ -104,8 +106,11 @@ export class TestGenSession {
       batchContext: batch.inputState.batchContext,
       projectContext: batch.inputState.projectContext,
       businessFlowBlueprints: batch.inputState.businessFlowBlueprints,
-      includeFlowCases: batch.inputState.includeFlowCases,
       selectedFlowIds: batch.inputState.selectedFlowIds,
+      globalStats: batch.inputState.globalStats,
+      // L1/L2 透传：crossEpicDependencies 与 relevantFlowBlueprints 由 preparation 节点写入
+      globalEpicIndex: batch.inputState.globalEpicIndex,
+      previousBatchCoverageSummary: batch.inputState.previousBatchCoverageSummary,
       phase: batch.inputState.phase,
       errors: batch.inputState.errors,
       environmentReady: false,

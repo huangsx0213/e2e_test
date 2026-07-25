@@ -8,7 +8,6 @@ describe('buildAnalystSystemPrompt', () => {
       currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
       selectedFlowIds: [],
       humanReviewFeedback: '',
     } as any);
@@ -26,7 +25,6 @@ describe('buildAnalystSystemPrompt', () => {
       currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
       selectedFlowIds: [],
       humanReviewFeedback: '',
     } as any);
@@ -52,7 +50,6 @@ describe('buildDesignerSystemPrompt', () => {
       }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
-      includeFlowCases: false,
       humanReviewFeedback: '',
     } as any);
 
@@ -84,7 +81,9 @@ describe('buildQualitySystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    expect(prompt).toContain('end with a single JSON code block');
-    expect(prompt).toContain('The block must contain COMPLETE data');
+    expect(prompt).toContain('End with a single JSON code block containing the COMPLETE output. Nothing after it.');
+    // Dual test level: Quality Manager must verify testLevel fidelity and batch-level mix
+    expect(prompt).toContain('Test Level Fidelity');
+    expect(prompt).toContain('at least one `component` case AND at least one `integration` case');
   });
 });

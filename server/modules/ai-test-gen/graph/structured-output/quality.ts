@@ -19,6 +19,7 @@ const QualityRuntimeSchema = z.object({
       requirementId: z.string(),
       priority: z.string(),
       category: z.string(),
+      testLevel: z.enum(['component', 'integration']),
       techniqueApplied: z.string(),
       preconditions: z.array(z.string()),
       testData: z.array(z.string()),
@@ -116,10 +117,14 @@ function normalizeFinalTestCase(
       };
     });
 
+  const rawLevel = String(tc.testLevel ?? '').toLowerCase();
+  const testLevel: 'component' | 'integration' = rawLevel === 'integration' ? 'integration' : 'component';
+
   return {
     ...tc,
     conditionId: expected?.conditionId ?? tc.conditionId,
     requirementId: expected?.requirementId ?? tc.requirementId,
+    testLevel,
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
     steps,
@@ -148,6 +153,7 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
         finalTestCases: 'Provide finalTestCases as a non-empty array of reviewed test cases, and preserve every input draft case id exactly once.',
+        'finalTestCases.testLevel': 'Each final test case must declare testLevel as either "component" or "integration" (preserve from draft).',
         'finalTestCases.tags': 'Use an array, not null, for tags.',
         'finalTestCases.changeLog': 'Use an array, not null, for changeLog.',
       });

@@ -7,6 +7,9 @@ import {
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
+  crossEpicImpactQuery,
+  makePreviousBatchConditionsQuery,
+  makePreviousBatchCasesQuery,
 } from './data-skills.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
@@ -71,6 +74,7 @@ const ISTQB_GUIDE_FILES = [
   'istqb-decision-table.md',
   'istqb-state-transition.md',
   'istqb-use-case-testing.md',
+  'istqb-integration-testing.md',
 ];
 
 function normalizeTechniqueLabel(value: string): string {
@@ -95,12 +99,12 @@ function buildTechniqueAliases(value: string): string[] {
 
 const istqbGuideSkill: SkillDefinition = {
   name: 'istqb_guide',
-  description: 'Load ALL ISTQB technique guides combined (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing). Use when you need methodology, steps, examples, or common mistakes for any test design technique.',
+  description: 'Load ALL ISTQB technique guides combined (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing) PLUS the Integration Testing test-level guide (component vs integration test level decision). Use when you need methodology, steps, examples, or common mistakes for any test design technique or test level.',
   schema: z.object({
     techniques: z
       .array(z.string())
       .optional()
-      .describe('Specific techniques to focus on (omit to load all)'),
+      .describe('Specific techniques or test levels to focus on (omit to load all)'),
     context: z
       .string()
       .optional()
@@ -138,23 +142,36 @@ const istqbGuideSkill: SkillDefinition = {
 // File CONTENTS are read on-demand when the skill function is invoked.
 const knowledgeSkills = loadKnowledgeSkills();
 
-/** Analyst 绑定的 skills：Data + ISTQB Guide + Knowledge Base */
-export const ANALYST_SKILLS: SkillDefinition[] = [
-  requirementDetailQuery,
-  requirementGraphQuery,
-  flowDetailQuery,
-  istqbGuideSkill,
-  ...knowledgeSkills,
-];
+/**
+ * Analyst 绑定的 skills 工厂函数：Data + ISTQB Guide + Knowledge Base
+ * 需要传入 runId，用于 previous_batch_conditions_query 查询历史 agent logs
+ */
+export function buildAnalystSkills(runId: string): SkillDefinition[] {
+  return [
+    requirementDetailQuery,
+    requirementGraphQuery,
+    flowDetailQuery,
+    crossEpicImpactQuery,
+    makePreviousBatchConditionsQuery(runId),
+    istqbGuideSkill,
+    ...knowledgeSkills,
+  ];
+}
 
-/** Designer 绑定的 skills：Data (subset) + ISTQB Guide + Knowledge Base */
-export const DESIGNER_SKILLS: SkillDefinition[] = [
-  requirementDetailQuery,
-  requirementGraphQuery,
-  flowDetailQuery,
-  istqbGuideSkill,
-  ...knowledgeSkills.filter((s) => s.name === 'knowledge_base'),
-];
+/**
+ * Designer 绑定的 skills 工厂函数：Data (subset) + ISTQB Guide + Knowledge Base
+ * 需要传入 runId，用于 previous_batch_cases_query 查询历史 agent logs
+ */
+export function buildDesignerSkills(runId: string): SkillDefinition[] {
+  return [
+    requirementDetailQuery,
+    requirementGraphQuery,
+    flowDetailQuery,
+    makePreviousBatchCasesQuery(runId),
+    istqbGuideSkill,
+    ...knowledgeSkills.filter((s) => s.name === 'knowledge_base'),
+  ];
+}
 
 /** Quality Manager 绑定的 skills：Data (minimal) + Knowledge Base */
 export const QUALITY_SKILLS: SkillDefinition[] = [
@@ -167,5 +184,6 @@ export const ALL_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
+  crossEpicImpactQuery,
   ...knowledgeSkills,
 ];

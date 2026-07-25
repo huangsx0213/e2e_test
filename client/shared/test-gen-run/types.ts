@@ -34,6 +34,14 @@ export interface TestGenNode {
     requirementCount?: number;
     estimatedTokens?: number;
     flowCases?: number;
+    // L1 Epic 索引（preparation:context 事件注入）
+    globalStats?: { totalRequirements: number; totalEpics: number; totalFlows: number };
+    globalEpicIndex?: Array<{
+      epicId: string;
+      title: string;
+      requirementCount: number;
+      flowCount: number;
+    }>;
   };
 }
 
@@ -65,7 +73,6 @@ export interface StartConfig {
   modelName?: string;
   mode: RunMode;
   flowIds?: string[];
-  includeFlowCases?: boolean;
   useCache?: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;

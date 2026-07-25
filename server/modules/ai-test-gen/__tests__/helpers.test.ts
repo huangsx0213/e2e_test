@@ -20,7 +20,7 @@ describe('deduplicateTestCases', () => {
     ]);
     expect(result.allCases).toHaveLength(1);
     expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0]).toContain('Duplicate title');
+    expect(result.conflicts[0]).toMatch(/Duplicate.*title.*Login Test/);
   });
 
   it('keeps cases with empty titles', () => {
@@ -37,6 +37,43 @@ describe('deduplicateTestCases', () => {
       { title: '  login   test  ', steps: ['x'] },
     ]);
     expect(result.removedCount).toBe(1);
+  });
+
+  it('keeps cases with the same title but different testLevel', () => {
+    const result = deduplicateTestCases([
+      { title: 'Login Test', steps: ['s1'], testLevel: 'component' },
+      { title: 'Login Test', steps: ['s2'], testLevel: 'integration' },
+    ]);
+    expect(result.allCases).toHaveLength(2);
+    expect(result.removedCount).toBe(0);
+  });
+
+  it('still dedups same title and same testLevel', () => {
+    const result = deduplicateTestCases([
+      { title: 'Login Test', steps: ['s1'], testLevel: 'component' },
+      { title: 'Login Test', steps: ['s1'], testLevel: 'component' },
+    ]);
+    expect(result.allCases).toHaveLength(1);
+    expect(result.removedCount).toBe(1);
+  });
+
+  it('dedups by conditionId + testLevel (preferred over title)', () => {
+    // Same conditionId + same testLevel → duplicate even if titles differ
+    const result = deduplicateTestCases([
+      { title: 'Login Test', steps: ['s1'], testLevel: 'component', conditionId: 'cond-1' },
+      { title: 'Different Title', steps: ['s1'], testLevel: 'component', conditionId: 'cond-1' },
+    ]);
+    expect(result.allCases).toHaveLength(1);
+    expect(result.removedCount).toBe(1);
+  });
+
+  it('keeps same conditionId with different testLevel', () => {
+    const result = deduplicateTestCases([
+      { title: 'Login Test', steps: ['s1'], testLevel: 'component', conditionId: 'cond-1' },
+      { title: 'Login Test', steps: ['s2'], testLevel: 'integration', conditionId: 'cond-1' },
+    ]);
+    expect(result.allCases).toHaveLength(2);
+    expect(result.removedCount).toBe(0);
   });
 });
 

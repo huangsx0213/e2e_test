@@ -33,6 +33,7 @@ type DbNlCaseRow = {
   technique_applied: string | null;
   priority: string;
   category: string | null;
+  test_level: string | null;
   preconditions: string;
   test_data: string;
   steps: string;
@@ -73,8 +74,8 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
   save(record: Partial<NlTestCase>): NlTestCase {
     const id = record.id || randomId('nlc');
     db.prepare(`
-      INSERT INTO natural_language_test_cases (id, project_id, title, requirement_id, condition_id, technique_applied, priority, category, preconditions, test_data, steps, postconditions, tags, self_review, review_summary, change_log, status, generated_suite_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO natural_language_test_cases (id, project_id, title, requirement_id, condition_id, technique_applied, priority, category, test_level, preconditions, test_data, steps, postconditions, tags, self_review, review_summary, change_log, status, generated_suite_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         requirement_id = excluded.requirement_id,
@@ -82,6 +83,7 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
         technique_applied = excluded.technique_applied,
         priority = excluded.priority,
         category = excluded.category,
+        test_level = excluded.test_level,
         preconditions = excluded.preconditions,
         test_data = excluded.test_data,
         steps = excluded.steps,
@@ -101,6 +103,7 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
       record.techniqueApplied || null,
       record.priority || 'medium',
       record.category || null,
+      record.testLevel || null,
       JSON.stringify(record.preconditions || []),
       JSON.stringify(record.testData || []),
       JSON.stringify(record.steps || []),
@@ -127,6 +130,7 @@ class NlCaseRepository extends BaseCrudRepository<NlTestCase> {
       techniqueApplied: row.technique_applied || undefined,
       priority: row.priority as NlTestCase['priority'],
       category: row.category || undefined,
+      testLevel: (row.test_level as NlTestCase['testLevel']) || undefined,
       preconditions: JSON.parse(row.preconditions || '[]'),
       testData: Array.isArray(rawTestData) ? rawTestData.map(normalizeTestDataEntry) : [],
       steps: Array.isArray(rawSteps) ? rawSteps.map(normalizeStep) : [],

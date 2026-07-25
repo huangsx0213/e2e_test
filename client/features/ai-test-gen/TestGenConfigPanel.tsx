@@ -19,7 +19,6 @@ export interface TestGenStartConfig {
   providerConfigName: string;
   model?: string;
   modelName?: string;
-  includeFlowCases?: boolean;
   useCache?: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;
@@ -146,7 +145,6 @@ interface SavedConfig {
   showApprovedOnly: boolean;
   selectedModel: string;
   modelName: string;
-  includeFlowCases: boolean;
   useCache: boolean;
   reasoningEffort?: string;
   reasoningSummary?: string;
@@ -171,7 +169,6 @@ const defaultConfig: SavedConfig = {
   showApprovedOnly: true,
   selectedModel: '',
   modelName: '',
-  includeFlowCases: false,
   useCache: false,
 };
 
@@ -250,7 +247,6 @@ export function TestGenConfigPanel({
       }
     }
   }, [modelOptions, selectedModel, providerConfigs]);
-  const [includeFlowCases, setIncludeFlowCases] = useState(savedConfig?.includeFlowCases ?? defaultConfig.includeFlowCases);
   const [useCache, setUseCache] = useState(savedConfig?.useCache ?? defaultConfig.useCache);
   const [reasoningEffort, setReasoningEffort] = useState(savedConfig?.reasoningEffort ?? '');
   const [reasoningSummary, setReasoningSummary] = useState(savedConfig?.reasoningSummary ?? '');
@@ -258,10 +254,10 @@ export function TestGenConfigPanel({
 
   useEffect(() => {
     saveConfig({
-      mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache,
+      mode, showApprovedOnly, selectedModel, modelName, useCache,
       reasoningEffort, reasoningSummary, textVerbosity,
     });
-  }, [mode, showApprovedOnly, selectedModel, modelName, includeFlowCases, useCache, reasoningEffort, reasoningSummary, textVerbosity]);
+  }, [mode, showApprovedOnly, selectedModel, modelName, useCache, reasoningEffort, reasoningSummary, textVerbosity]);
 
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 
@@ -299,7 +295,6 @@ export function TestGenConfigPanel({
     setShowApprovedOnly(defaultConfig.showApprovedOnly);
     setSelectedModel(defaultConfig.selectedModel);
     setModelName(defaultConfig.modelName);
-    setIncludeFlowCases(defaultConfig.includeFlowCases);
     setUseCache(defaultConfig.useCache);
     setReasoningEffort('');
     setReasoningSummary('');
@@ -320,7 +315,6 @@ export function TestGenConfigPanel({
       providerConfigName: selectedProvider,
       model: selectedModel || undefined,
       modelName: modelName || undefined,
-      includeFlowCases,
       useCache,
       reasoningEffort: reasoningEffort || undefined,
       reasoningSummary: reasoningSummary || undefined,
@@ -329,7 +323,7 @@ export function TestGenConfigPanel({
     });
   };
 
-  const canStart = (includeFlowCases ? selectedFlows.size > 0 : selectedReqs.size > 0) && selectedProvider !== '' && !disabled;
+  const canStart = selectedReqs.size > 0 && selectedProvider !== '' && !disabled;
 
   return (
     <div className="h-full flex overflow-hidden bg-white">
@@ -397,13 +391,14 @@ export function TestGenConfigPanel({
         </div>
       </div>
 
-      {/* Column 2: Business Flows */}
+      {/* Column 2: Business Flows (optional — used as strong signal for integration-level cases) */}
       <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-100">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
           <div className="flex items-center justify-center w-6 h-6 rounded-md bg-violet-50">
             <GitBranch size={14} className="text-violet-600" />
           </div>
           <h3 className="text-[13px] font-semibold text-slate-700">Business Flows</h3>
+          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">optional</span>
           {selectedFlows.size > 0 && (
             <span className="text-[11px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
               {selectedFlows.size}
@@ -686,18 +681,12 @@ export function TestGenConfigPanel({
 
           {/* Options */}
           <div className="space-y-2.5 pt-2 border-t border-slate-100">
-            <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
-              <input
-                type="checkbox"
-                checked={includeFlowCases}
-                onChange={e => setIncludeFlowCases(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 mt-0.5"
-              />
+            <div className="flex items-start gap-2.5 text-xs p-2 rounded-lg bg-blue-50/40 border border-blue-100/60">
               <div className="flex-1">
-                <span className="text-slate-700 font-medium group-hover:text-slate-900 transition-colors">Flow-level test cases</span>
-                <p className="text-[11px] text-slate-400 mt-0.5">Generate end-to-end flow cases instead of atomic per-requirement cases</p>
+                <span className="text-slate-700 font-medium">Dual test level (always on)</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">Every run produces both component-level and integration-level cases, tagged via <code className="text-[10px] bg-slate-100 px-1 rounded">testLevel</code>.</p>
               </div>
-            </label>
+            </div>
             <label className="flex items-start gap-2.5 text-xs cursor-pointer group p-2 rounded-lg hover:bg-white transition-colors">
               <input
                 type="checkbox"
@@ -726,9 +715,9 @@ export function TestGenConfigPanel({
           {!canStart && selectedProvider === '' && (
             <p className="text-[11px] text-amber-600 mt-1.5 text-center">Select a model to continue</p>
           )}
-          {!canStart && selectedProvider !== '' && (includeFlowCases ? selectedFlows.size === 0 : selectedReqs.size === 0) && (
+          {!canStart && selectedProvider !== '' && selectedReqs.size === 0 && (
             <p className="text-[11px] text-slate-400 mt-1.5 text-center">
-              {includeFlowCases ? 'Select at least one business flow' : 'Select at least one requirement'}
+              Select at least one requirement
             </p>
           )}
         </div>

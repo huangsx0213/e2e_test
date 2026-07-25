@@ -27,13 +27,24 @@ describe('buildBusinessFlowBlueprints', () => {
       ],
     });
 
-    // Only APPROVED flows, steps omitted (LLM queries via flow_detail_query skill)
+    // Only APPROVED flows; steps retain a summary (requirementIds + actionSummary)
+    // so preparation can filter relevant flows and the LLM knows flow scale.
     expect(blueprints).toEqual([
       {
         id: 'flow-1',
         name: 'Checkout',
         type: 'happy-path',
-        steps: [],
+        steps: [
+          {
+            sequence: 1,
+            requirementId: 'story-1',
+            requirementIds: ['story-1'],
+            requirementTitle: 'User signs in',
+            requirementLevel: 'story',
+            actionSummary: 'User signs in',
+            acceptanceCriteria: [],
+          },
+        ],
       },
     ]);
   });

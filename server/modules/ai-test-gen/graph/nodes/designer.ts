@@ -4,7 +4,7 @@ import type { AIProvider } from '../../infra/provider.ts';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildDesignerSystemPrompt, buildDesignerUserMessage } from '../prompts';
-import { DESIGNER_SKILLS } from '../skills/skills.ts';
+import { buildDesignerSkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createDesignerOutputProfile } from '../structured-output/designer.ts';
 import { Log } from '../../../../shared/services/logger.ts';
@@ -24,13 +24,15 @@ export interface DesignerNodeOptions {
 }
 
 export function makeDesignerNode(opts: DesignerNodeOptions) {
-  const { provider, skills = DESIGNER_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
+  const { provider, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'test_designer';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
     const log = Log.for(agentName);
     const condCount = (state.approvedConditions ?? state.testConditions ?? []).length;
+    // 在节点内部动态构建 skills：传入 state.runId 让 previous_batch_cases_query 能查询历史 agent logs
+    const skills = opts.skills ?? buildDesignerSkills(state.runId);
     log.info(`ENTER ── ${condCount} conditions to design`);
 
     observer?.onStart?.(agentName);

@@ -3,7 +3,6 @@ import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { Orchestrator } from './orchestrator.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
-import { deduplicateTestCases } from './helpers.ts';
 import { nlCaseRepo } from '../nl-cases/repository.ts';
 import { Log } from '../../shared/services/logger.ts';
 
@@ -105,11 +104,12 @@ export class TestGenController {
       .flatMap(l => l.output_data.finalTestCases);
     if (allCases.length === 0) throw new Error('No test cases found to export');
 
-    const { allCases: deduped, removedCount } = deduplicateTestCases(allCases);
-    for (const tc of deduped) {
-      nlCaseRepo.save({ ...tc, projectId: run.project_id });
+    // 保存全部用例，不在保存阶段去重。每个用例生成新的 DB id（不沿用 LLM 生成的
+    // transient id），避免跨运行同名 id 互相覆盖。去重应由生成阶段负责。
+    for (const tc of allCases) {
+      nlCaseRepo.save({ ...tc, id: undefined, projectId: run.project_id });
     }
-    return { saved: deduped.length, removed: removedCount };
+    return { saved: allCases.length };
   }
 
   /** 获取思考数据（持久化的） */

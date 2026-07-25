@@ -57,7 +57,6 @@ const handleRefresh = useCallback(async () => {
         modelName: config.modelName,
         mode: config.mode,
         flowIds: config.flowIds,
-        includeFlowCases: config.includeFlowCases,
         useCache: config.useCache,
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,

@@ -4,7 +4,7 @@ import type { AIProvider } from '../../infra/provider.ts';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildAnalystSystemPrompt, buildAnalystUserMessage } from '../prompts';
-import { ANALYST_SKILLS } from '../skills/skills.ts';
+import { buildAnalystSkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createAnalystOutputProfile } from '../structured-output/analyst.ts';
 import { Log } from '../../../../shared/services/logger.ts';
@@ -24,7 +24,7 @@ export interface AnalystNodeOptions {
 }
 
 export function makeAnalystNode(opts: AnalystNodeOptions) {
-  const { provider, skills = ANALYST_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
+  const { provider, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'test_analyst';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
@@ -32,8 +32,11 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     const log = Log.for(agentName);
     const reqCount = state.currentBatch?.length ?? 0;
     const batchInfo = `${state.batchContext?.currentBatch ?? '?'}/${state.batchContext?.totalBatches ?? '?'}`;
-    const flowMode = state.includeFlowCases ? 'FLOW-LEVEL' : 'REQUIREMENT-LEVEL';
-    log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, mode=${flowMode}`);
+    const selectedFlowCount = state.selectedFlowIds?.length ?? 0;
+    log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, selectedFlows=${selectedFlowCount}`);
+
+    // 在节点内部动态构建 skills：传入 state.runId 让 previous_batch_conditions_query 能查询历史 agent logs
+    const skills = opts.skills ?? buildAnalystSkills(state.runId);
     log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);

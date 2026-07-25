@@ -50,20 +50,35 @@ export const AGENT_NAME_BY_CHECKPOINT: Readonly<Record<number, string>> = {
   3: 'quality_manager',
 };
 
-export interface GlobalRequirementEntry {
-  id: string;
+// L1 索引层：Epic 级全局摘要（替代需求级 globalRequirementIndex 注入到 prompt）
+export interface GlobalEpicEntry {
+  epicId: string;
   title: string;
-  level: string;
-  parentId: string | null;
-  epicId: string | null;  // 所属 epic 的 ID，方便 AI 理解层级
+  requirementCount: number;
+  flowCount: number;
+  statusBreakdown: Record<string, number>;
 }
 
-export interface PreviousBatchConditionSummary {
-  id: string;
-  condition: string;
+// L2 关联层：跨 Epic 依赖摘要（preparation 节点预计算，仅含与当前批次相关的条目）
+export interface CrossEpicDependency {
+  fromRequirementId: string;       // 当前批次内的需求
+  toRequirementId: string;         // 跨 Epic 的目标需求
+  toEpicId: string;
+  toEpicTitle: string;
+  toRequirementTitle: string;
+  relationType: 'depends-on' | 'depended-by' | 'sibling-in-other-epic';
+}
+
+// L2 关联层：已完成批次的覆盖摘要（按 requirementId 分组，替代 condition 全文累积）
+export interface PreviousBatchCoverageSummary {
   requirementId: string;
-  category: string;
-  primaryTechnique: string;
+  conditionCount: number;
+  categories: string[];
+  techniques: string[];
+  conditionTitles: string[];       // 仅保留截断后的标题，避免全文累积
+  // case 级跨批次去重视图（让 Designer 知道前面批次已生成哪些用例）
+  caseTitles: string[];            // 截断后的用例标题，按 testLevel 分组注入 prompt
+  caseLevels: string[];            // 与 caseTitles 一一对应：'component' | 'integration'
 }
 
 export const TestGenStateAnnotation = Annotation.Root({
@@ -79,12 +94,20 @@ export const TestGenStateAnnotation = Annotation.Root({
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
 
-  // === 全局需求索引（所有批次共享，用于跨 Epic 感知） ===
-  globalRequirementIndex: Annotation<GlobalRequirementEntry[] | undefined>,
+  // === 全局统计（所有批次共享） ===
   globalStats: Annotation<{ totalRequirements: number; totalEpics: number; totalFlows: number } | undefined>,
 
-  // === 跨批次感知：已完成批次的 test conditions 摘要 ===
-  previousBatchConditions: Annotation<PreviousBatchConditionSummary[] | undefined>,
+  // === L1 索引层：Epic 级全局摘要（替代需求级列表注入到 prompt） ===
+  globalEpicIndex: Annotation<GlobalEpicEntry[] | undefined>,
+
+  // === L2 关联层：跨 Epic 依赖摘要（preparation 节点预计算） ===
+  crossEpicDependencies: Annotation<CrossEpicDependency[] | undefined>,
+
+  // === L2 关联层：已完成批次覆盖摘要（按 requirementId 分组，替代 condition 全文累积） ===
+  previousBatchCoverageSummary: Annotation<PreviousBatchCoverageSummary[] | undefined>,
+
+  // === L2 关联层：与当前批次相关的 flow 蓝图（preparation 节点过滤后写入） ===
+  relevantFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
 
   // === Preparation 产物 ===
   environmentReady: Annotation<boolean>,
@@ -105,7 +128,6 @@ export const TestGenStateAnnotation = Annotation.Root({
   coverageMatrix: Annotation<CoverageMatrix | undefined>,
 
   // === 生成模式 ===
-  includeFlowCases: Annotation<boolean>,
   selectedFlowIds: Annotation<string[]>,
 
   // === 审核反馈 ===

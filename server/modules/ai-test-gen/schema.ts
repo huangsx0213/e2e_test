@@ -7,7 +7,6 @@ export const startPipelineSchema = z.object({
   mode: z.enum(['auto', 'interactive']).default('auto'),
   flowIds: z.array(z.string()).optional(),
   name: z.string().optional(),
-  includeFlowCases: z.boolean().optional().default(false),
   useCache: z.boolean().optional().default(false),
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   reasoningSummary: z.enum(['auto', 'detailed', 'concise']).optional(),

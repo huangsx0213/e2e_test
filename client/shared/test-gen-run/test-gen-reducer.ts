@@ -50,14 +50,14 @@ export function testGenReducer(state: TestGenRunState, action: TestGenReducerAct
       let batchProgress = state.batchProgress;
       let runSummary = state.runSummary;
 
-if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase:start') {
+if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase:start' || type === 'preparation:context') {
   const prepNode = nodes.find(n => n.id === 'preparation');
   if (prepNode) {
     const initLogs = prepNode.meta?.initLogs ? [...prepNode.meta.initLogs] : [];
     initLogs.push({ type, data, timestamp: new Date().toISOString() });
-    
+
     const updatedMeta: any = { ...prepNode.meta, initLogs };
-    
+
     if (type === 'pipeline:context') {
       if (data.indexEntries != null) {
         updatedMeta.requirementCount = data.indexEntries;
@@ -66,20 +66,30 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         updatedMeta.flowCases = data.flows;
       }
     }
-    
+
     if (type === 'pipeline:budget') {
       if (data.estimated != null) {
         updatedMeta.estimatedTokens = data.estimated;
       }
     }
-    
+
     if (type === 'phase:start' && data.phase === 'preparation') {
       const match = data.message?.match(/(\d+) batch\(es\)/);
       if (match) {
         updatedMeta.totalBatches = parseInt(match[1], 10);
       }
     }
-    
+
+    // L1 Epic 索引：全局观数据
+    if (type === 'preparation:context') {
+      if (data.globalStats) {
+        updatedMeta.globalStats = data.globalStats;
+      }
+      if (Array.isArray(data.globalEpicIndex)) {
+        updatedMeta.globalEpicIndex = data.globalEpicIndex;
+      }
+    }
+
     nodes = nodes.map(n =>
       n.id === 'preparation'
       ? { ...n, meta: updatedMeta }

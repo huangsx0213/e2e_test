@@ -14,30 +14,20 @@ describe('TestGenDetailPanel', () => {
           kind: 'preparation',
           status: 'completed',
           meta: {
-            initLogs: [
-              { type: 'pipeline:context', data: { flows: 2, indexEntries: 5 }, timestamp: '2026-01-01T00:00:00.000Z' },
-            ],
-            requirementCount: 5,
             totalBatches: 2,
-            estimatedTokens: 5000,
-            flowCases: 2,
+            globalStats: { totalRequirements: 5, totalEpics: 2, totalFlows: 3 },
           },
         }}
         agentLog={{
           output_data: {
-            initLogs: [
-              { type: 'pipeline:context', data: { flows: 2, indexEntries: 5 }, timestamp: '2026-01-01T00:00:00.000Z' },
-            ],
-            requirementCount: 5,
             totalBatches: 2,
-            estimatedTokens: 5000,
-            flowCases: 2,
           },
         }}
         checkpointData={null}
         thinkingText={null}
         runSummary={null}
         agentLogs={[]}
+        startConfig={{ mode: 'auto', useCache: false }}
         onClose={vi.fn()}
         onApprove={vi.fn()}
         onRetry={vi.fn()}
@@ -46,13 +36,17 @@ describe('TestGenDetailPanel', () => {
       />,
     );
 
-    expect(screen.getByText('Environment Initialized')).toBeInTheDocument();
-    expect(screen.getByText('AI Flow Initialization Logs')).toBeInTheDocument();
+    // Stats cards
+    expect(screen.getByText('Total Batches')).toBeInTheDocument();
     expect(screen.getByText('Requirements')).toBeInTheDocument();
-    expect(screen.getByText('Batches')).toBeInTheDocument();
-    expect(screen.getByText('Token Budget')).toBeInTheDocument();
-    expect(screen.getByText('Flow Cases')).toBeInTheDocument();
+    expect(screen.getByText('Business Flows')).toBeInTheDocument();
+    expect(screen.getByText('Pipeline Ready')).toBeInTheDocument();
+    // Pipeline configuration + dual test level section
+    expect(screen.getByText('Pipeline Configuration')).toBeInTheDocument();
+    expect(screen.getByText('Test Levels')).toBeInTheDocument();
+    // Numeric values: totalBatches=2, totalRequirements=5, totalFlows=3
+    expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getAllByText('2')).toHaveLength(2);
+    expect(screen.getByText('3')).toBeInTheDocument();
   });
 });

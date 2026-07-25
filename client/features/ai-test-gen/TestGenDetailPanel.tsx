@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Search,
   Filter,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -54,7 +55,6 @@ interface NodeDetailProps {
     mode?: string;
     requirementIds?: string[];
     flowIds?: string[];
-    includeFlowCases?: boolean;
     useCache?: boolean;
     providerConfigName?: string;
   } | null;
@@ -149,6 +149,26 @@ const getCategoryBadgeClass = (category?: string) => {
   return 'bg-slate-500/10 text-slate-600 border-slate-200/50';
 };
 
+// Test level badge helper — component vs integration
+const getTestLevelBadgeClass = (level?: string) => {
+  const l = (level || '').toLowerCase();
+  if (l === 'integration') return 'bg-violet-500/10 text-violet-700 border-violet-300/60';
+  if (l === 'component') return 'bg-blue-500/10 text-blue-700 border-blue-300/60';
+  return 'bg-slate-500/10 text-slate-500 border-slate-200/50';
+};
+
+// Detect test level from a test condition (encoded as a tag in coverageDimensions)
+function detectConditionTestLevel(condition: any): 'component' | 'integration' | undefined {
+  const dims: any[] = Array.isArray(condition?.coverageDimensions) ? condition.coverageDimensions : [];
+  for (const d of dims) {
+    if (typeof d === 'string') {
+      if (d.includes('testLevel:integration')) return 'integration';
+      if (d.includes('testLevel:component')) return 'component';
+    }
+  }
+  return undefined;
+}
+
 function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, startConfig, requirements, businessFlows, modelName }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[]; startConfig?: any; requirements?: any[]; businessFlows?: any[]; modelName?: string | null }) {
   const meta = node?.meta;
   const output = agentLog?.output_data;
@@ -168,15 +188,31 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
     return groups;
   }, [selectedReqs]);
 
+  // L1 Epic 索引（来自 preparation:context 事件）
+  const globalStats = meta?.globalStats;
+  const globalEpicIndex = meta?.globalEpicIndex ?? [];
+
   return (
     <div className="p-4 space-y-4 h-full overflow-y-auto">
-      {/* Stats Summary Moved to Top */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Stats Summary — 扩展为 4 卡片，体现 L1/L2 架构全局观 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-gradient-to-b from-white to-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
           <div className="text-2xl font-black text-slate-700">
-            {output?.totalBatches || meta?.totalBatches || '-'}
+            {output?.totalBatches || meta?.totalBatches || globalStats?.totalEpics || '-'}
           </div>
           <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mt-0.5">Total Batches</div>
+        </div>
+        <div className="bg-gradient-to-b from-white to-blue-50/30 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
+          <div className="text-2xl font-black text-blue-600">
+            {globalStats?.totalRequirements ?? selectedReqs.length ?? '-'}
+          </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-blue-500/70 mt-0.5">Requirements</div>
+        </div>
+        <div className="bg-gradient-to-b from-white to-purple-50/30 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
+          <div className="text-2xl font-black text-purple-600">
+            {globalStats?.totalFlows ?? selectedFlows.length ?? '-'}
+          </div>
+          <div className="text-[10px] uppercase font-bold tracking-wider text-purple-500/70 mt-0.5">Business Flows</div>
         </div>
         <div className="bg-gradient-to-b from-white to-emerald-50/30 border border-slate-200 rounded-xl p-3 shadow-sm text-center flex flex-col items-center justify-center">
           <div className="text-2xl font-black text-emerald-500">
@@ -192,7 +228,7 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
           <Zap size={12} className="text-indigo-600" />
           Pipeline Configuration
         </div>
-        
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Mode</span>
@@ -203,8 +239,16 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
             <span className="font-semibold text-slate-700 truncate font-mono text-xs">{modelName || 'Unknown'}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Flow Cases</span>
-            <span className="font-semibold text-slate-700">{startConfig?.includeFlowCases ? 'Enabled' : 'Disabled'}</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Test Levels</span>
+            <span className="font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500" />
+                Component
+                <span className="text-slate-300 mx-0.5">+</span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500" />
+                Integration
+              </span>
+            </span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-0.5">Cache</span>
@@ -212,6 +256,46 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
           </div>
         </div>
       </div>
+
+      {/* L1 Epic Landscape — 全局观索引（每个 Epic 一行，含需求数和 flow 数） */}
+      {globalEpicIndex.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+            <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500">
+              <Layers size={12} className="text-indigo-500" />
+              Global Epic Landscape ({globalEpicIndex.length} epics)
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/30 text-slate-500">
+                  <th className="text-left px-4 py-2 font-semibold w-12">#</th>
+                  <th className="text-left px-3 py-2 font-semibold w-32">Epic ID</th>
+                  <th className="text-left px-3 py-2 font-semibold">Title</th>
+                  <th className="text-right px-3 py-2 font-semibold w-20">Reqs</th>
+                  <th className="text-right px-3 py-2 font-semibold w-20">Flows</th>
+                </tr>
+              </thead>
+              <tbody>
+                {globalEpicIndex.map((epic, i) => (
+                  <tr key={epic.epicId} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td className="px-4 py-2 text-slate-400 font-mono">{i + 1}</td>
+                    <td className="px-3 py-2 font-mono text-indigo-600 truncate max-w-[120px]">{epic.epicId}</td>
+                    <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={epic.title}>{epic.title}</td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="font-bold text-blue-600">{epic.requirementCount}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <span className="font-bold text-purple-600">{epic.flowCount}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Requirements Table grouped by Batch */}
       {selectedReqs.length > 0 && (
@@ -223,7 +307,7 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
             </div>
           </div>
           <div className="overflow-y-auto min-h-0 flex-1">
-            {Object.entries(reqsByBatch).map(([epic, reqs], batchIdx) => (
+            {Object.entries(reqsByBatch).map(([epic, reqs]) => (
               <div key={epic} className="mb-4 last:mb-0">
                 <div className="px-4 py-1.5 bg-blue-50/50 border-y border-blue-100/50 flex items-center gap-2 sticky top-0 backdrop-blur-sm shadow-sm z-10">
                   {epic !== 'default-group' && (
@@ -363,6 +447,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                 <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{c.condition}</h4>
                 {c.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(c.priority)}`}>{c.priority}</span>}
                 {c.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(c.category)}`}>{c.category}</span>}
+                {(() => { const lvl = detectConditionTestLevel(c); return lvl ? <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getTestLevelBadgeClass(lvl)}`}>{lvl}</span> : null; })()}
               </div>
 
               {/* Badges Row */}
@@ -465,6 +550,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                 <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
                 {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
                 {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                {tc.testLevel && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getTestLevelBadgeClass(tc.testLevel)}`}>{tc.testLevel}</span>}
                 {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
                 {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
                 {tc.selfReview?.score !== undefined && (
@@ -698,6 +784,7 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
                   <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
                   {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
                   {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                  {tc.testLevel && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getTestLevelBadgeClass(tc.testLevel)}`}>{tc.testLevel}</span>}
                   {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
                   {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
                   {tc.selfReview?.score !== undefined && (
@@ -2532,6 +2619,18 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
     return qmLogs.flatMap((l: any) => l.output_data.finalTestCases);
   }, [agentLogs]);
 
+  // Test level breakdown for summary stats
+  const testLevelCounts = useMemo(() => {
+    const counts = { component: 0, integration: 0, other: 0 };
+    for (const tc of finalTestCases) {
+      const lvl = typeof tc?.testLevel === 'string' ? tc.testLevel.toLowerCase() : '';
+      if (lvl === 'component') counts.component++;
+      else if (lvl === 'integration') counts.integration++;
+      else counts.other++;
+    }
+    return counts;
+  }, [finalTestCases]);
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <div className="overflow-y-auto flex-1 p-4 space-y-4">
@@ -2574,6 +2673,35 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
           </div>
         </div>
 
+        {/* Test Level Breakdown */}
+        {finalTestCases.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Layers size={14} className="text-slate-500" />
+              <h3 className="text-sm font-bold text-slate-700">Test Level Breakdown</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl p-3 border border-blue-200/60 bg-blue-500/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getTestLevelBadgeClass('component')}`}>Component</span>
+                </div>
+                <div className="text-2xl font-black text-blue-700">{testLevelCounts.component}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Atomic behavior verification</div>
+              </div>
+              <div className="rounded-xl p-3 border border-violet-200/60 bg-violet-500/5">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getTestLevelBadgeClass('integration')}`}>Integration</span>
+                </div>
+                <div className="text-2xl font-black text-violet-700">{testLevelCounts.integration}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Cross-component interaction</div>
+              </div>
+            </div>
+            {testLevelCounts.other > 0 && (
+              <p className="text-[10px] text-amber-600 mt-2">⚠ {testLevelCounts.other} case(s) missing testLevel tag</p>
+            )}
+          </div>
+        )}
+
         {/* Detailed Test Cases Section */}
         {finalTestCases.length > 0 && (
           <div className="space-y-4 pt-2 border-t border-slate-100">
@@ -2594,6 +2722,7 @@ function CompleteNodeView({ runSummary, node, agentLogs }: { runSummary: any; no
                     <h4 className="text-sm font-semibold text-slate-800 truncate min-w-0">{tc.title || tc.id}</h4>
                     {tc.priority && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${getPriorityBadgeClass(tc.priority)}`}>{tc.priority}</span>}
                     {tc.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getCategoryBadgeClass(tc.category)}`}>{tc.category}</span>}
+                    {tc.testLevel && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0 ${getTestLevelBadgeClass(tc.testLevel)}`}>{tc.testLevel}</span>}
                     {tc.status && <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border shrink-0 ${tc.status === 'approved' || tc.status === 'approved_with_changes' || tc.status === 'final' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : tc.status === 'rejected' ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{tc.status}</span>}
                     {tc.techniqueApplied && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 bg-indigo-50 text-indigo-600 border-indigo-100">{tc.techniqueApplied}</span>}
                     {tc.selfReview?.score !== undefined && (

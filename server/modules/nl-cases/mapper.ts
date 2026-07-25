@@ -32,6 +32,7 @@ export function normalizeNlCase(input: Partial<NlTestCase>): NlTestCase {
     techniqueApplied: input.techniqueApplied,
     priority: (input.priority || 'medium') as NlTestCase['priority'],
     category: input.category,
+    testLevel: input.testLevel,
     preconditions: asArray(input.preconditions),
     testData: asArray(input.testData).map(normalizeTestDataEntry),
     steps: asArray(input.steps).map(normalizeStep),

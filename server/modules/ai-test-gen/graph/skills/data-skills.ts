@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { businessFlowRepo } from '../../../business-flows/repository.ts';
+import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
@@ -162,7 +163,7 @@ export const relatedRequirementsQuery: SkillDefinition = {
 export const requirementGraphQuery: SkillDefinition = {
   name: 'requirement_graph_query',
   description:
-    'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, dependencies, and associated business flows. Optionally pass flowIds to include user-selected flows in the graph. Pass a single requirementId or an array for batch expansion.',
+    'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, dependencies, and associated business flows. Used for both component-level and integration-level test planning: dependencies and flow associations help identify integration surfaces. Optionally pass flowIds to include user-selected flows in the graph result. Pass a single requirementId or an array for batch expansion.',
   schema: z.object({
     requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs to expand from'),
     flowId: z.union([z.string(), z.array(z.string())]).optional().describe('Optional: user-selected flow IDs to include in the graph result'),
@@ -375,3 +376,130 @@ export const flowDetailQuery: SkillDefinition = {
     return isBatch ? merged : merged[ids[0]];
   },
 };
+
+// ============================================================
+// cross_epic_impact_query — 查询跨 Epic 依赖目标的详情
+// 仅返回需求本体 + 直接依赖，不递归展开，避免上下文膨胀
+// ============================================================
+export const crossEpicImpactQuery: SkillDefinition = {
+  name: 'cross_epic_impact_query',
+  description:
+    'Query the full details of a cross-epic dependency target listed in the Global Context. Use ONLY when a cross-epic dependency\'s title or relationType suggests a real coverage risk (e.g. shared data, shared state, depended-by). Returns the target requirement\'s description, dependencies, and parent — without recursing into its children, to keep context bounded.',
+  schema: z.object({
+    requirementId: z.string().describe('The cross-epic target requirement ID (from Global Context → Cross-Epic Dependencies)'),
+  }),
+  func: async (args) => {
+    const id = String(args.requirementId);
+    const log = Log.for('skill:cross_epic_impact_query');
+    log.info(`Querying cross-epic target ${id}`);
+
+    const req = requirementRepo.get(id);
+    if (!req) {
+      log.warn(`Requirement ${id} not found`);
+      return { error: `Requirement ${id} not found` };
+    }
+
+    const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
+    // 不返回 children，避免上下文爆炸；analyst 如需可单独调 requirement_detail_query
+    const result = {
+      id: req.id,
+      title: req.title,
+      description: req.description,
+      level: req.level,
+      priority: req.priority,
+      status: req.status,
+      tags: req.tags,
+      dependencies: req.dependencies ?? [],
+      parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
+    };
+    log.kv('deps', result.dependencies.length);
+    return result;
+  },
+};
+
+// ============================================================
+// previous_batch_conditions_query — 查询某需求已生成的 condition 标题
+// 仅在怀疑重复时调用，避免每次都展开全文
+// 工厂函数：需要传入 runId 才能查询 pipelineRepo
+// ============================================================
+export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition {
+  return {
+    name: 'previous_batch_conditions_query',
+    description:
+      'Inspect the condition titles already generated for a specific requirement in previous batches. Use ONLY when you suspect a new condition might duplicate an existing one. Returns condition id, title (truncated), category, and primary technique for that requirement.',
+    schema: z.object({
+      requirementId: z.string().describe('The requirement ID to check for existing conditions'),
+    }),
+    func: async (args) => {
+      const id = String(args.requirementId);
+      const log = Log.for('skill:prev_batch_conditions_query');
+      log.info(`Querying previous-batch conditions for ${id} (runId=${runId})`);
+
+      try {
+        const logs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+        const conditions: Array<{ id: string; title: string; category: string; primaryTechnique: string }> = [];
+        for (const logEntry of logs) {
+          const tcs: any[] = logEntry.output_data?.testConditions ?? [];
+          for (const tc of tcs) {
+            if (tc.requirementId === id) {
+              conditions.push({
+                id: tc.id,
+                title: (tc.condition ?? '').slice(0, 120),
+                category: tc.category ?? 'functional',
+                primaryTechnique: tc.primaryTechnique ?? 'Unknown',
+              });
+            }
+          }
+        }
+        log.kv('conditions', conditions.length);
+        return { requirementId: id, conditions };
+      } catch (e: any) {
+        log.warn(`Failed to query previous-batch conditions: ${e?.message ?? e}`);
+        return { requirementId: id, conditions: [], error: String(e?.message ?? e) };
+      }
+    },
+  };
+}
+
+// ============================================================
+// previous_batch_cases_query — 查询某需求已生成的 finalTestCase 标题
+// Designer 在怀疑跨批次 case 重复时调用，避免重新生成相同用例
+// 工厂函数：需要传入 runId 才能查询 pipelineRepo
+// ============================================================
+export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
+  return {
+    name: 'previous_batch_cases_query',
+    description:
+      'Inspect the test case titles and test levels already generated for a specific requirement in previous batches. Use ONLY when you suspect a new draft case might duplicate an existing one. Returns case title (truncated), testLevel, and conditionId for that requirement.',
+    schema: z.object({
+      requirementId: z.string().describe('The requirement ID to check for existing cases'),
+    }),
+    func: async (args) => {
+      const id = String(args.requirementId);
+      const log = Log.for('skill:prev_batch_cases_query');
+      log.info(`Querying previous-batch cases for ${id} (runId=${runId})`);
+
+      try {
+        const logs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+        const cases: Array<{ title: string; testLevel: string; conditionId: string }> = [];
+        for (const logEntry of logs) {
+          const ftc: any[] = logEntry.output_data?.finalTestCases ?? [];
+          for (const tc of ftc) {
+            if (tc.requirementId === id) {
+              cases.push({
+                title: (tc.title ?? '').slice(0, 120),
+                testLevel: tc.testLevel ?? 'component',
+                conditionId: tc.conditionId ?? '',
+              });
+            }
+          }
+        }
+        log.kv('cases', cases.length);
+        return { requirementId: id, cases };
+      } catch (e: any) {
+        log.warn(`Failed to query previous-batch cases: ${e?.message ?? e}`);
+        return { requirementId: id, cases: [], error: String(e?.message ?? e) };
+      }
+    },
+  };
+}
