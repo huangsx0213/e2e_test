@@ -2,12 +2,14 @@ import { Log } from '../shared/services/logger';
 import { db } from '../shared/db/client.ts';
 import { migration000InitialSchema } from './000_initial_schema.ts';
 import { migration001AddTestLevelToNlCases } from './001_add_test_level_to_nl_cases.ts';
+import { migration002RequirementsHumanIdAndFlowType } from './002_requirements_human_id_and_flow_type.ts';
 import { seedDefaults } from '../seed.ts';
 import type { Migration } from './types.ts';
 
 export const migrations: Migration[] = [
   migration000InitialSchema,
   migration001AddTestLevelToNlCases,
+  migration002RequirementsHumanIdAndFlowType,
 ];
 
 function appliedMigrationIds(): Set<string> {
