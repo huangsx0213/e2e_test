@@ -33,6 +33,17 @@ So that: cleanup`;
     expect(result.value).toBe('cleanup');
   });
 
+  it('accepts em-dash separator', () => {
+    const md = `As a — admin
+I want — delete
+So that — cleanup`;
+    const result = parseStoryMarkdown(md);
+    expect(result.role).toBe('admin');
+    expect(result.action).toBe('delete');
+    expect(result.value).toBe('cleanup');
+    expect(result.hasAllSegments).toBe(true);
+  });
+
   it('is case-insensitive on prefixes', () => {
     const md = `as a user
 i WANT to do x
@@ -89,6 +100,17 @@ Then: toast`;
     expect(result.given).toBe('signed in');
     expect(result.when).toBe('click Save');
     expect(result.then).toBe('toast');
+  });
+
+  it('accepts em-dash separator', () => {
+    const md = `Given — signed in
+When — click Save
+Then — toast`;
+    const result = parseACMarkdown(md);
+    expect(result.given).toBe('signed in');
+    expect(result.when).toBe('click Save');
+    expect(result.then).toBe('toast');
+    expect(result.hasAllSegments).toBe(true);
   });
 
   it('is case-insensitive on prefixes', () => {

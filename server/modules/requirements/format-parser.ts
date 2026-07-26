@@ -15,15 +15,13 @@ export interface ACSegments {
 }
 
 interface SegmentExtractor {
-  keys: string[];
   captureGroup: (text: string) => string | null;
 }
 
 function buildSegmentExtractor(prefixes: string[]): SegmentExtractor {
   const escaped = prefixes.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const pattern = new RegExp(`^\\s*(?:${escaped.join('|')})\\s*(?::|\\s+—\\s+|\\s+)?(.+?)\\s*$`, 'i');
+  const pattern = new RegExp(`^\\s*(?:${escaped.join('|')})\\s*?(?::|\\s+—\\s+)?(.+?)\\s*$`, 'i');
   return {
-    keys: prefixes.map((p) => p.toLowerCase()),
     captureGroup: (text: string) => {
       const match = text.match(pattern);
       return match ? match[1].trim() : null;
