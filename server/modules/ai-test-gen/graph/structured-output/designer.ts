@@ -15,6 +15,13 @@ const DesignerRuntimeSchema = z.object({
     title: z.string(),
     conditionId: z.string(),
     requirementId: z.string(),
+    // F10: explicit list of Analyst condition ids this case covers.
+    // Replaces the old single-string conditionId as the primary traceability field;
+    // conditionId is kept as the "primary" condition for backward compat.
+    coveredConditions: z.array(z.string()).default([]),
+    // F11: for testLevel=integration cases, the component conditions this case assumes.
+    // Validated at parse time (see validateFlowCaseReferences).
+    referencedComponentConditions: z.array(z.string()).default([]),
     priority: z.string(),
     category: z.string(),
     testLevel: z.enum(['component', 'integration']),
@@ -24,7 +31,26 @@ const DesignerRuntimeSchema = z.object({
     steps: z.array(z.object({
       stepNumber: z.number(),
       action: z.string(),
-      expected: z.string(),
+      // F18: step atomicity — same constraint Quality enforces. Splitting
+      // bundled assertions into multiple steps makes failures localizable
+      // and is enforced at the earliest possible layer.
+      expected: z.string().superRefine((val, ctx) => {
+        const v = String(val ?? '');
+        if (v.length > 200) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps.`,
+          });
+          return;
+        }
+        const segments = v.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
+        if (segments.length > 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps.`,
+          });
+        }
+      }),
     })).min(1),
     postconditions: z.array(z.string()).default([]),
     tags: z.array(z.string()).default([]),
@@ -43,6 +69,7 @@ interface ConditionInfo {
   id: string;
   requirementId: string;
   expectedTestLevel?: 'component' | 'integration';
+  conditionType?: 'component' | 'flow';
 }
 
 function validateConditionCoverage(
@@ -135,6 +162,11 @@ function normalizeDraftTestCase(
     ...tc,
     conditionId: String(tc.conditionId ?? ''),
     requirementId: expectedReqId ?? String(tc.requirementId ?? ''),
+    // F10 / F11: normalize the new traceability arrays. Empty / missing arrays
+    // are preserved (validateFlowCaseReferences will backfill coveredConditions
+    // and reject integration cases that lack component references).
+    coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined),
+    referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined),
     testLevel,
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
@@ -148,6 +180,78 @@ function normalizeDraftTestCase(
       suggestions: nullToEmptyArray(selfReview.suggestions as string[] | null | undefined),
     },
   };
+}
+
+/**
+ * F11 / F12 — Anti-redundancy hard check at the Designer layer.
+ *
+ * For every `testLevel: "integration"` case:
+ * 1. `coveredConditions` MUST list at least one condition id (backfilled
+ *    to `[conditionId]` if the LLM only provided the primary conditionId).
+ * 2. `referencedComponentConditions` MUST be non-empty (the integration case
+ *    must name which component conditions it assumes as preconditions).
+ * 3. Each id in `referencedComponentConditions` must refer to a real
+ *    condition in the expected set AND that condition must be of type
+ *    `component` (integration cases cannot reference other flow conditions
+ *    as their preconditions — that would be flow-on-flow, which is a
+ *    different design pattern).
+ */
+function validateFlowCaseReferences(
+  parsed: DesignerRuntimeOutput,
+  expectedConditions: ConditionInfo[],
+): DesignerRuntimeOutput {
+  if (expectedConditions.length === 0) return parsed;
+
+  const byId = new Map(expectedConditions.map((c) => [c.id, c]));
+
+  for (const testCase of parsed.draftTestCases) {
+    // Backfill coveredConditions: if the LLM forgot to list the primary
+    // conditionId, do it for them so traceability is not lost.
+    if (testCase.coveredConditions.length === 0 && testCase.conditionId) {
+      testCase.coveredConditions = [testCase.conditionId];
+    }
+
+    if (testCase.testLevel !== 'integration') continue;
+
+    // F11: integration cases must declare at least one referenced component condition.
+    if (testCase.referencedComponentConditions.length === 0) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['draftTestCases'],
+          message: `Draft test case ${testCase.id} has testLevel="integration" but referencedComponentConditions is empty. Integration cases must explicitly list the component conditions they assume as preconditions (use coveredConditions to record which flow condition this case covers, referencedComponentConditions to record the component behaviors it depends on).`,
+          input: testCase,
+        },
+      ]);
+    }
+
+    // F12: every referenced component condition must exist and be type=component.
+    for (const refId of testCase.referencedComponentConditions) {
+      const ref = byId.get(refId);
+      if (!ref) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            path: ['draftTestCases'],
+            message: `Draft test case ${testCase.id} references unknown condition "${refId}" in referencedComponentConditions. Reference must be an id that appears in the Analyst's approved conditions.`,
+            input: testCase,
+          },
+        ]);
+      }
+      if (ref.conditionType && ref.conditionType !== 'component') {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            path: ['draftTestCases'],
+            message: `Draft test case ${testCase.id} references condition "${refId}" of type "${ref.conditionType}" in referencedComponentConditions, but only component-typed conditions may be referenced as integration-case preconditions.`,
+            input: testCase,
+          },
+        ]);
+      }
+    }
+  }
+
+  return parsed;
 }
 
 export function createDesignerOutputProfile(expectedConditions: ConditionInfo[] = []): StructuredOutputProfile<DesignerRuntimeOutput> {
@@ -167,12 +271,15 @@ export function createDesignerOutputProfile(expectedConditions: ConditionInfo[] 
       };
     },
     parse(normalized: unknown): DesignerRuntimeOutput {
-      return validateConditionCoverage(DesignerRuntimeSchema.parse(normalized), expectedConditions);
+      const parsed = validateConditionCoverage(DesignerRuntimeSchema.parse(normalized), expectedConditions);
+      return validateFlowCaseReferences(parsed, expectedConditions);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
         draftTestCases: 'Provide draftTestCases as a non-empty array of test cases and ensure every input conditionId is covered by at least one case.',
         'draftTestCases.testLevel': 'Each draft test case must declare testLevel as either "component" or "integration".',
+        'draftTestCases.coveredConditions': 'Each draft test case must list the Analyst conditionIds it covers (use [conditionId] if unsure).',
+        'draftTestCases.referencedComponentConditions': 'Integration (testLevel="integration") cases MUST list at least one component condition they assume as a precondition.',
         'draftTestCases.steps': 'Each draft test case needs a non-empty steps array.',
         'draftTestCases.postconditions': 'Use an array, not null, for postconditions.',
         'draftTestCases.tags': 'Use an array, not null, for tags.',

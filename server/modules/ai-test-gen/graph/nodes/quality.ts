@@ -11,67 +11,6 @@ import { createQualityOutputProfile } from '../structured-output/quality.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
-// Output Schema — only finalTestCases; coverageMatrix is computed in TS
-// ============================================================
-/**
- * 从 finalTestCases + state 数据计算 coverageMatrix，不依赖模型输出。
- */
-function computeCoverageMatrix(
-  finalTestCases: Array<{ requirementId: string; techniqueApplied: string; category: string; testLevel?: string }>,
-  requirements: Array<{ id: string; title: string; level: string }>,
-  conditions: Array<{ requirementId: string }>,
-): CoverageMatrix {
-  const casesByReq: Record<string, typeof finalTestCases> = {};
-  for (const tc of finalTestCases) {
-    if (!casesByReq[tc.requirementId]) casesByReq[tc.requirementId] = [];
-    casesByReq[tc.requirementId].push(tc);
-  }
-
-  const condCountByReq: Record<string, number> = {};
-  for (const c of conditions) {
-    condCountByReq[c.requirementId] = (condCountByReq[c.requirementId] ?? 0) + 1;
-  }
-
-  const rows: CoverageMatrix['rows'] = [];
-  for (const req of requirements) {
-    const relatedCases = casesByReq[req.id] ?? [];
-    const totalConditions = condCountByReq[req.id] ?? 0;
-    const testCaseCount = relatedCases.length;
-
-    const techniqueBreakdown: Record<string, number> = {};
-    for (const tc of relatedCases) {
-      techniqueBreakdown[tc.techniqueApplied || 'unknown'] = (techniqueBreakdown[tc.techniqueApplied || 'unknown'] ?? 0) + 1;
-    }
-
-    const categoryBreakdown: Record<string, number> = {};
-    for (const tc of relatedCases) {
-      categoryBreakdown[tc.category || 'uncategorized'] = (categoryBreakdown[tc.category || 'uncategorized'] ?? 0) + 1;
-    }
-
-    const testLevelBreakdown: Partial<Record<string, number>> = {};
-    for (const tc of relatedCases) {
-      const lvl = tc.testLevel || 'unknown';
-      testLevelBreakdown[lvl] = (testLevelBreakdown[lvl] ?? 0) + 1;
-    }
-
-    rows.push({
-      requirementId: req.id,
-      requirementTitle: req.title,
-      level: req.level,
-      totalConditions,
-      testCaseCount,
-      techniqueBreakdown,
-      categoryBreakdown,
-      testLevelBreakdown,
-      coveragePercentage: totalConditions > 0 ? Math.min(100, Math.round((testCaseCount / totalConditions) * 100)) : 0,
-      uncoveredRisks: [],
-    });
-  }
-
-  return { rows };
-}
-
-// ============================================================
 // Node
 // ============================================================
 export interface QualityNodeOptions {
@@ -105,6 +44,10 @@ export function makeQualityNode(opts: QualityNodeOptions) {
           conditionId: draftCase.conditionId,
           requirementId: draftCase.requirementId,
           expectedTestLevel: draftCase.testLevel,
+          // F10 / F11: forward the traceability arrays so Quality can run the
+          // anti-redundancy check against the same set the Designer declared.
+          coveredConditions: (draftCase as any).coveredConditions,
+          referencedComponentConditions: (draftCase as any).referencedComponentConditions,
         })),
       );
 
@@ -124,40 +67,26 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         { signal: nodeSignal, agentName },
       );
 
-      const computedCoverageMatrix = computeCoverageMatrix(
-        validated.finalTestCases as Array<{ requirementId: string; techniqueApplied: string; category: string; testLevel?: string }>,
-        (state.currentBatch ?? []).map(r => ({ id: r.id, title: r.title, level: (r as any).level ?? '' })),
-        (state.approvedConditions ?? state.testConditions ?? []) as Array<{ requirementId: string }>,
-      );
+      const computedCoverageMatrix = (validated as any).coverageMatrix;
 
       const latencyMs = Date.now() - startTime;
       const finalCount = validated.finalTestCases?.length ?? 0;
-      const matrixRows = computedCoverageMatrix.rows.length;
+      const matrixRows = computedCoverageMatrix?.rows?.length ?? 0;
       const skillCallCount = toolCallRecords?.length ?? 0;
       const approvedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved').length ?? 0;
       const changedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'approved_with_changes').length ?? 0;
       const rejectedCount = validated.finalTestCases?.filter((tc: any) => tc.status === 'rejected').length ?? 0;
       observer?.onStep?.(agentName, 4, `Reviewed ${finalCount} cases (${approvedCount} approved, ${changedCount} changed, ${rejectedCount} rejected)`);
-      const matrixTable = computedCoverageMatrix.rows.length > 0
-        ? (() => {
-            const W = [4, 48, 6, 8, 8, 6];
-            const fmt = (cells: string[]) => ' ' + cells.map((c, i) => c.padStart(W[i])).join(' ') + ' ';
-            const hdr = fmt(['#', 'Requirement', 'Level', 'Cond', 'Cases', 'Cov%']);
-            const div = '─' + W.map(w => '─'.repeat(w)).join('─') + '─';
-            const rows = computedCoverageMatrix.rows.map((r, i) => {
-              const t = r.requirementTitle.length > 46 ? r.requirementTitle.slice(0, 44) + '…' : r.requirementTitle;
-              return fmt([String(i + 1), t, (r.level || '').toUpperCase(), String(r.totalConditions), String(r.testCaseCount), r.coveragePercentage + '%']);
-            });
-            return '\n\n' + hdr + '\n' + div + '\n' + rows.join('\n');
-          })()
-        : '';
-      observer?.onStep?.(agentName, 5, `Generated coverage matrix (${matrixRows} rows)${matrixTable}`);
       const coverageSummary = {
         totalRequirements: state.currentBatch?.length ?? 0,
         totalConditions: (state.approvedConditions ?? state.testConditions ?? []).length,
         totalCases: finalCount,
-        overallCoverage: computedCoverageMatrix.rows.length > 0
-          ? Math.round(computedCoverageMatrix.rows.reduce((sum, r) => sum + r.coveragePercentage, 0) / computedCoverageMatrix.rows.length)
+        overallCoverage: computedCoverageMatrix?.summary
+          ? Math.round(
+              (computedCoverageMatrix.summary.coveredConditions /
+                Math.max(1, computedCoverageMatrix.summary.totalConditions)) *
+                100,
+            )
           : 0,
       };
       log.success(`EXIT ── ${finalCount} final cases (approved=${approvedCount}, changed=${changedCount}, rejected=${rejectedCount})`);

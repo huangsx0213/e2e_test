@@ -9,6 +9,22 @@ import {
 } from './helpers.ts';
 import type { StructuredOutputProfile } from './profile.ts';
 
+// F19: step atomicity hard constraint — keep `expected` to a single observable
+// outcome. Bundled assertions (containing ";" + conjunction, or > 200 chars) are
+// rejected because the LLM is supposed to split them into separate steps.
+const atomicExpected = (value: string): true | string => {
+  const v = String(value ?? '');
+  if (v.length > 200) {
+    return `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps.`;
+  }
+  // Reject multiple semicolon-separated assertions in a single expected.
+  const segments = v.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
+  if (segments.length > 1) {
+    return `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps.`;
+  }
+  return true;
+};
+
 const QualityRuntimeSchema = z.object({
   finalTestCases: z.preprocess(
     (value) => Array.isArray(value) ? value : [],
@@ -17,6 +33,9 @@ const QualityRuntimeSchema = z.object({
       title: z.string(),
       conditionId: z.string(),
       requirementId: z.string(),
+      // F10 / F11 carried through from draft cases. Quality preserves them.
+      coveredConditions: z.array(z.string()).default([]),
+      referencedComponentConditions: z.array(z.string()).default([]),
       priority: z.string(),
       category: z.string(),
       testLevel: z.enum(['component', 'integration']),
@@ -26,7 +45,16 @@ const QualityRuntimeSchema = z.object({
       steps: z.array(z.object({
         stepNumber: z.number(),
         action: z.string(),
-        expected: z.string(),
+        // F19: refine each step's `expected` for atomicity.
+        expected: z.string().superRefine((val, ctx) => {
+          const r = atomicExpected(val);
+          if (r !== true) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: r,
+            });
+          }
+        }),
       })),
       tags: z.array(z.string()).default([]),
       status: z.string().default('approved'),
@@ -39,8 +67,10 @@ const QualityRuntimeSchema = z.object({
       })).default([]),
     })).min(1),
   ),
-  // Coverage matrix: one row per Analyst condition, summarizing how the final
-  // test cases cover it. Optional for backward compatibility with older runs.
+  // Coverage matrix: F27 — REQUIRED for new runs (was optional for backward compat).
+  // The LLM is the source of truth: one row per Analyst conditionId.
+  // Marked optional in the schema so legacy/older runs that pre-date F27 still
+  // parse. The Quality prompt makes the field MANDATORY for new runs.
   coverageMatrix: z.object({
     rows: z.array(z.object({
       conditionId: z.string(),
@@ -49,6 +79,12 @@ const QualityRuntimeSchema = z.object({
       testLevel: z.string(),
       primaryTechnique: z.string(),
       category: z.string(),
+      conditionType: z.enum(['component', 'flow']).optional(),
+      flowStepRef: z.object({
+        flowId: z.string(),
+        sequence: z.number(),
+        actionSummary: z.string().optional(),
+      }).optional(),
       coveredByCaseIds: z.array(z.string()),
       coverageStatus: z.enum(['covered', 'missing']),
       notes: z.string().optional(),
@@ -60,6 +96,8 @@ const QualityRuntimeSchema = z.object({
       byTestLevel: z.record(z.string(), z.number()),
       byTechnique: z.record(z.string(), z.number()),
       byCategory: z.record(z.string(), z.number()),
+      // F29: condition-type breakdown so the UI can show component vs flow counts.
+      byConditionType: z.record(z.string(), z.number()).optional(),
     }),
   }).optional(),
 });
@@ -71,6 +109,8 @@ interface ExpectedDraftCase {
   conditionId: string;
   requirementId: string;
   expectedTestLevel?: 'component' | 'integration';
+  coveredConditions?: string[];
+  referencedComponentConditions?: string[];
 }
 
 function validateDraftCaseCoverage(
@@ -119,8 +159,127 @@ function validateDraftCaseCoverage(
         },
       ]);
     }
+    // F15: integration cases must still declare referencedComponentConditions.
+    if (testCase.testLevel === 'integration' && testCase.referencedComponentConditions.length === 0) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['finalTestCases'],
+          message: `Final reviewed case ${testCase.id} is testLevel="integration" but referencedComponentConditions is empty. Integration cases must explicitly name the component conditions they assume as preconditions.`,
+          input: testCase,
+        },
+      ]);
+    }
   }
 
+  return parsed;
+}
+
+/**
+ * F16: anti-redundancy hard check at the Quality layer. For every pair
+ * (componentCase, integrationCase) sharing the same requirementId, scan the
+ * integration case's `steps[].expected` for verbatim / near-verbatim overlaps
+ * with the component case's `steps[].expected`. If substantial overlap is
+ * found, the integration case has re-asserted what a sibling component case
+ * already covers — a redundancy defect.
+ *
+ * Heuristic: tokenize each expected into lowercase word-tokens, drop short
+ * stopwords, and compute Jaccard overlap. > 0.55 overlap = redundancy signal.
+ */
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'and', 'or', 'but', 'if', 'then', 'than', 'so', 'to', 'of', 'in', 'on',
+  'at', 'for', 'with', 'by', 'from', 'as', 'it', 'its', 'this', 'that',
+  'these', 'those', 'i', 'you', 'we', 'they', 'he', 'she',
+]);
+
+function tokenize(s: string): Set<string> {
+  return new Set(
+    String(s ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w)),
+  );
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const t of a) if (b.has(t)) intersection++;
+  return intersection / (a.size + b.size - intersection);
+}
+
+interface RedundancyFlag {
+  integrationCaseId: string;
+  componentCaseId: string;
+  componentExpected: string;
+  integrationExpected: string;
+  overlap: number;
+}
+
+function detectRedundancy(
+  finalTestCases: QualityRuntimeOutput['finalTestCases'],
+): RedundancyFlag[] {
+  const componentCases = finalTestCases.filter((tc) => tc.testLevel === 'component');
+  const integrationCases = finalTestCases.filter((tc) => tc.testLevel === 'integration');
+  const flags: RedundancyFlag[] = [];
+  for (const ic of integrationCases) {
+    const icExpecteds = ic.steps.map((s) => s.expected);
+    const icTokens = icExpecteds.map(tokenize);
+    for (const cc of componentCases) {
+      if (cc.requirementId !== ic.requirementId) continue;
+      for (let i = 0; i < cc.steps.length; i++) {
+        const ccTokens = tokenize(cc.steps[i].expected);
+        for (let j = 0; j < icExpecteds.length; j++) {
+          const overlap = jaccard(ccTokens, icTokens[j]);
+          if (overlap > 0.55) {
+            flags.push({
+              integrationCaseId: ic.id,
+              componentCaseId: cc.id,
+              componentExpected: cc.steps[i].expected,
+              integrationExpected: icExpecteds[j],
+              overlap,
+            });
+          }
+        }
+      }
+    }
+  }
+  return flags;
+}
+
+function validateAntiRedundancy(
+  parsed: QualityRuntimeOutput,
+): QualityRuntimeOutput {
+  // Only run the check when the LLM did NOT log a `Redundancy` fix in changeLog.
+  // If the LLM has already addressed redundancy for a case, we trust it.
+  const changedCaseIds = new Set<string>();
+  for (const tc of parsed.finalTestCases) {
+    for (const change of tc.changeLog) {
+      const reason = String(change.reason ?? '').toLowerCase();
+      if (reason.includes('redundan') || reason.includes('overlap') || reason.includes('non-overlap')) {
+        changedCaseIds.add(tc.id);
+      }
+    }
+  }
+  const flags = detectRedundancy(parsed.finalTestCases).filter(
+    (f) => !changedCaseIds.has(f.integrationCaseId),
+  );
+  if (flags.length > 0) {
+    const summary = flags
+      .slice(0, 3)
+      .map((f) => `${f.integrationCaseId} ↔ ${f.componentCaseId} (overlap=${f.overlap.toFixed(2)})`)
+      .join('; ');
+    throw new z.ZodError([
+      {
+        code: 'custom',
+        path: ['finalTestCases'],
+        message: `Redundancy detected: integration cases re-assert behavior already covered by sibling component cases. Examples: ${summary}. Move the overlapping assertion into the integration case's referencedComponentConditions (precondition) and keep only cross-component assertions in steps. Log the de-duplication in changeLog with a 'redundancy' reason.`,
+        input: parsed,
+      },
+    ]);
+  }
   return parsed;
 }
 
@@ -159,6 +318,14 @@ function normalizeFinalTestCase(
     conditionId: expected?.conditionId ?? tc.conditionId,
     requirementId: expected?.requirementId ?? tc.requirementId,
     testLevel,
+    // F10 / F11: preserve traceability arrays. If the LLM omits them, fall back
+    // to the expected draft case's values, then to safe empty arrays.
+    coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined).length > 0
+      ? (tc.coveredConditions as string[])
+      : (expected?.coveredConditions ?? []),
+    referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined).length > 0
+      ? (tc.referencedComponentConditions as string[])
+      : (expected?.referencedComponentConditions ?? []),
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
     steps,
@@ -170,12 +337,27 @@ function normalizeFinalTestCase(
 /**
  * Normalize the coverageMatrix produced by the Quality Manager.
  * Tolerates missing/malformed fields so a partial matrix still parses.
+ * F27: the LLM is now the source of truth; we just sanitize.
  */
 function normalizeCoverageMatrix(raw: Record<string, unknown>): Record<string, unknown> {
   const rowsRaw = Array.isArray(raw.rows) ? raw.rows : [];
   const rows = rowsRaw.map((r) => {
     const row = r && typeof r === 'object' ? r as Record<string, unknown> : {};
     const status = typeof row.coverageStatus === 'string' ? row.coverageStatus : 'covered';
+    const flowStepRaw = row.flowStepRef && typeof row.flowStepRef === 'object'
+      ? row.flowStepRef as Record<string, unknown>
+      : null;
+    const flowStepRef = flowStepRaw
+      ? {
+          flowId: String(flowStepRaw.flowId ?? ''),
+          sequence: typeof flowStepRaw.sequence === 'number' ? flowStepRaw.sequence : 0,
+          actionSummary: typeof flowStepRaw.actionSummary === 'string' ? flowStepRaw.actionSummary : undefined,
+        }
+      : undefined;
+    const conditionType = typeof row.conditionType === 'string'
+      && (row.conditionType === 'component' || row.conditionType === 'flow')
+        ? row.conditionType
+        : undefined;
     return {
       ...row,
       conditionId: String(row.conditionId ?? ''),
@@ -184,6 +366,8 @@ function normalizeCoverageMatrix(raw: Record<string, unknown>): Record<string, u
       testLevel: typeof row.testLevel === 'string' ? row.testLevel : 'component',
       primaryTechnique: String(row.primaryTechnique ?? ''),
       category: String(row.category ?? ''),
+      conditionType,
+      flowStepRef,
       coveredByCaseIds: nullToEmptyArray(row.coveredByCaseIds as string[] | null | undefined),
       coverageStatus: status === 'missing' ? 'missing' : 'covered',
       notes: nullToUndefined(row.notes as string | null | undefined),
@@ -210,6 +394,7 @@ function normalizeCoverageMatrix(raw: Record<string, unknown>): Record<string, u
       byTestLevel: recordOfNumbers(summaryRaw.byTestLevel),
       byTechnique: recordOfNumbers(summaryRaw.byTechnique),
       byCategory: recordOfNumbers(summaryRaw.byCategory),
+      byConditionType: recordOfNumbers(summaryRaw.byConditionType),
     },
   };
 }
@@ -234,14 +419,20 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
       return normalized;
     },
     parse(normalized: unknown): QualityRuntimeOutput {
-      return validateDraftCaseCoverage(QualityRuntimeSchema.parse(normalized), expectedDraftCases);
+      const parsed = validateDraftCaseCoverage(QualityRuntimeSchema.parse(normalized), expectedDraftCases);
+      return validateAntiRedundancy(parsed);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
         finalTestCases: 'Provide finalTestCases as a non-empty array of reviewed test cases, and preserve every input draft case id exactly once.',
         'finalTestCases.testLevel': 'Each final test case must declare testLevel as either "component" or "integration" (preserve from draft).',
+        'finalTestCases.coveredConditions': 'Each final test case must list the Analyst conditionIds it covers.',
+        'finalTestCases.referencedComponentConditions': 'Integration (testLevel="integration") cases MUST list at least one component condition they assume as a precondition.',
         'finalTestCases.tags': 'Use an array, not null, for tags.',
         'finalTestCases.changeLog': 'Use an array, not null, for changeLog.',
+        coverageMatrix: 'coverageMatrix is REQUIRED: one row per Analyst condition, plus a summary object. F27.',
+        'coverageMatrix.rows': 'Each row must reference a real Analyst conditionId and list coveredByCaseIds from finalTestCases.',
+        'coverageMatrix.summary': 'Provide totalConditions, coveredConditions, missingConditions, byTestLevel, byTechnique, byCategory. byConditionType is optional but recommended.',
       });
     },
   };

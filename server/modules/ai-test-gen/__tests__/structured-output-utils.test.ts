@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
-import { buildThinkingChatOptions, callLLMWithStructuredOutput } from '../graph/nodes/utils.ts';
+import {
+  buildThinkingChatOptions,
+  callLLMWithStructuredOutput,
+  makeSchemaOpenAICompatible,
+  zodToJsonSchema,
+} from '../graph/nodes/utils.ts';
 import { createAnalystOutputProfile } from '../graph/structured-output/analyst.ts';
 
 describe('callLLMWithStructuredOutput', () => {
@@ -122,7 +127,7 @@ describe('callLLMWithStructuredOutput', () => {
         if (streamIndex === 1) {
           yield {
             type: 'content',
-            content: 'analysis text\n```json\n{"id":"C-1","requirementId":"REQ-1","condition":"Verify login","category":"functional","priority":"high","riskLevel":"high","primaryTechnique":"Use Case Testing","secondaryTechniques":[],"techniqueRationale":"happy path","coverageDimensions":["testLevel:integration"],"dependencies":[]}\n```',
+            content: 'analysis text\n```json\n{"id":"C-1","requirementId":"REQ-1","condition":"Verify login","conditionType":"flow","flowStepRefs":[{"flowId":"F-login","sequence":2,"actionSummary":"Submit credentials"}],"category":"functional","priority":"high","riskLevel":"high","primaryTechnique":"Use Case Testing","secondaryTechniques":[],"techniqueRationale":"happy path","coverageDimensions":["authentication"],"dependencies":[]}\n```',
           };
           yield { type: 'done', usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0 } };
           return;
@@ -130,7 +135,7 @@ describe('callLLMWithStructuredOutput', () => {
 
         yield {
           type: 'content',
-          content: '{"requirementAnalysis":{"overallApproach":"Use risk-based login analysis","riskAssessmentSummary":"Authentication is high risk"},"testConditions":[{"id":"C-1","requirementId":"REQ-1","condition":"Verify login","category":"functional","priority":"high","riskLevel":"high","primaryTechnique":"Use Case Testing","secondaryTechniques":[],"techniqueRationale":"happy path","coverageDimensions":["testLevel:integration"],"dependencies":[]}]}',
+          content: '{"requirementAnalysis":{"overallApproach":"Use risk-based login analysis","riskAssessmentSummary":"Authentication is high risk"},"testConditions":[{"id":"C-1","requirementId":"REQ-1","condition":"Verify login","conditionType":"flow","flowStepRefs":[{"flowId":"F-login","sequence":2,"actionSummary":"Submit credentials"}],"category":"functional","priority":"high","riskLevel":"high","primaryTechnique":"Use Case Testing","secondaryTechniques":[],"techniqueRationale":"happy path","coverageDimensions":["authentication"],"dependencies":[]}]}',
         };
         yield { type: 'done', usage: { promptTokens: 1, completionTokens: 1, reasoningTokens: 0 } };
       }),
@@ -151,5 +156,56 @@ describe('callLLMWithStructuredOutput', () => {
     const lastMessage = phase2Messages[phase2Messages.length - 1];
     expect(lastMessage.role).toBe('user');
     expect(String(lastMessage.content)).toContain('Based on the analysis above, output a single JSON object matching this schema.');
+  });
+});
+
+describe('makeSchemaOpenAICompatible', () => {
+  // Regression test: Azure strict response_format rejects schemas whose
+  // `properties` contains a key not present in `required`. When a nested
+  // object is `.optional()`, the outer wrapper gets `type: ["object", "null"]`
+  // — and the recursion must STILL walk into the inner `properties` to add
+  // every key to its own `required`. Earlier versions checked
+  // `schema.type === 'object'` strictly, which failed after the wrap and
+  // produced a schema that Azure rejected with
+  // "Missing 'actionSummary'" (the actual symptom from tgr-... runs).
+  it('walks into nested objects whose type was wrapped to ["object", "null"]', () => {
+    const schema = z.object({
+      coverageMatrix: z.object({
+        rows: z.array(z.object({
+          flowStepRef: z.object({
+            flowId: z.string(),
+            sequence: z.number(),
+            actionSummary: z.string().optional(),
+          }).optional(),
+        })),
+      }).optional(),
+    });
+
+    const fixed = makeSchemaOpenAICompatible(zodToJsonSchema(schema));
+
+    // Navigate to the inner flowStepRef properties.
+    const inner = (fixed as any).properties.coverageMatrix.properties.rows.items.properties.flowStepRef;
+    expect(Array.isArray(inner.required)).toBe(true);
+    // Every property in the inner object MUST be in its own `required`,
+    // including the originally-optional `actionSummary`.
+    expect(inner.required).toEqual(expect.arrayContaining(['flowId', 'sequence', 'actionSummary']));
+    // The outer optional wrapper is now `["object", "null"]` and present
+    // in the parent's required.
+    expect(inner.type).toEqual(['object', 'null']);
+    expect((fixed as any).required).toEqual(expect.arrayContaining(['coverageMatrix']));
+  });
+
+  it('emits every property key (including optional ones) into `required` at every level', () => {
+    const schema = z.object({
+      a: z.string().optional(),
+      b: z.object({
+        c: z.string().optional(),
+        d: z.number().optional(),
+      }),
+    });
+
+    const fixed = makeSchemaOpenAICompatible(zodToJsonSchema(schema)) as any;
+    expect(fixed.required.sort()).toEqual(['a', 'b']);
+    expect(fixed.properties.b.required.sort()).toEqual(['c', 'd']);
   });
 });

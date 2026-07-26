@@ -251,6 +251,174 @@ describe('designerOutputProfile', () => {
     }
     expect(threw).toBe(true);
   });
+
+  it('F11: rejects integration cases with empty referencedComponentConditions', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'integration', conditionType: 'flow' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [{
+        id: 'TC-1',
+        title: 'End-to-end login',
+        conditionId: 'C-1',
+        requirementId: 'REQ-1',
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: [], // F11 violation
+        priority: 'critical',
+        category: 'functional',
+        testLevel: 'integration',
+        techniqueApplied: 'Use Case Testing',
+        preconditions: [],
+        testData: [],
+        steps: [
+          { stepNumber: 1, action: 'Submit credentials', expected: 'Auth API returns 200' },
+          { stepNumber: 2, action: 'Wait for redirect', expected: 'Dashboard renders' },
+        ],
+        postconditions: [],
+        tags: [],
+        selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+      }],
+    }))).toThrow(/referencedComponentConditions is empty/);
+  });
+
+  it('F11: integration case must reference a real condition of type=component', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'integration', conditionType: 'flow' },
+      { id: 'C-2', requirementId: 'REQ-1', expectedTestLevel: 'component', conditionType: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [
+        {
+          id: 'TC-1',
+          title: 'End-to-end login',
+          conditionId: 'C-1',
+          requirementId: 'REQ-1',
+          coveredConditions: ['C-1'],
+          referencedComponentConditions: ['C-1'], // wrong: references a flow condition, not component
+          priority: 'critical',
+          category: 'functional',
+          testLevel: 'integration',
+          techniqueApplied: 'Use Case Testing',
+          preconditions: [],
+          testData: [],
+          steps: [
+            { stepNumber: 1, action: 'Submit credentials', expected: 'Auth API returns 200' },
+          ],
+          postconditions: [],
+          tags: [],
+          selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+        },
+        // Cover C-2 with a sibling component case so validateConditionCoverage
+        // doesn't bail before validateFlowCaseReferences gets to run.
+        {
+          id: 'TC-2',
+          title: 'Validate client-side input',
+          conditionId: 'C-2',
+          requirementId: 'REQ-1',
+          coveredConditions: ['C-2'],
+          referencedComponentConditions: [],
+          priority: 'high',
+          category: 'validation',
+          testLevel: 'component',
+          techniqueApplied: 'Equivalence Partitioning',
+          preconditions: [],
+          testData: [],
+          steps: [{ stepNumber: 1, action: 'Enter empty password', expected: 'Validation error shown' }],
+          postconditions: [],
+          tags: [],
+          selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+        },
+      ],
+    }))).toThrow(/only component-typed conditions may be referenced/);
+  });
+
+  it('F18: rejects steps with bundled assertions (semicolons in expected)', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [{
+        id: 'TC-1',
+        title: 'Verify login',
+        conditionId: 'C-1',
+        requirementId: 'REQ-1',
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: [],
+        priority: 'critical',
+        category: 'functional',
+        testLevel: 'component',
+        techniqueApplied: 'Equivalence Partitioning',
+        preconditions: [],
+        testData: [],
+        steps: [
+          { stepNumber: 1, action: 'Click login', expected: 'API returns 200; dashboard renders' },
+        ],
+        postconditions: [],
+        tags: [],
+        selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+      }],
+    }))).toThrow(/single assertion/);
+  });
+
+  it('F18: rejects steps with over-long expected (>200 chars)', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'component' },
+    ]);
+
+    const longExpected = 'A'.repeat(201);
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [{
+        id: 'TC-1',
+        title: 'Verify login',
+        conditionId: 'C-1',
+        requirementId: 'REQ-1',
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: [],
+        priority: 'critical',
+        category: 'functional',
+        testLevel: 'component',
+        techniqueApplied: 'Equivalence Partitioning',
+        preconditions: [],
+        testData: [],
+        steps: [{ stepNumber: 1, action: 'Click login', expected: longExpected }],
+        postconditions: [],
+        tags: [],
+        selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+      }],
+    }))).toThrow(/<= 200 chars/);
+  });
+
+  it('F10: backfills coveredConditions from primary conditionId if missing', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'component' },
+    ]);
+
+    const parsed = profile.parse(profile.normalize({
+      draftTestCases: [{
+        id: 'TC-1',
+        title: 'Verify login',
+        conditionId: 'C-1',
+        requirementId: 'REQ-1',
+        // coveredConditions deliberately omitted
+        referencedComponentConditions: [],
+        priority: 'critical',
+        category: 'functional',
+        testLevel: 'component',
+        techniqueApplied: 'Equivalence Partitioning',
+        preconditions: [],
+        testData: [],
+        steps: [{ stepNumber: 1, action: 'Enter credentials', expected: 'Field shows value' }],
+        postconditions: [],
+        tags: [],
+        selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+      }],
+    }));
+
+    expect(parsed.draftTestCases[0].coveredConditions).toEqual(['C-1']);
+  });
 });
 
 describe('analystOutputProfile', () => {
@@ -265,13 +433,15 @@ describe('analystOutputProfile', () => {
         id: 'C-1',
         requirementId: 'REQ-1',
         condition: 'Verify login with valid credentials',
+        conditionType: 'component',
+        flowStepRefs: [],
         category: 'functional',
         priority: 'high',
         riskLevel: 'medium',
         primaryTechnique: 'Equivalence Partitioning',
         secondaryTechniques: [],
         techniqueRationale: 'Valid and invalid partitions',
-        coverageDimensions: ['functional', 'testLevel:component'],
+        coverageDimensions: ['functional'],
         dataRequirements: null,
         dependencies: null,
         requirementLevel: null,
@@ -284,7 +454,7 @@ describe('analystOutputProfile', () => {
     expect(parsed.testConditions[0].requirementLevel).toBeUndefined();
   });
 
-  it('rejects conditions missing a testLevel tag in coverageDimensions', () => {
+  it('rejects conditions missing a conditionType', () => {
     expect(() => profile.parse(profile.normalize({
       requirementAnalysis: {
         overallApproach: 'Use risk-based analysis',
@@ -294,6 +464,7 @@ describe('analystOutputProfile', () => {
         id: 'C-1',
         requirementId: 'REQ-1',
         condition: 'Verify login with valid credentials',
+        // conditionType deliberately omitted
         category: 'functional',
         priority: 'high',
         riskLevel: 'medium',
@@ -302,10 +473,10 @@ describe('analystOutputProfile', () => {
         techniqueRationale: 'Valid and invalid partitions',
         coverageDimensions: ['functional'],
       }],
-    }))).toThrow();
+    }))).toThrow(/conditionType/);
   });
 
-  it('rejects conditions with both testLevel tags in coverageDimensions', () => {
+  it('rejects flow conditions with no flowStepRefs', () => {
     expect(() => profile.parse(profile.normalize({
       requirementAnalysis: {
         overallApproach: 'Use risk-based analysis',
@@ -314,16 +485,68 @@ describe('analystOutputProfile', () => {
       testConditions: [{
         id: 'C-1',
         requirementId: 'REQ-1',
-        condition: 'Verify login with valid credentials',
+        condition: 'Verify end-to-end login propagation',
+        conditionType: 'flow',
+        // flowStepRefs deliberately omitted
         category: 'functional',
         priority: 'high',
         riskLevel: 'medium',
-        primaryTechnique: 'Equivalence Partitioning',
+        primaryTechnique: 'Use Case Testing',
         secondaryTechniques: [],
-        techniqueRationale: 'Valid and invalid partitions',
-        coverageDimensions: ['functional', 'testLevel:component', 'testLevel:integration'],
+        techniqueRationale: 'Multi-step cross-component flow',
+        coverageDimensions: ['authentication'],
       }],
-    }))).toThrow();
+    }))).toThrow(/flowStepRefs/);
+  });
+
+  it('rejects Use Case Testing with conditionType=component', () => {
+    expect(() => profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+      testConditions: [{
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify login flow with Use Case technique',
+        conditionType: 'component',
+        flowStepRefs: [],
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Use Case Testing',
+        secondaryTechniques: [],
+        techniqueRationale: 'Use Case is multi-step by definition',
+        coverageDimensions: ['authentication'],
+      }],
+    }))).toThrow(/Use Case Testing/);
+  });
+
+  it('accepts a flow condition with valid flowStepRefs', () => {
+    const parsed = profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+      testConditions: [{
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify end-to-end login propagation',
+        conditionType: 'flow',
+        flowStepRefs: [{ flowId: 'F-login', sequence: 2, actionSummary: 'Submit credentials' }],
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Use Case Testing',
+        secondaryTechniques: [],
+        techniqueRationale: 'Multi-step cross-component flow',
+        coverageDimensions: ['authentication'],
+      }],
+    }));
+
+    expect(parsed.testConditions).toHaveLength(1);
+    expect(parsed.testConditions[0].conditionType).toBe('flow');
+    expect(parsed.testConditions[0].flowStepRefs).toHaveLength(1);
   });
 
   it('formats field-specific hints for missing required condition fields', () => {

@@ -12,7 +12,11 @@ import { jsonrepair } from 'jsonrepair';
  */
 function ensureStrictJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
   if (!schema || typeof schema !== 'object') return schema;
-  if (schema.type === 'object' && typeof schema.properties === 'object' && schema.properties) {
+  // Same Azure-compatible detection as makeSchemaOpenAICompatible below.
+  const isObjectSchema =
+    schema.type === 'object' ||
+    (Array.isArray(schema.type) && (schema.type as unknown[]).includes('object'));
+  if (isObjectSchema && typeof schema.properties === 'object' && schema.properties) {
     schema.additionalProperties = false;
     for (const key of Object.keys(schema.properties as Record<string, unknown>)) {
       const val = (schema.properties as Record<string, unknown>)[key];
@@ -48,7 +52,15 @@ export function zodToJsonSchema(schema: ZodType): Record<string, unknown> {
 export function makeSchemaOpenAICompatible(schema: Record<string, unknown>): Record<string, unknown> {
   if (!schema || typeof schema !== 'object') return schema;
 
-  if (schema.type === 'object' && typeof schema.properties === 'object' && schema.properties) {
+  // Azure strict mode: a schema with `type: ["object", "null"]` is still an
+  // object schema at heart — we need to recurse into its `properties` even
+  // when type has been wrapped to allow null. Detect "object-ness" with
+  // either the string form or an array form that includes "object".
+  const isObjectSchema =
+    schema.type === 'object' ||
+    (Array.isArray(schema.type) && (schema.type as unknown[]).includes('object'));
+
+  if (isObjectSchema && typeof schema.properties === 'object' && schema.properties) {
     const propKeys = Object.keys(schema.properties as Record<string, unknown>);
     const requiredSet = new Set<string>(
       Array.isArray(schema.required) ? (schema.required as string[]) : []

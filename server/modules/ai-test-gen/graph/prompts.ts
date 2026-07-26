@@ -109,27 +109,35 @@ Stream your analysis as plain text in markdown. After your analysis, end with a 
     {
       "id": "C-001", "requirementId": "REQ-001",
       "condition": "Verify that submitting an invalid password (wrong but well-formed) is rejected with an error message.",
+      "conditionType": "component",
+      "flowStepRefs": [],
       "category": "error",
       "priority": "high",
       "riskLevel": "high",
       "primaryTechnique": "Equivalence Partitioning",
       "secondaryTechniques": [],
       "techniqueRationale": "Invalid-credential partition — EP requires both valid and invalid partitions.",
-      "coverageDimensions": ["authentication", "negative", "testLevel:component"],
+      "coverageDimensions": ["authentication", "negative"],
       "dataRequirements": ["valid username: admin", "invalid password: wrongpass"],
       "dependencies": [],
       "requirementLevel": "AC"
     },
     {
       "id": "C-002", "requirementId": "REQ-001",
-      "condition": "Verify that submitting valid administrator credentials authenticates successfully and redirects to the dashboard.",
+      "condition": "Verify that submitting valid administrator credentials authenticates successfully, hands off state to the session component, and redirects to the dashboard.",
+      "conditionType": "flow",
+      "flowStepRefs": [
+        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 2, "actionSummary": "Submit credentials" },
+        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 3, "actionSummary": "Auth API returns 200 + session token" },
+        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 4, "actionSummary": "Redirect to dashboard" }
+      ],
       "category": "functional",
       "priority": "critical",
       "riskLevel": "critical",
       "primaryTechnique": "Use Case Testing",
       "secondaryTechniques": ["State Transition Testing"],
-      "techniqueRationale": "Multi-step end-to-end user goal — Use Case Testing is strongest fit.",
-      "coverageDimensions": ["authentication", "positive", "testLevel:integration"],
+      "techniqueRationale": "Multi-step end-to-end user goal spanning auth API, session store, and dashboard rendering — Use Case Testing is the strongest fit.",
+      "coverageDimensions": ["authentication", "positive"],
       "dataRequirements": ["valid username: admin", "valid password: admin123"],
       "dependencies": [],
       "requirementLevel": "AC"
@@ -144,38 +152,38 @@ The \`\`\`json block must be at the very end — nothing after it. It must conta
 
 ## CRITICAL RULES (read before generating — these are non-negotiable)
 
-### A. Test Level (every batch MUST produce both levels)
+### A. Condition Type: component vs flow
 
 **Definitions:**
-- **component** — verifies a single requirement's behavior in isolation (single-field validation, single business rule, internal logic of one module).
-- **integration** — verifies interactions across requirements, modules, or external systems (interface contracts, state handoff, cross-epic data exchange).
+- **component condition** — verifies ONE requirement's atomic behavior in isolation. Source: a single requirement AC (single-field validation, single business rule, internal state transition). The test that covers it stays inside one component.
+- **flow condition** — verifies cross-component interaction derived from a business flow. Source: a flow step (data handoff, end-to-end sequence across modules, state propagation). The test that covers it traverses 2+ components.
 
-**Decision table — assign testLevel per CONDITION (not per requirement). A single requirement typically produces BOTH levels:**
+**Decision rule — assign \`conditionType\` per CONDITION (not per requirement):**
 
-| Condition source & characteristic | testLevel |
-|---|---|
-| Condition is derived from a **flow step** — verifies cross-component data flow, interface contract, state handoff, or end-to-end sequence across modules | integration |
-| Condition uses **Use Case Testing** as primary technique (multi-step goal spanning services) | integration |
-| Condition verifies a **requirement AC** — single field's input validation, format, or range (EP/BVA) | component |
-| Condition verifies a **requirement AC** — single business rule's outcome in isolation (Decision Table on one requirement) | component |
-| Condition verifies a **requirement AC** — invalid input or boundary on a single field with no cross-component effect | component |
-| Condition verifies a **requirement AC** — state transition within a single module's lifecycle | component |
+| Source / characteristic | conditionType | flowStepRefs required? |
+|---|---|---|
+| Condition is derived from a **flow step** — verifies cross-component data flow, interface contract, state handoff, or end-to-end sequence across modules | \`flow\` | YES (the exact \`{ flowId, sequence, actionSummary }\` this condition comes from) |
+| Condition uses **Use Case Testing** as primary technique (multi-step goal spanning services) | \`flow\` | YES |
+| Condition verifies a **requirement AC** — single field's input validation, format, or range (EP/BVA) | \`component\` | no |
+| Condition verifies a **requirement AC** — single business rule's outcome in isolation (Decision Table on one requirement) | \`component\` | no |
+| Condition verifies a **requirement AC** — invalid input or boundary on a single field with no cross-component effect | \`component\` | no |
+| Condition verifies a **requirement AC** — state transition within a single module's lifecycle | \`component\` | no |
+| **F22** Condition comes from a flow step but only validates an atomic input/format of one field (e.g. "password is masked as it's typed" inside a login flow) | \`component\` (with the flow step's requirementId still recorded) | no |
 
-**Key principle:** The primary signal is the condition's **source** — flow-derived conditions are integration, requirement-AC-derived conditions are component. A requirement that has dependencies still has atomic behaviors (field validation, single-rule logic) that are component-level.
+**Key principle:** the primary signal is what the condition VERIFIES (atomic vs cross-component), not just where it came from. A flow that contains a password-input step still has a component condition for the masking rule.
 
-**Tagging rule:** Every condition's \`coverageDimensions\` MUST include exactly ONE of \`"testLevel:component"\` or \`"testLevel:integration"\`. Not zero, not both.
+**\`flowStepRefs\` rule:** every \`conditionType: "flow"\` condition MUST list at least one \`{ flowId, sequence, actionSummary }\` in \`flowStepRefs\`. This is the bridge that lets the Designer and Quality trace the condition back to a specific flow step and lets the user (and downstream AI) answer "which flow steps are uncovered?".
 
-**Non-overlap rule (ANTI-REDUNDANCY — critical):** Component and integration conditions for the SAME requirement MUST NOT verify the same behavior. Concretely:
-- A **component** condition verifies the atomic behavior alone (e.g., "empty password is rejected with a validation error").
-- An **integration** condition for the same requirement MUST verify ONLY the cross-component interaction aspect that the component condition did NOT cover (e.g., "no authentication request is sent to the auth service when client-side validation fails" — the interaction with the auth service, NOT the validation itself).
-- The integration condition's \`condition\` text must NOT re-state the atomic behavior already covered by a sibling component condition. It should describe the interaction surface (data handoff, state propagation, downstream effect, sequence across modules) and ASSUME the atomic behavior works.
-- **If a requirement has NO cross-component interaction aspect** (pure single-field validation, pure single-rule logic with no flow involvement and no dependencies), produce ONLY component condition(s) for it — do NOT force an integration condition. Forcing one creates redundancy.
+**Non-overlap rule (ANTI-REDUNDANCY — critical):** For the SAME requirement, a \`component\` condition and a \`flow\` condition MUST NOT verify the same behavior:
+- A \`component\` condition verifies the atomic behavior alone (e.g., "empty password is rejected with a validation error").
+- A \`flow\` condition for the same requirement verifies ONLY the cross-component interaction aspect the component condition did NOT cover (e.g., "no auth request is sent to the auth service when client-side validation fails").
+- The \`flow\` condition's \`condition\` text must NOT re-state the atomic behavior. It should describe the interaction surface (data handoff, state propagation, downstream effect, sequence across modules) and ASSUME the atomic behavior works.
 
 **Per-requirement guidance (replaces rigid quota):**
-- Every requirement MUST produce at least one component-level condition (for its atomic behavior).
-- A requirement produces an integration-level condition ONLY IF it has a genuine cross-component interaction surface (appears in a flow, has dependencies, or touches an external system). When it does, the integration condition must be NON-overlapping with the component condition per the rule above.
+- Every requirement MUST produce at least one \`component\` condition (for its atomic behavior).
+- A requirement produces a \`flow\` condition ONLY IF it has a genuine cross-component interaction surface (appears in a flow, has dependencies, or touches an external system). When it does, the flow condition must be non-overlapping with the component condition.
 
-**Ordering rule:** In the \`testConditions\` array, list ALL component-level conditions first, then ALL integration-level conditions. This mirrors the testing pyramid (verify atomic behavior before interactions) and gives the Designer clear component context before it tackles integration cases.
+**F8 — flow-step coverage rule:** For every step in \`businessFlows[].steps[]\` (i.e. every \`{ flowId, sequence }\` that the user message exposes), the batch MUST produce at least one \`flow\` condition whose \`flowStepRefs\` references that step. A flow step with no condition referencing it is a coverage gap — surface it in the \`requirementAnalysis.riskAssessmentSummary\`.
 
 ### B. Technique Coverage (per-technique hard requirements)
 
@@ -189,10 +197,37 @@ The \`\`\`json block must be at the very end — nothing after it. It must conta
 
 ### C. Final Self-Check (before closing the JSON block)
 
-For every condition: \`requirementId\` present and exact, \`category\` present, \`coverageDimensions\` has exactly one testLevel tag.
-Per requirement: at least one component condition exists; an integration condition exists ONLY if the requirement has a cross-component surface; the integration condition does NOT re-state what the component condition already verifies (non-overlap).
+For every condition: \`requirementId\` present and exact, \`category\` present, \`conditionType\` is \`"component"\` or \`"flow"\`, and if \`conditionType === "flow"\` then \`flowStepRefs\` has at least one entry.
+Per requirement: at least one component condition exists; a flow condition exists only if the requirement has a cross-component surface; the flow condition does not re-state what the component condition already verifies.
+Per flow step in the input: at least one condition references it via \`flowStepRefs\`. A step with zero references is a coverage gap.
 Per technique used: coverage rules from section B are satisfied.
+\`coverageDimensions\` is free-form tags — do NOT use \`testLevel:*\` tags anymore (use the \`conditionType\` field).
 `;
+}
+
+/**
+ * F6 / F7: serialize a business flow with its COMPLETE step list so the LLM
+ * can derive component and flow conditions / test cases without having to
+ * call flow_detail_query. Each step carries its actionSummary, the requirement
+ * IDs it links to, the primary requirement title, the requirement level, and
+ * any acceptance criteria already attached to the step.
+ */
+function serializeFlow(f: any) {
+  return {
+    id: f.id,
+    name: f.name,
+    type: f.type,
+    description: f.description ?? '',
+    source: f.source ?? 'auto', // 'user-selected' | 'blueprint' | 'auto'
+    steps: (f.steps ?? []).map((s: any) => ({
+      sequence: s.sequence,
+      actionSummary: s.actionSummary ?? '',
+      requirementIds: s.requirementIds ?? (s.requirementId ? [s.requirementId] : []),
+      requirementTitle: s.requirementTitle ?? '',
+      requirementLevel: s.requirementLevel ?? '',
+      acceptanceCriteria: s.acceptanceCriteria ?? [],
+    })),
+  };
 }
 
 export function buildAnalystUserMessage(state: TestGenState): string {
@@ -206,12 +241,10 @@ export function buildAnalystUserMessage(state: TestGenState): string {
       level: r.level,
       parentId: r.parentId,
     })),
-    businessFlows: flows.map(f => ({
-      id: f.id,
-      name: f.name,
-      type: f.type,
-      stepCount: f.steps?.length ?? 0, // Help AI decide if flow needs querying
-    })),
+    // F6: full flow context, including every step's description, linked
+    // requirements, and AC. The LLM no longer needs to call flow_detail_query
+    // just to discover what each step covers.
+    businessFlows: flows.map(serializeFlow),
     selectedFlowIds: state.selectedFlowIds,
   }, null, 2);
 }
@@ -302,12 +335,36 @@ Call **istqb_guide** once — loading all technique guides AND the Integration T
 ### Step 3 — Design test cases
 Apply the rules below. Decide \`testLevel\` per case using the Test Level Decision Rule.
 
-## Step-Writing Rules (atomicity & verifiability)
-One action, one observable result, per step:
-- BAD: "Enter username and password, then click login and verify dashboard appears" (4 actions in 1 step — failure can't be localized).
-- GOOD: enter username (expect: field shows value) → enter password (expect: field masks value) → click login (expect: loading state, request sent) → wait for redirect (expect: dashboard renders).
-- \`expected\` must always be objectively observable (visible state, returned value, HTTP status, element appearing/disappearing) — never "works correctly" or "behaves as expected".
-- Order steps so each one's precondition is satisfied by the previous step's outcome.
+## Step-Writing Rules (操作原子性)
+
+**核心原则：一步 = 一个操作 = 一个可观察结果。** 每个 step 只能描述一个动作，且这个动作的结果必须能被独立验证。多个动作合并到一个 step 里会导致失败时无法定位根因，因此一律禁止。
+
+### 什么算"一个操作"
+
+- **输入字段** = 一个 step（\`Enter 'admin' into username\` 是一个完整 step，不是"submit 之前顺便输入"）
+- **点击/触发** = 一个 step
+- **等待异步结果** = 一个 step（与点击分开）
+- **断言/观察** = 一个 step（与等待分开）
+
+### 一律拆分的复合动作
+
+| 写错的（禁止） | 拆开的（正确） |
+|---|---|
+| \`"Submit the login form with admin/admin123"\` | step 1: \`"Enter 'admin' into the username field"\` → step 2: \`"Enter 'admin123' into the password field"\` → step 3: \`"Click the Sign in button"\` |
+| \`"Enter username and password"\` | 每个字段一个 \`Enter\` step |
+| \`"Click login and verify dashboard appears"\` | 点击 → 等待 → 断言 三个 step |
+| \`"Fill out the form with valid data and submit"\` | 每个字段一个 step + 一个 submit step |
+| \`"Set username to admin and password to p@ss then click submit"\` | 每个字段一个 step + 一个 click step |
+
+### expected 的硬约束
+
+- 描述该 step 执行**之后**的系统状态，不是多个动作的总和
+- 必须机器可检测（DOM 状态、HTTP 状态、返回值、元素存在性），不能写"works correctly" / "behaves as expected"
+- schema 强制：≤ 200 字符、至多一个分号段
+
+### 步骤顺序
+
+按因果链排列：每个 step 的前置状态由上一步的后置结果满足。标准顺序是：输入 → 触发 → 等待 → 断言。
 
 ## Technique Fidelity (apply per the condition's \`primaryTechnique\`)
 | Technique | What the test case must do |
@@ -321,31 +378,38 @@ One action, one observable result, per step:
 Copying the technique name into \`techniqueApplied\` without honoring its method above is not acceptable.
 
 ## Test Level Decision Rule (MANDATORY — every case must declare \`testLevel\`)
-The Analyst has already tagged each condition with \`"testLevel:component"\` or \`"testLevel:integration"\` in \`coverageDimensions\`. **You MUST honor that tag.** Do not override it.
+The Analyst has already tagged each condition with \`conditionType: "component"\` or \`conditionType: "flow"\` AND, for flow conditions, supplied \`flowStepRefs\`. **You MUST honor both.** Do not override the conditionType.
 
-The Analyst's tagging logic is:
-- Conditions derived from **requirement ACs** (single-field validation, single business rule) → \`component\`
-- Conditions derived from **flow steps** (cross-component data flow, end-to-end sequence, state handoff) → \`integration\`
+The Analyst guarantees **non-overlap**: a sibling component condition already covers the atomic behavior, so a flow condition verifies ONLY the cross-component interaction aspect. The Designer's job is to turn this into test cases that **explicitly reference the conditions** they cover.
 
-The Analyst guarantees **non-overlap**: a sibling component condition already covers the atomic behavior, so an integration condition verifies ONLY the cross-component interaction aspect.
+| Condition type | testLevel | \`coveredConditions\` | \`referencedComponentConditions\` | Step design constraint |
+|---|---|---|---|---|
+| \`conditionType: "component"\` | \`component\` | MUST list this condition's id (e.g. \`["C-001"]\`) | leave \`[]\` | Steps' assertions stay within the component under test. The final \`expected\` must verify the component's own behavior, not another component's state. |
+| \`conditionType: "flow"\` | \`integration\` | MUST list the flow condition id(s) this case covers (e.g. \`["C-002"]\` or \`["C-002", "C-003"]\` if the case spans multiple flow conditions) | MUST list at least one component condition id the case assumes as a precondition (the atomic behaviors already verified by sibling component cases) | Steps must traverse 2+ components/modules; \`preconditions\` must NAME the interacting components AND reference the assumed component conditions; steps assert only the cross-component outcome (data handoff, state propagation, downstream effect, sequence across modules). Do NOT re-assert atomic behavior that \`referencedComponentConditions\` already covers. |
 
-| Tag | testLevel | Step design constraint |
-|---|---|---|
-| \`"testLevel:component"\` | \`component\` | Steps' **assertions** stay within the component under test. You may reference external data in \`preconditions\` (e.g., seed a price table), but the final \`expected\` must verify the component's own behavior, not another component's state. |
-| \`"testLevel:integration"\` | \`integration\` | Steps must traverse 2+ components/modules; \`preconditions\` name the interacting components. **Do NOT re-assert the atomic behavior** that a sibling component case already covers — state it as a precondition (e.g., "client-side validation has passed" or "valid credentials are accepted by the auth API") and ONLY assert the cross-component outcome: data handoff, state propagation, downstream effect, or sequence across modules. The final step asserts the downstream state change (or its absence), not the boundary response the component case already verified. |
-| Tag missing | Default to \`component\` and note it in \`selfReview.suggestions\`. |
+**F12 — Anti-redundancy check (for every integration case, before finalizing):**
+1. Read the condition text for each entry in \`referencedComponentConditions\` (the Analyst's component conditions).
+2. Ask: "Does my integration case's \`steps[].expected\` re-assert behavior that one of those component conditions already verifies?"
+3. If yes, MOVE that assertion into \`preconditions\` (e.g. "client-side validation has passed per C-001") and keep only the cross-component assertion in \`steps\`. Do not delete the integration case — just remove the overlapping assertion.
 
-**Anti-redundancy check (for integration cases):** Before finalizing an integration case, ask: "Does a sibling component case for the same requirement already assert this?" If yes, move that assertion into \`preconditions\` (as an assumed given) and keep only the cross-component assertions in \`steps\`.
+**F18 — 操作原子性自检（生成 JSON 块之前必做）**
+
+对每个 step 快速过一遍：
+1. 一个动词？\`action\` 里只有一个动作（Enter/Click/Type/Submit/...），没有 "and" / "then" / "with" / "using" 串起多个动作。
+2. 一个目标？\`action\` 指向一个字段/按钮/API，不是一组。
+3. 数据就在该 step 里？输入字段的 value 写在 \`Enter\` 这步里，不要甩给后面的 \`Submit\` 当 "with X/Y" 后缀。
+4. \`expected\` 是一个观察项？不是"works correctly"之类的主观描述。
+
+任何一项不过，拆 step 重写，不许直接出。典型的错误形态：\`"Submit the login form with admin/admin123"\`、\`"Enter username and password"\`、\`"Click login and verify dashboard appears"\`、\`"Fill out the form and submit"\`、\`"Set username to admin and password to p@ss then click submit"\`。
 
 ## Test Independence (ISTQB Principle)
-Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently. For integration cases, this means explicitly seeding the dependent component's data in \`preconditions\`.
+Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently. For integration cases, this means explicitly seeding the dependent component's data in \`preconditions\`. **When the precondition describes a behavior already covered by another Analyst condition, list that condition id in \`referencedComponentConditions\`** so the Quality reviewer can audit the dependency.
 
 ## Required Fields
-For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`priority\`, \`category\`, \`testLevel\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. \`testLevel\` must be exactly one of \`"component"\` or \`"integration"\`. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
+For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`coveredConditions\`, \`referencedComponentConditions\` (for integration cases), \`priority\`, \`category\`, \`testLevel\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. \`testLevel\` must be exactly one of \`"component"\` or \`"integration"\`. \`coveredConditions\` must include the primary \`conditionId\` and may include additional flow conditions. \`referencedComponentConditions\` must be non-empty for any \`testLevel: "integration"\` case. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
 
 ## Instructions
-1. Design one or more complete test cases for EACH input condition. Ensure EVERY condition provided in the input is fully covered. If a condition contains multiple explicit data variants, ensure the test data covers them. The \`draftTestCases\` array MUST contain all designed test cases.
-2. The batch as a whole MUST contain at least one \`component\` case AND at least one \`integration\` case, unless every input condition is genuinely single-component (rare).
+1. Design one or more complete test cases for EACH input condition. Ensure EVERY condition provided in the input is fully covered. If a condition contains multiple explicit data variants, ensure the test data covers them. The \`draftTestCases\` array MUST contain all designed test cases. **One condition MAY be split into multiple test cases** when the data variants or alternate paths warrant it; in that case all derived cases MUST list the original condition in \`coveredConditions\`.
 
 ## Self-Review Scoring (be a genuine critic, not a rubber stamp)
 - **9-10**: every step atomic and verifiable; test data technique-correct and concrete; case fully independent; \`testLevel\` correctly chosen and honored in step design; traces cleanly to the condition.
@@ -372,9 +436,11 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
   "draftTestCases": [
     {
       "id": "TC-001",
-      "title": "Authenticate with valid administrator credentials and land on the dashboard",
-      "conditionId": "C-001",
+      "title": "End-to-end login: admin credentials propagate from auth API to session store and dashboard",
+      "conditionId": "C-002",
       "requirementId": "req-aut-auth-login-valid-success",
+      "coveredConditions": ["C-002"],
+      "referencedComponentConditions": ["C-001", "C-003"],
       "priority": "critical",
       "category": "functional",
       "testLevel": "integration",
@@ -382,16 +448,18 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
       "preconditions": [
         "User is on the login page",
         "Browser session is clean with no existing authenticated session",
-        "Administrator account exists and is active in the user store",
-        "Session store is reachable and empty for this user"
+        "Administrator account exists and is active in the user store (atomic behavior assumed via component condition C-001)",
+        "Session store is reachable and empty for this user",
+        "Client-side validation passes for any well-formed password (atomic behavior assumed via component condition C-003)"
       ],
       "testData": ["username = admin (valid partition)", "password = admin123 (valid partition)"],
       "steps": [
         { "stepNumber": 1, "action": "Enter username 'admin' into the username field.", "expected": "The username field displays 'admin' with no client-side validation error." },
         { "stepNumber": 2, "action": "Enter password 'admin123' into the password field.", "expected": "The password field shows masked characters with no client-side validation error." },
         { "stepNumber": 3, "action": "Click the Sign in / Login button.", "expected": "The submit button enters a disabled loading state and the login request is sent to the auth API." },
-        { "stepNumber": 4, "action": "Wait for the authentication response and resulting navigation.", "expected": "The auth API returns 200 with a session token; the user is redirected to the dashboard URL; the dashboard's primary content is rendered." },
-        { "stepNumber": 5, "action": "Query the session store for the returned token.", "expected": "The session store contains an entry for the returned token bound to user 'admin', confirming the auth component successfully handed off state to the session component." }
+        { "stepNumber": 4, "action": "Wait for the authentication response.", "expected": "The auth API returns HTTP 200 with a session token in the response body." },
+        { "stepNumber": 5, "action": "Wait for the redirect to settle.", "expected": "The browser navigates to the dashboard URL." },
+        { "stepNumber": 6, "action": "Query the session store for the returned token.", "expected": "The session store contains an entry for the returned token bound to user 'admin'." }
       ],
       "postconditions": ["Authenticated session is created in the session store", "Dashboard is accessible for the logged-in user"],
       "tags": ["authentication", "login", "dashboard", "session", "smoke", "happy-path", "integration"],
@@ -400,17 +468,20 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
         "strengths": [
           "Each step has exactly one action and one observable expected result",
           "Test data explicitly labeled with its EP partition for traceability",
-          "Step 5 verifies the downstream session store, not just the API response — true integration coverage"
+          "Step 6 verifies the downstream session store, not just the API response — true integration coverage",
+          "coveredConditions lists C-002 (the flow condition this case covers); referencedComponentConditions lists C-001 and C-003 (the component behaviors assumed as preconditions) — clear traceability"
         ],
-        "weaknesses": ["Does not assert specific dashboard widget content, only that the dashboard renders"],
+        "weaknesses": ["Does not assert specific dashboard widget content, only that the navigation succeeded"],
         "suggestions": ["Add a follow-up case asserting specific dashboard elements", "Add an integration failure case: auth API timeout"]
       }
     },
     {
       "id": "TC-002",
       "title": "Reject login with invalid password format (missing special character)",
-      "conditionId": "C-002",
+      "conditionId": "C-001",
       "requirementId": "req-aut-auth-login-valid-success",
+      "coveredConditions": ["C-001"],
+      "referencedComponentConditions": [],
       "priority": "high",
       "category": "error",
       "testLevel": "component",
@@ -431,7 +502,8 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
         "score": 8,
         "strengths": [
           "Stays within the login UI component — no cross-component assertions, correctly honoring testLevel=component",
-          "Test data names the invalid partition explicitly"
+          "Test data names the invalid partition explicitly",
+          "coveredConditions lists only C-001; referencedComponentConditions is empty because this is a component case"
         ],
         "weaknesses": ["Does not test the server-side rejection path separately"],
         "suggestions": ["Add a component case where the password passes client-side validation but is rejected server-side"]
@@ -453,10 +525,17 @@ Final check before closing the block — every step has exactly one action and o
 
 export function buildDesignerUserMessage(state: TestGenState): string {
   const conditions = state.approvedConditions ?? state.testConditions ?? [];
+  const flows = state.relevantFlowBlueprints ?? state.businessFlowBlueprints ?? [];
   return JSON.stringify({
     conditions: conditions.map(c => ({
       id: c.id,
       condition: c.condition,
+      // F1: surface the new conditionType to the Designer so it can decide
+      // coveredConditions vs referencedComponentConditions correctly.
+      conditionType: (c as any).conditionType,
+      // F3: when conditionType is "flow", include the step refs so the
+      // Designer can write steps that mirror the actual flow sequence.
+      flowStepRefs: (c as any).flowStepRefs ?? [],
       priority: c.priority,
       category: c.category,
       primaryTechnique: c.primaryTechnique,
@@ -465,11 +544,10 @@ export function buildDesignerUserMessage(state: TestGenState): string {
       requirementId: c.requirementId,
       coverageDimensions: c.coverageDimensions,
     })),
-    businessFlows: state.businessFlowBlueprints?.map(f => ({
-      id: f.id,
-      name: f.name,
-      type: f.type,
-    })),
+    // F7: full flow context (same shape as the Analyst receives). The
+    // Designer needs the actionSummary and requirementIds to write steps
+    // that traverse components in the right order.
+    businessFlows: flows.map(serializeFlow),
   }, null, 2);
 }
 
@@ -483,32 +561,36 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
   }
   return `You are a senior QA Quality Manager performing a formal, critical review of draft test cases before they are finalized. Treat this with the rigor of a production code review — find real defects, not formatting nits.
 
+## Read the conditions first (F14)
+For every draft case in the input, you will see \`coveredConditions\` (the Analyst condition ids the case claims to cover) and, for integration cases, \`referencedComponentConditions\` (the component conditions the case assumes as preconditions). **Before you judge a case's correctness, you MUST look up the actual condition text for each id in those arrays** (the Analyst's conditions are exposed in the user message's \`conditions\` field). A case that "looks right" but is silently testing a different behavior than the condition says is a defect.
+
 ## Review Dimensions (checklist, not a vibe check)
-1. **Clarity** — Is each step one action with one objectively observable expected result? Reject bundled actions or vague outcomes ("works correctly").
+1. **Clarity (操作原子性，硬约束)** — 每个 step 必须满足：只有一个动词（Enter/Click/Type/Submit/...），没有一个目标是一组，数据值就在该 step 的 action 内（不甩给后续 step 当 "with X/Y"），\`expected\` 是一个机器可检测的观察项。违反任何一项就拆 step 重写该 case，\`status: approved_with_changes\`，在 \`changeLog\` 记下拆分原因。典型错误形态：\`"Submit the login form with admin/admin123"\`、\`"Enter username and password"\`、\`"Click login and verify dashboard appears"\`、\`"Fill out the form with valid data and submit"\`、\`"Set username to admin and password to p@ss then click submit"\`。
 2. **Completeness** — Does the case's technique application satisfy what that technique actually requires (BVA names the real boundary; Decision Table states every condition input for its rule; EP is paired with its complementary partition elsewhere in the set)? If the condition includes specific data variants, does the test case explicitly test those variants? Across the requirement's full case set, is there both happy-path AND negative/error/boundary coverage?
 3. **Correctness** — Do expected results match what the requirement/acceptance criteria actually specify — not merely what "sounds plausible"? Flag results that contradict or extrapolate beyond the requirement text.
-4. **Traceability** — Does the case's CONTENT stay faithful to its \`conditionId\`/\`requirementId\` (which are preserved programmatically — you verify fidelity, you do not alter the IDs)?
+4. **Traceability** — Every case MUST list its primary condition in \`coveredConditions\`. A \`conditionId\` that is NOT in \`coveredConditions\` is a defect. For flow conditions whose \`flowStepRefs\` exists, the case's steps should mirror the flow's actual sequence (\`sequence\` order).
 5. **Data Validity** — Is test data concrete, realistic, and technique-correct (partition/boundary explicitly named, per the Designer's annotations)? Flag placeholder-looking data ("test123", "foo") that doesn't represent a real partition or boundary.
 6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects, and are steps free of brittle over-specific selectors while still concrete enough to execute?
-7. **Test Level Fidelity** — The \`testLevel\` is set by the Designer and MUST be preserved — do NOT flip a case from \`component\` to \`integration\` or vice versa. Your job is to check whether the **steps actually honor** the declared level: an \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. If the steps don't match the level, **fix the steps** (add/remove cross-component assertions) and set \`status\` to \`approved_with_changes\` — never change \`testLevel\` itself.
-8. **Redundancy (anti-overlap between test levels)** — For each requirement that has BOTH a \`component\` case AND an \`integration\` case, check whether the integration case re-asserts the atomic behavior the component case already covers. If it does, that is a redundancy defect: **fix it** by moving the duplicated assertion into the integration case's \`preconditions\` (as an assumed given) and keeping ONLY the cross-component outcome assertion in \`steps\`. Set \`status\` to \`approved_with_changes\` and log the de-duplication in \`changeLog\` (field: \`steps\`/\`preconditions\`, reason: "removed assertion duplicated by sibling component case to enforce test-level non-overlap"). Do NOT delete the integration case — just remove the overlapping assertion.
+7. **Test Level Fidelity** — The \`testLevel\` is set by the Designer and MUST be preserved — do NOT flip a case from \`component\` to \`integration\` or vice versa. Your job is to check whether the **steps actually honor** the declared level: an \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. If the steps don't match the level, **fix the steps** (add/remove cross-component assertions) and set \`status\` to \`approved_with_changes\` — never change \`testLevel\` itself. Integration cases must also have a non-empty \`referencedComponentConditions\`; if empty, that is a defect.
+8. **Redundancy (F17 — anti-overlap between component and flow cases, hard check)** — For each requirement that has BOTH a \`component\` case AND an \`integration\` (flow) case, compare the integration case's \`steps[].expected\` against every component case's \`steps[].expected\` (using token overlap, not just your gut). If the integration case re-asserts the atomic behavior the component case already covers, that is a redundancy defect: **fix it** by moving the duplicated assertion into the integration case's \`preconditions\` (as an assumed given) and keeping ONLY the cross-component outcome assertion in \`steps\`. Set \`status\` to \`approved_with_changes\` and log the de-duplication in \`changeLog\` (field: \`steps\`/\`preconditions\`, reason starting with the keyword \`"redundancy"\` so the TS validator knows you handled it). Do NOT delete the integration case — just remove the overlapping assertion.
 ${buildL2ContextSection(state, 'quality')}
 ## Review Discipline
 - Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case — if you alter any field, set \`status\` to \`approved_with_changes\`, apply the fix in the case content, and log it.
 - \`changeLog\` is non-empty if and only if you changed the case: every altered case needs a specific field-level entry (what changed, why); every untouched case keeps \`changeLog: []\`. Do not invent entries for cosmetic non-changes.
 - Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
 - After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
-- After the per-requirement pass, do one batch-level pass: confirm the batch contains at least one \`component\` case AND at least one \`integration\` case. If either level is missing across the whole batch, flag it in the most relevant requirement's \`reviewSummary\` so the gap surfaces in the coverage matrix.
+- After the per-requirement pass, do one batch-level pass: confirm each flow step exposed in the user message has at least one flow condition (and therefore one flow case) referencing it. If a flow step is uncovered, flag it in the coverage matrix row whose \`flowStepRef\` points at it.
 
-## Coverage Matrix (MANDATORY output — one row per Analyst condition)
-After the per-case and set-level passes, produce a \`coverageMatrix\` object that maps EVERY Analyst test condition to its coverage by the final test cases. This is a summary of how the analysis-phase conditions were realized.
+## Coverage Matrix (MANDATORY — F27, LLM is the source of truth)
+After the per-case and set-level passes, produce a \`coverageMatrix\` object that maps EVERY Analyst test condition to its coverage by the final test cases. The TS layer NO LONGER recomputes this — your output is what gets stored. This is a summary of how the analysis-phase conditions were realized.
 
-For each \`conditionId\` from the Analyst's output (one row per condition):
-- \`conditionId\`, \`requirementId\`, \`testLevel\`, \`primaryTechnique\`, \`category\` — copy EXACTLY from the Analyst's condition (do not paraphrase IDs or testLevel). The Analyst's conditions are reachable via the input draft cases' \`conditionId\` field; the testLevel/technique/category come from the Analyst's condition (you can infer from the matching draft case's \`testLevel\`/\`techniqueApplied\`).
+For each \`conditionId\` from the Analyst's output (one row per condition, no more, no less):
+- \`conditionId\`, \`requirementId\`, \`conditionType\` (the new "component" or "flow" field, not the old testLevel tag), \`primaryTechnique\`, \`category\` — copy EXACTLY from the Analyst's condition. The conditionType MUST match the Analyst's value. For \`conditionType: "flow"\` rows, also copy \`flowStepRef\` (just one entry — the primary step this condition traces to).
+- \`testLevel\` — the test level assigned to the matching case (\`"component"\` or \`"integration"\`); copy from the case that has this \`conditionId\` in its \`coveredConditions\`.
 - \`conditionSummary\` — a short phrase (≤ 120 chars) describing what the condition verifies, derived from the Analyst's condition text.
-- \`coveredByCaseIds\` — array of \`finalTestCases\` ids whose \`conditionId\` matches this condition. Usually one id; multiple if the Designer split a condition into several cases.
+- \`coveredByCaseIds\` — array of \`finalTestCases\` ids whose \`coveredConditions\` includes this \`conditionId\`. Usually one id; multiple if the Designer split a condition into several cases.
 - \`coverageStatus\` — \`"covered"\` if ≥1 final case covers it, \`"missing"\` if none (this is a defect — flag in \`notes\`).
-- \`notes\` — any gap or concern (e.g., "only valid partition covered, invalid partition missing", "integration case re-asserts component behavior — moved to preconditions"). Empty string if none.
+- \`notes\` — any gap or concern (e.g., "only valid partition covered, invalid partition missing", "integration case re-asserts component behavior — moved to preconditions (redundancy fix)"). Empty string if none.
 
 Plus a \`summary\` object aggregating ALL rows:
 - \`totalConditions\` — total rows.
@@ -517,8 +599,9 @@ Plus a \`summary\` object aggregating ALL rows:
 - \`byTestLevel\` — object like \`{ "component": 6, "integration": 5 }\`.
 - \`byTechnique\` — object like \`{ "Equivalence Partitioning": 4, "Boundary Value Analysis": 3, ... }\`.
 - \`byCategory\` — object like \`{ "functional": 5, "error": 3, "boundary": 2, ... }\`.
+- \`byConditionType\` — object like \`{ "component": 6, "flow": 5 }\` (F29: required for the UI to show component-vs-flow split).
 
-The matrix is the single most useful artifact for the reviewer — invest in it. Do NOT omit it.
+The matrix is the single most useful artifact for the reviewer — invest in it. Do NOT omit it. Do NOT omit the \`byConditionType\` summary field.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
@@ -536,9 +619,11 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
   "finalTestCases": [
     {
       "id": "TC-001",
-      "title": "Authenticate with valid administrator credentials and land on the dashboard",
-      "conditionId": "C-001",
+      "title": "End-to-end login: admin credentials propagate from auth API to session store and dashboard",
+      "conditionId": "C-002",
       "requirementId": "req-aut-auth-login-valid-success",
+      "coveredConditions": ["C-002"],
+      "referencedComponentConditions": ["C-001", "C-003"],
       "priority": "critical",
       "category": "functional",
       "testLevel": "integration",
@@ -546,18 +631,21 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
       "preconditions": [
         "User is on the login page",
         "Browser session is clean with no existing authenticated session",
-        "Administrator account exists and is active"
+        "Administrator account exists and is active (assumed per component condition C-001)",
+        "Client-side validation passes for well-formed password (assumed per component condition C-003)"
       ],
       "testData": ["username = admin (valid partition)", "password = admin123 (valid partition)"],
       "steps": [
         { "stepNumber": 1, "action": "Enter username 'admin' into the username field.", "expected": "The username field displays 'admin' with no client-side validation error." },
         { "stepNumber": 2, "action": "Enter password 'admin123' into the password field.", "expected": "The password field shows masked characters with no client-side validation error." },
         { "stepNumber": 3, "action": "Click the Sign in / Login button.", "expected": "The submit button enters a disabled loading state and the login request is sent." },
-        { "stepNumber": 4, "action": "Wait for the authentication response and resulting navigation.", "expected": "The user is redirected to the main application/dashboard URL and the dashboard's primary content is rendered." }
+        { "stepNumber": 4, "action": "Wait for the authentication response.", "expected": "The auth API returns HTTP 200 with a session token in the response body." },
+        { "stepNumber": 5, "action": "Wait for the redirect to settle.", "expected": "The browser navigates to the dashboard URL." },
+        { "stepNumber": 6, "action": "Query the session store for the returned token.", "expected": "The session store contains an entry for the returned token bound to user 'admin'." }
       ],
       "tags": ["authentication", "login", "dashboard", "session", "smoke", "happy-path", "integration"],
       "status": "approved",
-      "reviewSummary": "Atomic steps, partition-labeled data, faithful traceability to the success requirement. testLevel=integration honored: steps traverse auth API and session store. No changes required.",
+      "reviewSummary": "coveredConditions=[C-002] matches the flow condition this case addresses; referencedComponentConditions=[C-001, C-003] properly names the atomic preconditions. Steps traverse auth API → session store → dashboard (cross-component). No changes required.",
       "changeLog": []
     },
     {
@@ -565,6 +653,8 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
       "title": "Reject quantity below minimum boundary",
       "conditionId": "C-014",
       "requirementId": "req-order-quantity-limits",
+      "coveredConditions": ["C-014"],
+      "referencedComponentConditions": [],
       "priority": "high",
       "category": "boundary",
       "testLevel": "component",
@@ -591,9 +681,11 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
   "coverageMatrix": {
     "rows": [
       {
-        "conditionId": "C-001",
-        "conditionSummary": "Valid admin credentials authenticate and reach dashboard",
+        "conditionId": "C-002",
+        "conditionSummary": "Valid admin credentials propagate through auth API to session store and dashboard",
         "requirementId": "req-aut-auth-login-valid-success",
+        "conditionType": "flow",
+        "flowStepRef": { "flowId": "F-login-happy", "sequence": 3, "actionSummary": "Auth API returns 200 + session token" },
         "testLevel": "integration",
         "primaryTechnique": "Use Case Testing",
         "category": "functional",
@@ -605,6 +697,7 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
         "conditionId": "C-014",
         "conditionSummary": "Quantity below minimum boundary is rejected",
         "requirementId": "req-order-quantity-limits",
+        "conditionType": "component",
         "testLevel": "component",
         "primaryTechnique": "Boundary Value Analysis",
         "category": "boundary",
@@ -619,7 +712,8 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
       "missingConditions": 0,
       "byTestLevel": { "component": 1, "integration": 1 },
       "byTechnique": { "Use Case Testing": 1, "Boundary Value Analysis": 1 },
-      "byCategory": { "functional": 1, "boundary": 1 }
+      "byCategory": { "functional": 1, "boundary": 1 },
+      "byConditionType": { "component": 1, "flow": 1 }
     }
   }
 }
@@ -629,18 +723,22 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
 - The \`\`\`json block is the last thing in your response — nothing after it.
 - It must contain ALL final test cases, complete — never a sample. \`finalTestCases.length >= 1\`. An empty object \`{}\` is always invalid.
 - Every modified case has a non-empty, field-level \`changeLog\`; every untouched case has \`changeLog: []\`.
-- The \`coverageMatrix\` MUST be present. Every Analyst \`conditionId\` that appears in the input draft cases MUST have exactly one row in \`coverageMatrix.rows\`. \`coveredByCaseIds\` must reference real \`finalTestCases\` ids.
+- The \`coverageMatrix\` MUST be present. Every Analyst \`conditionId\` that appears in the input draft cases MUST have exactly one row in \`coverageMatrix.rows\`. \`coveredByCaseIds\` must reference real \`finalTestCases\` ids. The summary \`byConditionType\` field is required.
 `;
 }
 
 export function buildQualityUserMessage(state: TestGenState): string {
   const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
+  const conditions = state.approvedConditions ?? state.testConditions ?? [];
+  const flows = state.relevantFlowBlueprints ?? state.businessFlowBlueprints ?? [];
   return JSON.stringify({
     draftCases: draftCases.map(c => ({
       id: c.id,
       title: c.title,
       conditionId: c.conditionId,
       requirementId: c.requirementId,
+      coveredConditions: (c as any).coveredConditions ?? [],
+      referencedComponentConditions: (c as any).referencedComponentConditions ?? [],
       priority: c.priority,
       category: c.category,
       testLevel: c.testLevel,
@@ -651,6 +749,20 @@ export function buildQualityUserMessage(state: TestGenState): string {
       selfReview: (c as any).selfReview,
       tags: c.tags,
     })),
+    // F14: give the reviewer the actual condition text so they can verify
+    // coveredConditions fidelity (without this, "read the condition first"
+    // is unenforceable).
+    conditions: conditions.map(c => ({
+      id: c.id,
+      requirementId: c.requirementId,
+      condition: c.condition,
+      conditionType: (c as any).conditionType,
+      flowStepRefs: (c as any).flowStepRefs ?? [],
+      primaryTechnique: c.primaryTechnique,
+      category: c.category,
+    })),
+    // F8 / F27: flow context so the reviewer can verify flow-step coverage.
+    businessFlows: flows.map(serializeFlow),
     requirements: state.currentBatch?.map(r => ({
       id: r.id,
       title: r.title,

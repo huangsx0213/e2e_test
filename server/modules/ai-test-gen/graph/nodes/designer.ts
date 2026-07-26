@@ -42,16 +42,21 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
       const conditions = state.approvedConditions ?? state.testConditions ?? [];
       const outputProfile = createDesignerOutputProfile(conditions.map((condition) => {
-        const dims = condition.coverageDimensions ?? [];
-        const expectedTestLevel = dims.includes('testLevel:integration')
-          ? 'integration' as const
-          : dims.includes('testLevel:component')
-            ? 'component' as const
-            : undefined;
+        // F1: derive expectedTestLevel from the new conditionType field
+        // directly. The legacy "testLevel:*" tag in coverageDimensions is
+        // being phased out (the Analyst prompt no longer emits it), so
+        // conditionType is the source of truth.
+        const ct = (condition as any).conditionType;
+        const expectedTestLevel: 'component' | 'integration' | undefined =
+          ct === 'flow' ? 'integration'
+          : ct === 'component' ? 'component'
+          : undefined;
         return {
           id: condition.id,
           requirementId: condition.requirementId,
           expectedTestLevel,
+          // F1: forward the new conditionType to the schema validator.
+          conditionType: ct,
         };
       }));
 

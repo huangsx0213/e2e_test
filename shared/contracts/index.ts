@@ -507,11 +507,27 @@ export const PipelineBusinessFlowBlueprintSchema = z.object({
   steps: z.array(PipelineBusinessFlowBlueprintStepSchema),
 });
 
+export interface FlowStepRef {
+  flowId: string;
+  flowName?: string;
+  sequence: number;
+  actionSummary: string;
+}
+
 export interface TestCondition {
   id: string;
   requirementId: string;
   requirementLevel: 'epic' | 'feature' | 'story' | 'ac';
   condition: string;
+  // Type discriminator (replaces the legacy "testLevel:*" string tag in coverageDimensions).
+  // - "component": pure atomic behavior derived from a requirement AC (single-field validation,
+  //   single business rule, state transition within one module).
+  // - "flow": cross-component interaction derived from a flow step (data handoff, end-to-end
+  //   sequence, state propagation across modules).
+  conditionType: 'component' | 'flow';
+  // When conditionType === "flow", this MUST reference the flow step(s) the condition is
+  // derived from. Component conditions may omit this.
+  flowStepRefs?: FlowStepRef[];
   category: 'happy-path' | 'alternate' | 'error' | 'boundary';
   riskLevel: 'high' | 'medium' | 'low';
   priority: 'critical' | 'high' | 'medium' | 'low';
@@ -586,6 +602,8 @@ export interface CoverageRow {
   techniqueBreakdown: Record<string, number>;
   categoryBreakdown: Record<string, number>;
   testLevelBreakdown?: Partial<Record<TestLevel, number>>;
+  // Counts of component vs flow conditions for this requirement.
+  conditionTypeBreakdown?: Partial<Record<'component' | 'flow', number>>;
   coveragePercentage: number;
   uncoveredRisks: string[];
 }
