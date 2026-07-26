@@ -317,5 +317,8 @@ export class RunScope {
       data[nodeId] = [...(data[nodeId] || []), ...entries];
     }
     pipelineRepo.saveThinkingData(this.runId, JSON.stringify(data));
+    // Clear accumulator after persisting — entries have been written to DB,
+    // keeping them would cause duplicates on the next persist call.
+    this.thinkingAccumulator.clear();
   }
 }

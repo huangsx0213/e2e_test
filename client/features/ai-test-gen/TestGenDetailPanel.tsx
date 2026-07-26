@@ -1044,6 +1044,11 @@ function buildReasoningLogBlocks(text: string): ReasoningLogBlock[] {
     const joined = textLines.join('\n').trim();
     textLines = [];
     if (!joined) return;
+    // 检测裸 JSON（不在围栏中但以 { 或 [ 开头）→ 作为 code 块处理
+    if (isLikelyJson(joined)) {
+      blocks.push({ kind: 'code', text: joined });
+      return;
+    }
     const paragraphs = joined.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
     for (const paragraph of paragraphs) {
       const parts = paragraph.split(/(\*\*[^\n*]{2,72}\*\*)/g).map((p) => p.trim()).filter(Boolean);
@@ -1171,13 +1176,28 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
             }
 
             if (block.kind === 'code') {
+              const codeText = block.text;
+              // 尝试 JSON 格式化（支持流式传输中的不完整 JSON）
+              let formatted = codeText;
+              let language = 'text';
+              if (isLikelyJson(codeText)) {
+                language = 'json';
+                try {
+                  formatted = JSON.stringify(JSON.parse(codeText.trim()), null, 2);
+                } catch {
+                  formatted = formatJsonPartial(codeText);
+                }
+              }
               return (
-                <pre
+                <SyntaxHighlighter
                   key={idx}
-                  className="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-3 py-2 overflow-x-auto text-[11px] font-mono leading-relaxed whitespace-pre-wrap"
+                  style={vscDarkPlus}
+                  language={language}
+                  PreTag="div"
+                  customStyle={{ fontSize: '10px', borderRadius: '6px', margin: '4px 0', padding: '8px 12px' }}
                 >
-                  {block.text}
-                </pre>
+                  {formatted}
+                </SyntaxHighlighter>
               );
             }
 
@@ -1205,15 +1225,71 @@ function ThinkingBlock({ text, isRunning, startTime, endTime: endTimeProp }: { t
 /** Detect if text looks like raw JSON (starts with { or [) */
 function isLikelyJson(text: string): boolean {
   const trimmed = text.trim();
-  return (trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+  // 完整 JSON: 以 {/[ 开头且以 }/] 结尾
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    return true;
+  }
+  // 流式传输中的不完整 JSON: 以 {/[ 开头，内容主要是 JSON 结构字符
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    // 排除 markdown 代码块（```json ...）
+    if (trimmed.startsWith('```')) return false;
+    // 检查是否包含足够的 JSON 结构特征
+    const jsonChars = (trimmed.match(/[":,{}\[\]]/g) || []).length;
+    return jsonChars >= 5;
+  }
+  return false;
 }
 
 /** Render output content — auto-detects raw JSON and formats it with syntax highlighting */
+function formatJsonPartial(text: string): string {
+  // 流式传输中 JSON 可能不完整，JSON.parse 会失败。
+  // 用括号深度做 best-effort 缩进，让动态接收时也能看到格式化的 JSON。
+  let result = '';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) { result += ch; escape = false; continue; }
+    if (ch === '\\' && inString) { result += ch; escape = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString) { result += ch; continue; }
+
+    if (ch === '{' || ch === '[') {
+      depth++;
+      result += ch + '\n' + '  '.repeat(depth);
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      depth = Math.max(0, depth - 1);
+      result += '\n' + '  '.repeat(depth) + ch;
+      continue;
+    }
+    if (ch === ',') {
+      result += ch + '\n' + '  '.repeat(depth);
+      continue;
+    }
+    if (ch === ':') {
+      result += ch + ' ';
+      continue;
+    }
+    result += ch;
+  }
+  return result;
+}
+
 function OutputBlock({ text, isRunning }: { text: string; isRunning: boolean }) {
   // If the text looks like raw JSON, render with syntax highlighting
   if (isLikelyJson(text)) {
     let formatted = text;
-    try { formatted = JSON.stringify(JSON.parse(text.trim()), null, 2); } catch { /* keep original */ }
+    try {
+      formatted = JSON.stringify(JSON.parse(text.trim()), null, 2);
+    } catch {
+      // 流式传输中 JSON 可能不完整，用 best-effort 缩进
+      formatted = formatJsonPartial(text);
+    }
     return (
       <div className="rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700/50 overflow-hidden">
         <div className="px-2.5 py-1 border-b border-slate-200/60 dark:border-slate-700/40 flex items-center gap-1.5">
@@ -2063,7 +2139,16 @@ function getLabeledMessages(log: any): { role: string; content: string; label: s
   const roleCounts: Record<string, number> = {};
   const labeled = messages.map((m) => {
     roleCounts[m.role] = (roleCounts[m.role] || 0) + 1;
-    return { ...m, label: m.role };
+    let content = m.content;
+    // user message 通常是 JSON.stringify(..., null, 2) 的输出，
+    // 包裹在 json code block 中让 ReactMarkdown 语法高亮并保留缩进
+    if (m.role === 'user' && content) {
+      const trimmed = content.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        content = '```json\n' + content + '\n```';
+      }
+    }
+    return { ...m, content, label: m.role };
   });
   const seen: Record<string, number> = {};
   for (const m of labeled) {

@@ -42,6 +42,7 @@ type DesignerRuntimeOutput = z.infer<typeof DesignerRuntimeSchema>;
 interface ConditionInfo {
   id: string;
   requirementId: string;
+  expectedTestLevel?: 'component' | 'integration';
 }
 
 function validateConditionCoverage(
@@ -66,15 +67,26 @@ function validateConditionCoverage(
     ]);
   }
 
-  const expectedReqByCondition = new Map(expectedConditions.map((c) => [c.id, c.requirementId]));
+  const expectedByCondition = new Map(expectedConditions.map((c) => [c.id, c]));
   for (const testCase of parsed.draftTestCases) {
-    const expectedReqId = expectedReqByCondition.get(testCase.conditionId);
-    if (expectedReqId && testCase.requirementId !== expectedReqId) {
+    const expected = expectedByCondition.get(testCase.conditionId);
+    if (!expected) continue;
+    if (testCase.requirementId !== expected.requirementId) {
       throw new z.ZodError([
         {
           code: 'custom',
           path: ['draftTestCases'],
-          message: `Draft test case ${testCase.id} has requirementId "${testCase.requirementId}" but condition ${testCase.conditionId} belongs to requirement "${expectedReqId}"`,
+          message: `Draft test case ${testCase.id} has requirementId "${testCase.requirementId}" but condition ${testCase.conditionId} belongs to requirement "${expected.requirementId}"`,
+          input: testCase,
+        },
+      ]);
+    }
+    if (expected.expectedTestLevel && testCase.testLevel !== expected.expectedTestLevel) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['draftTestCases'],
+          message: `Draft test case ${testCase.id} has testLevel "${testCase.testLevel}" but condition ${testCase.conditionId} was tagged "${expected.expectedTestLevel}" by the Analyst. Honor the Analyst's tag.`,
           input: testCase,
         },
       ]);
@@ -116,8 +128,8 @@ function normalizeDraftTestCase(
     ? tc.selfReview as Record<string, unknown>
     : {};
 
-  const rawLevel = String(tc.testLevel ?? '').toLowerCase();
-  const testLevel: 'component' | 'integration' = rawLevel === 'integration' ? 'integration' : 'component';
+  const rawLevel = tc.testLevel;
+  const testLevel = typeof rawLevel === 'string' ? rawLevel.toLowerCase() : rawLevel;
 
   return {
     ...tc,

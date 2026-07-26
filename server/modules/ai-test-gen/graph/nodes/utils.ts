@@ -340,7 +340,7 @@ async function runAgentReActLoop(
       const skill = skillMap.get(tc.name);
       if (!skill) {
         log.warn(`Unknown tool call: ${tc.name}`);
-        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. Continue your analysis in plain text and let the automatic extraction step produce the final structured output.` }), toolCallId: tc.id });
+        toolResults.push({ role: 'tool', content: JSON.stringify({ error: `Unknown tool: "${tc.name}". You can only call the tools explicitly provided to you. Do NOT invent or call any tool that is not in the available tool list. Continue your analysis in plain text and let the automatic extraction step produce the final structured output.` }, null, 2), toolCallId: tc.id });
         continue;
       }
 
@@ -351,7 +351,7 @@ async function runAgentReActLoop(
         const latencyMs = Date.now() - skillStart;
         log.kv(`${tc.name}`, `completed (${latencyMs}ms)`);
         toolCallRecords.push({ name: tc.name, input: args, output: result });
-        toolResults.push({ role: 'tool', content: typeof result === 'string' ? result : JSON.stringify(result), toolCallId: tc.id });
+        toolResults.push({ role: 'tool', content: typeof result === 'string' ? result : JSON.stringify(result, null, 2), toolCallId: tc.id });
         observer?.onStep?.(agentName, round + 1, `Called ${tc.name} (${latencyMs}ms)`);
       } catch (err: any) {
         const latencyMs = Date.now() - skillStart;
@@ -364,7 +364,7 @@ async function runAgentReActLoop(
         }
 
         toolCallRecords.push({ name: tc.name, input: tc.args, output: { error: err.message } });
-        toolResults.push({ role: 'tool', content: JSON.stringify({ error: err.message }), toolCallId: tc.id });
+        toolResults.push({ role: 'tool', content: JSON.stringify({ error: err.message }, null, 2), toolCallId: tc.id });
       }
     }
 

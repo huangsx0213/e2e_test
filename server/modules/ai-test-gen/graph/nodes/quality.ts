@@ -17,7 +17,7 @@ import { Log } from '../../../../shared/services/logger.ts';
  * 从 finalTestCases + state 数据计算 coverageMatrix，不依赖模型输出。
  */
 function computeCoverageMatrix(
-  finalTestCases: Array<{ requirementId: string; techniqueApplied: string; category: string }>,
+  finalTestCases: Array<{ requirementId: string; techniqueApplied: string; category: string; testLevel?: string }>,
   requirements: Array<{ id: string; title: string; level: string }>,
   conditions: Array<{ requirementId: string }>,
 ): CoverageMatrix {
@@ -48,6 +48,12 @@ function computeCoverageMatrix(
       categoryBreakdown[tc.category || 'uncategorized'] = (categoryBreakdown[tc.category || 'uncategorized'] ?? 0) + 1;
     }
 
+    const testLevelBreakdown: Partial<Record<string, number>> = {};
+    for (const tc of relatedCases) {
+      const lvl = tc.testLevel || 'unknown';
+      testLevelBreakdown[lvl] = (testLevelBreakdown[lvl] ?? 0) + 1;
+    }
+
     rows.push({
       requirementId: req.id,
       requirementTitle: req.title,
@@ -56,6 +62,7 @@ function computeCoverageMatrix(
       testCaseCount,
       techniqueBreakdown,
       categoryBreakdown,
+      testLevelBreakdown,
       coveragePercentage: totalConditions > 0 ? Math.min(100, Math.round((testCaseCount / totalConditions) * 100)) : 0,
       uncoveredRisks: [],
     });
@@ -97,6 +104,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
           id: draftCase.id,
           conditionId: draftCase.conditionId,
           requirementId: draftCase.requirementId,
+          expectedTestLevel: draftCase.testLevel,
         })),
       );
 
@@ -117,7 +125,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
       );
 
       const computedCoverageMatrix = computeCoverageMatrix(
-        validated.finalTestCases as Array<{ requirementId: string; techniqueApplied: string; category: string }>,
+        validated.finalTestCases as Array<{ requirementId: string; techniqueApplied: string; category: string; testLevel?: string }>,
         (state.currentBatch ?? []).map(r => ({ id: r.id, title: r.title, level: (r as any).level ?? '' })),
         (state.approvedConditions ?? state.testConditions ?? []) as Array<{ requirementId: string }>,
       );

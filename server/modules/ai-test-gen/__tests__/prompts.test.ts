@@ -16,10 +16,10 @@ describe('buildAnalystSystemPrompt', () => {
     expect(prompt).toContain('`requirementId` must be the exact source requirement ID');
     expect(prompt).toContain('`category` must be explicitly set');
     expect(prompt).toContain('end with a single JSON code block');
-    expect(prompt).toContain('The block must contain the COMPLETE output');
+    expect(prompt).toContain('It must contain ALL test conditions');
   });
 
-  it('includes a multi-condition example where each condition repeats requirementId and category', () => {
+  it('includes CRITICAL RULES section with test level decision table', () => {
     const prompt = buildAnalystSystemPrompt({
       batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
       currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
@@ -29,9 +29,12 @@ describe('buildAnalystSystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    expect(prompt).toContain('"id": "C-001", "requirementId": "REQ-001"');
-    expect(prompt).toContain('"id": "C-002", "requirementId": "REQ-001"');
-    expect(prompt).toContain('Even when two conditions come from the same requirement, repeat `requirementId` and `category` inside every condition object.');
+    expect(prompt).toContain('CRITICAL RULES');
+    expect(prompt).toContain('Decision table — assign testLevel per CONDITION');
+    expect(prompt).toContain('testLevel:integration');
+    expect(prompt).toContain('testLevel:component');
+    expect(prompt).toContain('Per-requirement quota');
+    expect(prompt).toContain('Final Self-Check');
   });
 });
 

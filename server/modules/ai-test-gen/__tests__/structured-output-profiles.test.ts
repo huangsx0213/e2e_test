@@ -46,6 +46,7 @@ describe('qualityOutputProfile', () => {
           requirementId: 'REQ-1',
           priority: 'high',
           category: 'functional',
+          testLevel: 'component',
           techniqueApplied: 'Equivalence Partitioning',
           preconditions: [],
           testData: [],
@@ -78,6 +79,7 @@ describe('qualityOutputProfile', () => {
         requirementId: 'REQ-1',
         priority: 'high',
         category: 'functional',
+        testLevel: 'component',
         techniqueApplied: 'Equivalence Partitioning',
         preconditions: [],
         testData: [],
@@ -103,6 +105,7 @@ describe('qualityOutputProfile', () => {
         requirementId: 'REQ-999',
         priority: 'high',
         category: 'functional',
+        testLevel: 'component',
         techniqueApplied: 'Equivalence Partitioning',
         preconditions: [],
         testData: [],
@@ -117,6 +120,42 @@ describe('qualityOutputProfile', () => {
     expect(parsed.finalTestCases[0].conditionId).toBe('C-1');
     expect(parsed.finalTestCases[0].requirementId).toBe('REQ-1');
   });
+
+  it('rejects final cases whose testLevel contradicts the draft case', () => {
+    const profile = createQualityOutputProfile([
+      { id: 'TC-1', conditionId: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'component' },
+    ]);
+
+    let threw = false;
+    try {
+      profile.parse(profile.normalize({
+        finalTestCases: [{
+          id: 'TC-1',
+          title: 'Verify login',
+          conditionId: 'C-1',
+          requirementId: 'REQ-1',
+          priority: 'high',
+          category: 'functional',
+          testLevel: 'integration',
+          techniqueApplied: 'Equivalence Partitioning',
+          preconditions: [],
+          testData: [],
+          steps: [{ stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' }],
+          tags: [],
+          status: 'approved',
+          reviewSummary: 'ok',
+          changeLog: [],
+        }],
+      }));
+    } catch (err: any) {
+      threw = true;
+      expect(err.message).toContain('testLevel');
+      expect(err.message).toContain('integration');
+      expect(err.message).toContain('component');
+      expect(err.message).toContain('TC-1');
+    }
+    expect(threw).toBe(true);
+  });
 });
 
 describe('designerOutputProfile', () => {
@@ -128,6 +167,7 @@ describe('designerOutputProfile', () => {
       requirementId: 'REQ-1',
       priority: 'critical',
       category: 'functional',
+      testLevel: 'component',
       techniqueApplied: 'Equivalence Partitioning',
       preconditions: [],
       testData: [],
@@ -160,6 +200,7 @@ describe('designerOutputProfile', () => {
         requirementId: 'REQ-1',
         priority: 'critical',
         category: 'functional',
+        testLevel: 'component',
         techniqueApplied: 'Equivalence Partitioning',
         preconditions: [],
         testData: [],
@@ -174,6 +215,41 @@ describe('designerOutputProfile', () => {
         },
       }],
     }))).toThrow(/Missing draft test cases for conditionIds: C-2/);
+  });
+
+  it('rejects draft cases whose testLevel contradicts the Analyst tag', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', expectedTestLevel: 'component' },
+    ]);
+
+    let threw = false;
+    try {
+      profile.parse(profile.normalize({
+        draftTestCases: [{
+          id: 'TC-1',
+          title: 'Verify login',
+          conditionId: 'C-1',
+          requirementId: 'REQ-1',
+          priority: 'critical',
+          category: 'functional',
+          testLevel: 'integration',
+          techniqueApplied: 'Equivalence Partitioning',
+          preconditions: [],
+          testData: [],
+          steps: [{ stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' }],
+          postconditions: [],
+          tags: [],
+          selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+        }],
+      }));
+    } catch (err: any) {
+      threw = true;
+      expect(err.message).toContain('testLevel');
+      expect(err.message).toContain('integration');
+      expect(err.message).toContain('component');
+      expect(err.message).toContain('C-1');
+    }
+    expect(threw).toBe(true);
   });
 });
 
@@ -195,7 +271,7 @@ describe('analystOutputProfile', () => {
         primaryTechnique: 'Equivalence Partitioning',
         secondaryTechniques: [],
         techniqueRationale: 'Valid and invalid partitions',
-        coverageDimensions: [],
+        coverageDimensions: ['functional', 'testLevel:component'],
         dataRequirements: null,
         dependencies: null,
         requirementLevel: null,
@@ -206,6 +282,48 @@ describe('analystOutputProfile', () => {
     expect(parsed.testConditions[0].dataRequirements).toBeUndefined();
     expect(parsed.testConditions[0].dependencies).toEqual([]);
     expect(parsed.testConditions[0].requirementLevel).toBeUndefined();
+  });
+
+  it('rejects conditions missing a testLevel tag in coverageDimensions', () => {
+    expect(() => profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+      testConditions: [{
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify login with valid credentials',
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Equivalence Partitioning',
+        secondaryTechniques: [],
+        techniqueRationale: 'Valid and invalid partitions',
+        coverageDimensions: ['functional'],
+      }],
+    }))).toThrow();
+  });
+
+  it('rejects conditions with both testLevel tags in coverageDimensions', () => {
+    expect(() => profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+      testConditions: [{
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify login with valid credentials',
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Equivalence Partitioning',
+        secondaryTechniques: [],
+        techniqueRationale: 'Valid and invalid partitions',
+        coverageDimensions: ['functional', 'testLevel:component', 'testLevel:integration'],
+      }],
+    }))).toThrow();
   });
 
   it('formats field-specific hints for missing required condition fields', () => {

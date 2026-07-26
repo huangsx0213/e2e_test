@@ -53,6 +53,28 @@ function validateRequirementIds(
   return parsed;
 }
 
+function validateTestLevelTags(
+  parsed: AnalystRuntimeOutput,
+): AnalystRuntimeOutput {
+  for (const condition of parsed.testConditions) {
+    const testLevelTags = condition.coverageDimensions.filter(
+      (d) => d === 'testLevel:component' || d === 'testLevel:integration',
+    );
+    if (testLevelTags.length !== 1) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['testConditions'],
+          message: `Condition ${condition.id} must have exactly ONE testLevel tag in coverageDimensions (found ${testLevelTags.length}: [${testLevelTags.join(', ')}]). Use exactly one of "testLevel:component" or "testLevel:integration".`,
+          input: condition,
+        },
+      ]);
+    }
+  }
+
+  return parsed;
+}
+
 export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set()): StructuredOutputProfile<AnalystRuntimeOutput> {
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(AnalystRuntimeSchema)),
@@ -84,13 +106,16 @@ export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set(
       };
     },
     parse(normalized: unknown): AnalystRuntimeOutput {
-      return validateRequirementIds(AnalystRuntimeSchema.parse(normalized), allowedReqIds);
+      const parsed = AnalystRuntimeSchema.parse(normalized);
+      validateTestLevelTags(parsed);
+      return validateRequirementIds(parsed, allowedReqIds);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
         testConditions: 'Provide testConditions as an array with complete condition details.',
         'testConditions.category': 'Set category explicitly, for example functional, ui, api, boundary, edge, error, validation, or performance.',
         'testConditions.requirementId': 'Each condition must carry the source requirementId from the analyzed requirement.',
+        'testConditions.coverageDimensions': 'coverageDimensions MUST include exactly ONE of "testLevel:component" or "testLevel:integration".',
         'testConditions.dependencies': 'Use an array, not null, for dependencies.',
         'testConditions.dataRequirements': 'Omit dataRequirements or provide an array of strings.',
       });

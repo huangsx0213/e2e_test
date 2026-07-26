@@ -41,10 +41,19 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
       const conditions = state.approvedConditions ?? state.testConditions ?? [];
-      const outputProfile = createDesignerOutputProfile(conditions.map((condition) => ({
-        id: condition.id,
-        requirementId: condition.requirementId,
-      })));
+      const outputProfile = createDesignerOutputProfile(conditions.map((condition) => {
+        const dims = condition.coverageDimensions ?? [];
+        const expectedTestLevel = dims.includes('testLevel:integration')
+          ? 'integration' as const
+          : dims.includes('testLevel:component')
+            ? 'component' as const
+            : undefined;
+        return {
+          id: condition.id,
+          requirementId: condition.requirementId,
+          expectedTestLevel,
+        };
+      }));
 
       const messages = [
         { role: 'system' as const, content: systemPrompt },

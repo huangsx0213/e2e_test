@@ -47,6 +47,7 @@ interface ExpectedDraftCase {
   id: string;
   conditionId: string;
   requirementId: string;
+  expectedTestLevel?: 'component' | 'integration';
 }
 
 function validateDraftCaseCoverage(
@@ -85,6 +86,16 @@ function validateDraftCaseCoverage(
         },
       ]);
     }
+    if (expected.expectedTestLevel && testCase.testLevel !== expected.expectedTestLevel) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['finalTestCases'],
+          message: `Final reviewed case ${testCase.id} has testLevel "${testCase.testLevel}" but the draft case was "${expected.expectedTestLevel}". Preserve the Designer's testLevel; fix the steps instead of flipping the level.`,
+          input: testCase,
+        },
+      ]);
+    }
   }
 
   return parsed;
@@ -117,8 +128,8 @@ function normalizeFinalTestCase(
       };
     });
 
-  const rawLevel = String(tc.testLevel ?? '').toLowerCase();
-  const testLevel: 'component' | 'integration' = rawLevel === 'integration' ? 'integration' : 'component';
+  const rawLevel = tc.testLevel;
+  const testLevel = typeof rawLevel === 'string' ? rawLevel.toLowerCase() : rawLevel;
 
   return {
     ...tc,

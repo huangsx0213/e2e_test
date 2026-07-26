@@ -11,28 +11,19 @@ export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: str
   const batch = state.batchContext;
   const hasUserFlows = (state.selectedFlowIds?.length ?? 0) > 0;
 
-  const modeInstruction = `## Mode: Dual Test Level Generation (Component + Integration)
-Every run produces TWO complementary levels of test conditions:
-- **Component-level** conditions — verify a single requirement's behavior in isolation (pure input validation, single business rule, internal logic of one module)
-- **Integration-level** conditions — verify interactions across requirements, modules, or external systems (interface contracts, state handoff, end-to-end flow traversal, cross-epic data exchange)
-
-The selected requirements are the PRIMARY scope. Selected business flows (when present) are STRONG SIGNALS for where integration-level conditions are needed — every flow step that depends on a prior step's state or output is a candidate integration surface. Requirements NOT covered by any flow still need component-level conditions, and may need integration-level conditions when their \`dependencies\` field references other requirements.
-
-When the user has not selected any flow, do NOT skip integration-level conditions entirely — derive them from the requirement graph's \`dependencies\` / \`dependents\` and from cross-epic dependencies surfaced in Global Context. Flows are the preferred source of integration scenarios when available, but integration testing is not optional.`;
-
   const workflowSteps = `### Step 1 — Gather requirement details
 Call **requirement_detail_query** with an array of ALL requirement IDs in the batch (single call).
 
 ### Step 2 — Gather flow context
 ${hasUserFlows
-  ? 'The user selected flows — call **flow_detail_query** with "selectedFlowIds" to load them. These flows are STRONG SIGNALS for integration-level conditions.'
+  ? 'The user selected flows — call **flow_detail_query** with "selectedFlowIds" to load them.'
   : 'No user-selected flows. If "businessFlowBlueprints" / "relevantFlowBlueprints" is present, call **flow_detail_query** with all blueprint IDs to discover candidate integration scenarios.'}
 
 ### Step 3 — Expand the requirement graph (MANDATORY)
 Call **requirement_graph_query** with the requirement IDs (pass any selected/blueprint flow IDs as \`flowId\`). This step is NOT optional. It surfaces cross-batch dependencies and integration surfaces that are invisible in the current batch alone. Cross-epic dependencies are already summarized in Global Context above — for any entry whose \`relationType\` is \`depended-by\` or whose title suggests shared data/state, call **cross_epic_impact_query** to load its details; otherwise skip.
 
 ### Step 4 — Load ISTQB guides (techniques + test levels)
-Call **istqb_guide** once, loading all techniques AND the Integration Testing test-level guide. You must load at least one guide before deriving conditions. The Integration Testing guide tells you when a condition should become a component-level vs integration-level test case at design time.
+Call **istqb_guide** once, loading all techniques AND the Integration Testing test-level guide. You must load at least one guide before deriving conditions.
 
 ### Step 5 — Assess risk (see Risk Assessment below), then Step 6 — select techniques (see Technique Selection below), then Step 7 — derive conditions.`;
 
@@ -65,8 +56,6 @@ ${state.previousBatchCoverageSummary && state.previousBatchCoverageSummary.lengt
 - Batch: ${batch.currentBatch}/${batch.totalBatches} (This batch has ${state.currentBatch.length} requirements)
 - Project: ${state.projectContext.name}
 ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-
-${modeInstruction}
 ${globalContextSection}
 ## Mandatory Tool Usage Workflow
 ${workflowSteps}
@@ -83,50 +72,24 @@ Rate each requirement on TWO independent axes before assigning priority:
 | Equivalence Partitioning (EP) | An input has distinct valid/invalid value classes (format, type, range-as-group). |
 | Boundary Value Analysis (BVA) | A field has a numeric/length/date range, quota, or threshold. Always pair with EP on the same field. |
 | Decision Table | An outcome depends on 2+ independent conditions combining (pricing, eligibility, permissions, approval routing). |
-| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state). True of nearly every flow; treat as a strong default secondary technique for integration-level conditions whenever the flow moves an entity through states. |
-| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input. This is the default primary technique for integration-level conditions derived from flows, since the flow itself is the use case. |
+| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state). |
+| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input. |
 
 Pick the technique with the strongest fit; do not force a weak match. Record \`secondaryTechniques\` only when genuinely applicable, and justify each choice in \`techniqueRationale\` by naming the specific characteristic that triggered it (e.g., "Decision Table because role AND resource-type jointly determine access").
 
-## Coverage Rules (apply per technique used — these are hard requirements, not suggestions)
-- **EP**: never output only the valid partition. Every EP-derived requirement/flow-step must have a valid-partition condition AND at least one invalid-partition condition, kept as separate conditions (never merged).
-- **BVA**: the \`condition\` text must name the actual boundary and its position (e.g., "exactly at the 100-character limit", "one below the minimum") — never vague phrasing like "test with large input".
-- **Decision Table**: conditions must collectively cover every business-relevant rule (condition combination), including the "no rule matches" / default case where one exists.
-- **State Transition**: include at least one invalid/disallowed transition per modeled entity, not only happy-path transitions — invalid transitions are high-value ISTQB tests that expose authorization and data-integrity bugs.
-- **Every requirement/flow** (regardless of technique): at least one condition must sit outside the pure happy path — in \`error\`, \`boundary\`, or \`validation\` category. A requirement covered only by functional/happy-path conditions is under-tested.
-
-## Test Level Coverage Rules (MANDATORY for every batch)
-Every batch MUST yield a mix of **component-level** and **integration-level** conditions. Specifically:
-- **At least one integration-level condition per requirement** that has any of: a non-empty \`dependencies\` field, a flow step touching it, or a cross-epic dependency entry. Mark it by including \`"testLevel:integration"\` in \`coverageDimensions\`.
-- **At least one component-level condition per requirement** for its atomic behavior (single-field validation, single business rule). Mark it by including \`"testLevel:component"\` in \`coverageDimensions\`.
-- When the user selected business flows, every flow step that depends on a prior step's state or output MUST have at least one integration-level condition derived from it.
-- Conditions whose \`primaryTechnique\` is Use Case Testing or whose description references cross-component data flow are integration-level by default.
-- Conditions whose \`primaryTechnique\` is EP / BVA on a single field, with no cross-component interaction, are component-level by default.
-- If a requirement has NO dependencies and NO flow association, it may produce only component-level conditions — but this is the exception, not the rule.
-
 ## Sizing & Hygiene
-- **Technique-Driven Count**: Scale the number of conditions based on requirement complexity (typically 2-4 for simple rules, but higher for complex logic). Let the test design technique (Boundary Value, Decision Table, State Transition, etc.) dictate the final count. Never under-cover a technique just to hit a round number.
-- **Smart Deduplication**: Merge near-duplicate conditions that test the same aspect with only data variants. **However**:
-  1. Never merge a valid-partition condition into an invalid-partition one.
-  2. Never merge invalid conditions if they trigger distinct error handling paths or different error messages.
-  3. When merging, explicitly list the representative data examples within the condition description.
-- **Strict Traceability**: Every condition must trace to at least one source \`requirementId\` taken verbatim from the input. Do not invent conditions unrelated to the supplied requirements.
-- **Test Level Tagging**: Every condition's \`coverageDimensions\` array MUST include exactly one of \`"testLevel:component"\` or \`"testLevel:integration"\` so the Designer can route the condition to the correct test-level case. Do not omit the tag and do not include both.
-
-## Definition of a Well-Formed Test Condition
-Testable, atomic, traceable:
-- Names a single, specific, verifiable circumstance ("login is rejected when the password field is empty", not "test login").
-- Describes WHAT to verify, independent of HOW it will later be implemented as UI/API steps.
-- Is distinguishable from every other condition — no two conditions should be satisfied by the same test.
+- **Technique-Driven Count**: Scale the number of conditions based on requirement complexity (typically 2-4 for simple rules, but higher for complex logic). Let the test design technique dictate the final count. Never under-cover a technique just to hit a round number.
+- **Smart Deduplication**: Merge near-duplicate conditions that test the same aspect with only data variants. Never merge valid-partition into invalid-partition, and never merge invalid conditions that trigger distinct error handling paths.
+- **Strict Traceability**: Every condition must trace to at least one source \`requirementId\` taken verbatim from the input.
 
 ## Required Fields
-For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, \`dependencies\`. \`requirementId\` must be the exact source requirement ID supplied in the input — never paraphrased or omitted, even when several conditions share the same requirement. \`category\` must be explicitly set on every condition (functional, boundary, error, validation, integration) — never left implicit.
+For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, \`dependencies\`. \`requirementId\` must be the exact source requirement ID — never paraphrased. \`category\` must be explicitly set (functional, boundary, error, validation, integration).
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: requirement details — single ID or array for batch query.
 - **requirement_graph_query(requirementId, flowId?)**: parent/children/siblings/dependencies/associated flows. Optional flowId to include user-selected flows.
 - **flow_detail_query(flowId)**: business flow details — single ID or array for batch query.
-- **cross_epic_impact_query(requirementId)**: details of a cross-epic dependency target listed in the Global Context. Use ONLY when a cross-epic dependency's title or relationType suggests a real coverage risk; do not call for every cross-epic entry.
+- **cross_epic_impact_query(requirementId)**: details of a cross-epic dependency target listed in the Global Context. Use ONLY when a cross-epic dependency's title or relationType suggests a real coverage risk.
 - **previous_batch_conditions_query(requirementId)**: condition titles already generated for a requirement in previous batches. Use ONLY when you suspect a new condition might duplicate an existing one.
 - **istqb_guide(techniques?, context?)**: ISTQB technique guides. Omit \`techniques\` to load all.
 - **knowledge_base(context?)**: project-specific domain knowledge.
@@ -134,42 +97,40 @@ For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`re
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-Stream your analysis as plain text in markdown (short headings, blank-line-separated sections, bullets). For at least the highest-risk items, briefly state the risk rating and which Technique Selection rule justified your primary technique.
-
-After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+Stream your analysis as plain text in markdown. After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
 
 \`\`\`json
 {
   "requirementAnalysis": {
-    "overallApproach": "Derived requirement-focused test conditions scaled by complexity, using Equivalence Partitioning and Boundary Value Analysis for empty/whitespace validation, Decision Table Testing for credential outcome combinations, State Transition Testing for authentication and session lifecycle behavior, and Use Case Testing for the end-to-end login-to-dashboard flow.",
-    "riskAssessmentSummary": "Authentication and session management combine high likelihood of edge-case defects (complex state, many dependents) with high impact (unauthorized access, data exposure), so they are rated critical/high risk. Loading feedback has low likelihood of defects and low impact if wrong, so it is rated medium at most."
+    "overallApproach": "...",
+    "riskAssessmentSummary": "..."
   },
   "testConditions": [
     {
       "id": "C-001", "requirementId": "REQ-001",
-      "condition": "Verify that submitting valid administrator credentials authenticates successfully and redirects the user to the main application/dashboard.",
-      "category": "functional",
-      "priority": "critical",
-      "riskLevel": "critical",
-      "primaryTechnique": "Use Case Testing",
-      "secondaryTechniques": ["State Transition Testing", "Equivalence Partitioning"],
-      "techniqueRationale": "Multi-step end-to-end user goal (login submission through dashboard redirect) — strongest fit is Use Case Testing. State Transition confirms the unauthenticated-to-authenticated move; EP represents the valid credential partition.",
-      "coverageDimensions": ["authentication", "positive", "redirect", "access-control", "testLevel:integration"],
-      "dataRequirements": ["valid username: admin", "valid password: admin123"],
+      "condition": "Verify that submitting an invalid password (wrong but well-formed) is rejected with an error message.",
+      "category": "error",
+      "priority": "high",
+      "riskLevel": "high",
+      "primaryTechnique": "Equivalence Partitioning",
+      "secondaryTechniques": [],
+      "techniqueRationale": "Invalid-credential partition — EP requires both valid and invalid partitions.",
+      "coverageDimensions": ["authentication", "negative", "testLevel:component"],
+      "dataRequirements": ["valid username: admin", "invalid password: wrongpass"],
       "dependencies": [],
       "requirementLevel": "AC"
     },
     {
       "id": "C-002", "requirementId": "REQ-001",
-      "condition": "Verify that submitting an invalid password (wrong but well-formed) is rejected and no session/token is created.",
-      "category": "error",
-      "priority": "high",
-      "riskLevel": "high",
-      "primaryTechnique": "Equivalence Partitioning",
+      "condition": "Verify that submitting valid administrator credentials authenticates successfully and redirects to the dashboard.",
+      "category": "functional",
+      "priority": "critical",
+      "riskLevel": "critical",
+      "primaryTechnique": "Use Case Testing",
       "secondaryTechniques": ["State Transition Testing"],
-      "techniqueRationale": "Represents the invalid-credential partition, paired with C-001's valid partition so EP coverage is complete for this requirement.",
-      "coverageDimensions": ["authentication", "negative", "access-control", "testLevel:component"],
-      "dataRequirements": ["valid username: admin", "invalid password: wrongpass"],
+      "techniqueRationale": "Multi-step end-to-end user goal — Use Case Testing is strongest fit.",
+      "coverageDimensions": ["authentication", "positive", "testLevel:integration"],
+      "dataRequirements": ["valid username: admin", "valid password: admin123"],
       "dependencies": [],
       "requirementLevel": "AC"
     }
@@ -177,15 +138,52 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 }
 \`\`\`
 
-**Rules:**
-- The \`\`\`json block must be at the very end of your response — nothing after it.
-- The block must contain the COMPLETE output: ALL test conditions, not a sample or a truncated version.
-- Do NOT omit \`requirementAnalysis\` or \`testConditions\` from the block.
-- An empty object \`{}\` is always invalid.
+The \`\`\`json block must be at the very end — nothing after it. It must contain ALL test conditions, not a sample. An empty object \`{}\` is always invalid.
 
-Before closing the \`\`\`json block, do a final field-by-field check that every \`testConditions[i]\` object still includes both \`requirementId\` and \`category\`, AND that \`coverageDimensions\` includes exactly one of \`"testLevel:component"\` / \`"testLevel:integration"\`. Even when two conditions come from the same requirement, repeat \`requirementId\` and \`category\` inside every condition object.
+---
 
-Also verify, per requirement: at least one non-happy-path condition exists; EP conditions appear as valid+invalid pairs; BVA conditions name the actual boundary; Decision Table conditions cover every rule; State Transition conditions include an invalid transition; AND the batch as a whole contains at least one integration-level condition (tagged \`"testLevel:integration"\`) unless every requirement in the batch genuinely has no dependencies and no flow association.
+## CRITICAL RULES (read before generating — these are non-negotiable)
+
+### A. Test Level (every batch MUST produce both levels)
+
+**Definitions:**
+- **component** — verifies a single requirement's behavior in isolation (single-field validation, single business rule, internal logic of one module).
+- **integration** — verifies interactions across requirements, modules, or external systems (interface contracts, state handoff, cross-epic data exchange).
+
+**Decision table — assign testLevel per CONDITION (not per requirement). A single requirement typically produces BOTH levels:**
+
+| Condition source & characteristic | testLevel |
+|---|---|
+| Condition is derived from a **flow step** — verifies cross-component data flow, interface contract, state handoff, or end-to-end sequence across modules | integration |
+| Condition uses **Use Case Testing** as primary technique (multi-step goal spanning services) | integration |
+| Condition verifies a **requirement AC** — single field's input validation, format, or range (EP/BVA) | component |
+| Condition verifies a **requirement AC** — single business rule's outcome in isolation (Decision Table on one requirement) | component |
+| Condition verifies a **requirement AC** — invalid input or boundary on a single field with no cross-component effect | component |
+| Condition verifies a **requirement AC** — state transition within a single module's lifecycle | component |
+
+**Key principle:** The primary signal is the condition's **source** — flow-derived conditions are integration, requirement-AC-derived conditions are component. A requirement that has dependencies still has atomic behaviors (field validation, single-rule logic) that are component-level.
+
+**Tagging rule:** Every condition's \`coverageDimensions\` MUST include exactly ONE of \`"testLevel:component"\` or \`"testLevel:integration"\`. Not zero, not both.
+
+**Per-requirement quota:** Every requirement MUST produce at least one component-level condition (for its atomic behavior) AND, if it has dependencies or appears in a flow, at least one integration-level condition (for its cross-component interactions).
+
+**Ordering rule:** In the \`testConditions\` array, list ALL component-level conditions first, then ALL integration-level conditions. This mirrors the testing pyramid (verify atomic behavior before interactions) and gives the Designer clear component context before it tackles integration cases.
+
+### B. Technique Coverage (per-technique hard requirements)
+
+| Technique | Mandatory coverage |
+|---|---|
+| EP | valid-partition condition AND at least one invalid-partition condition (separate conditions, never merged) |
+| BVA | \`condition\` text must name the actual boundary and its position (e.g., "exactly at the 100-character limit") — never "test with large input" |
+| Decision Table | cover every business-relevant rule combination, including "no rule matches" / default case |
+| State Transition | include at least one invalid/disallowed transition per modeled entity |
+| Every requirement | at least one condition in \`error\`, \`boundary\`, or \`validation\` category — happy-path-only coverage is under-testing |
+
+### C. Final Self-Check (before closing the JSON block)
+
+For every condition: \`requirementId\` present and exact, \`category\` present, \`coverageDimensions\` has exactly one testLevel tag.
+Per requirement: at least one component AND (if applicable) one integration condition exist; at least one non-happy-path condition exists.
+Per technique used: coverage rules from section B are satisfied.
 `;
 }
 
@@ -284,7 +282,7 @@ export function buildDesignerSystemPrompt(state: TestGenState, customPrompt?: st
 - Test Conditions: ${conditions.length} total (${criticalCount} critical, ${highCount} high)
 - Project: ${state.projectContext.name}
 ${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-${hasUserFlows ? `- User-selected flows: ${state.selectedFlowIds.length} (strong signals for integration-level cases — flow-traced conditions SHOULD default to integration unless genuinely atomic)` : '- No user-selected flows (derive integration surfaces from requirement dependencies and cross-epic context)'}
+${hasUserFlows ? `- User-selected flows: ${state.selectedFlowIds.length}` : '- No user-selected flows (derive integration surfaces from requirement dependencies and cross-epic context)'}
 ${buildL2ContextSection(state, 'designer')}
 ## Mandatory Tool Usage Workflow
 ### Step 1 — Verify requirement details
@@ -315,15 +313,17 @@ One action, one observable result, per step:
 Copying the technique name into \`techniqueApplied\` without honoring its method above is not acceptable.
 
 ## Test Level Decision Rule (MANDATORY — every case must declare \`testLevel\`)
-Read the condition's \`coverageDimensions\` for a \`"testLevel:component"\` or \`"testLevel:integration"\` tag. The tag is the Analyst's recommendation; override it ONLY when you can justify the change in \`selfReview.suggestions\`.
+The Analyst has already tagged each condition with \`"testLevel:component"\` or \`"testLevel:integration"\` in \`coverageDimensions\`. **You MUST honor that tag.** Do not override it.
 
-| Tag / Signal | testLevel | What the case must do differently |
+The Analyst's tagging logic is:
+- Conditions derived from **requirement ACs** (single-field validation, single business rule) → \`component\`
+- Conditions derived from **flow steps** (cross-component data flow, end-to-end sequence, state handoff) → \`integration\`
+
+| Tag | testLevel | Step design constraint |
 |---|---|---|
-| \`"testLevel:integration"\` OR condition traces to a flow step OR \`primaryTechnique\` is Use Case / State Transition with cross-component state handoff | \`integration\` | Steps must traverse 2+ components/modules/systems; \`preconditions\` name the interacting components explicitly; final step asserts BOTH the boundary response AND the downstream state change (e.g., "API returns 201" AND "record appears in DB"). Cover at least one integration failure mode (timeout, malformed response, partial write). |
-| \`"testLevel:component"\` OR condition is pure single-field EP/BVA with no cross-component interaction | \`component\` | Steps stay within a single component; \`preconditions\` reference only that component's internal state. Do NOT assert downstream side effects in other components — that belongs in a separate integration case. |
-| Tag missing | Decide by the rule above; default to \`component\` only if the condition genuinely touches one component, otherwise \`integration\`. Note the missing tag in \`selfReview.suggestions\`. |
-
-When the user selected flows, conditions derived from those flows SHOULD default to \`integration\` — only emit a \`component\` case for a flow step if the step is genuinely atomic (single-field validation independent of the flow's state).
+| \`"testLevel:component"\` | \`component\` | Steps' **assertions** stay within the component under test. You may reference external data in \`preconditions\` (e.g., seed a price table), but the final \`expected\` must verify the component's own behavior, not another component's state. |
+| \`"testLevel:integration"\` | \`integration\` | Steps must traverse 2+ components/modules; \`preconditions\` name the interacting components; final step asserts BOTH the boundary response AND the downstream state change. |
+| Tag missing | Default to \`component\` and note it in \`selfReview.suggestions\`. |
 
 ## Test Independence (ISTQB Principle)
 Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently. For integration cases, this means explicitly seeding the dependent component's data in \`preconditions\`.
@@ -451,6 +451,7 @@ export function buildDesignerUserMessage(state: TestGenState): string {
       secondaryTechniques: c.secondaryTechniques,
       riskLevel: c.riskLevel,
       requirementId: c.requirementId,
+      coverageDimensions: c.coverageDimensions,
     })),
     businessFlows: state.businessFlowBlueprints?.map(f => ({
       id: f.id,
@@ -477,7 +478,7 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
 4. **Traceability** — Does the case's CONTENT stay faithful to its \`conditionId\`/\`requirementId\` (which are preserved programmatically — you verify fidelity, you do not alter the IDs)?
 5. **Data Validity** — Is test data concrete, realistic, and technique-correct (partition/boundary explicitly named, per the Designer's annotations)? Flag placeholder-looking data ("test123", "foo") that doesn't represent a real partition or boundary.
 6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects, and are steps free of brittle over-specific selectors while still concrete enough to execute?
-7. **Test Level Fidelity** — Does the case's declared \`testLevel\` match what its steps actually do? An \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. Flag mismatches: e.g., labeled \`integration\` but only one component touched, or labeled \`component\` but assertions reach into another component's state.
+7. **Test Level Fidelity** — The \`testLevel\` is set by the Designer and MUST be preserved — do NOT flip a case from \`component\` to \`integration\` or vice versa. Your job is to check whether the **steps actually honor** the declared level: an \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. If the steps don't match the level, **fix the steps** (add/remove cross-component assertions) and set \`status\` to \`approved_with_changes\` — never change \`testLevel\` itself.
 ${buildL2ContextSection(state, 'quality')}
 ## Review Discipline
 - Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case — if you alter any field, set \`status\` to \`approved_with_changes\`, apply the fix in the case content, and log it.
@@ -485,8 +486,6 @@ ${buildL2ContextSection(state, 'quality')}
 - Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
 - After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
 - After the per-requirement pass, do one batch-level pass: confirm the batch contains at least one \`component\` case AND at least one \`integration\` case. If either level is missing across the whole batch, flag it in the most relevant requirement's \`reviewSummary\` so the gap surfaces in the coverage matrix.
-
-Coverage is computed automatically from \`finalTestCases\` — do not output it yourself; focus entirely on the seven dimensions above.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
