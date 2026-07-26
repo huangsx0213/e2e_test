@@ -33,7 +33,9 @@ describe('buildAnalystSystemPrompt', () => {
     expect(prompt).toContain('Decision table — assign testLevel per CONDITION');
     expect(prompt).toContain('testLevel:integration');
     expect(prompt).toContain('testLevel:component');
-    expect(prompt).toContain('Per-requirement quota');
+    // Anti-redundancy: non-overlap rule replaces the old rigid per-requirement quota
+    expect(prompt).toContain('Non-overlap rule');
+    expect(prompt).toContain('ANTI-REDUNDANCY');
     expect(prompt).toContain('Final Self-Check');
   });
 });
@@ -88,5 +90,7 @@ describe('buildQualitySystemPrompt', () => {
     // Dual test level: Quality Manager must verify testLevel fidelity and batch-level mix
     expect(prompt).toContain('Test Level Fidelity');
     expect(prompt).toContain('at least one `component` case AND at least one `integration` case');
+    // Anti-redundancy: Quality must check non-overlap between component and integration cases
+    expect(prompt).toContain('Redundancy (anti-overlap between test levels)');
   });
 });

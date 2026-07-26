@@ -165,7 +165,15 @@ The \`\`\`json block must be at the very end — nothing after it. It must conta
 
 **Tagging rule:** Every condition's \`coverageDimensions\` MUST include exactly ONE of \`"testLevel:component"\` or \`"testLevel:integration"\`. Not zero, not both.
 
-**Per-requirement quota:** Every requirement MUST produce at least one component-level condition (for its atomic behavior) AND, if it has dependencies or appears in a flow, at least one integration-level condition (for its cross-component interactions).
+**Non-overlap rule (ANTI-REDUNDANCY — critical):** Component and integration conditions for the SAME requirement MUST NOT verify the same behavior. Concretely:
+- A **component** condition verifies the atomic behavior alone (e.g., "empty password is rejected with a validation error").
+- An **integration** condition for the same requirement MUST verify ONLY the cross-component interaction aspect that the component condition did NOT cover (e.g., "no authentication request is sent to the auth service when client-side validation fails" — the interaction with the auth service, NOT the validation itself).
+- The integration condition's \`condition\` text must NOT re-state the atomic behavior already covered by a sibling component condition. It should describe the interaction surface (data handoff, state propagation, downstream effect, sequence across modules) and ASSUME the atomic behavior works.
+- **If a requirement has NO cross-component interaction aspect** (pure single-field validation, pure single-rule logic with no flow involvement and no dependencies), produce ONLY component condition(s) for it — do NOT force an integration condition. Forcing one creates redundancy.
+
+**Per-requirement guidance (replaces rigid quota):**
+- Every requirement MUST produce at least one component-level condition (for its atomic behavior).
+- A requirement produces an integration-level condition ONLY IF it has a genuine cross-component interaction surface (appears in a flow, has dependencies, or touches an external system). When it does, the integration condition must be NON-overlapping with the component condition per the rule above.
 
 **Ordering rule:** In the \`testConditions\` array, list ALL component-level conditions first, then ALL integration-level conditions. This mirrors the testing pyramid (verify atomic behavior before interactions) and gives the Designer clear component context before it tackles integration cases.
 
@@ -182,7 +190,7 @@ The \`\`\`json block must be at the very end — nothing after it. It must conta
 ### C. Final Self-Check (before closing the JSON block)
 
 For every condition: \`requirementId\` present and exact, \`category\` present, \`coverageDimensions\` has exactly one testLevel tag.
-Per requirement: at least one component AND (if applicable) one integration condition exist; at least one non-happy-path condition exists.
+Per requirement: at least one component condition exists; an integration condition exists ONLY if the requirement has a cross-component surface; the integration condition does NOT re-state what the component condition already verifies (non-overlap).
 Per technique used: coverage rules from section B are satisfied.
 `;
 }
@@ -319,11 +327,15 @@ The Analyst's tagging logic is:
 - Conditions derived from **requirement ACs** (single-field validation, single business rule) → \`component\`
 - Conditions derived from **flow steps** (cross-component data flow, end-to-end sequence, state handoff) → \`integration\`
 
+The Analyst guarantees **non-overlap**: a sibling component condition already covers the atomic behavior, so an integration condition verifies ONLY the cross-component interaction aspect.
+
 | Tag | testLevel | Step design constraint |
 |---|---|---|
 | \`"testLevel:component"\` | \`component\` | Steps' **assertions** stay within the component under test. You may reference external data in \`preconditions\` (e.g., seed a price table), but the final \`expected\` must verify the component's own behavior, not another component's state. |
-| \`"testLevel:integration"\` | \`integration\` | Steps must traverse 2+ components/modules; \`preconditions\` name the interacting components; final step asserts BOTH the boundary response AND the downstream state change. |
+| \`"testLevel:integration"\` | \`integration\` | Steps must traverse 2+ components/modules; \`preconditions\` name the interacting components. **Do NOT re-assert the atomic behavior** that a sibling component case already covers — state it as a precondition (e.g., "client-side validation has passed" or "valid credentials are accepted by the auth API") and ONLY assert the cross-component outcome: data handoff, state propagation, downstream effect, or sequence across modules. The final step asserts the downstream state change (or its absence), not the boundary response the component case already verified. |
 | Tag missing | Default to \`component\` and note it in \`selfReview.suggestions\`. |
+
+**Anti-redundancy check (for integration cases):** Before finalizing an integration case, ask: "Does a sibling component case for the same requirement already assert this?" If yes, move that assertion into \`preconditions\` (as an assumed given) and keep only the cross-component assertions in \`steps\`.
 
 ## Test Independence (ISTQB Principle)
 Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently. For integration cases, this means explicitly seeding the dependent component's data in \`preconditions\`.
@@ -435,7 +447,7 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
 - The \`draftTestCases\` array MUST contain at least one test case.
 - An empty object \`{}\` is always invalid.
 
-Final check before closing the block — every step has exactly one action and one concrete observable expected result; EP/BVA test data states the partition or boundary position, not a bare value; every case's preconditions are self-contained; every case declares \`testLevel\` as \`"component"\` or \`"integration"\` AND the step design honors that level (integration cases traverse 2+ components, component cases stay within one).
+Final check before closing the block — every step has exactly one action and one concrete observable expected result; EP/BVA test data states the partition or boundary position, not a bare value; every case's preconditions are self-contained; every case declares \`testLevel\` as \`"component"\` or \`"integration"\` AND the step design honors that level (integration cases traverse 2+ components, component cases stay within one); **integration cases do NOT re-assert what a sibling component case already covers** (move atomic behavior into preconditions, assert only the cross-component outcome).
 `;
 }
 
@@ -479,6 +491,7 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
 5. **Data Validity** — Is test data concrete, realistic, and technique-correct (partition/boundary explicitly named, per the Designer's annotations)? Flag placeholder-looking data ("test123", "foo") that doesn't represent a real partition or boundary.
 6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects, and are steps free of brittle over-specific selectors while still concrete enough to execute?
 7. **Test Level Fidelity** — The \`testLevel\` is set by the Designer and MUST be preserved — do NOT flip a case from \`component\` to \`integration\` or vice versa. Your job is to check whether the **steps actually honor** the declared level: an \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. If the steps don't match the level, **fix the steps** (add/remove cross-component assertions) and set \`status\` to \`approved_with_changes\` — never change \`testLevel\` itself.
+8. **Redundancy (anti-overlap between test levels)** — For each requirement that has BOTH a \`component\` case AND an \`integration\` case, check whether the integration case re-asserts the atomic behavior the component case already covers. If it does, that is a redundancy defect: **fix it** by moving the duplicated assertion into the integration case's \`preconditions\` (as an assumed given) and keeping ONLY the cross-component outcome assertion in \`steps\`. Set \`status\` to \`approved_with_changes\` and log the de-duplication in \`changeLog\` (field: \`steps\`/\`preconditions\`, reason: "removed assertion duplicated by sibling component case to enforce test-level non-overlap"). Do NOT delete the integration case — just remove the overlapping assertion.
 ${buildL2ContextSection(state, 'quality')}
 ## Review Discipline
 - Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case — if you alter any field, set \`status\` to \`approved_with_changes\`, apply the fix in the case content, and log it.
@@ -486,6 +499,26 @@ ${buildL2ContextSection(state, 'quality')}
 - Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
 - After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
 - After the per-requirement pass, do one batch-level pass: confirm the batch contains at least one \`component\` case AND at least one \`integration\` case. If either level is missing across the whole batch, flag it in the most relevant requirement's \`reviewSummary\` so the gap surfaces in the coverage matrix.
+
+## Coverage Matrix (MANDATORY output — one row per Analyst condition)
+After the per-case and set-level passes, produce a \`coverageMatrix\` object that maps EVERY Analyst test condition to its coverage by the final test cases. This is a summary of how the analysis-phase conditions were realized.
+
+For each \`conditionId\` from the Analyst's output (one row per condition):
+- \`conditionId\`, \`requirementId\`, \`testLevel\`, \`primaryTechnique\`, \`category\` — copy EXACTLY from the Analyst's condition (do not paraphrase IDs or testLevel). The Analyst's conditions are reachable via the input draft cases' \`conditionId\` field; the testLevel/technique/category come from the Analyst's condition (you can infer from the matching draft case's \`testLevel\`/\`techniqueApplied\`).
+- \`conditionSummary\` — a short phrase (≤ 120 chars) describing what the condition verifies, derived from the Analyst's condition text.
+- \`coveredByCaseIds\` — array of \`finalTestCases\` ids whose \`conditionId\` matches this condition. Usually one id; multiple if the Designer split a condition into several cases.
+- \`coverageStatus\` — \`"covered"\` if ≥1 final case covers it, \`"missing"\` if none (this is a defect — flag in \`notes\`).
+- \`notes\` — any gap or concern (e.g., "only valid partition covered, invalid partition missing", "integration case re-asserts component behavior — moved to preconditions"). Empty string if none.
+
+Plus a \`summary\` object aggregating ALL rows:
+- \`totalConditions\` — total rows.
+- \`coveredConditions\` — count where status = \`covered\`.
+- \`missingConditions\` — count where status = \`missing\`.
+- \`byTestLevel\` — object like \`{ "component": 6, "integration": 5 }\`.
+- \`byTechnique\` — object like \`{ "Equivalence Partitioning": 4, "Boundary Value Analysis": 3, ... }\`.
+- \`byCategory\` — object like \`{ "functional": 5, "error": 3, "boundary": 2, ... }\`.
+
+The matrix is the single most useful artifact for the reviewer — invest in it. Do NOT omit it.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
@@ -554,7 +587,41 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
         }
       ]
     }
-  ]
+  ],
+  "coverageMatrix": {
+    "rows": [
+      {
+        "conditionId": "C-001",
+        "conditionSummary": "Valid admin credentials authenticate and reach dashboard",
+        "requirementId": "req-aut-auth-login-valid-success",
+        "testLevel": "integration",
+        "primaryTechnique": "Use Case Testing",
+        "category": "functional",
+        "coveredByCaseIds": ["TC-001"],
+        "coverageStatus": "covered",
+        "notes": ""
+      },
+      {
+        "conditionId": "C-014",
+        "conditionSummary": "Quantity below minimum boundary is rejected",
+        "requirementId": "req-order-quantity-limits",
+        "testLevel": "component",
+        "primaryTechnique": "Boundary Value Analysis",
+        "category": "boundary",
+        "coveredByCaseIds": ["TC-002"],
+        "coverageStatus": "covered",
+        "notes": "Boundary value corrected during review to the explicit one-below-minimum."
+      }
+    ],
+    "summary": {
+      "totalConditions": 2,
+      "coveredConditions": 2,
+      "missingConditions": 0,
+      "byTestLevel": { "component": 1, "integration": 1 },
+      "byTechnique": { "Use Case Testing": 1, "Boundary Value Analysis": 1 },
+      "byCategory": { "functional": 1, "boundary": 1 }
+    }
+  }
 }
 \`\`\`
 
@@ -562,6 +629,7 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
 - The \`\`\`json block is the last thing in your response — nothing after it.
 - It must contain ALL final test cases, complete — never a sample. \`finalTestCases.length >= 1\`. An empty object \`{}\` is always invalid.
 - Every modified case has a non-empty, field-level \`changeLog\`; every untouched case has \`changeLog: []\`.
+- The \`coverageMatrix\` MUST be present. Every Analyst \`conditionId\` that appears in the input draft cases MUST have exactly one row in \`coverageMatrix.rows\`. \`coveredByCaseIds\` must reference real \`finalTestCases\` ids.
 `;
 }
 

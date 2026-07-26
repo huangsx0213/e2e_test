@@ -699,63 +699,79 @@ function AgentSummaryView({ agentLog, agentName }: { agentLog: any; agentName?: 
           <div className="bg-slate-50 text-slate-800 rounded-lg p-2.5 border border-slate-150 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs uppercase font-bold tracking-wider text-slate-500 mb-1.5">
               <Star size={12} className="text-amber-500 fill-amber-300" />
-              Coverage Matrix ({matrixRows.length} requirements)
+              Coverage Matrix ({matrix?.summary?.totalConditions ?? matrixRows.length} conditions · {matrix?.summary?.coveredConditions ?? matrixRows.filter((r: any) => r.coverageStatus !== 'missing').length} covered{(matrix?.summary?.missingConditions ?? 0) > 0 ? ` · ${matrix.summary.missingConditions} missing` : ''})
             </div>
-            <div className="space-y-1.5 pr-0.5">
+
+            {matrix?.summary && (
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                <div className="bg-white rounded border border-slate-100 px-2 py-1.5">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">By Test Level</div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(matrix.summary.byTestLevel || {}).map(([lvl, n]: [string, any]) => (
+                      <span key={lvl} className={`text-[10px] px-1.5 py-0.2 rounded border font-bold uppercase ${getTestLevelBadgeClass(lvl)}`}>{lvl} ({n})</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-white rounded border border-slate-100 px-2 py-1.5">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">By Technique</div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(matrix.summary.byTechnique || {}).map(([t, n]: [string, any]) => (
+                      <span key={t} className="text-[10px] px-1.5 py-0.2 rounded border bg-indigo-50 text-indigo-600 border-indigo-100">{t} ({n})</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="bg-white rounded border border-slate-100 px-2 py-1.5">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mb-1">By Category</div>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(matrix.summary.byCategory || {}).map(([c, n]: [string, any]) => (
+                      <span key={c} className={`text-[10px] px-1.5 py-0.2 rounded border font-bold uppercase ${getCategoryBadgeClass(c)}`}>{c} ({n})</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1 pr-0.5">
               {matrixRows.map((r: any, i: number) => {
                 const matrixExp = expandedFields.has(`matrix_${i}`);
+                const isMissing = r.coverageStatus === 'missing';
                 return (
-                <div key={i} className="flex flex-col gap-1 bg-white rounded border border-slate-100 px-2 py-1 shadow-sm">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1 rounded">{String(i + 1).padStart(2, '0')}</span>
+                <div key={i} className={`flex flex-col gap-1 bg-white rounded border px-2 py-1 shadow-sm ${isMissing ? 'border-rose-200 bg-rose-50/30' : 'border-slate-100'}`}>
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <div className="flex items-center gap-1.5 truncate min-w-0">
+                      <span className="shrink-0 text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-1 rounded">{r.conditionId || `#${i + 1}`}</span>
                       <button onClick={() => toggleField(`matrix_${i}`)} className="shrink-0 text-slate-300 hover:text-slate-500">
                         {matrixExp ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       </button>
-                      <span className="text-slate-700 truncate font-medium max-w-[13rem]">{r.requirementTitle}</span>
-                      {r.level && <span className="shrink-0 text-[10px] font-bold uppercase px-1.5 rounded border bg-cyan-50 text-cyan-600 border-cyan-100">{r.level}</span>}
+                      <span className="text-slate-700 truncate font-medium min-w-0">{r.conditionSummary || '(no summary)'}</span>
                     </div>
-                    <span className="shrink-0 flex items-center gap-2">
-                      <span className="text-slate-450 font-mono text-xs">{r.totalConditions} cond</span>
-                      <span className="text-slate-450 font-mono text-xs">{r.testCaseCount} cases</span>
-                      <span className={`font-mono font-bold ${r.coveragePercentage >= 100 ? 'text-emerald-600' : 'text-amber-600'}`}>{r.coveragePercentage}%</span>
+                    <span className="shrink-0 flex items-center gap-1.5">
+                      {r.testLevel && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getTestLevelBadgeClass(r.testLevel)}`}>{r.testLevel}</span>}
+                      {r.primaryTechnique && <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border bg-indigo-50 text-indigo-600 border-indigo-100">{r.primaryTechnique}</span>}
+                      {r.category && <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${getCategoryBadgeClass(r.category)}`}>{r.category}</span>}
+                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${isMissing ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{isMissing ? 'MISSING' : 'COVERED'}</span>
                     </span>
                   </div>
-                  <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-300 ${r.coveragePercentage >= 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, r.coveragePercentage)}%` }} />
+                  <div className="w-full bg-slate-100 h-0.5 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${isMissing ? 'bg-rose-400' : 'bg-emerald-500'}`} style={{ width: isMissing ? '0%' : '100%' }} />
                   </div>
 
                   {matrixExp && (
-                    <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1.5">
-                      {r.techniqueBreakdown && Object.keys(r.techniqueBreakdown).length > 0 && (
-                        <div>
-                          <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Techniques</span>
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {Object.entries(r.techniqueBreakdown).map(([tech, count]: [string, any]) => (
-                              <span key={tech} className="text-[10px] px-1.5 py-0.2 rounded border bg-indigo-50 text-indigo-600 border-indigo-100">{tech} ({count})</span>
-                            ))}
-                          </div>
+                    <div className="text-xs text-slate-500 border-t border-slate-100 pt-1.5 space-y-1">
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Requirement:</span>
+                        <span className="text-[11px] font-mono text-slate-600">{r.requirementId}</span>
+                      </div>
+                      {r.coveredByCaseIds?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Covered by:</span>
+                          {r.coveredByCaseIds.map((cid: string) => (
+                            <span key={cid} className="text-[10px] font-mono px-1.5 py-0.2 rounded border bg-emerald-50 text-emerald-600 border-emerald-100">{cid}</span>
+                          ))}
                         </div>
                       )}
-                      {r.categoryBreakdown && Object.keys(r.categoryBreakdown).length > 0 && (
-                        <div>
-                          <span className="text-xs uppercase font-bold tracking-wider text-slate-400">Categories</span>
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {Object.entries(r.categoryBreakdown).map(([cat, count]: [string, any]) => (
-                              <span key={cat} className="text-[10px] px-1.5 py-0.2 rounded border bg-slate-50 text-slate-500 border-slate-100">{cat} ({count})</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {r.uncoveredRisks?.length > 0 && (
-                        <div>
-                          <span className="text-xs uppercase font-bold tracking-wider text-rose-500">Uncovered Risks ({r.uncoveredRisks.length})</span>
-                          <ul className="mt-0.5 space-y-0.5 pl-2 border-l-2 border-rose-100">
-                            {r.uncoveredRisks.map((risk: string, j: number) => (
-                              <li key={j} className="text-sm text-rose-500 leading-snug">• {risk}</li>
-                            ))}
-                          </ul>
-                        </div>
+                      {r.notes && (
+                        <div className="text-xs text-slate-500 italic bg-slate-50 rounded p-1.5 border border-slate-100">{r.notes}</div>
                       )}
                     </div>
                   )}

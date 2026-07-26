@@ -39,6 +39,29 @@ const QualityRuntimeSchema = z.object({
       })).default([]),
     })).min(1),
   ),
+  // Coverage matrix: one row per Analyst condition, summarizing how the final
+  // test cases cover it. Optional for backward compatibility with older runs.
+  coverageMatrix: z.object({
+    rows: z.array(z.object({
+      conditionId: z.string(),
+      conditionSummary: z.string(),
+      requirementId: z.string(),
+      testLevel: z.string(),
+      primaryTechnique: z.string(),
+      category: z.string(),
+      coveredByCaseIds: z.array(z.string()),
+      coverageStatus: z.enum(['covered', 'missing']),
+      notes: z.string().optional(),
+    })),
+    summary: z.object({
+      totalConditions: z.number(),
+      coveredConditions: z.number(),
+      missingConditions: z.number(),
+      byTestLevel: z.record(z.string(), z.number()),
+      byTechnique: z.record(z.string(), z.number()),
+      byCategory: z.record(z.string(), z.number()),
+    }),
+  }).optional(),
 });
 
 type QualityRuntimeOutput = z.infer<typeof QualityRuntimeSchema>;
@@ -144,6 +167,53 @@ function normalizeFinalTestCase(
   };
 }
 
+/**
+ * Normalize the coverageMatrix produced by the Quality Manager.
+ * Tolerates missing/malformed fields so a partial matrix still parses.
+ */
+function normalizeCoverageMatrix(raw: Record<string, unknown>): Record<string, unknown> {
+  const rowsRaw = Array.isArray(raw.rows) ? raw.rows : [];
+  const rows = rowsRaw.map((r) => {
+    const row = r && typeof r === 'object' ? r as Record<string, unknown> : {};
+    const status = typeof row.coverageStatus === 'string' ? row.coverageStatus : 'covered';
+    return {
+      ...row,
+      conditionId: String(row.conditionId ?? ''),
+      conditionSummary: String(row.conditionSummary ?? ''),
+      requirementId: String(row.requirementId ?? ''),
+      testLevel: typeof row.testLevel === 'string' ? row.testLevel : 'component',
+      primaryTechnique: String(row.primaryTechnique ?? ''),
+      category: String(row.category ?? ''),
+      coveredByCaseIds: nullToEmptyArray(row.coveredByCaseIds as string[] | null | undefined),
+      coverageStatus: status === 'missing' ? 'missing' : 'covered',
+      notes: nullToUndefined(row.notes as string | null | undefined),
+    };
+  });
+
+  const summaryRaw = raw.summary && typeof raw.summary === 'object' ? raw.summary as Record<string, unknown> : {};
+  const numOrZero = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  const recordOfNumbers = (v: unknown): Record<string, number> => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const out: Record<string, number> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = numOrZero(val);
+      return out;
+    }
+    return {};
+  };
+
+  return {
+    rows,
+    summary: {
+      totalConditions: numOrZero(summaryRaw.totalConditions),
+      coveredConditions: numOrZero(summaryRaw.coveredConditions),
+      missingConditions: numOrZero(summaryRaw.missingConditions),
+      byTestLevel: recordOfNumbers(summaryRaw.byTestLevel),
+      byTechnique: recordOfNumbers(summaryRaw.byTechnique),
+      byCategory: recordOfNumbers(summaryRaw.byCategory),
+    },
+  };
+}
+
 export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase[] = []): StructuredOutputProfile<QualityRuntimeOutput> {
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(QualityRuntimeSchema)),
@@ -154,9 +224,14 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
     normalize(raw: unknown): unknown {
       const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
       const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));
-      return {
+      const normalized: Record<string, unknown> = {
         finalTestCases: arrayFromRecordValues<unknown>(input.finalTestCases).map((testCase) => normalizeFinalTestCase(testCase, expectedById)),
       };
+      // Preserve coverageMatrix if the LLM produced one
+      if (input.coverageMatrix && typeof input.coverageMatrix === 'object') {
+        normalized.coverageMatrix = normalizeCoverageMatrix(input.coverageMatrix as Record<string, unknown>);
+      }
+      return normalized;
     },
     parse(normalized: unknown): QualityRuntimeOutput {
       return validateDraftCaseCoverage(QualityRuntimeSchema.parse(normalized), expectedDraftCases);
