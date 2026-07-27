@@ -12,6 +12,7 @@ vi.mock("../../../shared/hooks/useQueryHooks", () => ({
     remove: vi.fn().mockResolvedValue(undefined),
     create: vi.fn().mockResolvedValue(undefined),
   }),
+  useRequirements: () => ({ data: [] }),
 }));
 
 function makeAC(overrides: Partial<Requirement> & { id: string }): Requirement {
@@ -22,11 +23,8 @@ function makeAC(overrides: Partial<Requirement> & { id: string }): Requirement {
     description: "Given x\nWhen y\nThen z",
     level: "ac",
     flowType: "atomic",
-    priority: "MEDIUM",
     status: "DRAFT",
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }
@@ -38,20 +36,16 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe("ACCard", () => {
   const onSaved = vi.fn();
-  const onMoveUp = vi.fn();
-  const onMoveDown = vi.fn();
 
   beforeEach(() => {
     onSaved.mockReset();
-    onMoveUp.mockReset();
-    onMoveDown.mockReset();
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it("renders AC title and human_id", () => {
+  it("renders AC human_id and index", () => {
     render(
       React.createElement(Wrapper, null,
         React.createElement(ACCard, {
@@ -60,8 +54,6 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
@@ -78,12 +70,10 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
-    expect(screen.getByText(/Format warning/i)).toBeInTheDocument();
+    expect(screen.getByText(/Given \/ When \/ Then segments not detected/i)).toBeInTheDocument();
   });
 
   it("does not show soft warning when Given/When/Then detected", () => {
@@ -95,12 +85,10 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
-    expect(screen.queryByText(/Format warning/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Given \/ When \/ Then segments not detected/i)).not.toBeInTheDocument();
   });
 
   it("does not show warning when description is empty", () => {
@@ -112,12 +100,10 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
-    expect(screen.queryByText(/Format warning/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Given \/ When \/ Then segments not detected/i)).not.toBeInTheDocument();
   });
 
   it("toggles between atomic and flow", async () => {
@@ -129,12 +115,10 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
-    const toggle = screen.getByRole("button", { name: /toggle flow type/i });
+    const toggle = screen.getByRole("button", { name: /flow/i });
     fireEvent.click(toggle);
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ flowType: "flow" }));
@@ -150,11 +134,24 @@ describe("ACCard", () => {
           parentStoryId: "story-1",
           projectId: "p1",
           onSaved,
-          onMoveUp,
-          onMoveDown,
         })
       )
     );
     expect(screen.getByText(/Empty — awaiting content/i)).toBeInTheDocument();
+  });
+
+  it("displays status chip for non-DRAFT statuses", () => {
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(ACCard, {
+          ac: makeAC({ id: "ac-1", status: "APPROVED" }),
+          index: 1,
+          parentStoryId: "story-1",
+          projectId: "p1",
+          onSaved,
+        })
+      )
+    );
+    expect(screen.getByTitle("Click to cycle status")).toHaveTextContent("APPROVED");
   });
 });

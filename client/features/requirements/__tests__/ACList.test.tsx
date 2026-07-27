@@ -12,6 +12,7 @@ vi.mock("../../../shared/hooks/useQueryHooks", () => ({
     update: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
   }),
+  useRequirements: () => ({ data: [] }),
 }));
 
 function makeAC(overrides: Partial<Requirement> & { id: string }): Requirement {
@@ -22,11 +23,8 @@ function makeAC(overrides: Partial<Requirement> & { id: string }): Requirement {
     description: "Given x\nWhen y\nThen z",
     level: "ac",
     flowType: "atomic",
-    priority: "MEDIUM",
     status: "DRAFT",
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }
@@ -47,7 +45,7 @@ describe("ACList", () => {
     cleanup();
   });
 
-  it("renders AC count in header", () => {
+  it("renders approved/total count in header", () => {
     render(
       React.createElement(Wrapper, null,
         React.createElement(ACList, {
@@ -58,7 +56,37 @@ describe("ACList", () => {
         })
       )
     );
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByTestId("ac-progress")).toHaveTextContent("0/2 approved");
+  });
+
+  it("shows approved count when some ACs are approved", () => {
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(ACList, {
+          acs: [makeAC({ id: "1", status: "APPROVED" }), makeAC({ id: "2" })],
+          parentStoryId: "story-1",
+          projectId: "p1",
+          onSaved,
+        })
+      )
+    );
+    expect(screen.getByTestId("ac-progress")).toHaveTextContent("1/2 approved");
+  });
+
+  it("shows all-approved styling when all ACs are approved", () => {
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(ACList, {
+          acs: [makeAC({ id: "1", status: "APPROVED" })],
+          parentStoryId: "story-1",
+          projectId: "p1",
+          onSaved,
+        })
+      )
+    );
+    const chip = screen.getByTestId("ac-progress");
+    expect(chip).toHaveTextContent("1/1 approved");
+    expect(chip.className).toMatch(/emerald/);
   });
 
   it("renders empty state when no ACs", () => {

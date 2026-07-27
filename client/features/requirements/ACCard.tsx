@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Save, Trash2, Edit3, Eye, ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
+import { Save, Trash2, Edit3, Eye, AlertTriangle, Check, X, Link2, ChevronDown } from "lucide-react";
 import type { Requirement } from "../../../shared/contracts/index";
-import { useRequirementMutations } from "../../shared/hooks/useQueryHooks";
+import { useRequirementMutations, useRequirements } from "../../shared/hooks/useQueryHooks";
 import { parseACMarkdown } from "../../shared/requirements/format-parser";
 import { ACFormatHelpTooltip } from "./ACFormatHelpTooltip";
+import { ConfirmModal } from "@/shared/ui/ConfirmModal";
 
 interface Props {
   ac: Requirement;
@@ -13,91 +14,267 @@ interface Props {
   parentStoryId: string;
   projectId: string;
   onSaved: (ac: Requirement) => void;
-  onMoveUp: (id: string) => void;
-  onMoveDown: (id: string) => void;
+  parentStoryIsFlow?: boolean;
 }
 
-export function ACCard({ ac, index, parentStoryId, projectId, onSaved, onMoveUp, onMoveDown }: Props) {
+const statusChipClass = (status: Requirement["status"]) => {
+  switch (status) {
+    case "APPROVED":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "DEPRECATED":
+      return "bg-slate-200 text-slate-500 border-slate-300";
+    case "DRAFT":
+    default:
+      return "bg-slate-100 text-slate-500 border-slate-200";
+  }
+};
+
+const statusOrder: Requirement["status"][] = ["DRAFT", "APPROVED", "DEPRECATED"];
+
+function RelatedRequirementsMultiSelect({
+  candidates,
+  selected,
+  onChange,
+}: {
+  candidates: { humanId: string; title: string; id: string }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const isSelected = (id: string) => selected.includes(id);
+  const toggle = (id: string) => {
+    if (isSelected(id)) {
+      onChange(selected.filter((s) => s !== id));
+    } else {
+      onChange([...selected, id]);
+    }
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <Link2 size={11} className="text-slate-400" />
+        {selected.length === 0 ? (
+          <span className="text-slate-400">No related requirements</span>
+        ) : (
+          <span className="font-mono">{selected.length} linked</span>
+        )}
+        <ChevronDown size={11} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute z-30 mt-1 w-80 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-1.5"
+        >
+          {candidates.length === 0 ? (
+            <div className="px-3 py-4 text-[11px] text-slate-400 text-center">
+              No other stories or ACs in this project
+            </div>
+          ) : (
+            candidates.map((c) => (
+              <label
+                key={c.id}
+                className="flex items-start gap-2 px-2.5 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected(c.id)}
+                  onChange={() => toggle(c.id)}
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-[11px] font-semibold text-slate-700">{c.humanId}</div>
+                  <div className="text-[11px] text-slate-500 truncate">{c.title}</div>
+                </div>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = false }: Props) {
   const { update, remove } = useRequirementMutations(projectId);
+  const { data: allItems = [] } = useRequirements(projectId);
   const [description, setDescription] = useState(ac.description);
   const [flowType, setFlowType] = useState<"atomic" | "flow">(ac.flowType || "atomic");
+  const [status, setStatus] = useState<Requirement["status"]>(ac.status);
+  const [relatedRequirementIds, setRelatedRequirementIds] = useState<string[]>(ac.relatedRequirementIds || []);
   const [mode, setMode] = useState<"edit" | "preview">("preview");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
 
   useEffect(() => {
     setDescription(ac.description);
     setFlowType(ac.flowType || "atomic");
-  }, [ac.id, ac.description, ac.flowType]);
+    setStatus(ac.status);
+    setRelatedRequirementIds(ac.relatedRequirementIds || []);
+    setMode("preview");
+  }, [ac.id, ac.description, ac.flowType, ac.status, ac.relatedRequirementIds]);
 
   const parsed = parseACMarkdown(description);
   const isEmpty = !description.trim();
   const showWarning = !isEmpty && !parsed.hasAllSegments;
 
+  // Candidates: other stories and ACs in the project (not the current AC).
+  const relatedCandidates = useMemo(() => {
+    return allItems
+      .filter((r) => (r.level === "story" || r.level === "ac") && r.id !== ac.id)
+      .map((r) => ({ humanId: r.humanId || r.id, title: r.title, id: r.id }));
+  }, [allItems, ac.id]);
+
   const handleSave = async () => {
+    if (saveStatus === "saving") return;
+    setSaveStatus("saving");
     try {
-      await update(ac.id, { description, flowType });
-      onSaved({ ...ac, description, flowType });
-    } catch (e) {
-      console.error("Save failed", e);
+      const effectiveFlowType: "atomic" | "flow" = parentStoryIsFlow ? "flow" : flowType;
+      const payload: Parameters<typeof update>[1] = {
+        description,
+        flowType: effectiveFlowType,
+        status,
+      };
+      if (parentStoryIsFlow) {
+        payload.relatedRequirementIds = relatedRequirementIds;
+      }
+      await update(ac.id, payload);
+      setMode("preview");
+      setSaveStatus("success");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+      onSaved({
+        ...ac,
+        description,
+        flowType: effectiveFlowType,
+        status,
+        ...(parentStoryIsFlow ? { relatedRequirementIds } : {}),
+      });
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
     }
   };
 
-  const handleToggleFlowType = async () => {
-    const next: "atomic" | "flow" = flowType === "atomic" ? "flow" : "atomic";
+  const cycleStatus = async () => {
+    const idx = statusOrder.indexOf(status);
+    const next = statusOrder[(idx + 1) % statusOrder.length];
+    setStatus(next);
+    try {
+      await update(ac.id, { status: next });
+      onSaved({ ...ac, status: next });
+    } catch {
+      setStatus(status);
+    }
+  };
+
+  const setFlowTypePersist = async (next: "atomic" | "flow") => {
+    if (next === flowType) return;
     setFlowType(next);
     try {
       await update(ac.id, { flowType: next });
       onSaved({ ...ac, flowType: next });
-    } catch (e) {
+    } catch {
       setFlowType(flowType);
-      console.error("Toggle failed", e);
     }
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete AC ${ac.humanId || ac.id}?`)) return;
     try {
       await remove(ac.id);
       onSaved({ ...ac, description: "__deleted__" } as Requirement);
-    } catch (e) {
-      console.error("Delete failed", e);
+    } catch {
+      // delete failed
     }
   };
 
   return (
     <article
-      className={`bg-white border rounded-lg overflow-hidden ${
+      className={`bg-white border rounded-lg overflow-hidden relative ${
         isEmpty ? "border-dashed border-slate-300 opacity-90" : "border-slate-200"
       }`}
     >
-      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3">
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
         <span className="font-mono text-[11px] text-slate-500 flex items-center gap-2">
           {ac.humanId && <span className="font-semibold text-slate-700">{ac.humanId}</span>}
-          <span className="text-slate-300">·</span>
+          {ac.humanId && <span className="text-slate-300">·</span>}
           <span>#{index}</span>
         </span>
-        {ac.status === "DRAFT" && (
-          <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-wider">
-            Draft
-          </span>
-        )}
         <button
-          onClick={handleToggleFlowType}
-          aria-label="toggle flow type"
-          className="ml-auto flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
+          onClick={cycleStatus}
+          className={`text-[10.5px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wider transition-opacity hover:opacity-80 ${statusChipClass(status)}`}
+          title="Click to cycle status"
         >
-          <span>{flowType === "atomic" ? "Atomic" : "Flow"}</span>
-          <span
-            className={`w-7 h-3.5 rounded-full relative transition-colors ${
-              flowType === "flow" ? "bg-slate-300" : "bg-emerald-500"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white shadow transition-all ${
-                flowType === "flow" ? "left-0.5" : "right-0.5"
-              }`}
-            />
-          </span>
+          {status}
         </button>
+
+        {parentStoryIsFlow ? (
+          <>
+            {/* Scenario badge (flow story ACs are always scenarios) */}
+            <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded border uppercase tracking-wider bg-blue-50 text-blue-700 border-blue-200">
+              Scenario
+            </span>
+            <RelatedRequirementsMultiSelect
+              candidates={relatedCandidates}
+              selected={relatedRequirementIds}
+              onChange={setRelatedRequirementIds}
+            />
+          </>
+        ) : (
+          /* Segmented control for Atomic / Flow */
+          <div
+            role="group"
+            aria-label="Flow type"
+            className="inline-flex items-stretch rounded-md border border-slate-200 overflow-hidden bg-slate-50"
+          >
+            <button
+              type="button"
+              onClick={() => setFlowTypePersist("atomic")}
+              aria-pressed={flowType === "atomic"}
+              className={`text-[10.5px] font-semibold px-2.5 py-0.5 uppercase tracking-wider transition-colors ${
+                flowType === "atomic"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              Atomic
+            </button>
+            <span className="w-px bg-slate-200" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setFlowTypePersist("flow")}
+              aria-pressed={flowType === "flow"}
+              className={`text-[10.5px] font-semibold px-2.5 py-0.5 uppercase tracking-wider transition-colors ${
+                flowType === "flow"
+                  ? "bg-blue-100 text-blue-700"
+                  : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              Flow
+            </button>
+          </div>
+        )}
+
         <ACFormatHelpTooltip />
       </div>
 
@@ -105,7 +282,7 @@ export function ACCard({ ac, index, parentStoryId, projectId, onSaved, onMoveUp,
         {showWarning && (
           <div className="mb-3 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
             <AlertTriangle size={14} />
-            <span>Format warning: Given/When/Then segments not detected.</span>
+            <span>Given / When / Then segments not detected.</span>
           </div>
         )}
 
@@ -152,34 +329,45 @@ export function ACCard({ ac, index, parentStoryId, projectId, onSaved, onMoveUp,
             </button>
           </div>
           <button
-            onClick={() => onMoveUp(ac.id)}
-            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-            title="Move up"
-          >
-            <ArrowUp size={14} />
-          </button>
-          <button
-            onClick={() => onMoveDown(ac.id)}
-            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-            title="Move down"
-          >
-            <ArrowDown size={14} />
-          </button>
-          <button
-            onClick={handleDelete}
+            onClick={() => setDeleteConfirmOpen(true)}
             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
             title="Delete AC"
           >
             <Trash2 size={14} />
           </button>
-          <button
-            onClick={handleSave}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors bg-blue-600 hover:bg-blue-700"
-          >
-            <Save size={12} /> Save
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {saveStatus === "success" && (
+              <span className="text-[11px] text-green-600 font-medium flex items-center gap-1">
+                <Check size={12} /> Saved
+              </span>
+            )}
+            {saveStatus === "error" && (
+              <span className="text-[11px] text-red-600 font-medium flex items-center gap-1">
+                <X size={12} /> Failed
+              </span>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saveStatus === "saving"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors ${
+                saveStatus === "saving"
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              <Save size={12} /> Save
+            </button>
+          </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="Delete Acceptance Criterion"
+        message={`Delete AC ${ac.humanId || `#${index}`}? This cannot be undone.`}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteConfirmOpen(false)}
+      />
     </article>
   );
 }
