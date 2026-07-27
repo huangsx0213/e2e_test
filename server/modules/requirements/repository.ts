@@ -3,7 +3,7 @@ import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type { DbRequirementRow } from '../../shared/db/types.ts';
 import { randomId } from '../../shared/utils/index.ts';
-import { validateRequirementDependencies, validateRequirementHumanId, validateRequirementFlowType } from './validation.ts';
+import { validateRequirementDependencies, validateRequirementHumanId, validateRequirementFlowType, validateRequirementIsFlow, validateRelatedRequirementIds } from './validation.ts';
 import { regenerateIndexFile } from './index-generator.ts';
 
 class RequirementRepository extends BaseCrudRepository<Requirement> {
@@ -47,9 +47,11 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
     validateRequirementDependencies(normalizedRecord, this.listByProject(normalizedRecord.projectId));
     validateRequirementHumanId(normalizedRecord, this.listByProject(normalizedRecord.projectId));
     validateRequirementFlowType(normalizedRecord);
+    validateRequirementIsFlow(normalizedRecord, this.listByProject(normalizedRecord.projectId));
+    validateRelatedRequirementIds(normalizedRecord, this.listByProject(normalizedRecord.projectId));
 
     db.prepare(`
-      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, priority, status, tags, position, metadata, human_id, flow_type)
+      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, status, position, human_id, flow_type, type, is_flow, related_requirement_ids)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
@@ -58,13 +60,13 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
         description = excluded.description,
         dependencies = excluded.dependencies,
         level = excluded.level,
-        priority = excluded.priority,
         status = excluded.status,
-        tags = excluded.tags,
         position = excluded.position,
-        metadata = excluded.metadata,
         human_id = excluded.human_id,
         flow_type = excluded.flow_type,
+        type = excluded.type,
+        is_flow = excluded.is_flow,
+        related_requirement_ids = excluded.related_requirement_ids,
         updated_at = datetime('now')
     `).run(
       id,
@@ -74,13 +76,13 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       record.description ?? existing?.description ?? '',
       JSON.stringify(record.dependencies ?? existing?.dependencies ?? []),
       record.level || existing?.level || 'story',
-      record.priority || existing?.priority || 'MEDIUM',
       record.status || existing?.status || 'DRAFT',
-      JSON.stringify(record.tags ?? existing?.tags ?? []),
       record.position ?? existing?.position ?? 0,
-      JSON.stringify(record.metadata ?? existing?.metadata ?? {}),
       record.humanId !== undefined ? (record.humanId || null) : (existing?.humanId || null),
       record.flowType !== undefined ? (record.flowType || null) : (existing?.flowType || null),
+      record.type || existing?.type || 'functional',
+      record.isFlow !== undefined ? (record.isFlow ? 1 : 0) : (existing?.isFlow ? 1 : 0),
+      JSON.stringify(record.relatedRequirementIds ?? existing?.relatedRequirementIds ?? []),
     );
 
     const result = this.get(id)!;
@@ -99,11 +101,11 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       dependencies: JSON.parse(row.dependencies || '[]'),
       level: (row.level || 'story') as Requirement['level'],
       flowType: (row.flow_type as Requirement['flowType']) || null,
-      priority: row.priority as Requirement['priority'],
       status: row.status as Requirement['status'],
-      tags: JSON.parse(row.tags || '[]'),
+      type: ((row.type || 'functional') as Requirement['type']),
       position: row.position,
-      metadata: JSON.parse(row.metadata || '{}'),
+      isFlow: Boolean(row.is_flow),
+      relatedRequirementIds: JSON.parse(row.related_requirement_ids || '[]'),
     };
   }
 }

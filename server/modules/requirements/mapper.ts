@@ -16,13 +16,14 @@ export function normalizeRequirement(input: Partial<Requirement>): Requirement {
       : [],
     level,
     flowType: level === 'ac' ? (flowType as Requirement['flowType']) : null,
-    priority: (input.priority || 'MEDIUM') as Requirement['priority'],
     status: (input.status || 'DRAFT') as Requirement['status'],
-    tags: Array.isArray(input.tags) ? input.tags : [],
+    type: ((input.type || 'functional') as Requirement['type']),
     position: typeof input.position === 'number' ? input.position : 0,
-    metadata:
-      typeof input.metadata === 'object' && input.metadata !== null
-        ? (input.metadata as Record<string, unknown>)
-        : {},
+    isFlow: level === 'story' ? Boolean(input.isFlow) : false,
+    relatedRequirementIds: level === 'ac'
+      ? (Array.isArray(input.relatedRequirementIds)
+        ? input.relatedRequirementIds.filter((value): value is string => typeof value === 'string')
+        : [])
+      : [],
   };
 }
