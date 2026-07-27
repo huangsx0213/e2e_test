@@ -275,7 +275,7 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
           </div>
         )}
 
-        <ACFormatHelpTooltip />
+        <ACFormatHelpTooltip isFlow={parentStoryIsFlow} />
       </div>
 
       <div className="px-5 py-4">

@@ -16,6 +16,21 @@ const AC_FORMAT_CONTENT = (
   </div>
 );
 
-export function ACFormatHelpTooltip() {
-  return <HelpTooltip content={AC_FORMAT_CONTENT} maxWidthClass="max-w-xs" />;
+const FLOW_SCENARIO_CONTENT = (
+  <div className="space-y-1.5">
+    <div className="font-semibold">Scenario format (recommended):</div>
+    <div className="font-mono text-[11px] leading-relaxed">
+      <div>Given / When / Then = one path (happy/alternate/exception).</div>
+      <div>Each AC = one path.</div>
+    </div>
+  </div>
+);
+
+export function ACFormatHelpTooltip({ isFlow = false }: { isFlow?: boolean }) {
+  return (
+    <HelpTooltip
+      content={isFlow ? FLOW_SCENARIO_CONTENT : AC_FORMAT_CONTENT}
+      maxWidthClass="max-w-xs"
+    />
+  );
 }
