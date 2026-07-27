@@ -11,11 +11,11 @@ export const requirementPayloadSchema = z.object({
   dependencies: z.array(z.string()).optional(),
   level: stringEnum(['epic', 'story', 'ac'] as const).optional(),
   flowType: stringEnum(['atomic', 'flow'] as const).nullable().optional(),
-  priority: stringEnum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).optional(),
-  status: stringEnum(['DRAFT', 'APPROVED', 'IN_PROGRESS', 'DEPRECATED'] as const).optional(),
-  tags: z.array(z.string()).optional(),
+  status: stringEnum(['DRAFT', 'APPROVED', 'DEPRECATED'] as const).optional(),
+  type: stringEnum(['functional', 'non-functional', 'security', 'data'] as const).optional(),
   position: z.number().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  isFlow: z.boolean().optional(),
+  relatedRequirementIds: z.array(z.string()).optional(),
 });
 
 export const requirementPatchSchema = requirementPayloadSchema.partial();

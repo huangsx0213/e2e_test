@@ -102,3 +102,36 @@ export function validateRequirementFlowType(requirement: Requirement): void {
     );
   }
 }
+
+export function validateRequirementIsFlow(
+  requirement: Requirement,
+  existingRequirements: Requirement[],
+): void {
+  if (!requirement.isFlow) return;
+  if (requirement.level !== 'story') {
+    throw new ValidationError(`isFlow may only be set on story-level requirements (got level="${requirement.level}").`);
+  }
+  if (requirement.dependencies && requirement.dependencies.length > 0) {
+    throw new ValidationError('Flow stories cannot declare dependencies. Use AC-level relatedRequirementIds instead.');
+  }
+}
+
+export function validateRelatedRequirementIds(
+  requirement: Requirement,
+  existingRequirements: Requirement[],
+): void {
+  const ids = requirement.relatedRequirementIds;
+  if (!ids || ids.length === 0) return;
+  if (requirement.level !== 'ac') {
+    throw new ValidationError(`relatedRequirementIds may only be set on AC-level requirements (got level="${requirement.level}").`);
+  }
+  const requirementIds = new Set(existingRequirements.map((r) => r.id));
+  for (const refId of ids) {
+    if (!requirementIds.has(refId)) {
+      throw new ValidationError(`relatedRequirementIds references unknown requirement: ${refId}`);
+    }
+    if (refId === requirement.id) {
+      throw new ValidationError('relatedRequirementIds cannot reference itself.');
+    }
+  }
+}
