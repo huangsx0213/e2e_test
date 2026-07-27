@@ -12,6 +12,7 @@ import { saveSettings } from './modules/settings/repository.ts';
 import { saveSuite } from './modules/suites/repository.ts';
 import { db } from './shared/db/client.ts';
 import { businessConfigSeed } from './seed-data/business-config.ts';
+import { seedBusinessFlows } from './seed-data/seed-business-flows.ts';
 
 function seedRequirements(): void {
   const pending = [...businessConfigSeed.requirements];
@@ -116,6 +117,7 @@ function seedBusinessConfig(): void {
   }
 
   seedRequirements();
+  seedBusinessFlows();
 }
 
 export function seedDefaults(): void {

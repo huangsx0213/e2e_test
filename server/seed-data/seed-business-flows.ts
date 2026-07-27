@@ -1,20 +1,33 @@
 import { Log } from '../shared/services/logger';
-import { businessFlowRepo } from '../modules/business-flows/repository.ts';
-import type { BusinessFlow } from '../../shared/contracts/index.ts';
+import { requirementRepo } from '../modules/requirements/repository.ts';
+import type { Requirement } from '../shared/contracts/index.ts';
 
 const AUT_PROJECT_ID = 'p-aut-demo';
+const FLOWS_EPIC_ID = 'req-aut-system-flows-epic';
 
-const flows: BusinessFlow[] = [
+interface FlowStep {
+  sequence: number;
+  requirementIds: string[];
+  actionSummary: string;
+}
+
+interface FlowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  status: Requirement['status'];
+  steps: FlowStep[];
+}
+
+const flows: FlowDefinition[] = [
   // ═══════════════════════════════════════════════
   // Flow 1: User Login to Dashboard (Happy Path)
   // Covers: Authentication System + Dashboard
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-login-to-dashboard',
-    projectId: AUT_PROJECT_ID,
     name: 'User Login to Dashboard',
     description: 'A user authenticates with valid credentials, views the dashboard welcome message, and reviews system statistics.',
-    type: 'happy-path',
     status: 'APPROVED',
     steps: [
       {
@@ -46,10 +59,8 @@ const flows: BusinessFlow[] = [
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-user-lifecycle',
-    projectId: AUT_PROJECT_ID,
     name: 'Complete User Management Lifecycle',
     description: 'An admin user logs in, manages the user directory by creating, editing, reviewing, and deleting a user through the complete CRUD lifecycle.',
-    type: 'happy-path',
     status: 'APPROVED',
     steps: [
       {
@@ -91,10 +102,8 @@ const flows: BusinessFlow[] = [
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-login-error-recovery',
-    projectId: AUT_PROJECT_ID,
     name: 'Failed Login with Recovery',
     description: 'A user attempts login with invalid credentials, receives appropriate error feedback, then successfully recovers by entering valid credentials.',
-    type: 'exception',
     status: 'APPROVED',
     steps: [
       {
@@ -121,10 +130,8 @@ const flows: BusinessFlow[] = [
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-reports-viewing',
-    projectId: AUT_PROJECT_ID,
     name: 'Reports and Analytics Viewing',
     description: 'An authenticated user navigates to the Reports page, views summary metric cards, and explores role and department distribution visualized in interactive charts.',
-    type: 'happy-path',
     status: 'APPROVED',
     steps: [
       {
@@ -161,10 +168,8 @@ const flows: BusinessFlow[] = [
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-batch-operations',
-    projectId: AUT_PROJECT_ID,
     name: 'Batch User Operations',
     description: 'An admin selects multiple users, performs bulk status updates, and executes a batch deletion with confirmation — testing the full batch operation workflow.',
-    type: 'alternate',
     status: 'APPROVED',
     steps: [
       {
@@ -196,10 +201,8 @@ const flows: BusinessFlow[] = [
   // ═══════════════════════════════════════════════
   {
     id: 'flow-aut-fault-testing',
-    projectId: AUT_PROJECT_ID,
     name: 'Fault Injection Testing',
     description: 'A tester validates error handling and edge case behaviors by using the fault injection endpoints to simulate timeouts, server errors, and non-standard content types.',
-    type: 'exception',
     status: 'APPROVED',
     steps: [
       {
@@ -221,25 +224,78 @@ const flows: BusinessFlow[] = [
   },
 ];
 
+function ensureFlowsEpic(): Requirement {
+  const existing = requirementRepo.get(FLOWS_EPIC_ID);
+  if (existing) return existing;
+
+  return requirementRepo.save({
+    id: FLOWS_EPIC_ID,
+    projectId: AUT_PROJECT_ID,
+    parentId: null,
+    title: 'System Flows',
+    description: 'Epic containing all seeded business flow stories.',
+    level: 'epic',
+    status: 'APPROVED',
+    position: 0,
+    humanId: 'FLOW-0',
+    type: 'functional',
+    isFlow: false,
+  });
+}
+
 export function seedBusinessFlows(): void {
-  const existing = businessFlowRepo.listByProject(AUT_PROJECT_ID);
-  const existingNames = new Set(existing.map(f => f.name));
+  const epic = ensureFlowsEpic();
+  const projectRequirements = requirementRepo.listByProject(AUT_PROJECT_ID);
+  const existingFlowTitles = new Set(
+    projectRequirements
+      .filter((r) => r.isFlow)
+      .map((r) => r.title),
+  );
+
   let count = 0;
   for (const flow of flows) {
-    if (existingNames.has(flow.name)) continue;
-    businessFlowRepo.save(flow);
+    if (existingFlowTitles.has(flow.name)) continue;
+
+    const story = requirementRepo.save({
+      id: flow.id,
+      projectId: AUT_PROJECT_ID,
+      parentId: epic.id,
+      title: flow.name,
+      description: flow.description,
+      level: 'story',
+      status: flow.status,
+      position: count,
+      type: 'functional',
+      isFlow: true,
+    });
+
+    for (const step of flow.steps) {
+      requirementRepo.save({
+        projectId: AUT_PROJECT_ID,
+        parentId: story.id,
+        title: step.actionSummary,
+        level: 'ac',
+        flowType: 'flow',
+        status: 'DRAFT',
+        position: step.sequence,
+        type: 'functional',
+        relatedRequirementIds: step.requirementIds,
+      });
+    }
+
     count++;
   }
+
   if (count > 0) {
-    Log.for('seed').info(`Seeded ${count} new business flows (skipped ${flows.length - count} existing).`);
+    Log.for('seed').info(`Seeded ${count} new flow stories (skipped ${flows.length - count} existing).`);
   } else {
-    Log.for('seed').info(`All ${flows.length} business flows already exist, skipped.`);
+    Log.for('seed').info(`All ${flows.length} flow stories already exist, skipped.`);
   }
 }
 
 // Allow running directly: npx tsx server/seed-data/seed-business-flows.ts
 import path from 'node:path';
-if (import.meta.url.endsWith(path.basename(process.argv[1]!))) {
+if (import.meta.url.endsWith(path.basename(process.argv[1] || ''))) {
   const { runMigrations } = await import('../migrations/index.ts');
   runMigrations();
   seedBusinessFlows();
