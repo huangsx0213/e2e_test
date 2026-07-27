@@ -105,7 +105,6 @@ export function validateRequirementFlowType(requirement: Requirement): void {
 
 export function validateRequirementIsFlow(
   requirement: Requirement,
-  existingRequirements: Requirement[],
 ): void {
   if (!requirement.isFlow) return;
   if (requirement.level !== 'story') {

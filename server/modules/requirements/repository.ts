@@ -47,7 +47,7 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
     validateRequirementDependencies(normalizedRecord, this.listByProject(normalizedRecord.projectId));
     validateRequirementHumanId(normalizedRecord, this.listByProject(normalizedRecord.projectId));
     validateRequirementFlowType(normalizedRecord);
-    validateRequirementIsFlow(normalizedRecord, this.listByProject(normalizedRecord.projectId));
+    validateRequirementIsFlow(normalizedRecord);
     validateRelatedRequirementIds(normalizedRecord, this.listByProject(normalizedRecord.projectId));
 
     db.prepare(`

@@ -6,6 +6,8 @@ import {
   validateRequirementDependencies,
   validateRequirementHumanId,
   validateRequirementFlowType,
+  validateRequirementIsFlow,
+  validateRelatedRequirementIds,
 } from '../validation.ts';
 
 function makeRequirement(overrides: Partial<Requirement> & { id: string; projectId: string; title: string }): Requirement {
@@ -19,13 +21,10 @@ function makeRequirement(overrides: Partial<Requirement> & { id: string; project
     dependencies: [],
     level: 'story',
     flowType: null,
-    priority: 'MEDIUM',
     status: 'DRAFT',
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
-  };
+  } as Requirement;
 }
 
 describe('validateRequirementDependencies', () => {
@@ -189,6 +188,119 @@ describe('validateRequirementFlowType', () => {
     expect(() =>
       validateRequirementFlowType(
         makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story', flowType: undefined }),
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('validateRequirementIsFlow', () => {
+  it('passes when isFlow is undefined', () => {
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story' }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('passes when isFlow is false', () => {
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story', isFlow: false }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('throws when isFlow is true but level is not story', () => {
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'epic', isFlow: true }),
+      ),
+    ).toThrow(ValidationError);
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac', isFlow: true }),
+      ),
+    ).toThrow('isFlow may only be set on story-level requirements');
+  });
+
+  it('throws when isFlow is true and dependencies is non-empty', () => {
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story', isFlow: true, dependencies: ['r2'] }),
+      ),
+    ).toThrow('Flow stories cannot declare dependencies');
+  });
+
+  it('passes when isFlow is true, level is story, and no dependencies', () => {
+    expect(() =>
+      validateRequirementIsFlow(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story', isFlow: true, dependencies: [] }),
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('validateRelatedRequirementIds', () => {
+  it('passes when relatedRequirementIds is undefined', () => {
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac' }),
+        [],
+      ),
+    ).not.toThrow();
+  });
+
+  it('passes when relatedRequirementIds is empty', () => {
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac', relatedRequirementIds: [] }),
+        [],
+      ),
+    ).not.toThrow();
+  });
+
+  it('throws when set on non-AC level requirements', () => {
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'story', relatedRequirementIds: ['r2'] }),
+        [makeRequirement({ id: 'r2', projectId: 'p1', title: 'Other', level: 'story' })],
+      ),
+    ).toThrow(ValidationError);
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'epic', relatedRequirementIds: ['r2'] }),
+        [makeRequirement({ id: 'r2', projectId: 'p1', title: 'Other', level: 'story' })],
+      ),
+    ).toThrow('relatedRequirementIds may only be set on AC-level requirements');
+  });
+
+  it('throws when referencing unknown requirement ID', () => {
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac', relatedRequirementIds: ['missing'] }),
+        [makeRequirement({ id: 'r2', projectId: 'p1', title: 'Other', level: 'story' })],
+      ),
+    ).toThrow('relatedRequirementIds references unknown requirement: missing');
+  });
+
+  it('throws when referencing itself', () => {
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac', relatedRequirementIds: ['r1'] }),
+        [makeRequirement({ id: 'r1', projectId: 'p1', title: 'T', level: 'ac' })],
+      ),
+    ).toThrow('relatedRequirementIds cannot reference itself');
+  });
+
+  it('passes when all IDs exist and level is ac', () => {
+    const existing = [
+      makeRequirement({ id: 'r1', projectId: 'p1', title: 'AC', level: 'ac' }),
+      makeRequirement({ id: 'r2', projectId: 'p1', title: 'Story', level: 'story' }),
+    ];
+    expect(() =>
+      validateRelatedRequirementIds(
+        makeRequirement({ id: 'r1', projectId: 'p1', title: 'AC', level: 'ac', relatedRequirementIds: ['r2'] }),
+        existing,
       ),
     ).not.toThrow();
   });
