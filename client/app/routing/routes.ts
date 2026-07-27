@@ -13,7 +13,6 @@ import { DynamicVariables } from '@/features/dynamic-variables/DynamicVariables'
 import { Documentation } from '@/features/documentation/Documentation';
 import { AgentManagement } from '@/features/agents/AgentManagement';
 import { RequirementsPage } from '@/features/requirements/RequirementsPage';
-import { BusinessFlowsPage } from '@/features/business-flows/BusinessFlowsPage';
 import { NlCasesPage } from '@/features/nl-cases/NlCasesPage';
 import { AiTestGenPage } from '@/features/ai-test-gen/AiTestGenPage';
 import { AiDrivenRecorderPage } from '@/features/ai-driven-recorder/AiDrivenRecorderPage';
@@ -115,10 +114,6 @@ registerRoute('DYNAMIC_VARIABLES', DynamicVariables, (ctx) => ({
 registerRoute('AGENTS', AgentManagement, () => ({}));
 
 registerRoute('REQUIREMENTS', RequirementsPage, (ctx) => ({
-  currentProjectId: ctx.currentProjectId,
-}));
-
-registerRoute('BUSINESS_FLOWS', BusinessFlowsPage, (ctx) => ({
   currentProjectId: ctx.currentProjectId,
 }));
 

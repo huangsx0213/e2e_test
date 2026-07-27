@@ -13,7 +13,6 @@ import {
   BookOpen,
   Server,
   ClipboardList,
-  GitBranchPlus,
   Wand2,
   type LucideIcon,
 } from 'lucide-react';
@@ -47,7 +46,6 @@ export const navigationSections: NavigationSection[] = [
     title: 'Infrastructure',
     items: [
 { tab: 'REQUIREMENTS', label: 'Requirements', icon: ClipboardList },
-      { tab: 'BUSINESS_FLOWS', label: 'Business Flows', icon: GitBranchPlus },
       { tab: 'AI_TEST_GEN', label: 'AI Test Gen', icon: PlaySquare },
       { tab: 'NL_CASES', label: 'NL Test Cases', icon: FileText },
       { tab: 'AI_DRIVEN_RECORDER', label: 'AI Recorder', icon: Wand2 },
