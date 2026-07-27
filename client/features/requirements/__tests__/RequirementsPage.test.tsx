@@ -48,14 +48,13 @@ describe('RequirementsPage', () => {
     expect(await screen.findByText('No requirements found')).toBeInTheDocument();
   });
 
-  it('shows editor create form when nothing selected but project set', async () => {
+  it('shows empty state when nothing selected but project set', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
       { id: 'r1', projectId: 'proj-1', title: 'Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     await screen.findByText('Req');
-    const createBtns = screen.getAllByText('Create');
-    expect(createBtns[createBtns.length - 1]).toBeInTheDocument();
+    expect(screen.getByText('Select a story or epic to view details')).toBeInTheDocument();
   });
 
   it('renders requirements in the tree', async () => {
@@ -96,16 +95,51 @@ describe('RequirementsPage', () => {
     expect(await screen.findByText('Import Requirements')).toBeInTheDocument();
   });
 
-  it('shows create form when add child button clicked', async () => {
+  it('clears selection when add child button clicked (create form deferred)', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
       { id: 'p1', projectId: 'proj-1', title: 'Parent', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     await screen.findByText('Parent');
+    fireEvent.click(screen.getByText('Parent'));
+    // After selecting, the row should be highlighted (selected)
     const addChildBtns = document.querySelectorAll('button[title="Add Child Requirement"]');
     expect(addChildBtns.length).toBeGreaterThanOrEqual(1);
     fireEvent.click(addChildBtns[addChildBtns.length - 1]);
-    const createBtns = screen.getAllByText('Create');
-    expect(createBtns[createBtns.length - 1]).toBeInTheDocument();
+    // Create form is deferred to a follow-up task; selection is cleared and empty state shows
+    expect(screen.getByText('Select a story or epic to view details')).toBeInTheDocument();
+  });
+
+  describe('right pane routing', () => {
+    it('renders StoryDetailView when story selected', async () => {
+      vi.mocked(api.requirements.listByProject).mockResolvedValue([
+        { id: 's1', projectId: 'proj-1', title: 'Login Story', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      ] as any);
+      renderPage({ currentProjectId: 'proj-1' });
+      fireEvent.click(await screen.findByText('Login Story'));
+      // StoryDetailView renders ACList which shows "Acceptance Criteria" header
+      expect(await screen.findByText(/Acceptance Criteria/i)).toBeInTheDocument();
+    });
+
+    it('renders EpicDetailView when epic selected', async () => {
+      vi.mocked(api.requirements.listByProject).mockResolvedValue([
+        { id: 'e1', projectId: 'proj-1', title: 'Auth Epic', description: '', level: 'epic', priority: 'HIGH', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      ] as any);
+      renderPage({ currentProjectId: 'proj-1' });
+      fireEvent.click(await screen.findByText('Auth Epic'));
+      // EpicDetailView should NOT render the "Acceptance Criteria" section (that's Story-only)
+      // But it should render a "Save" button (both views have it)
+      expect(await screen.findByRole('button', { name: /Save/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Acceptance Criteria/i)).not.toBeInTheDocument();
+    });
+
+    it('renders empty state when nothing selected', async () => {
+      vi.mocked(api.requirements.listByProject).mockResolvedValue([
+        { id: 'r1', projectId: 'proj-1', title: 'Some Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      ] as any);
+      renderPage({ currentProjectId: 'proj-1' });
+      await screen.findByText('Some Req');
+      expect(screen.getByText('Select a story or epic to view details')).toBeInTheDocument();
+    });
   });
 });

@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RequirementTree } from "./RequirementTree";
-import { RequirementEditor } from "./RequirementEditor";
+import { StoryDetailView } from "./StoryDetailView";
+import { EpicDetailView } from "./EpicDetailView";
 import { RequirementImport } from "./RequirementImport";
 import { useRequirements, useRequirementMutations } from "../../shared/hooks/useQueryHooks";
 import { queryKeys } from "@/shared/hooks/queryKeys";
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   Search,
   ClipboardPaste,
+  FileText,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 
@@ -281,18 +283,30 @@ export function RequirementsPage({ currentProjectId }: Props) {
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <RequirementEditor
-          item={selected}
-          projectId={projectId}
-          parentId={newChildParentId}
-          suggestedLevel={suggestedLevel}
-          parentLevel={newChildParentId ? (items.find((r) => r.id === newChildParentId)?.level ?? null) : null}
-          onSaved={() => {
-            refresh();
-            setNewChildParentId(null);
-            setSuggestedLevel(null);
-          }}
-        />
+        {!selected && (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 bg-slate-50 h-full">
+            <div className="w-16 h-16 rounded-full bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-4">
+              <FileText size={32} className="text-slate-300" />
+            </div>
+            <p className="font-medium text-slate-500">Select a story or epic to view details</p>
+            <p className="text-xs text-slate-400 mt-1">Or use the sidebar to create a new requirement</p>
+          </div>
+        )}
+        {selected?.level === 'story' && (
+          <StoryDetailView
+            story={selected}
+            acs={items.filter((r) => r.parentId === selected.id && r.level === 'ac')}
+            projectId={projectId}
+            onSaved={() => refresh()}
+          />
+        )}
+        {selected?.level === 'epic' && (
+          <EpicDetailView
+            epic={selected}
+            projectId={projectId}
+            onSaved={() => refresh()}
+          />
+        )}
       </div>
 
       {showImport && (
