@@ -66,7 +66,7 @@ describe('buildBlueprintsFromFlowStories', () => {
       position: 0,
     };
 
-    mockRequirementRepo.listByProject.mockReturnValue(acChildren);
+    mockRequirementRepo.listByProject.mockReturnValue([...acChildren, primaryReq]);
     mockRequirementRepo.get.mockImplementation((id: string) =>
       id === 'story-1' ? primaryReq : undefined,
     );

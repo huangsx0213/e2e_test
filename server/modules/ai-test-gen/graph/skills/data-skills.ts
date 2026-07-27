@@ -187,7 +187,7 @@ export const requirementGraphQuery: SkillDefinition = {
     }
 
     const allReqs = requirementRepo.listByProject(projectId);
-    const allFlowStories = requirementRepo.listByProject(projectId).filter(r => r.level === 'story' && r.isFlow);
+    const allFlowStories = allReqs.filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
 
     // === Build graph for each seed ===
     const graphEntries: Record<string, unknown> = {};
@@ -327,7 +327,7 @@ export const flowDetailQuery: SkillDefinition = {
 
     const queryOne = (flowId: string) => {
       const flowStory = requirementRepo.get(flowId);
-      if (!flowStory || !flowStory.isFlow) return { error: `Flow ${flowId} not found` };
+      if (!flowStory || !flowStory.isFlow || flowStory.status !== 'APPROVED') return { error: `Flow ${flowId} not found` };
 
       const flowACs = requirementRepo
         .listByProject(flowStory.projectId)

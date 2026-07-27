@@ -147,7 +147,7 @@ export class Orchestrator {
       pipelineRepo.updateModelInfo(runId, ctx.modelName, params.providerConfigName ?? null);
 
       const requirements = requirementRepo.listByProject(projectId);
-      const allFlowStories = requirementRepo.listByProject(projectId)
+      const allFlowStories = requirements
         .filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
       const selectedFlowSet = new Set(params.flowIds || []);
       const filteredFlowStories = selectedFlowSet.size > 0
@@ -586,7 +586,7 @@ export class Orchestrator {
     const selectedIds = new Set(requirementIds);
     const { epics, rootGroups, totalBatches } = groupRequirementsByEpic(allIndex, selectedIds);
     const requirements = requirementRepo.listByProject(projectId);
-    const allFlowStories = requirementRepo.listByProject(projectId)
+    const allFlowStories = requirements
       .filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
     const selectedFlowSet = new Set(flowIds);
     const filteredFlowStories = selectedFlowSet.size > 0
