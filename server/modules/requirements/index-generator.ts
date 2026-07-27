@@ -11,10 +11,10 @@ interface IndexItem {
   dependencies: string[];
   summary: string;
   tags: string[];
-  priority: string;
   testType: string[];
   childCount: number;
   children: string[];
+  isFlow: boolean;
 }
 
 function computeLevel(itemId: string, allIds: Map<string, string | null>, depth: number = 0): number {
@@ -41,13 +41,12 @@ function extractTags(text: string): string[] {
   return [...new Set(tags)];
 }
 
-function inferTestTypes(req: { description: string; tags: string[] }): string[] {
+function inferTestTypes(req: { description: string }): string[] {
   const types: string[] = ['functional'];
   const text = req.description.toLowerCase();
   if (text.includes('performance') || text.includes('性能') || text.includes('concurrent') || text.includes('并发')) types.push('performance');
   if (text.includes('security') || text.includes('安全') || text.includes('permission') || text.includes('权限')) types.push('security');
   if (text.includes('ui') || text.includes('page') || text.includes('页面') || text.includes('display') || text.includes('显示')) types.push('ui');
-  if (req.tags.length) types.push(...req.tags);
   return [...new Set(types)];
 }
 
@@ -72,11 +71,11 @@ export function buildRequirementIndex(projectId: string): IndexItem[] {
     parent: r.parentId || null,
     dependencies: r.dependencies || [],
     summary: truncate(r.description, 200),
-    tags: [...new Set([...extractTags(r.title + ' ' + r.description), ...(r.tags || [])])],
-    priority: r.priority,
-    testType: inferTestTypes({ ...r, tags: r.tags || [] }),
+    tags: extractTags(r.title + ' ' + r.description),
+    testType: inferTestTypes({ description: r.description }),
     childCount: (childMap.get(r.id) || []).length,
     children: childMap.get(r.id) || [],
+    isFlow: r.isFlow ?? false,
   }));
 }
 
