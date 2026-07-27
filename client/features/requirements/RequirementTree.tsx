@@ -71,7 +71,7 @@ export function RequirementTree({
   const [editTitle, setEditTitle] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  const children = items.filter((r) => (r.parentId || null) === parentId);
+  const children = items.filter((r) => (r.parentId || null) === parentId && r.level !== 'ac');
 
   const isExpanded = (id: string) => expandedIds.has(id);
 
@@ -85,6 +85,8 @@ export function RequirementTree({
   };
 
   const childCount = (id: string) => items.filter((i) => i.parentId === id).length;
+
+  const acChildrenOf = (rowId: string) => items.filter((r) => r.parentId === rowId && r.level === 'ac');
 
   const saveTitle = (id: string) => {
     update(id, { title: editTitle });
@@ -178,6 +180,31 @@ export function RequirementTree({
                     title={r.status.replace("_", " ")}
                   />
                 )}
+                {r.level === 'story' && (() => {
+                  const acs = acChildrenOf(r.id);
+                  const approved = acs.filter((a) => a.status === 'APPROVED').length;
+                  return (
+                    <>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                        {acs.length} ACs
+                      </span>
+                      {approved > 0 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {approved} approved
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
+                {r.level === 'epic' && (() => {
+                  const stories = items.filter((child) => child.parentId === r.id && child.level === 'story');
+                  const approved = stories.filter((s) => s.status === 'APPROVED').length;
+                  return (
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {approved}/{stories.length}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
 {onMove && !isFirst && (

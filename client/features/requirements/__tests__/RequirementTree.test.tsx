@@ -161,4 +161,79 @@ describe('RequirementTree', () => {
       expect(screen.queryByText('DRAFT')).not.toBeInTheDocument();
     });
   });
+
+  describe('chip rendering', () => {
+    it('renders AC count chip on story with ACs', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
+        makeReq({ id: 'AC1', title: 'AC1', level: 'ac', parentId: 'S1' }),
+        makeReq({ id: 'AC2', title: 'AC2', level: 'ac', parentId: 'S1' }),
+      ];
+      render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, {
+            items,
+            selectedId: null,
+            onSelect,
+            onAddChild,
+            onRefresh,
+            projectId: 'proj-1',
+          })
+        )
+      );
+      // Need to expand E1 first to see S1's chip
+      const expandButton = screen.getByText('Epic').closest('div')?.querySelector('svg');
+      if (expandButton) fireEvent.click(expandButton);
+      expect(screen.getByText('2 ACs')).toBeInTheDocument();
+    });
+
+    it('renders approved chip when ACs are approved', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
+        makeReq({ id: 'AC1', title: 'AC1', level: 'ac', parentId: 'S1', status: 'APPROVED' }),
+      ];
+      render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, {
+            items,
+            selectedId: null,
+            onSelect,
+            onAddChild,
+            onRefresh,
+            projectId: 'proj-1',
+          })
+        )
+      );
+      const expandButton = screen.getByText('Epic').closest('div')?.querySelector('svg');
+      if (expandButton) fireEvent.click(expandButton);
+      expect(screen.getByText('1 approved')).toBeInTheDocument();
+    });
+
+    it('hides AC level rows from tree', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
+        makeReq({ id: 'AC1', title: 'Hidden AC', level: 'ac', parentId: 'S1' }),
+      ];
+      render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, {
+            items,
+            selectedId: null,
+            onSelect,
+            onAddChild,
+            onRefresh,
+            projectId: 'proj-1',
+          })
+        )
+      );
+      const expandButton = screen.getByText('Epic').closest('div')?.querySelector('svg');
+      if (expandButton) fireEvent.click(expandButton);
+      const storyExpand = screen.getByText('Story').closest('div')?.querySelector('svg');
+      if (storyExpand) fireEvent.click(storyExpand);
+      expect(screen.queryByText('Hidden AC')).not.toBeInTheDocument();
+    });
+  });
 });
