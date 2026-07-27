@@ -72,7 +72,7 @@ describe('RequirementsPage', () => {
       { id: 'r1', projectId: 'proj-1', title: 'One', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
-    expect(await screen.findByText('1 requirement total')).toBeInTheDocument();
+    expect(await screen.findByText('1 stories · 0 epics')).toBeInTheDocument();
   });
 
   it('shows editor form when requirement selected', async () => {

@@ -4,7 +4,6 @@ import { useRequirementMutations } from "../../shared/hooks/useQueryHooks";
 import {
   ChevronRight,
   ChevronDown,
-  FileText,
   Edit2,
   Check,
   Trash2,
@@ -38,17 +37,15 @@ const priorityColors: Record<Requirement["priority"], string> = {
   LOW: "bg-gray-400",
 };
 
-const statusColors: Record<Requirement["status"], string> = {
-  DRAFT: "bg-gray-300",
-  APPROVED: "bg-emerald-500",
-  IN_PROGRESS: "bg-blue-500",
-  DEPRECATED: "bg-gray-400",
-};
-
-const levelConfig: Record<Requirement["level"], { label: string }> = {
-  epic: { label: "E" },
-  story: { label: "S" },
-  ac: { label: "AC" },
+const progressChip = (approved: number, total: number) => {
+  const allDone = total > 0 && approved === total;
+  return `inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+    allDone
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : total === 0
+      ? "bg-slate-100 text-slate-400 border-slate-200"
+      : "bg-slate-100 text-slate-600 border-slate-200"
+  }`;
 };
 
 export function RequirementTree({
@@ -84,9 +81,9 @@ export function RequirementTree({
     });
   };
 
-  const childCount = (id: string) => items.filter((i) => i.parentId === id).length;
-
   const acChildrenOf = (rowId: string) => items.filter((r) => r.parentId === rowId && r.level === 'ac');
+
+  const storyChildrenOf = (rowId: string) => items.filter((r) => r.parentId === rowId && r.level === 'story');
 
   const saveTitle = (id: string) => {
     update(id, { title: editTitle });
@@ -114,117 +111,98 @@ export function RequirementTree({
         const hasChildren = items.some((i) => i.parentId === r.id);
         const expanded = isExpanded(r.id);
         const isSelected = selectedId === r.id;
-        const count = childCount(r.id);
         const isFirst = idx === 0;
         const isLast = idx === sortedChildren.length - 1;
 
         return (
-          <div key={r.id}>
+          <div key={r.id} className="space-y-px">
             <div
-              className={`group flex items-center py-1 px-1.5 cursor-pointer rounded-md text-sm transition-all duration-150 ${
+              className={`group flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer text-sm transition-all duration-150 ${
                 isSelected
-                  ? "bg-blue-100 text-blue-800 shadow-sm ring-1 ring-blue-300"
-                  : "text-slate-700 hover:bg-slate-200 hover:text-slate-900 hover:shadow-sm"
+                  ? "bg-blue-50 text-slate-900 border border-blue-200"
+                  : "text-slate-700 hover:bg-blue-50/60 hover:text-slate-900 border border-transparent"
               }`}
               style={{ paddingLeft: `${depth * 16 + 4}px` }}
               onClick={() => onSelect(r.id)}
             >
-              <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                {hasChildren ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleExpand(r.id);
-                    }}
-                    className="shrink-0 p-0.5 hover:bg-slate-200 rounded transition-colors"
-                  >
-                    {expanded ? (
-                      <ChevronDown size={14} className="text-slate-500" />
-                    ) : (
-                      <ChevronRight size={14} className="text-slate-400" />
-                    )}
-                  </button>
-                ) : (
-                  <FileText
-                    size={13}
-                    className={`shrink-0 ${isSelected ? "text-blue-500" : "text-slate-300"}`}
-                  />
-                )}
-                <span
-                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${priorityColors[r.priority]}`}
+              {hasChildren ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleExpand(r.id);
+                  }}
+                  className="shrink-0 p-0.5 hover:bg-slate-200 rounded transition-colors"
+                >
+                  {expanded ? (
+                    <ChevronDown size={14} className="text-slate-500" />
+                  ) : (
+                    <ChevronRight size={14} className="text-slate-400" />
+                  )}
+                </button>
+              ) : (
+                <span className="w-[22px] shrink-0" />
+              )}
+              <span
+                className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${priorityColors[r.priority]}`}
+              />
+              {editingId === r.id ? (
+                <input
+                  className="flex-1 min-w-0 px-1.5 py-0.5 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.key === "Enter" && saveTitle(r.id)}
+                  onBlur={() => saveTitle(r.id)}
+                  autoFocus
                 />
-                {editingId === r.id ? (
-                  <input
-                    className="flex-1 min-w-0 px-1.5 py-0.5 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.key === "Enter" && saveTitle(r.id)}
-                    onBlur={() => saveTitle(r.id)}
-                    autoFocus
-                  />
-                ) : (
-                  <span className="truncate font-medium text-sm" title={r.title}>{r.title}</span>
-                )}
-                <span className="text-[10px] font-semibold text-slate-500 shrink-0">
-                  {levelConfig[r.level].label}
+              ) : (
+                <span className={`flex-1 min-w-0 truncate ${isSelected ? "font-semibold text-[13px]" : "font-medium text-sm"}`} title={r.title}>{r.title}</span>
+              )}
+              {r.humanId && (
+                <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                  {r.humanId}
                 </span>
-                {hasChildren && (
-                  <span className="text-[10px] text-slate-400 font-medium shrink-0 tabular-nums">
-                    {count}
-                  </span>
-                )}
-                {r.status !== "DRAFT" && (
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${statusColors[r.status]}`}
-                    title={r.status.replace("_", " ")}
-                  />
-                )}
-                {r.level === 'story' && (() => {
+              )}
+              {(() => {
+                if (r.level === 'story') {
                   const acs = acChildrenOf(r.id);
                   const approved = acs.filter((a) => a.status === 'APPROVED').length;
                   return (
-                    <>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                        {acs.length} ACs
-                      </span>
-                      {approved > 0 && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {approved} approved
-                        </span>
-                      )}
-                    </>
+                    <span className={progressChip(approved, acs.length)}>
+                      {approved}/{acs.length}
+                    </span>
                   );
-                })()}
-                {r.level === 'epic' && (() => {
-                  const stories = items.filter((child) => child.parentId === r.id && child.level === 'story');
+                }
+                if (r.level === 'epic') {
+                  const stories = storyChildrenOf(r.id);
                   const approved = stories.filter((s) => s.status === 'APPROVED').length;
                   return (
-                    <span className="font-mono text-[10px] text-slate-400">
+                    <span className={progressChip(approved, stories.length)}>
                       {approved}/{stories.length}
                     </span>
                   );
-                })()}
-              </div>
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
-{onMove && !isFirst && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onMove(r.id, -1); }}
-                      className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Move Up"
-                    >
-                      <ArrowUp size={12} />
-                    </button>
-                  )}
-                  {onMove && !isLast && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onMove(r.id, 1); }}
-                      className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Move Down"
-                    >
-                      <ArrowDown size={12} />
-                    </button>
-                  )}
+                }
+                return null;
+              })()}
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto">
+                {onMove && !isFirst && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onMove(r.id, -1); }}
+                    className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Move Up"
+                  >
+                    <ArrowUp size={12} />
+                  </button>
+                )}
+                {onMove && !isLast && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onMove(r.id, 1); }}
+                    className="p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Move Down"
+                  >
+                    <ArrowDown size={12} />
+                  </button>
+                )}
                 {onCopy && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onCopy(r.id); }}
@@ -288,20 +266,22 @@ export function RequirementTree({
               )}
             </div>
             {hasChildren && expanded && (
-              <RequirementTree
-                items={items}
-                selectedId={selectedId}
-                onSelect={onSelect}
-                onAddChild={onAddChild}
-                projectId={projectId}
-                parentId={r.id}
-                depth={depth + 1}
-                onRefresh={onRefresh}
-                onMove={onMove}
-                onCopy={onCopy}
-                onPaste={onPaste}
-                clipboardExists={clipboardExists}
-              />
+              <div className="ml-4 pl-2 border-l border-slate-200 space-y-px">
+                <RequirementTree
+                  items={items}
+                  selectedId={selectedId}
+                  onSelect={onSelect}
+                  onAddChild={onAddChild}
+                  projectId={projectId}
+                  parentId={r.id}
+                  depth={depth + 1}
+                  onRefresh={onRefresh}
+                  onMove={onMove}
+                  onCopy={onCopy}
+                  onPaste={onPaste}
+                  clipboardExists={clipboardExists}
+                />
+              </div>
             )}
           </div>
         );

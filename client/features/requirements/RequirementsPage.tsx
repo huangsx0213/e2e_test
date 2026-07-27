@@ -269,8 +269,12 @@ export function RequirementsPage({ currentProjectId }: Props) {
         </div>
 
         <div className="px-3 py-2 border-t border-slate-100 bg-slate-50/50">
-          <p className="text-[10px] text-slate-400 text-center">
-            {items.length} requirement{items.length !== 1 ? "s" : ""} total
+          <p className="text-[10px] text-slate-400 text-center font-mono">
+            {(() => {
+              const storyCount = items.filter((r) => r.level === 'story').length;
+              const epicCount = items.filter((r) => r.level === 'epic').length;
+              return `${storyCount} stories · ${epicCount} epics`;
+            })()}
           </p>
         </div>
       </div>
