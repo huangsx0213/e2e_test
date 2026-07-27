@@ -56,14 +56,49 @@ export function validateRequirementDependencies(requirement: Requirement, existi
   }
 }
 
-// Stubs — real implementations added in Task 6
+const HUMAN_ID_PATTERN = /^[A-Z][A-Z0-9_-]*$/;
+
 export function validateRequirementHumanId(
-  _requirement: Requirement,
-  _existingRequirements: Requirement[],
+  requirement: Requirement,
+  existingRequirements: Requirement[],
 ): void {
-  // Implemented in Task 6
+  if (requirement.humanId === undefined || requirement.humanId === null || requirement.humanId === '') {
+    return;
+  }
+
+  if (!HUMAN_ID_PATTERN.test(requirement.humanId)) {
+    throw new ValidationError(
+      `humanId must match pattern ${HUMAN_ID_PATTERN.source} (uppercase letter followed by uppercase letters, digits, hyphens, or underscores). Got: "${requirement.humanId}"`,
+    );
+  }
+
+  const collision = existingRequirements.find(
+    (candidate) =>
+      candidate.id !== requirement.id &&
+      candidate.projectId === requirement.projectId &&
+      candidate.humanId === requirement.humanId,
+  );
+  if (collision) {
+    throw new ValidationError(
+      `humanId "${requirement.humanId}" is already used by another requirement (${collision.id}) in the same project.`,
+    );
+  }
 }
 
-export function validateRequirementFlowType(_requirement: Requirement): void {
-  // Implemented in Task 6
+export function validateRequirementFlowType(requirement: Requirement): void {
+  if (requirement.flowType === undefined || requirement.flowType === null) {
+    return;
+  }
+
+  if (requirement.level !== 'ac') {
+    throw new ValidationError(
+      `flowType may only be set on AC-level requirements (got level="${requirement.level}").`,
+    );
+  }
+
+  if (requirement.flowType !== 'atomic' && requirement.flowType !== 'flow') {
+    throw new ValidationError(
+      `flowType must be "atomic" or "flow" (got "${requirement.flowType}").`,
+    );
+  }
 }
