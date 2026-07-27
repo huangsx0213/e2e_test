@@ -452,11 +452,14 @@ export interface Requirement {
   dependencies?: string[];
   level: 'epic' | 'story' | 'ac';
   flowType?: 'atomic' | 'flow' | null;
-  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  status: 'DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'DEPRECATED';
-  tags: string[];
+  status: 'DRAFT' | 'APPROVED' | 'DEPRECATED';
+  // Functional category (story/epic). Drives AI generation strategy. Optional for backward compatibility.
+  type?: 'functional' | 'non-functional' | 'security' | 'data';
   position: number;
-  metadata: Record<string, unknown>;
+  // NEW – story-level only: marks this story as a business flow (BDD Feature)
+  isFlow?: boolean;
+  // NEW – AC-level only: functional requirements this scenario involves
+  relatedRequirementIds?: string[];
 }
 
 export interface BusinessFlowStep {
