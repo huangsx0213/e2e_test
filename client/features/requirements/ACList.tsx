@@ -124,11 +124,11 @@ export function ACList({ acs, parentStoryId, projectId, onSaved, parentStoryIsFl
               onDragOver={(e) => handleDragOver(e, ac.id)}
               onDrop={(e) => handleDrop(e, ac.id)}
               onDragEnd={handleDragEnd}
-              className={`relative ${dragId === ac.id ? "opacity-40" : ""} ${
+              className={`group relative ${dragId === ac.id ? "opacity-40" : ""} ${
                 overId === ac.id && dragId !== ac.id ? "ring-2 ring-blue-300 rounded-lg" : ""
               }`}
             >
-              <div className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 cursor-grab active:cursor-grabbing opacity-0 hover:opacity-100 transition-opacity z-10">
+              <div className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
                 <GripVertical size={14} />
               </div>
               <ACCard

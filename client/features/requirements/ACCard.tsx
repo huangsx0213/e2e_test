@@ -64,7 +64,13 @@ function RelatedRequirementsMultiSelect({
   };
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div
+      className="relative"
+      ref={containerRef}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setOpen(false);
+      }}
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -133,6 +139,7 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
     setStatus(ac.status);
     setRelatedRequirementIds(ac.relatedRequirementIds || []);
     setMode("preview");
+    setSaveStatus("idle");
   }, [ac.id, ac.description, ac.flowType, ac.status, ac.relatedRequirementIds]);
 
   const parsed = parseACMarkdown(description);

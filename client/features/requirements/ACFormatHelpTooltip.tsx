@@ -23,6 +23,9 @@ const FLOW_SCENARIO_CONTENT = (
       <div>Given / When / Then = one path (happy/alternate/exception).</div>
       <div>Each AC = one path.</div>
     </div>
+    <div className="text-slate-300 text-[10.5px] pt-1 border-t border-slate-600 mt-1.5">
+      A soft warning appears if no segments are detected.
+    </div>
   </div>
 );
 
