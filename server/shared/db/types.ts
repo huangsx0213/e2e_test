@@ -195,13 +195,13 @@ export type DbRequirementRow = {
   description: string;
   dependencies: string;
   level: string;
-  priority: string;
   status: string;
-  tags: string;
   position: number;
-  metadata: string;
   human_id: string | null;
   flow_type: string | null;
+  type: string | null;
+  is_flow: number;
+  related_requirement_ids: string;
 };
 
 export type DbBusinessFlowRow = {

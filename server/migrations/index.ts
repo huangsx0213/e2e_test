@@ -4,6 +4,10 @@ import { migration000InitialSchema } from './000_initial_schema.ts';
 import { migration001AddTestLevelToNlCases } from './001_add_test_level_to_nl_cases.ts';
 import { migration002RequirementsHumanIdAndFlowType } from './002_requirements_human_id_and_flow_type.ts';
 import { migration003RemoveFeatureLevel } from './003_remove_feature_level.ts';
+import { migration004RequirementsTestScenario } from './004_requirements_test_scenario.ts';
+import { migration005DropPriorityAndTagsAndInProgress } from './005_drop_priority_and_tags_and_in_progress.ts';
+import { migration006DropMetadataAndTestScenario } from './006_drop_metadata_and_test_scenario.ts';
+import { migration007AddIsFlowAndRelatedRequirements } from './007_add_is_flow_and_related_requirements.ts';
 import { seedDefaults } from '../seed.ts';
 import type { Migration } from './types.ts';
 
@@ -12,6 +16,10 @@ export const migrations: Migration[] = [
   migration001AddTestLevelToNlCases,
   migration002RequirementsHumanIdAndFlowType,
   migration003RemoveFeatureLevel,
+  migration004RequirementsTestScenario,
+  migration005DropPriorityAndTagsAndInProgress,
+  migration006DropMetadataAndTestScenario,
+  migration007AddIsFlowAndRelatedRequirements,
 ];
 
 function appliedMigrationIds(): Set<string> {
