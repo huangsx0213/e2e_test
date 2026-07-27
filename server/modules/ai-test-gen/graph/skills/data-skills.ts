@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { requirementRepo } from '../../../requirements/repository.ts';
-import { businessFlowRepo } from '../../../business-flows/repository.ts';
 import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
 import { Log } from '../../../../shared/services/logger.ts';
@@ -188,7 +187,7 @@ export const requirementGraphQuery: SkillDefinition = {
     }
 
     const allReqs = requirementRepo.listByProject(projectId);
-    const allFlows = businessFlowRepo.listByProject(projectId);
+    const allFlowStories = requirementRepo.listByProject(projectId).filter(r => r.level === 'story' && r.isFlow);
 
     // === Build graph for each seed ===
     const graphEntries: Record<string, unknown> = {};
@@ -223,9 +222,10 @@ export const requirementGraphQuery: SkillDefinition = {
       dependents.forEach((d) => collectedReqIds.add(d.id));
 
       // Associated business flows
-      const associatedFlows = allFlows.filter((f) =>
-        f.steps.some((step) => step.requirementIds.includes(seedId)),
-      );
+      const associatedFlows = allFlowStories.filter(flowStory => {
+        const flowACs = allReqs.filter(r => r.parentId === flowStory.id && r.level === 'ac');
+        return flowACs.some(ac => (ac.relatedRequirementIds ?? []).includes(seedId));
+      });
       associatedFlows.forEach((f) => collectedFlowIds.add(f.id));
 
       graphEntries[seedId] = {
@@ -237,11 +237,12 @@ export const requirementGraphQuery: SkillDefinition = {
         dependents: dependents.map((d) => ({ id: d.id, title: d.title, level: d.level })),
         associatedFlows: associatedFlows.map((f) => ({
           id: f.id,
-          name: f.name,
-          type: f.type,
-          matchedSteps: f.steps
-            .filter((s) => s.requirementIds.includes(seedId))
-            .map((s) => ({ sequence: s.sequence, actionSummary: s.actionSummary })),
+          name: f.title,
+          type: 'happy-path',
+          matchedSteps: allReqs
+            .filter(r => r.parentId === f.id && r.level === 'ac')
+            .filter(ac => (ac.relatedRequirementIds ?? []).includes(seedId))
+            .map(ac => ({ sequence: ac.position ?? 0, actionSummary: ac.title })),
         })),
       };
     }
@@ -250,15 +251,22 @@ export const requirementGraphQuery: SkillDefinition = {
     const selectedFlowEntries: Record<string, unknown> = {};
     for (const fid of selectedFlowIds) {
       if (collectedFlowIds.has(fid)) continue; // already discovered
-      const flow = businessFlowRepo.get(fid);
-      if (!flow) continue;
+      const flowStory = requirementRepo.get(fid);
+      if (!flowStory || !flowStory.isFlow) continue;
       collectedFlowIds.add(fid);
+      const flowACs = allReqs
+        .filter(r => r.parentId === fid && r.level === 'ac')
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
       selectedFlowEntries[fid] = {
-        id: flow.id,
-        name: flow.name,
-        type: flow.type,
+        id: flowStory.id,
+        name: flowStory.title,
+        type: 'happy-path',
         source: 'user-selected',
-        steps: flow.steps.map((s) => ({ sequence: s.sequence, actionSummary: s.actionSummary, requirementIds: s.requirementIds })),
+        steps: flowACs.map(ac => ({
+          sequence: ac.position ?? 0,
+          actionSummary: ac.title,
+          requirementIds: ac.relatedRequirementIds ?? [],
+        })),
       };
     }
 
@@ -266,9 +274,9 @@ export const requirementGraphQuery: SkillDefinition = {
     const introducedReqIds = [...collectedReqIds].filter((id) => !seedIds.includes(id));
     const introducedFlowIds = [...collectedFlowIds].filter((id) => !selectedFlowIds.includes(id));
     const introducedFlowsNames = introducedFlowIds
-      .map((id) => allFlows.find((f) => f.id === id))
+      .map((id) => allFlowStories.find((f) => f.id === id))
       .filter(Boolean)
-      .map((f) => f!.name);
+      .map((f) => f!.title);
 
     rgqLog.info(`Graph expanded: +${introducedReqIds.length} related, +${introducedFlowsNames.length} flows, ${selectedFlowIds.length} user-selected`);
     if (introducedReqIds.length > 0) {
@@ -318,18 +326,23 @@ export const flowDetailQuery: SkillDefinition = {
     }
 
     const queryOne = (flowId: string) => {
-      const flow = businessFlowRepo.get(flowId);
-      if (!flow) return { error: `Flow ${flowId} not found` };
+      const flowStory = requirementRepo.get(flowId);
+      if (!flowStory || !flowStory.isFlow) return { error: `Flow ${flowId} not found` };
 
-      const stepsWithDetails = flow.steps.map((step) => ({
-        sequence: step.sequence,
-        actionSummary: step.actionSummary,
-        requirements: step.requirementIds.map((reqId) => {
+      const flowACs = requirementRepo
+        .listByProject(flowStory.projectId)
+        .filter(r => r.parentId === flowId && r.level === 'ac')
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+      const stepsWithDetails = flowACs.map((ac) => ({
+        sequence: ac.position ?? 0,
+        actionSummary: ac.title,
+        requirements: (ac.relatedRequirementIds ?? []).map((reqId) => {
           const req = requirementRepo.get(reqId);
           if (!req) return { id: reqId, title: 'Unknown' };
           const acs = requirementRepo
             .listByProject(req.projectId)
-            .filter((r) => r.parentId === reqId && r.level === 'ac')
+            .filter(r => r.parentId === reqId && r.level === 'ac')
             .map((ac) => ac.title);
           return {
             id: req.id,
@@ -341,10 +354,10 @@ export const flowDetailQuery: SkillDefinition = {
       }));
 
       const result = {
-        id: flow.id,
-        name: flow.name,
-        type: flow.type,
-        description: flow.description,
+        id: flowStory.id,
+        name: flowStory.title,
+        type: 'happy-path',
+        description: flowStory.description,
         steps: stepsWithDetails,
       };
       flowDetailCache.set(flowId, result);

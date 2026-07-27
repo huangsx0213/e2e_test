@@ -6,10 +6,9 @@ import { ContextBuilder, type RunContext, type StartParams } from './context.ts'
 import { TestGenSession, type BatchInput, type BatchResult, type InterruptInfo } from './session.ts';
 import { requirementRepo } from '../requirements/repository.ts';
 import { buildRequirementIndex } from '../requirements/index-generator.ts';
-import { businessFlowRepo } from '../business-flows/repository.ts';
 import { groupRequirementsByEpic } from './helpers.ts';
 import { deduplicateTestCases } from './helpers.ts';
-import { buildBusinessFlowBlueprints } from './business-flow-blueprint.ts';
+import { buildBlueprintsFromFlowStories } from './business-flow-blueprint.ts';
 import { checkpointer } from './graph/checkpointer.ts';
 import { buildTestGenGraph } from './graph/graph.ts';
 import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
@@ -148,26 +147,27 @@ export class Orchestrator {
       pipelineRepo.updateModelInfo(runId, ctx.modelName, params.providerConfigName ?? null);
 
       const requirements = requirementRepo.listByProject(projectId);
-      const allProjectFlows = businessFlowRepo.listByProject(projectId);
+      const allFlowStories = requirementRepo.listByProject(projectId)
+        .filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
       const selectedFlowSet = new Set(params.flowIds || []);
-      const filteredFlows = selectedFlowSet.size > 0
-        ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
-        : allProjectFlows;
-      const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
-      log.info(`Business flows: ${allProjectFlows.length} total, ${filteredFlows.length} selected, ${businessFlows.length} blueprints`);
+      const filteredFlowStories = selectedFlowSet.size > 0
+        ? allFlowStories.filter(s => selectedFlowSet.has(s.id))
+        : allFlowStories;
+      const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
+      log.info(`Flow stories: ${allFlowStories.length} total, ${filteredFlowStories.length} selected, ${businessFlows.length} blueprints`);
 
       // ── 构建全局统计 + L1 Epic 索引（所有批次共享） ──
       const globalStats = {
         totalRequirements: requirements.length,
         totalEpics: epics.length,
-        totalFlows: allProjectFlows.length,
+        totalFlows: allFlowStories.length,
       };
       const globalEpicIndex: GlobalEpicEntry[] = epics.map(epic => {
         const childIds = rootGroups.get(epic.id) ?? [];
         const childReqSet = new Set(childIds);
         const childReqs = requirements.filter(r => childReqSet.has(r.id));
-        const epicFlowCount = allProjectFlows.filter(f =>
-          f.steps.some(s => s.requirementIds.some(rid => childReqSet.has(rid)))
+        const epicFlowCount = allFlowStories.filter(s =>
+          childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
         ).length;
         const statusBreakdown: Record<string, number> = {};
         for (const r of childReqs) {
@@ -586,18 +586,19 @@ export class Orchestrator {
     const selectedIds = new Set(requirementIds);
     const { epics, rootGroups, totalBatches } = groupRequirementsByEpic(allIndex, selectedIds);
     const requirements = requirementRepo.listByProject(projectId);
-    const allProjectFlows = businessFlowRepo.listByProject(projectId);
+    const allFlowStories = requirementRepo.listByProject(projectId)
+      .filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
     const selectedFlowSet = new Set(flowIds);
-    const filteredFlows = selectedFlowSet.size > 0
-      ? allProjectFlows.filter(f => selectedFlowSet.has(f.id))
-      : allProjectFlows;
-    const businessFlows = buildBusinessFlowBlueprints({ flows: filteredFlows });
+    const filteredFlowStories = selectedFlowSet.size > 0
+      ? allFlowStories.filter(s => selectedFlowSet.has(s.id))
+      : allFlowStories;
+    const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
 
     // Rebuild global context
     const globalStats = {
       totalRequirements: requirements.length,
       totalEpics: epics.length,
-      totalFlows: allProjectFlows.length,
+      totalFlows: allFlowStories.length,
     };
 
     // L1 索引层重建
@@ -605,8 +606,8 @@ export class Orchestrator {
       const childIds = rootGroups.get(epic.id) ?? [];
       const childReqSet = new Set(childIds);
       const childReqs = requirements.filter(r => childReqSet.has(r.id));
-      const epicFlowCount = allProjectFlows.filter(f =>
-        f.steps.some(s => s.requirementIds.some(rid => childReqSet.has(rid)))
+      const epicFlowCount = allFlowStories.filter(s =>
+        childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
       ).length;
       const statusBreakdown: Record<string, number> = {};
       for (const r of childReqs) {
