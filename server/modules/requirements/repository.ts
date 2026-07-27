@@ -3,7 +3,7 @@ import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type { DbRequirementRow } from '../../shared/db/types.ts';
 import { randomId } from '../../shared/utils/index.ts';
-import { validateRequirementDependencies } from './validation.ts';
+import { validateRequirementDependencies, validateRequirementHumanId, validateRequirementFlowType } from './validation.ts';
 import { regenerateIndexFile } from './index-generator.ts';
 
 class RequirementRepository extends BaseCrudRepository<Requirement> {
@@ -45,10 +45,12 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
     } as Requirement;
 
     validateRequirementDependencies(normalizedRecord, this.listByProject(normalizedRecord.projectId));
+    validateRequirementHumanId(normalizedRecord, this.listByProject(normalizedRecord.projectId));
+    validateRequirementFlowType(normalizedRecord);
 
     db.prepare(`
-      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, priority, status, tags, position, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, priority, status, tags, position, metadata, human_id, flow_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         parent_id = excluded.parent_id,
@@ -61,6 +63,8 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
         tags = excluded.tags,
         position = excluded.position,
         metadata = excluded.metadata,
+        human_id = excluded.human_id,
+        flow_type = excluded.flow_type,
         updated_at = datetime('now')
     `).run(
       id,
@@ -75,6 +79,8 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       JSON.stringify(record.tags ?? existing?.tags ?? []),
       record.position ?? existing?.position ?? 0,
       JSON.stringify(record.metadata ?? existing?.metadata ?? {}),
+      record.humanId !== undefined ? (record.humanId || null) : (existing?.humanId || null),
+      record.flowType !== undefined ? (record.flowType || null) : (existing?.flowType || null),
     );
 
     const result = this.get(id)!;
@@ -87,10 +93,12 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       id: row.id,
       projectId: row.project_id,
       parentId: row.parent_id || undefined,
+      humanId: row.human_id || null,
       title: row.title,
       description: row.description,
       dependencies: JSON.parse(row.dependencies || '[]'),
       level: (row.level || 'story') as Requirement['level'],
+      flowType: (row.flow_type as Requirement['flowType']) || null,
       priority: row.priority as Requirement['priority'],
       status: row.status as Requirement['status'],
       tags: JSON.parse(row.tags || '[]'),

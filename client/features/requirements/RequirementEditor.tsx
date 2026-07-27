@@ -17,7 +17,7 @@ interface Props {
 }
 
 const tagStyle = { bg: "bg-slate-100 border-slate-200", text: "text-slate-600", dot: "bg-slate-400" };
-const levelLabels: Record<Requirement['level'], string> = { epic: "Epic", feature: "Feature", story: "Story", ac: "AC" };
+const levelLabels: Record<Requirement['level'], string> = { epic: "Epic", story: "Story", ac: "AC" };
 
 export function RequirementEditor({
   item,
@@ -44,8 +44,7 @@ export function RequirementEditor({
   const tagInputRef = useRef<HTMLInputElement>(null);
 
   const levelProgression: Record<Requirement["level"], Requirement["level"]> = {
-    epic: "feature",
-    feature: "story",
+    epic: "story",
     story: "ac",
     ac: "ac",
   };

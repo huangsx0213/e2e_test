@@ -131,8 +131,7 @@ export function RequirementsPage({ currentProjectId }: Props) {
   const projectId = currentProjectId || "";
 
   const levelProgression: Record<Requirement["level"], Requirement["level"]> = {
-    epic: "feature",
-    feature: "story",
+    epic: "story",
     story: "ac",
     ac: "ac",
   };

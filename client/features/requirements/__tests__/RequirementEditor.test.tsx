@@ -141,7 +141,7 @@ describe('RequirementEditor', () => {
     hooks.useRequirements.mockReturnValue({
       data: [
         makeReq({ id: 'Epic1', title: 'Authentication', level: 'epic' }),
-        makeReq({ id: 'Feature1', title: 'Email Login', level: 'feature', parentId: 'Epic1' }),
+        makeReq({ id: 'Feature1', title: 'Email Login', level: 'story', parentId: 'Epic1' }),
         makeReq({ id: 'ReqA', title: 'Current', parentId: 'Feature1' }),
         makeReq({ id: 'ReqB', title: 'Auth prerequisite', parentId: 'Feature1' }),
         makeReq({ id: 'Ac1', title: 'Acceptance detail', level: 'ac' }),
@@ -181,11 +181,11 @@ describe('RequirementEditor', () => {
     hooks.useRequirements.mockReturnValue({
       data: [
         makeReq({ id: 'Epic1', title: 'Authentication', level: 'epic', position: 0 }),
-        makeReq({ id: 'Feature1', title: 'Email Login', level: 'feature', parentId: 'Epic1', position: 0 }),
+        makeReq({ id: 'Feature1', title: 'Email Login', level: 'story', parentId: 'Epic1', position: 0 }),
         makeReq({ id: 'Story2', title: 'Password reset', level: 'story', parentId: 'Feature1', position: 1 }),
         makeReq({ id: 'Story1', title: 'Sign in', level: 'story', parentId: 'Feature1', position: 0 }),
         makeReq({ id: 'Epic2', title: 'Checkout', level: 'epic', position: 1 }),
-        makeReq({ id: 'Feature2', title: 'Payment', level: 'feature', parentId: 'Epic2', position: 0 }),
+        makeReq({ id: 'Feature2', title: 'Payment', level: 'story', parentId: 'Epic2', position: 0 }),
         makeReq({ id: 'Story3', title: 'Pay order', level: 'story', parentId: 'Feature2', position: 0 }),
       ],
       isLoading: false,
@@ -215,7 +215,7 @@ describe('RequirementEditor', () => {
   it('hides dependencies for non-story requirements', () => {
     hooks.useRequirements.mockReturnValue({
       data: [
-        makeReq({ id: 'Feature1', title: 'Feature A', level: 'feature' }),
+        makeReq({ id: 'Feature1', title: 'Feature A', level: 'epic' }),
         makeReq({ id: 'Story1', title: 'Story A', level: 'story' }),
       ],
       isLoading: false,
@@ -225,7 +225,7 @@ describe('RequirementEditor', () => {
     render(
       React.createElement(Wrapper, null,
         React.createElement(RequirementEditor, {
-          item: makeReq({ id: 'Feature1', title: 'Feature A', level: 'feature' }),
+          item: makeReq({ id: 'Feature1', title: 'Feature A', level: 'epic' }),
           projectId: 'proj-1',
           onSaved,
         })

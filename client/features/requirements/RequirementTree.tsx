@@ -47,7 +47,6 @@ const statusColors: Record<Requirement["status"], string> = {
 
 const levelConfig: Record<Requirement["level"], { label: string }> = {
   epic: { label: "E" },
-  feature: { label: "F" },
   story: { label: "S" },
   ac: { label: "AC" },
 };

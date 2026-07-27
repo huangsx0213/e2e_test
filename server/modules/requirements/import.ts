@@ -11,7 +11,7 @@ interface ImportResult {
 
 const headingToLevel: Record<number, Requirement['level']> = {
   0: 'epic',
-  1: 'feature',
+  1: 'story',
   2: 'story',
   3: 'ac',
 };

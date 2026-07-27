@@ -200,6 +200,8 @@ export type DbRequirementRow = {
   tags: string;
   position: number;
   metadata: string;
+  human_id: string | null;
+  flow_type: string | null;
 };
 
 export type DbBusinessFlowRow = {

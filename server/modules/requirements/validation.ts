@@ -55,3 +55,15 @@ export function validateRequirementDependencies(requirement: Requirement, existi
     visit(candidate.id);
   }
 }
+
+// Stubs — real implementations added in Task 6
+export function validateRequirementHumanId(
+  _requirement: Requirement,
+  _existingRequirements: Requirement[],
+): void {
+  // Implemented in Task 6
+}
+
+export function validateRequirementFlowType(_requirement: Requirement): void {
+  // Implemented in Task 6
+}

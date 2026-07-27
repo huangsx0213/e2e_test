@@ -56,7 +56,7 @@ describe('validateRequirementDependencies', () => {
 
   it('rejects dependencies on non-story source requirements', () => {
     expect(() => validateRequirementDependencies(
-      makeRequirement({ id: 'feature-1', projectId: 'proj-1', title: 'Feature A', level: 'feature', dependencies: ['story-1'] }),
+      makeRequirement({ id: 'feature-1', projectId: 'proj-1', title: 'Feature A', level: 'epic', dependencies: ['story-1'] }),
       [makeRequirement({ id: 'story-1', projectId: 'proj-1', title: 'Story A', level: 'story' })],
     )).toThrow('Only story requirements can declare dependencies.');
   });

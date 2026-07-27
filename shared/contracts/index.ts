@@ -446,10 +446,12 @@ export interface Requirement {
   id: string;
   projectId: string;
   parentId?: string | null;
+  humanId?: string | null;
   title: string;
   description: string;
   dependencies?: string[];
-  level: 'epic' | 'feature' | 'story' | 'ac';
+  level: 'epic' | 'story' | 'ac';
+  flowType?: 'atomic' | 'flow' | null;
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
   status: 'DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'DEPRECATED';
   tags: string[];
@@ -495,7 +497,7 @@ export const PipelineBusinessFlowBlueprintStepSchema = z.object({
   requirementId: z.string(),
   requirementIds: z.array(z.string()),
   requirementTitle: z.string(),
-  requirementLevel: z.enum(['epic', 'feature', 'story', 'ac']),
+  requirementLevel: z.enum(['epic', 'story', 'ac']),
   actionSummary: z.string(),
   acceptanceCriteria: z.array(z.string()),
 });
@@ -517,7 +519,7 @@ export interface FlowStepRef {
 export interface TestCondition {
   id: string;
   requirementId: string;
-  requirementLevel: 'epic' | 'feature' | 'story' | 'ac';
+  requirementLevel: 'epic' | 'story' | 'ac';
   condition: string;
   // Type discriminator (replaces the legacy "testLevel:*" string tag in coverageDimensions).
   // - "component": pure atomic behavior derived from a requirement AC (single-field validation,

@@ -58,7 +58,7 @@ describe('validateBusinessFlowForApproval', () => {
   it('rejects non-story requirement references', () => {
     expect(() => validateBusinessFlowForApproval(
       makeFlow(),
-      [makeRequirement({ id: 'req-1', title: 'Feature', level: 'feature' })],
+      [makeRequirement({ id: 'req-1', title: 'Feature', level: 'epic' })],
     )).toThrow('Business flow steps must reference story requirements only.');
   });
 });

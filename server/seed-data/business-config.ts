@@ -1449,7 +1449,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Login Page UI & UX",
       "description": "The login page provides a user-friendly authentication interface with form validation and password visibility toggle.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1524,7 +1524,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Login Authentication API",
       "description": "The authentication API validates credentials and returns a token for session management.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
@@ -1541,7 +1541,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Dashboard Statistics API",
       "description": "The dashboard fetches real-time statistics from the server.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1639,7 +1639,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Advanced User Form",
       "description": "A comprehensive form with rich controls including cascading department selector, permissions, drag-and-drop upload, and more.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -1722,7 +1722,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Edit User",
       "description": "Edit existing user details through the advanced form pre-filled with current data.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1739,7 +1739,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Reports Data API",
       "description": "API endpoint serving aggregated report data for charts and metrics.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -1771,7 +1771,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Delete User",
       "description": "Delete individual users with confirmation.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1788,7 +1788,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Batch Operations",
       "description": "Perform bulk actions on multiple selected users simultaneously.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1805,7 +1805,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "User Action Utilities",
       "description": "Additional user actions including view details, export, password reset, and account suspension.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -1821,7 +1821,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "User Management API",
       "description": "RESTful API endpoints for all user CRUD operations, batch operations, and utility actions.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
@@ -1839,7 +1839,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Reports Stat Cards",
       "description": "Summary metric cards displayed at the top of the reports page.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -1856,7 +1856,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Timeout Simulation",
       "description": "Simulates a slow API response for testing timeout handling.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -1873,7 +1873,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Dashboard Home Page",
       "description": "The dashboard landing page displays key metrics and navigation to other sections.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -1890,7 +1890,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "User List View",
       "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "CRITICAL",
       "status": "APPROVED",
       "tags": [
@@ -2399,7 +2399,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Role Distribution Chart",
       "description": "A donut pie chart visualizing users by their assigned role.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -2416,7 +2416,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Error Simulation",
       "description": "Simulates server errors for testing error handling logic.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -2433,7 +2433,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Quick Add User",
       "description": "A simple modal form for quickly creating a new user with basic fields.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "HIGH",
       "status": "APPROVED",
       "tags": [
@@ -2719,7 +2719,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "Department Distribution Chart",
       "description": "A bar chart displaying user count per department.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "MEDIUM",
       "status": "APPROVED",
       "tags": [
@@ -2736,7 +2736,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "title": "XML Content Type Response",
       "description": "Returns XML formatted response for testing content type handling.",
       "dependencies": [],
-      "level": "feature",
+      "level": "story",
       "priority": "LOW",
       "status": "APPROVED",
       "tags": [

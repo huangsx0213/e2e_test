@@ -72,7 +72,7 @@ function renderWithQuery(ui: React.ReactElement) {
 
 function buildTreeSample(): Requirement[] {
   const epic = makeRequirement({ id: 'epic-1', title: 'User Management', level: 'epic' as const, parentId: null });
-  const feature = makeRequirement({ id: 'feat-1', title: 'User Registration', level: 'feature' as const, parentId: epic.id });
+  const feature = makeRequirement({ id: 'feat-1', title: 'User Registration', level: 'story' as const, parentId: epic.id });
   const story1 = makeRequirement({ id: 'story-1', title: 'Email Registration', level: 'story' as const, parentId: feature.id });
   const story2 = makeRequirement({ id: 'story-2', title: 'Phone Registration', level: 'story' as const, parentId: feature.id });
   return [epic, feature, story1, story2];
