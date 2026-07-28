@@ -5,8 +5,8 @@ import { requirementRepo } from './repository.ts';
 const AUT_PROJECT_ID = 'p-aut-demo';
 
 const requirements: Requirement[] = [
-  // ══════════════════════════════════════�?  // Epic 1: Authentication System
-  // ══════════════════════════════════════�?  {
+  // Epic 1: Authentication System
+  {
     id: 'req-aut-auth',
     projectId: AUT_PROJECT_ID,
     parentId: null,
@@ -167,8 +167,8 @@ const requirements: Requirement[] = [
     position: 1,
   },
 
-  // ══════════════════════════════════════�?  // Epic 2: Dashboard
-  // ══════════════════════════════════════�?  {
+  // Epic 2: Dashboard
+  {
     id: 'req-aut-dashboard',
     projectId: AUT_PROJECT_ID,
     parentId: null,
@@ -269,8 +269,8 @@ const requirements: Requirement[] = [
     position: 0,
   },
 
-  // ══════════════════════════════════════�?  // Epic 3: User Management
-  // ══════════════════════════════════════�?  {
+  // Epic 3: User Management
+  {
     id: 'req-aut-user-mgmt',
     projectId: AUT_PROJECT_ID,
     parentId: null,
@@ -811,8 +811,8 @@ const requirements: Requirement[] = [
     position: 1,
   },
 
-  // ══════════════════════════════════════�?  // Epic 4: Reports & Analytics
-  // ══════════════════════════════════════�?  {
+  // Epic 4: Reports & Analytics
+  {
     id: 'req-aut-reports',
     projectId: AUT_PROJECT_ID,
     parentId: null,
@@ -943,8 +943,8 @@ const requirements: Requirement[] = [
     position: 0,
   },
 
-  // ══════════════════════════════════════�?  // Epic 5: Fault Injection & Testing Utilities
-  // ══════════════════════════════════════�?  {
+  // Epic 5: Fault Injection & Testing Utilities
+  {
     id: 'req-aut-fault',
     projectId: AUT_PROJECT_ID,
     parentId: null,
