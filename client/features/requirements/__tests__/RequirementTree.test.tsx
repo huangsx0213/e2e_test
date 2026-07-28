@@ -57,7 +57,7 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', parentId: 'filter-id' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', parentId: 'filter-id', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       expect(screen.queryByText('Hidden Root')).not.toBeInTheDocument();

@@ -58,9 +58,7 @@ export const requirementDetailQuery: SkillDefinition = {
         title: req.title,
         description: req.description,
         level: req.level,
-        priority: req.priority,
         status: req.status,
-        tags: req.tags,
         dependencies: req.dependencies,
         parent: parent
           ? { id: parent.id, title: parent.title, level: parent.level }
@@ -69,7 +67,6 @@ export const requirementDetailQuery: SkillDefinition = {
           id: c.id,
           title: c.title,
           level: c.level,
-          priority: c.priority,
         })),
       };
       reqDetailCache.set(id, result);
@@ -148,7 +145,6 @@ export const relatedRequirementsQuery: SkillDefinition = {
         id: s.id,
         title: s.title,
         level: s.level,
-        priority: s.priority,
       })),
       dependencies,
       dependents,
@@ -419,9 +415,7 @@ export const crossEpicImpactQuery: SkillDefinition = {
       title: req.title,
       description: req.description,
       level: req.level,
-      priority: req.priority,
       status: req.status,
-      tags: req.tags,
       dependencies: req.dependencies ?? [],
       parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
     };

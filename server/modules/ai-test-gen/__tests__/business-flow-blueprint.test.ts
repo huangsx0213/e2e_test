@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // Hoisted mock so the module-under-test picks it up at import time
 const mockRequirementRepo = vi.hoisted(() => ({
   listByProject: vi.fn(() => [] as any[]),
-  get: vi.fn(() => undefined),
+  get: vi.fn(),
 }));
 
 vi.mock('../../requirements/repository.ts', () => ({
