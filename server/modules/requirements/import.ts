@@ -54,14 +54,8 @@ export function parseMarkdownRequirements(markdown: string, projectId: string): 
         warnings.push(`"${title}" (level ${resolvedLevel}) has no parent — imported as a root node.`);
       }
 
-      let priority: Requirement['priority'] = 'MEDIUM';
-      const priorityMatch = title.match(/\[(CRITICAL|HIGH|MEDIUM|LOW)\]/);
-      if (priorityMatch) {
-        priority = priorityMatch[1] as Requirement['priority'];
-      }
-
       const id = randomId('req');
-      currentReq = { id, projectId, parentId, title, priority, level: resolvedLevel };
+      currentReq = { id, projectId, parentId, title, level: resolvedLevel };
       levelStack.push({ level, id });
     } else if (currentReq && line.trim()) {
       descriptionLines.push(line.trim());
@@ -103,9 +97,6 @@ export function parseCsvRequirements(csvText: string, projectId: string): Import
       }
     }
 
-    const tags = record.tags
-      ? record.tags.split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean)
-      : [];
     requirements.push(normalizeRequirement({
       id,
       projectId,
@@ -113,8 +104,6 @@ export function parseCsvRequirements(csvText: string, projectId: string): Import
       title: record.title,
       description: record.description || '',
       level: (record.level || 'story') as Requirement['level'],
-      priority: (record.priority || 'MEDIUM') as Requirement['priority'],
-      tags,
     }));
   }
 

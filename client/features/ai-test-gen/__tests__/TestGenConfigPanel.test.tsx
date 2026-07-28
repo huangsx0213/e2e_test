@@ -4,7 +4,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { TestGenConfigPanel, type TestGenStartConfig } from '../TestGenConfigPanel';
-import type { Requirement, BusinessFlow } from '../../../../shared/contracts/index';
+import type { Requirement } from '../../../../shared/contracts/index';
 
 vi.mock('@/shared/ui/HelpTooltip', () => ({
   HelpTooltip: ({ content }: { content: string }) => React.createElement('span', { 'data-testid': 'help-tooltip' }, content),
@@ -43,24 +43,23 @@ function makeRequirement(overrides: Partial<Requirement> = {}): Requirement {
     title: 'Test Requirement',
     description: 'A test requirement',
     level: 'story',
-    priority: 'MEDIUM',
     status: 'DRAFT',
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   };
 }
 
-function makeBusinessFlow(overrides: Partial<BusinessFlow> = {}): BusinessFlow {
+function makeFlowStory(overrides: Partial<Requirement> = {}): Requirement {
   return {
     id: `flow-${Math.random().toString(36).slice(2, 8)}`,
     projectId: 'proj-1',
-    name: 'Test Flow',
+    parentId: null,
+    title: 'Test Flow',
     description: 'A test flow',
-    type: 'happy-path',
+    level: 'story',
     status: 'APPROVED',
-    steps: [],
+    position: 0,
+    isFlow: true,
     ...overrides,
   };
 }
@@ -84,7 +83,7 @@ describe('TestGenConfigPanel', () => {
   const defaultProps = {
     projectId: 'proj-1',
     requirements: [],
-    businessFlows: [],
+    flowStories: [],
     onStart: vi.fn() as (config: TestGenStartConfig) => void,
     disabled: false,
   };
@@ -110,20 +109,20 @@ describe('TestGenConfigPanel', () => {
 
   it('TC-1.4: Business Flow only shows approved by default', () => {
     const flows = [
-      makeBusinessFlow({ id: 'f1', name: 'Approved Flow', status: 'APPROVED' }),
-      makeBusinessFlow({ id: 'f2', name: 'Draft Flow', status: 'DRAFT' }),
+      makeFlowStory({ id: 'f1', title: 'Approved Flow', status: 'APPROVED' }),
+      makeFlowStory({ id: 'f2', title: 'Draft Flow', status: 'DRAFT' }),
     ];
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, businessFlows: flows }));
+    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, flowStories: flows }));
     expect(screen.getByText('Approved Flow')).toBeTruthy();
     expect(screen.queryByText('Draft Flow')).toBeNull();
   });
 
   it('TC-1.5: toggle show approved only shows all flows', () => {
     const flows = [
-      makeBusinessFlow({ id: 'f1', name: 'Approved Flow', status: 'APPROVED' }),
-      makeBusinessFlow({ id: 'f2', name: 'Draft Flow', status: 'DRAFT' }),
+      makeFlowStory({ id: 'f1', title: 'Approved Flow', status: 'APPROVED' }),
+      makeFlowStory({ id: 'f2', title: 'Draft Flow', status: 'DRAFT' }),
     ];
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, businessFlows: flows }));
+    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, flowStories: flows }));
 
     const checkbox = screen.getByLabelText('Approved only');
     fireEvent.click(checkbox);

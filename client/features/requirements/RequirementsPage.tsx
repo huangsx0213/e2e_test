@@ -8,13 +8,13 @@ import { useRequirements, useRequirementMutations } from "../../shared/hooks/use
 import { queryKeys } from "@/shared/hooks/queryKeys";
 import type { Requirement } from "../../../shared/contracts/index";
 import {
-  Plus,
   Upload,
   ListTree,
   RefreshCw,
   Search,
   ClipboardPaste,
   FileText,
+  ChevronsUpDown,
 } from "lucide-react";
 import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 
@@ -40,6 +40,7 @@ export function RequirementsPage({ currentProjectId }: Props) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [leftWidth, setLeftWidth] = useState(320);
   const [clipboard, setClipboard] = useState<Requirement | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const isDragging = useRef(false);
   const minWidth = 80;
   const maxWidth = 600;
@@ -79,20 +80,18 @@ export function RequirementsPage({ currentProjectId }: Props) {
   const siblings = (parentId: string | null) =>
     items.filter((r) => (r.parentId || null) === parentId).sort((a, b) => a.position - b.position);
 
-  const moveRequirement = async (id: string, direction: -1 | 1) => {
-    const req = items.find((r) => r.id === id);
-    if (!req) return;
-    const sibs = siblings(req.parentId ?? null);
-    const index = sibs.findIndex((s) => s.id === id);
-    if (index === -1) return;
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= sibs.length) return;
-    const target = sibs[newIndex];
-    const current = sibs[index];
-    await Promise.all([
-      _update(current.id, { position: target.position }),
-      _update(target.id, { position: current.position }),
-    ]);
+  const reorderRequirement = async (parentId: string | null, fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const sibs = siblings(parentId);
+    const fromIdx = sibs.findIndex((s) => s.id === fromId);
+    const toIdx = sibs.findIndex((s) => s.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    // Remove from old position, insert at new position
+    const moved = sibs.splice(fromIdx, 1)[0];
+    sibs.splice(toIdx, 0, moved);
+    // Reassign positions in batches to minimize writes
+    const updates = sibs.map((s, i) => _update(s.id, { position: i }));
+    await Promise.all(updates);
     refresh();
   };
 
@@ -144,11 +143,23 @@ export function RequirementsPage({ currentProjectId }: Props) {
     setSuggestedLevel(null);
   };
 
-  const handleAddChild = (parentId: string) => {
-    const parent = items.find((r) => r.id === parentId);
-    setSelectedId(null);
-    setNewChildParentId(parentId);
-    setSuggestedLevel(parent ? levelProgression[parent.level] : "story");
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllEpics = () => {
+    const epicIds = items.filter((r) => r.level === "epic").map((r) => r.id);
+    const allExpanded = epicIds.every((id) => expandedIds.has(id));
+    if (allExpanded) {
+      setExpandedIds(new Set());
+    } else {
+      setExpandedIds(new Set(epicIds));
+    }
   };
 
   if (loading) {
@@ -193,11 +204,11 @@ export function RequirementsPage({ currentProjectId }: Props) {
                 />
               </button>
               <button
-                onClick={handleNewRoot}
+                onClick={toggleAllEpics}
                 className="text-slate-400 hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 transition-colors"
-                title="Add Root Requirement"
+                title={items.filter((r) => r.level === "epic").every((r) => expandedIds.has(r.id)) ? "Collapse All Epics" : "Expand All Epics"}
               >
-                <Plus size={14} />
+                <ChevronsUpDown size={14} />
               </button>
               <button
                 onClick={() => setShowImport(true)}
@@ -258,13 +269,14 @@ export function RequirementsPage({ currentProjectId }: Props) {
               setNewChildParentId(null);
               setSuggestedLevel(null);
             }}
-            onAddChild={handleAddChild}
             projectId={projectId}
             onRefresh={refresh}
-            onMove={moveRequirement}
+            onReorder={reorderRequirement}
             onCopy={copyRequirement}
             onPaste={pasteRequirement}
             clipboardExists={!!clipboard}
+            expandedIds={expandedIds}
+            onToggleExpand={toggleExpand}
           />
         </div>
 

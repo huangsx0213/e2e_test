@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { StoryDetailView } from "../StoryDetailView";
@@ -22,11 +22,9 @@ function makeStory(overrides: Partial<Requirement> & { id: string }): Requiremen
     title: "Story Title",
     description: "As a user\nI want to do x\nSo that y",
     level: "story",
-    priority: "MEDIUM",
     status: "DRAFT",
-    tags: [],
+    type: "functional",
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }
@@ -39,11 +37,8 @@ function makeAC(overrides: Partial<Requirement> & { id: string }): Requirement {
     description: "Given x\nWhen y\nThen z",
     level: "ac",
     flowType: "atomic",
-    priority: "MEDIUM",
     status: "DRAFT",
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }
@@ -80,7 +75,7 @@ describe("StoryDetailView", () => {
     expect(screen.getByText("AUTH-007")).toBeInTheDocument();
   });
 
-  it("renders AC summary strip with dual chip", () => {
+  it("renders AC summary chip with approved/total count", () => {
     const story = makeStory({ id: "story-1" });
     const acs = [
       makeAC({ id: "ac-1", status: "APPROVED" }),
@@ -96,8 +91,72 @@ describe("StoryDetailView", () => {
         })
       )
     );
-    expect(screen.getByText("2 ACs")).toBeInTheDocument();
-    expect(screen.getByText("1 approved")).toBeInTheDocument();
+    expect(screen.getByTestId("ac-progress")).toHaveTextContent("1/2 approved");
+  });
+
+  it("renders type select always visible on the same row as status", () => {
+    const story = makeStory({ id: "story-1" });
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(StoryDetailView, {
+          story,
+          acs: [],
+          projectId: "p1",
+          onSaved: vi.fn(),
+        })
+      )
+    );
+    const typeSelect = screen.getByDisplayValue("Functional") as HTMLSelectElement;
+    expect(typeSelect).toBeInTheDocument();
+    expect(typeSelect.value).toBe("functional");
+  });
+
+  it("renders type select with non-default type", () => {
+    const story = makeStory({ id: "story-1", type: "security" });
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(StoryDetailView, {
+          story,
+          acs: [],
+          projectId: "p1",
+          onSaved: vi.fn(),
+        })
+      )
+    );
+    const typeSelect = screen.getByDisplayValue("Security") as HTMLSelectElement;
+    expect(typeSelect).toBeInTheDocument();
+    expect(typeSelect.value).toBe("security");
+  });
+
+  it("renders dependencies select", () => {
+    const story = makeStory({ id: "story-1", dependencies: ["AUTH-001"] });
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(StoryDetailView, {
+          story,
+          acs: [],
+          projectId: "p1",
+          onSaved: vi.fn(),
+        })
+      )
+    );
+    // Dependencies dropdown should be visible
+    expect(screen.getByRole("button", { name: /1 selected/i })).toBeInTheDocument();
+  });
+
+  it("does not render priority selector (removed field)", () => {
+    const story = makeStory({ id: "story-1" });
+    render(
+      React.createElement(Wrapper, null,
+        React.createElement(StoryDetailView, {
+          story,
+          acs: [],
+          projectId: "p1",
+          onSaved: vi.fn(),
+        })
+      )
+    );
+    expect(screen.queryByText(/^Priority$/i)).not.toBeInTheDocument();
   });
 
   it("renders story description markdown", () => {

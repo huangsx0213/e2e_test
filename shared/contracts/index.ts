@@ -462,22 +462,6 @@ export interface Requirement {
   relatedRequirementIds?: string[];
 }
 
-export interface BusinessFlowStep {
-  sequence: number;
-  requirementIds: string[];
-  actionSummary: string;
-}
-
-export interface BusinessFlow {
-  id: string;
-  projectId: string;
-  name: string;
-  description: string;
-  type: 'happy-path' | 'alternate' | 'exception';
-  status: 'DRAFT' | 'APPROVED';
-  steps: BusinessFlowStep[];
-}
-
 export interface PipelineBusinessFlowBlueprintStep {
   sequence: number;
   requirementId: string;           // primary requirement（用于展示/排序）
@@ -491,7 +475,7 @@ export interface PipelineBusinessFlowBlueprintStep {
 export interface PipelineBusinessFlowBlueprint {
   id: string;
   name: string;
-  type: BusinessFlow['type'];
+  type: 'happy-path' | 'alternate' | 'exception';
   steps: PipelineBusinessFlowBlueprintStep[];
 }
 

@@ -39,7 +39,6 @@ function AppShell() {
     DYNAMIC_VARIABLES: [],
     AGENTS: queryKeys.agents,
     REQUIREMENTS: queryKeys.requirements,
-BUSINESS_FLOWS: queryKeys.businessFlows,
     NL_CASES: ['nl-cases'],
     AI_TEST_GEN: [],
     AI_DRIVEN_RECORDER: [],

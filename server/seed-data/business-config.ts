@@ -1436,9 +1436,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "",
       "dependencies": [],
       "level": "epic",
-      "priority": "MEDIUM",
       "status": "DRAFT",
-      "tags": [],
       "position": 0,
       "metadata": {}
     },
@@ -1450,12 +1448,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The login page provides a user-friendly authentication interface with form validation and password visibility toggle.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1467,12 +1460,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The login form must render correctly with all required fields and controls.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1484,9 +1472,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The login form must render username input with user icon, password input with lock icon, and submit button.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "DRAFT",
-      "tags": [],
       "position": 0,
       "metadata": {}
     },
@@ -1498,9 +1484,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "When login request is in progress, the submit button must be disabled and display \"Signing in...\" text.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "DRAFT",
-      "tags": [],
       "position": 0,
       "metadata": {}
     },
@@ -1511,9 +1495,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "",
       "dependencies": [],
       "level": "epic",
-      "priority": "MEDIUM",
       "status": "DRAFT",
-      "tags": [],
       "position": 1,
       "metadata": {}
     },
@@ -1525,12 +1507,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The authentication API validates credentials and returns a token for session management.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1542,12 +1519,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard fetches real-time statistics from the server.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1559,12 +1531,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The login form must validate input and provide good user experience with password visibility and utility controls.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1576,12 +1543,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Invalid credentials and network failures must be handled gracefully with appropriate error messages.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1593,12 +1555,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The password field must have a toggle button to show/hide password text using Eye/EyeOff icons.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1610,12 +1567,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "If the login request fails due to network error, display \"Network error occurred\" message.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -1626,9 +1578,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "",
       "dependencies": [],
       "level": "epic",
-      "priority": "MEDIUM",
       "status": "DRAFT",
-      "tags": [],
       "position": 2,
       "metadata": {}
     },
@@ -1640,12 +1590,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A comprehensive form with rich controls including cascading department selector, permissions, drag-and-drop upload, and more.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -1657,12 +1602,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The form must configure security-related settings with various control types.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -1674,12 +1614,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The form must include a \"Remember me\" checkbox and a \"Forgot password?\" link below the password field.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -1691,12 +1626,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A drag-and-drop zone must accept image files for avatar upload, showing the filename after selection.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -1707,11 +1637,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Visual data reports including charts for user role distribution and department distribution.",
       "dependencies": [],
       "level": "epic",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports"
-      ],
       "position": 3,
       "metadata": {}
     },
@@ -1723,12 +1649,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Edit existing user details through the advanced form pre-filled with current data.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 3,
       "metadata": {}
     },
@@ -1740,12 +1661,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "API endpoint serving aggregated report data for charts and metrics.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "api"
-      ],
       "position": 3,
       "metadata": {}
     },
@@ -1756,11 +1672,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Endpoints designed for testing error handling, timeouts, and content type variations in automated tests.",
       "dependencies": [],
       "level": "epic",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection"
-      ],
       "position": 4,
       "metadata": {}
     },
@@ -1772,12 +1684,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Delete individual users with confirmation.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 4,
       "metadata": {}
     },
@@ -1789,12 +1696,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Perform bulk actions on multiple selected users simultaneously.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 5,
       "metadata": {}
     },
@@ -1806,11 +1708,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Additional user actions including view details, export, password reset, and account suspension.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
       "position": 6,
       "metadata": {}
     },
@@ -1822,13 +1720,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "RESTful API endpoints for all user CRUD operations, batch operations, and utility actions.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api",
-        "crud"
-      ],
       "position": 7,
       "metadata": {}
     },
@@ -1840,12 +1732,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Summary metric cards displayed at the top of the reports page.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1857,12 +1744,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Simulates a slow API response for testing timeout handling.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1874,12 +1756,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard landing page displays key metrics and navigation to other sections.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1891,12 +1768,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The user list displays all users in a table with sorting, filtering, pagination, and loading states.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1908,12 +1780,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Valid credentials must be accepted and result in a successful login with token.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1925,12 +1792,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard API must return aggregated statistics from the user database.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1942,12 +1804,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The advanced form must capture basic personal information.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1959,12 +1816,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Editing a user must pre-load existing data into the form.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1976,12 +1828,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Deleting a user must require confirmation before proceeding.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -1993,12 +1840,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Users must be selectable individually or in bulk via checkboxes.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2010,11 +1852,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Users can view detailed profiles and export data.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2026,12 +1864,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The API must support querying users with filtering, sorting, and pagination.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2043,12 +1876,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The reports page must show key metrics as summary cards.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2060,12 +1888,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The reports API must aggregate user data into chart-friendly formats.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2077,12 +1900,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A configurable delay endpoint for testing client timeout behavior.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2094,12 +1912,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard must greet the user and provide quick links to major sections.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2111,12 +1924,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The user table must display data with sortable columns for easy browsing.",
       "dependencies": [],
       "level": "story",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2128,12 +1936,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "When username or password is empty on submit, display error message \"Please fill in all required fields.\"",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2145,12 +1948,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "POST /aut-api/auth/login with username \"admin\" and password \"admin123\" must return success with a JWT token.",
       "dependencies": [],
       "level": "ac",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2162,12 +1960,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "POST /aut-api/auth/login with wrong credentials must return status 401 with error message \"Invalid credentials\".",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2179,12 +1972,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The API must return totalUsers count, activeUsers count, and recentRegistrations list from the user database.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2196,12 +1984,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The Personal Details section must include Full Name, Email Address, and Biography textarea fields.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2213,12 +1996,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The Security section must include permission checkboxes (view_reports, manage_users, billing_access, api_access) and a 1-5 range slider for access level.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2230,12 +2008,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Clicking the edit button must open the advanced form with all fields populated from the selected user record.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2247,12 +2020,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Clicking the delete action button must show a browser confirm dialog before performing the delete request.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2264,12 +2032,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A header checkbox must select/deselect all visible users. Individual row checkboxes allow selective multi-select.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2281,12 +2044,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Clicking the eye icon must open a detailed read-only view of user profile with all fields displayed.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2298,12 +2056,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must accept query params: name, role, status, search, page, limit, sortBy, sortOrder and return paginated results with total count.",
       "dependencies": [],
       "level": "ac",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2315,12 +2068,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Four metric cards must show: total user count, active account count, admin count, and engagement rate percentage.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2332,12 +2080,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must return totalUsers, activeUsers, roleDistribution array, and departmentDistribution array computed from the user database.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2349,12 +2092,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must delay the response by 5000ms before returning a success JSON response.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2366,12 +2104,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard must display \"Welcome back, Admin!\" heading with a descriptive subtitle.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2383,12 +2116,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The table must show columns: Name, Email, Role, Status (with colored badge), Created At, Last Modified, and Actions.",
       "dependencies": [],
       "level": "ac",
-      "priority": "CRITICAL",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2400,12 +2128,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A donut pie chart visualizing users by their assigned role.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2417,12 +2140,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Simulates server errors for testing error handling logic.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2434,12 +2152,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A simple modal form for quickly creating a new user with basic fields.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2451,12 +2164,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The form must capture job-related details with rich controls.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2468,12 +2176,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Batch operations must support status updates and deletion.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2485,11 +2188,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Administrative actions for user account management.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2501,12 +2200,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The API must support creating and updating user records.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2518,12 +2212,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard must display real-time system metrics in stat cards.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2535,12 +2224,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Users must be filterable by text search and dropdown selections.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2552,12 +2236,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "On successful login, the token must be stored as \"aut_token\" in localStorage and navigate to /aut.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "authentication",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2569,12 +2248,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The Job Details section must include start date and end date native date inputs with a \"to\" separator.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2586,12 +2260,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A toggle switch must allow enabling/disabling two-factor authentication with a styled sliding control.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2603,12 +2272,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "When users are selected, a batch action bar must appear showing the count badge, Activate/Deactivate buttons, and Delete Selected button.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2620,12 +2284,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "\"Delete Selected\" must show a confirmation dialog with the count of users to be deleted before sending batch delete request.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2637,11 +2296,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The More Options menu must include an export action that downloads user data as a JSON file.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2653,11 +2308,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The More Options menu must include a suspend action that sets user status to inactive after confirmation.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2669,12 +2320,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "PUT must replace all fields. PATCH must support partial update. Both must update the updatedAt timestamp.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2686,12 +2332,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The dashboard must have a \"Manage Users\" button linking to /aut/users and a \"View Reports\" button linking to /aut/reports.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2703,12 +2344,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Clicking Name, Email, Role, Status, Created At, or Last Modified headers must toggle ascending/descending sort with visual indicator.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -2720,12 +2356,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A bar chart displaying user count per department.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2737,12 +2368,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Returns XML formatted response for testing content type handling.",
       "dependencies": [],
       "level": "story",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2754,12 +2380,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The API must support single/batch deletion and batch updates.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2771,12 +2392,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The table must paginate results and show appropriate loading states.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2788,12 +2404,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "When selected users have mixed active/inactive statuses, show warning badge and disable batch status update buttons.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2805,12 +2416,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "When no users are found, the table must display \"No users found\" message spanning all columns.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 2,
       "metadata": {}
     },
@@ -2822,12 +2428,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The role distribution must be visualized as an interactive donut chart.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2839,12 +2440,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The department distribution must be visualized as an interactive bar chart.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2856,12 +2452,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "An endpoint that randomly returns 500 errors for testing error recovery.",
       "dependencies": [],
       "level": "story",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2873,12 +2464,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "An endpoint that returns XML instead of JSON for testing content negotiation.",
       "dependencies": [],
       "level": "story",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2890,12 +2476,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The Quick Add modal provides a minimal form for rapid user creation.",
       "dependencies": [],
       "level": "story",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2907,12 +2488,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The department selector must support 3-level cascading: Development > Frontend/Backend > React/Vue/Node.js/Python, and Design > UI Design/UX Research.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2924,12 +2500,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "\"Activate All\" must set status to active for all selected inactive users. \"Deactivate All\" must set status to inactive for selected active users.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2941,12 +2512,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The More Options menu must include a password reset action that calls POST /aut-api/users/:id/reset-password.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2958,12 +2524,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must validate that name and email are required strings, return 400 with error message if validation fails.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2975,12 +2536,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "DELETE /aut-api/users/:id removes single user. POST /aut-api/users/batch-delete removes multiple users by ID array.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -2992,12 +2548,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The pie chart must show admin, editor, and viewer segments with different colors. A legend must show role names with corresponding colors.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3009,12 +2560,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "A bar chart must show department names on X-axis and user counts on Y-axis with hover tooltips for exact values.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "reports",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3026,12 +2572,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must return HTTP 500 with error message 50% of the time, and success the other 50%.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3043,12 +2584,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must return XML formatted response with Content-Type header set to application/xml.",
       "dependencies": [],
       "level": "ac",
-      "priority": "LOW",
       "status": "APPROVED",
-      "tags": [
-        "fault-injection",
-        "api"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3060,12 +2596,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Three stat cards must display: total user count, active users count (with green dot), and system status with pulsing online indicator.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "dashboard",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3077,12 +2608,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Users must be filterable by: text search on name, role selection (All/Admin/Editor/Viewer), and status selection (All/Active/Inactive).",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3094,12 +2620,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The table must paginate results (10 per page) with page number buttons, previous/next arrows, and \"X to Y of Z\" record count text.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3111,12 +2632,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The Quick Add modal must contain: Full Name (required), Email (required), Role dropdown, and Status dropdown with Cancel/Save buttons.",
       "dependencies": [],
       "level": "ac",
-      "priority": "HIGH",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "crud"
-      ],
       "position": 0,
       "metadata": {}
     },
@@ -3128,12 +2644,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "The endpoint must accept { ids: number[], data: object } and apply the data update to all specified users.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "api"
-      ],
       "position": 1,
       "metadata": {}
     },
@@ -3145,12 +2656,7 @@ export const businessConfigSeed: BusinessConfigSeed = {
       "description": "Initial load must show animated skeleton rows. Subsequent fetches show a \"Syncing Data...\" overlay with spinner.",
       "dependencies": [],
       "level": "ac",
-      "priority": "MEDIUM",
       "status": "APPROVED",
-      "tags": [
-        "user-management",
-        "ui"
-      ],
       "position": 1,
       "metadata": {}
     }

@@ -21,11 +21,8 @@ function makeEpic(overrides: Partial<Requirement> & { id: string }): Requirement
     title: "Epic Title",
     description: "Some epic description",
     level: "epic",
-    priority: "HIGH",
     status: "DRAFT",
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }

@@ -11,11 +11,8 @@ function makeReq(overrides: Partial<Requirement> & { id: string; title: string }
     parentId: null,
     description: '',
     level: 'story',
-    priority: 'MEDIUM',
     status: 'DRAFT',
-    tags: [],
     position: 0,
-    metadata: {},
     ...overrides,
   } as Requirement;
 }
@@ -27,13 +24,16 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe('RequirementTree', () => {
   const onSelect = vi.fn();
-  const onAddChild = vi.fn();
+  const onReorder = vi.fn();
   const onRefresh = vi.fn();
+  const onToggleExpand = vi.fn();
+  const defaultExpandedIds = new Set<string>();
 
   beforeEach(() => {
     onSelect.mockReset();
-    onAddChild.mockReset();
+    onReorder.mockReset();
     onRefresh.mockReset();
+    onToggleExpand.mockReset();
   });
 
   describe('rendering', () => {
@@ -44,7 +44,7 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       expect(screen.getByText('Alpha Feature')).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1', parentId: 'filter-id' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', parentId: 'filter-id' })
         )
       );
       expect(screen.queryByText('Hidden Root')).not.toBeInTheDocument();
@@ -69,7 +69,7 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       expect(screen.getByText('AUTH-001')).toBeInTheDocument();
@@ -82,26 +82,42 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       expect(screen.queryByText('E')).not.toBeInTheDocument();
       expect(screen.queryByText('S')).not.toBeInTheDocument();
     });
 
-    it('does not render child count badge separate from progress chip', () => {
+    it('does not render progress chips (moved to right panel)', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
+        makeReq({ id: 'AC1', title: 'AC1', level: 'ac', parentId: 'S1' }),
+      ];
+      render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
+        )
+      );
+      // No 0/1 or 0/N chips should appear in the tree rows
+      expect(screen.queryByText('0/1')).not.toBeInTheDocument();
+      expect(screen.queryByText('0/0')).not.toBeInTheDocument();
+    });
+
+    it('does not render up/down/add-child buttons on rows', () => {
       const items = [
         makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
         makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
-      // Only progress chip "0/1" should appear, not a standalone "1" count badge
-      const standaloneCount = Array.from(document.querySelectorAll('span')).find(s => s.textContent === '1' && !s.className.includes('font-mono'));
-      expect(standaloneCount).toBeUndefined();
+      expect(document.querySelector('button[title="Move Up"]')).toBeNull();
+      expect(document.querySelector('button[title="Move Down"]')).toBeNull();
+      expect(document.querySelector('button[title="Add Child Requirement"]')).toBeNull();
     });
   });
 
@@ -110,7 +126,7 @@ describe('RequirementTree', () => {
       const items = [makeReq({ id: 'T3', title: 'Selected Feature' })];
       const { container } = render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: 'T3', onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: 'T3', onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       const row = screen.getByText('Selected Feature').closest('[class*="group flex"]');
@@ -122,133 +138,148 @@ describe('RequirementTree', () => {
       const items = [makeReq({ id: 'T4', title: 'Clickable Feature' })];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       fireEvent.click(screen.getByText('Clickable Feature'));
       expect(onSelect).toHaveBeenCalledWith('T4');
     });
-
-    it('calls onAddChild when add child button is clicked', () => {
-      const items = [makeReq({ id: 'T6', title: 'Parent Req' })];
-      render(
-        React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
-        )
-      );
-      const addBtns = document.querySelectorAll('button[title="Add Child Requirement"]');
-      fireEvent.click(addBtns[addBtns.length - 1]);
-      expect(onAddChild).toHaveBeenCalledWith('T6');
-    });
   });
 
   describe('hierarchy', () => {
-    it('shows nested children when parent is expanded', () => {
+    it('shows nested children when epic is expanded', () => {
       const items = [
-        makeReq({ id: 'H1', title: 'Auth Module' }),
-        makeReq({ id: 'H2', title: 'Login Page', parentId: 'H1' }),
+        makeReq({ id: 'H1', title: 'Auth Module', level: 'epic' }),
+        makeReq({ id: 'H2', title: 'Login Page', parentId: 'H1', level: 'story' }),
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: new Set(['H1']), onToggleExpand })
         )
       );
-      expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
-      const chevrons = document.querySelectorAll('button svg.lucide-chevron-right');
-      expect(chevrons.length).toBeGreaterThanOrEqual(1);
-      fireEvent.click(chevrons[chevrons.length - 1]);
       expect(screen.getByText('Login Page')).toBeInTheDocument();
     });
 
     it('renders child connector border on nested items', () => {
       const items = [
-        makeReq({ id: 'H1', title: 'Auth Module' }),
-        makeReq({ id: 'H2', title: 'Login Page', parentId: 'H1' }),
+        makeReq({ id: 'H1', title: 'Auth Module', level: 'epic' }),
+        makeReq({ id: 'H2', title: 'Login Page', parentId: 'H1', level: 'story' }),
       ];
       const { container } = render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onAddChild, onRefresh, projectId: 'proj-1' })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: new Set(['H1']), onToggleExpand })
         )
       );
-      const chevrons = document.querySelectorAll('button svg.lucide-chevron-right');
-      fireEvent.click(chevrons[chevrons.length - 1]);
       const connector = container.querySelector('.border-l.border-slate-200');
       expect(connector).toBeInTheDocument();
     });
   });
 
-  describe('progress chips', () => {
-    it('renders progress chip {approved}/{total} on story with ACs', () => {
+  describe('level dot', () => {
+    it('renders epic dot in purple and story dot in emerald', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Epic A', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Story A', level: 'story', parentId: 'E1' }),
+      ];
+      const { container } = render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: new Set(['E1']), onToggleExpand })
+        )
+      );
+      const purple = container.querySelector('.bg-purple-500');
+      const emerald = container.querySelector('.bg-emerald-500');
+      expect(purple).toBeInTheDocument();
+      expect(emerald).toBeInTheDocument();
+    });
+
+    it('does not change dot color with priority (fixed per level)', () => {
       const items = [
         makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
         makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
-        makeReq({ id: 'AC1', title: 'AC1', level: 'ac', parentId: 'S1' }),
-        makeReq({ id: 'AC2', title: 'AC2', level: 'ac', parentId: 'S1' }),
+      ];
+      const { container } = render(
+        React.createElement(Wrapper, null,
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
+        )
+      );
+      // No red (CRITICAL) or gray (LOW) priority dots should be used
+      expect(container.querySelector('.bg-red-500')).toBeNull();
+      expect(container.querySelector('.bg-gray-400')).toBeNull();
+    });
+  });
+
+  describe('expand icon', () => {
+    it('shows expand icon only on epic rows, not on story rows', () => {
+      const items = [
+        makeReq({ id: 'E1', title: 'Auth Epic', level: 'epic' }),
+        makeReq({ id: 'S1', title: 'Login Story', level: 'story', parentId: 'E1' }),
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, {
-            items,
-            selectedId: null,
-            onSelect,
-            onAddChild,
-            onRefresh,
-            projectId: 'proj-1',
-          })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
+      // Expand the epic first
       const chevrons = document.querySelectorAll('button svg.lucide-chevron-right');
       fireEvent.click(chevrons[chevrons.length - 1]);
-      expect(screen.getByText('0/2')).toBeInTheDocument();
+      // Only one Expand button should remain (story has none)
+      const expandBtns = document.querySelectorAll('button[aria-label="Expand"], button[aria-label="Collapse"]');
+      expect(expandBtns.length).toBe(1);
     });
+  });
 
-    it('renders emerald progress chip when all ACs are approved', () => {
+  describe('drag and drop', () => {
+    function createDataTransfer() {
+      const store: Record<string, string> = {};
+      return {
+        effectAllowed: '',
+        dropEffect: '',
+        setData: (type: string, value: string) => {
+          store[type] = value;
+        },
+        getData: (type: string) => store[type] ?? '',
+        clearData: () => {
+          Object.keys(store).forEach((k) => delete store[k]);
+        },
+        _data: store,
+      } as unknown as DataTransfer;
+    }
+
+    it('rows are draggable', () => {
       const items = [
-        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
-        makeReq({ id: 'S1', title: 'Story', level: 'story', parentId: 'E1' }),
-        makeReq({ id: 'AC1', title: 'AC1', level: 'ac', parentId: 'S1', status: 'APPROVED' }),
+        makeReq({ id: 'D1', title: 'First' }),
+        makeReq({ id: 'D2', title: 'Second' }),
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, {
-            items,
-            selectedId: null,
-            onSelect,
-            onAddChild,
-            onRefresh,
-            projectId: 'proj-1',
-          })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
-      const chevrons = document.querySelectorAll('button svg.lucide-chevron-right');
-      fireEvent.click(chevrons[chevrons.length - 1]);
-      const chip = screen.getByText('1/1');
-      expect(chip).toBeInTheDocument();
-      expect(chip.className).toMatch(/bg-emerald-50/);
-      expect(chip.className).toMatch(/text-emerald-700/);
+      const firstRow = screen.getByText('First').closest('[data-testid="tree-row"]');
+      expect(firstRow).toHaveAttribute('draggable', 'true');
     });
 
-    it('renders progress chip on epic with approved/total stories', () => {
+    it('drop on a target row triggers onReorder with parentId/fromId/toId', () => {
       const items = [
-        makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
-        makeReq({ id: 'S1', title: 'Story 1', level: 'story', parentId: 'E1', status: 'APPROVED' }),
-        makeReq({ id: 'S2', title: 'Story 2', level: 'story', parentId: 'E1', status: 'DRAFT' }),
+        makeReq({ id: 'D1', title: 'First', position: 0 }),
+        makeReq({ id: 'D2', title: 'Second', position: 1 }),
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, {
-            items,
-            selectedId: null,
-            onSelect,
-            onAddChild,
-            onRefresh,
-            projectId: 'proj-1',
-          })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand, onReorder })
         )
       );
-      expect(screen.getByText('1/2')).toBeInTheDocument();
+      const firstRow = screen.getByText('First').closest('[data-testid="tree-row"]')!;
+      const secondRow = screen.getByText('Second').closest('[data-testid="tree-row"]')!;
+      const dt = createDataTransfer();
+      fireEvent.dragStart(firstRow, { dataTransfer: dt });
+      fireEvent.dragOver(secondRow, { dataTransfer: dt });
+      fireEvent.drop(secondRow, { dataTransfer: dt });
+      expect(onReorder).toHaveBeenCalledWith(null, 'D1', 'D2');
     });
+  });
 
+  describe('hiding AC level', () => {
     it('hides AC level rows from tree', () => {
       const items = [
         makeReq({ id: 'E1', title: 'Epic', level: 'epic' }),
@@ -257,14 +288,7 @@ describe('RequirementTree', () => {
       ];
       render(
         React.createElement(Wrapper, null,
-          React.createElement(RequirementTree, {
-            items,
-            selectedId: null,
-            onSelect,
-            onAddChild,
-            onRefresh,
-            projectId: 'proj-1',
-          })
+          React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
       const chevrons = document.querySelectorAll('button svg.lucide-chevron-right');

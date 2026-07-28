@@ -1,7 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRequirements, useBusinessFlows } from '@/shared/hooks/useQueryHooks';
+import { useRequirements } from '@/shared/hooks/useQueryHooks';
 import { useTestGenRun } from '@/shared/test-gen-run';
 import { queryKeys } from '@/shared/hooks/queryKeys';
 import { TestGenConfigPanel, type TestGenStartConfig } from './TestGenConfigPanel';
@@ -35,7 +35,7 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [reviewMode, setReviewMode] = useState(false);
 
   const { data: requirements = [] } = useRequirements(currentProjectId || '');
-  const { data: businessFlows = [] } = useBusinessFlows(currentProjectId || '');
+  const flowStories = useMemo(() => requirements.filter(r => r.isFlow), [requirements]);
 
 const handleRefresh = useCallback(async () => {
     // Always refresh the runs list (history)
@@ -265,7 +265,7 @@ const handleRefresh = useCallback(async () => {
           <TestGenConfigPanel
             projectId={currentProjectId}
             requirements={requirements}
-            businessFlows={businessFlows}
+            flowStories={flowStories}
             onStart={handleStart}
             disabled={pipeline.isRunning}
           />
@@ -293,7 +293,7 @@ const handleRefresh = useCallback(async () => {
                 agentLogs={pipeline.agentLogs}
                 startConfig={pipeline.startConfig}
                 requirements={requirements}
-                businessFlows={businessFlows}
+                flowStories={flowStories}
                 modelName={pipeline.modelName}
                 onClose={handleCloseDetail}
                 onApprove={handleApprove}

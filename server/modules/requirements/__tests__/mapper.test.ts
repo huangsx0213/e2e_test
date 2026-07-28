@@ -14,14 +14,6 @@ describe('normalizeRequirement', () => {
     const result = normalizeRequirement({ projectId: 'proj-1' });
     expect(result.title).toBe('New Requirement');
   });
-  it('defaults priority to MEDIUM', () => {
-    const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test' });
-    expect(result.priority).toBe('MEDIUM');
-  });
-  it('defaults tags to empty array', () => {
-    const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test' });
-    expect(result.tags).toEqual([]);
-  });
   it('defaults status to DRAFT', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test' });
     expect(result.status).toBe('DRAFT');
@@ -48,12 +40,10 @@ describe('normalizeRequirement', () => {
       projectId: 'proj-1',
       title: 'Test',
       level: 'epic' as const,
-      priority: 'HIGH' as const,
       status: 'APPROVED' as const,
     };
     const merged = normalizeRequirement({ ...existing, position: 3, id: existing.id });
     expect(merged.level).toBe('epic');
-    expect(merged.priority).toBe('HIGH');
     expect(merged.status).toBe('APPROVED');
   });
 });

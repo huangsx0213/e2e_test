@@ -1,5 +1,5 @@
 import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest, DynamicVariable } from '@/shared/types';
-import type { BusinessFlow, Requirement } from '../../../shared/contracts/index';
+import type { Requirement } from '../../../shared/contracts/index';
 
 export interface CrudService<T extends { id: string }> {
   list: () => Promise<T[]>;
@@ -120,12 +120,6 @@ export const api = {
   requirements: {
     ...createCrudService<Requirement>('requirements'),
     listByProject: (projectId: string) => apiFetch<Requirement[]>(`requirements/by-project/${projectId}`),
-  },
-businessFlows: {
-    ...createCrudService<BusinessFlow>('business-flows'),
-    listByProject: (projectId: string) => apiFetch<BusinessFlow[]>(`business-flows/by-project/${projectId}`),
-    approve: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/approve`, { method: 'POST' }),
-    unapprove: (id: string) => apiFetch<BusinessFlow>(`business-flows/${id}/unapprove`, { method: 'POST' }),
   },
   testGen: {
     runs: (projectId: string) => apiFetch<any[]>(`test-gen/runs/${projectId}`),

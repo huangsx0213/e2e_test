@@ -14,7 +14,6 @@ import { dynamicVariablesModule } from '../modules/dynamic-variables/index.ts';
 
 import { agentsModule } from '../modules/agent/index.ts';
 import { requirementsModule } from '../modules/requirements/index.ts';
-import { businessFlowsModule } from '../modules/business-flows/index.ts';
 import { providerConfigsModule } from '../modules/provider-configs/index.ts';
 
 
@@ -38,7 +37,6 @@ export function registerRoutes(app: Express) {
     dynamicVariablesModule,
     agentsModule,
 requirementsModule,
-    businessFlowsModule,
     providerConfigsModule,
 
 

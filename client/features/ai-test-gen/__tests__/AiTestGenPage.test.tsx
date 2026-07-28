@@ -25,7 +25,6 @@ vi.mock('@/shared/ui/ConfirmModal', () => ({
 
 vi.mock('@/shared/hooks/useQueryHooks', () => ({
   useRequirements: vi.fn().mockReturnValue({ data: [] }),
-  useBusinessFlows: vi.fn().mockReturnValue({ data: [] }),
   useTestGenRuns: vi.fn().mockReturnValue({ data: [], refetch: vi.fn() }),
   useCheckpoint: vi.fn().mockReturnValue({ data: null }),
   useAgentLogs: vi.fn().mockReturnValue({ data: [] }),

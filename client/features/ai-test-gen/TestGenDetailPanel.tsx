@@ -59,7 +59,7 @@ interface NodeDetailProps {
     providerConfigName?: string;
   } | null;
   requirements?: any[];
-  businessFlows?: any[];
+  flowStories?: any[];
   modelName?: string | null;
   onClose: () => void;
   onApprove?: () => void;
@@ -169,13 +169,13 @@ function detectConditionTestLevel(condition: any): 'component' | 'integration' |
   return undefined;
 }
 
-function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, startConfig, requirements, businessFlows, modelName }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[]; startConfig?: any; requirements?: any[]; businessFlows?: any[]; modelName?: string | null }) {
+function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, startConfig, requirements, flowStories, modelName }: { node: any; agentLog: any; thinkingText: import('../../shared/test-gen-run/types').ThinkingEntry[] | null; allAgentLogs: any[]; startConfig?: any; requirements?: any[]; flowStories?: any[]; modelName?: string | null }) {
   const meta = node?.meta;
   const output = agentLog?.output_data;
 
   // Filter to only selected requirements/flows
   const selectedReqs = (requirements || []).filter(r => startConfig?.requirementIds?.includes(r.id));
-  const selectedFlows = (businessFlows || []).filter(f => startConfig?.flowIds?.includes(f.id));
+  const selectedFlows = (flowStories || []).filter(f => startConfig?.flowIds?.includes(f.id));
 
   // Group requirements by Batch (Epic / Parent ID)
   const reqsByBatch = useMemo(() => {
@@ -366,7 +366,7 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
                   <tr key={flow.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                     <td className="px-4 py-2 text-slate-400 font-mono">{i + 1}</td>
                     <td className="px-3 py-2 font-mono text-purple-600 truncate max-w-[120px]">{flow.id}</td>
-                    <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={flow.name}>{flow.name}</td>
+                    <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={flow.title}>{flow.title}</td>
                     <td className="px-3 py-2 text-slate-600">
                       <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold">{flow.steps?.length || 0}</span>
                     </td>
@@ -3098,7 +3098,7 @@ export function TestGenDetailPanel({
   agentLogs,
   startConfig,
   requirements,
-  businessFlows,
+  flowStories,
   modelName,
   onClose,
   onApprove,
@@ -3280,7 +3280,7 @@ export function TestGenDetailPanel({
         {nodeType === 'agent' ? (
           <AgentDetailTabs agentLog={agentLog} node={node} thinkingText={thinkingText} agentLogs={agentLogs} />
         ) : nodeType === 'preparation' ? (
-          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} startConfig={startConfig} requirements={requirements} businessFlows={businessFlows} modelName={modelName} />
+          <PreparationSummaryView node={node} agentLog={agentLog} thinkingText={thinkingText} allAgentLogs={agentLogs || []} startConfig={startConfig} requirements={requirements} flowStories={flowStories} modelName={modelName} />
         ) : nodeType === 'checkpoint' ? (
           <CheckpointViewWithAudit
             runId={runId}

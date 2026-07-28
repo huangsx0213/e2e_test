@@ -13,7 +13,6 @@ export type AppTab =
   | 'DYNAMIC_VARIABLES'
   | 'AGENTS'
   | 'REQUIREMENTS'
-  | 'BUSINESS_FLOWS'
   | 'NL_CASES'
   | 'AI_TEST_GEN'
   | 'AI_DRIVEN_RECORDER';

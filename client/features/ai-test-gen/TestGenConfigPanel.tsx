@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronRight, ChevronDown, Play, FileText, GitBranch, Settings2, Zap, CheckCircle, History } from 'lucide-react';
-import type { Requirement, BusinessFlow } from '../../../shared/contracts/index';
+import type { Requirement } from '../../../shared/contracts/index';
 import { useProviderConfigs, useTestGenRuns } from '../../shared/hooks/useQueryHooks';
 
 interface TestGenConfigPanelProps {
   projectId: string;
   requirements: Requirement[];
-  businessFlows: BusinessFlow[];
+  flowStories: Requirement[];
   onStart: (config: TestGenStartConfig) => void;
   disabled?: boolean;
 }
@@ -175,7 +175,7 @@ const defaultConfig: SavedConfig = {
 export function TestGenConfigPanel({
   projectId,
   requirements,
-  businessFlows,
+  flowStories,
   onStart,
   disabled,
 }: TestGenConfigPanelProps) {
@@ -262,8 +262,8 @@ export function TestGenConfigPanel({
   const tree = useMemo(() => buildTree(requirements), [requirements]);
 
   const flows = showApprovedOnly
-    ? businessFlows.filter(f => f.status === 'APPROVED')
-    : businessFlows;
+    ? flowStories.filter(f => f.status === 'APPROVED')
+    : flowStories;
 
   const completedRuns = useMemo(() => {
     return pastRuns.filter((r: any) => r.status === 'COMPLETED');
@@ -454,11 +454,11 @@ export function TestGenConfigPanel({
                   />
                   <span className={`truncate flex-1 min-w-0 ${
                     selectedFlows.has(flow.id) ? 'text-slate-800 font-medium' : 'text-slate-600'
-                  }`} title={flow.name + ' (' + flow.type + ')'}>
-                    {flow.name}
+                  }`} title={flow.title}>
+                    {flow.title}
                   </span>
                   <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide shrink-0 bg-slate-100 px-1.5 py-0.5 rounded">
-                    {flow.type}
+                    flow
                   </span>
                   {flow.status === 'APPROVED' && (
                     <span className="shrink-0" title="Approved">

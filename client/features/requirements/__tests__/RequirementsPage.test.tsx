@@ -50,7 +50,7 @@ describe('RequirementsPage', () => {
 
   it('shows empty state when nothing selected but project set', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'r1', projectId: 'proj-1', title: 'Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      { id: 'r1', projectId: 'proj-1', title: 'Req', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     await screen.findByText('Req');
@@ -59,8 +59,8 @@ describe('RequirementsPage', () => {
 
   it('renders requirements in the tree', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'r1', projectId: 'proj-1', title: 'Login', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
-      { id: 'r2', projectId: 'proj-1', title: 'Payment', description: '', level: 'story', priority: 'HIGH', tags: [], status: 'DRAFT', position: 1, parentId: null, metadata: {} },
+      { id: 'r1', projectId: 'proj-1', title: 'Login', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
+      { id: 'r2', projectId: 'proj-1', title: 'Payment', description: '', level: 'story', status: 'DRAFT', position: 1, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     expect(await screen.findByText('Login')).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe('RequirementsPage', () => {
 
   it('shows total count', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'r1', projectId: 'proj-1', title: 'One', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      { id: 'r1', projectId: 'proj-1', title: 'One', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     expect(await screen.findByText('1 stories · 0 epics')).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('RequirementsPage', () => {
 
   it('shows editor form when requirement selected', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'rS', projectId: 'proj-1', title: 'Selected Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      { id: 'rS', projectId: 'proj-1', title: 'Selected Req', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     fireEvent.click(await screen.findByText('Selected Req'));
@@ -86,7 +86,7 @@ describe('RequirementsPage', () => {
 
   it('opens import modal when import clicked', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'r1', projectId: 'proj-1', title: 'Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      { id: 'r1', projectId: 'proj-1', title: 'Req', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     await screen.findByText('Req');
@@ -95,25 +95,19 @@ describe('RequirementsPage', () => {
     expect(await screen.findByText('Import Requirements')).toBeInTheDocument();
   });
 
-  it('clears selection when add child button clicked (create form deferred)', async () => {
+  it('does not render add child button on tree rows (moved to right panel)', async () => {
     vi.mocked(api.requirements.listByProject).mockResolvedValue([
-      { id: 'p1', projectId: 'proj-1', title: 'Parent', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+      { id: 'p1', projectId: 'proj-1', title: 'Parent', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
     ] as any);
     renderPage({ currentProjectId: 'proj-1' });
     await screen.findByText('Parent');
-    fireEvent.click(screen.getByText('Parent'));
-    // After selecting, the row should be highlighted (selected)
-    const addChildBtns = document.querySelectorAll('button[title="Add Child Requirement"]');
-    expect(addChildBtns.length).toBeGreaterThanOrEqual(1);
-    fireEvent.click(addChildBtns[addChildBtns.length - 1]);
-    // Create form is deferred to a follow-up task; selection is cleared and empty state shows
-    expect(screen.getByText('Select a story or epic to view details')).toBeInTheDocument();
+    expect(document.querySelector('button[title="Add Child Requirement"]')).toBeNull();
   });
 
   describe('right pane routing', () => {
     it('renders StoryDetailView when story selected', async () => {
       vi.mocked(api.requirements.listByProject).mockResolvedValue([
-        { id: 's1', projectId: 'proj-1', title: 'Login Story', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+        { id: 's1', projectId: 'proj-1', title: 'Login Story', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
       ] as any);
       renderPage({ currentProjectId: 'proj-1' });
       fireEvent.click(await screen.findByText('Login Story'));
@@ -123,7 +117,7 @@ describe('RequirementsPage', () => {
 
     it('renders EpicDetailView when epic selected', async () => {
       vi.mocked(api.requirements.listByProject).mockResolvedValue([
-        { id: 'e1', projectId: 'proj-1', title: 'Auth Epic', description: '', level: 'epic', priority: 'HIGH', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+        { id: 'e1', projectId: 'proj-1', title: 'Auth Epic', description: '', level: 'epic', status: 'DRAFT', position: 0, parentId: null },
       ] as any);
       renderPage({ currentProjectId: 'proj-1' });
       fireEvent.click(await screen.findByText('Auth Epic'));
@@ -135,7 +129,7 @@ describe('RequirementsPage', () => {
 
     it('renders empty state when nothing selected', async () => {
       vi.mocked(api.requirements.listByProject).mockResolvedValue([
-        { id: 'r1', projectId: 'proj-1', title: 'Some Req', description: '', level: 'story', priority: 'MEDIUM', tags: [], status: 'DRAFT', position: 0, parentId: null, metadata: {} },
+        { id: 'r1', projectId: 'proj-1', title: 'Some Req', description: '', level: 'story', status: 'DRAFT', position: 0, parentId: null },
       ] as any);
       renderPage({ currentProjectId: 'proj-1' });
       await screen.findByText('Some Req');
