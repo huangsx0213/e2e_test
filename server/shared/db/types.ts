@@ -204,12 +204,4 @@ export type DbRequirementRow = {
   related_requirement_ids: string;
 };
 
-export type DbBusinessFlowRow = {
-  id: string;
-  project_id: string;
-  name: string;
-  description: string;
-  type: string;
-  status: string;
-  steps: string;
-};
+
