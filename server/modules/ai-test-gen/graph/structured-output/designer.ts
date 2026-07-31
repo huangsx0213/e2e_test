@@ -7,6 +7,21 @@ import {
 } from './helpers.ts';
 import type { StructuredOutputProfile } from './profile.ts';
 
+/**
+ * Coerce any value to a string. Handles the LLM's common mistakes:
+ * - nested arrays: ["a", "b"] → "a, b"
+ * - objects: {key: "val"} → '{"key":"val"}'
+ * - numbers/booleans: 123 → "123"
+ * This is a schema-level coercion, not a post-hoc auto-fix.
+ */
+const coercedString = z.preprocess((v) => {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.join(', ');
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}, z.string());
+
 const DesignerRuntimeSchema = z.object({
   draftTestCases: z.array(z.object({
     id: z.string(),
@@ -25,16 +40,12 @@ const DesignerRuntimeSchema = z.object({
     testLevel: z.enum(['component', 'integration']),
     techniqueApplied: z.string(),
     preconditions: z.array(z.string()),
-    testData: z.array(z.string()),
+    testData: z.array(coercedString),
     steps: z.array(z.object({
       stepNumber: z.number(),
-      // F18-action: step atomicity for the `action` field. Unlike `expected`
-      // (which is auto-split in normalizeDraftTestCase), compound `action`
+      // F18-action: step atomicity for the `action` field. Compound `action`
       // patterns are rejected at the schema level — the LLM gets a clear
-      // rejection message and self-corrects in Phase 2 retry. This is the
-      // source-level enforcement: splitting a compound ACTION correctly is
-      // semantic (the LLM must decide how to decompose "Enter X while leaving
-      // Y empty" into separate steps), so deterministic auto-fix is not viable.
+      // rejection message and self-corrects in Phase 2 retry.
       action: z.string().superRefine((val, ctx) => {
         const v = String(val ?? '').trim();
         if (v.length > 200) {
@@ -218,18 +229,17 @@ function normalizeDraftTestCase(
 }
 
 /**
- * F11 / F12 — Anti-redundancy hard check at the Designer layer.
+ * F11 / F12 — Hard validation for integration case references.
  *
  * For every `testLevel: "integration"` case:
- * 1. `coveredConditions` MUST list at least one condition id (backfilled
- *    to `[conditionId]` if the LLM only provided the primary conditionId).
- * 2. `referencedComponentConditions` MUST be non-empty (the integration case
+ * 1. `referencedComponentConditions` MUST be non-empty (the integration case
  *    must name which component conditions it assumes as preconditions).
- * 3. Each id in `referencedComponentConditions` must refer to a real
+ * 2. Each id in `referencedComponentConditions` must refer to a real
  *    condition in the expected set AND that condition must be of type
- *    `component` (integration cases cannot reference other flow conditions
- *    as their preconditions — that would be flow-on-flow, which is a
- *    different design pattern).
+ *    `component` (integration cases cannot reference other flow conditions).
+ *
+ * No auto-fix: the LLM must provide correct values. Schema rejection +
+ * Phase 2 retry is the source-level enforcement.
  */
 function validateFlowCaseReferences(
   parsed: DesignerRuntimeOutput,
@@ -240,89 +250,9 @@ function validateFlowCaseReferences(
 
   const byId = new Map(expectedConditions.map((c) => [c.id, c]));
   const externalComponentReferences = new Set(externalComponentReferenceIds);
-  const log = Log.for('designer:auto-fix');
 
   for (const testCase of parsed.draftTestCases) {
-    // Backfill coveredConditions: if the LLM forgot to list the primary
-    // conditionId, do it for them so traceability is not lost.
-    if (testCase.coveredConditions.length === 0 && testCase.conditionId) {
-      testCase.coveredConditions = [testCase.conditionId];
-    }
-
     if (testCase.testLevel !== 'integration') continue;
-
-    // Auto-fix: the LLM frequently places flow-typed condition IDs in
-    // referencedComponentConditions (intending "assumed already verified"),
-    // but the schema only allows component-typed conditions there. Move any
-    // flow-typed IDs to coveredConditions. This mirrors the analyst.ts
-    // auto-fix philosophy: normalize during parse to prevent Phase 2 retries
-    // that the LLM consistently fails to self-correct across all 3 attempts.
-    const movedToCovered: string[] = [];
-    const droppedUnknown: string[] = [];
-    const validComponentRefs: string[] = [];
-    for (const rawRefId of testCase.referencedComponentConditions) {
-      // LLM sometimes writes compound references like
-      // "component:req-aut-auth-session-happy:C-007" instead of just "C-007".
-      // Try the raw value first (for cross-batch qualified refs), then fall
-      // back to the last segment after ":" as the plain condition ID.
-      const candidates = [rawRefId];
-      if (rawRefId.includes(':')) {
-        const lastSegment = rawRefId.split(':').pop()?.trim();
-        if (lastSegment && lastSegment !== rawRefId) candidates.push(lastSegment);
-      }
-
-      let matchedId: string | null = null;
-      let ref = null;
-      for (const candidate of candidates) {
-        if (externalComponentReferences.has(candidate)) { matchedId = candidate; break; }
-        const found = byId.get(candidate);
-        if (found) { matchedId = candidate; ref = found; break; }
-      }
-
-      if (!matchedId) {
-        // Unknown id (e.g. LLM shorthand "I001" instead of the real condition
-        // id). Drop it — the backfill below will supply real component
-        // conditions if the array becomes empty. Auto-fix philosophy: normalize
-        // during parse to prevent Phase 2 retries the LLM consistently fails
-        // to self-correct across all 3 attempts.
-        droppedUnknown.push(rawRefId);
-        continue;
-      }
-      if (ref && ref.conditionType && ref.conditionType !== 'component') {
-        movedToCovered.push(matchedId);
-        if (!testCase.coveredConditions.includes(matchedId)) {
-          testCase.coveredConditions.push(matchedId);
-        }
-      } else {
-        validComponentRefs.push(matchedId);
-      }
-    }
-    if (movedToCovered.length > 0 || droppedUnknown.length > 0) {
-      testCase.referencedComponentConditions = validComponentRefs;
-      if (movedToCovered.length > 0) {
-        log.warn(`Auto-fixed ${testCase.id}: moved flow-typed condition(s) [${movedToCovered.join(', ')}] from referencedComponentConditions to coveredConditions`);
-      }
-      if (droppedUnknown.length > 0) {
-        log.warn(`Auto-fixed ${testCase.id}: dropped unknown referencedComponentConditions reference(s) [${droppedUnknown.join(', ')}] (will backfill if empty)`);
-      }
-    }
-
-    // Auto-populate: if referencedComponentConditions is empty after the
-    // move (or was empty to begin with), backfill with component conditions
-    // from the same requirement as the primary conditionId.
-    if (testCase.referencedComponentConditions.length === 0) {
-      const primaryCond = byId.get(testCase.conditionId);
-      const reqId = primaryCond?.requirementId;
-      if (reqId) {
-        const sameReqComponentIds = expectedConditions
-          .filter(c => c.conditionType === 'component' && c.requirementId === reqId)
-          .map(c => c.id);
-        if (sameReqComponentIds.length > 0) {
-          testCase.referencedComponentConditions = sameReqComponentIds;
-          log.warn(`Auto-fixed ${testCase.id}: backfilled referencedComponentConditions with same-requirement component conditions [${sameReqComponentIds.join(', ')}]`);
-        }
-      }
-    }
 
     // F11: integration cases must declare at least one referenced component condition.
     if (testCase.referencedComponentConditions.length === 0) {
@@ -337,8 +267,6 @@ function validateFlowCaseReferences(
     }
 
     // F12: every referenced component condition must exist and be type=component.
-    // After auto-fix, flow-typed IDs have already been moved to coveredConditions,
-    // so only unknown IDs remain as errors here.
     for (const refId of testCase.referencedComponentConditions) {
       if (externalComponentReferences.has(refId)) continue;
       const ref = byId.get(refId);
@@ -375,7 +303,6 @@ export function createDesignerOutputProfile(
   expectedConditions: ConditionInfo[] = [],
   externalComponentReferenceIds: string[] = [],
 ): StructuredOutputProfile<DesignerRuntimeOutput> {
-  const expectedReqByCondition = new Map(expectedConditions.map((c) => [c.id, c.requirementId]));
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(DesignerRuntimeSchema)),
     shouldAttemptPhase1Extraction(raw: unknown): boolean {
@@ -392,7 +319,7 @@ export function createDesignerOutputProfile(
       const input = wrapDesignerRoot(raw);
       return {
         draftTestCases: arrayFromRecordValues<unknown>(input.draftTestCases).map(
-          (tc) => normalizeDraftTestCase(tc, expectedReqByCondition),
+          (tc) => normalizeDraftTestCase(tc),
         ),
       };
     },

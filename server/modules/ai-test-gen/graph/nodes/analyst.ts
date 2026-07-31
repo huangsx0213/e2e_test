@@ -72,7 +72,20 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
           acParentMap.set(bp.id, bp.flowStoryId);
         }
       }
-      const analystOutputProfile = createAnalystOutputProfile(allowedReqIds, flowBlueprints as any, acParentMap);
+      // Load component condition IDs from previous batches (flow mode) so the
+      // structured-output profile can validate that `dependencies` references
+      // real condition IDs — not fabricated compound IDs that break downstream
+      // related-requirement lookup.
+      const externalConditionIds = new Set<string>();
+      if (state.generationMode === 'flow') {
+        for (const logEntry of pipelineRepo.getAgentLogs(state.runId, 'test_analyst')) {
+          for (const condition of logEntry.output_data?.testConditions ?? []) {
+            if (condition.conditionType !== 'component') continue;
+            externalConditionIds.add(condition.id);
+          }
+        }
+      }
+      const analystOutputProfile = createAnalystOutputProfile(allowedReqIds, flowBlueprints as any, acParentMap, externalConditionIds);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
         provider,
         messages,

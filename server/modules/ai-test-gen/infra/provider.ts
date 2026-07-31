@@ -376,6 +376,16 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
   }
 
   function buildResponseFormat(options?: ChatOptions) {
+    // Phase 2 extraction passes jsonSchema — convert to the Chat Completions
+    // API's response_format: { type: 'json_schema', json_schema: { name, schema, strict } }.
+    // Without this, the LLM has no API-level JSON constraint and may produce
+    // unparseable text (the root cause of "Unparseable content" errors).
+    if (options?.jsonSchema) {
+      return {
+        type: 'json_schema' as const,
+        json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName),
+      };
+    }
     if (options?.responseFormat === 'json_object') {
       return { type: 'json_object' as const };
     }
@@ -387,23 +397,45 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
     Log.for('provider').info(`[openai-compat-sdk] POST${agentTag} messages=${messages.length}`);
 
     const reasoningEffort = options?.reasoningEffort ?? config.reasoningEffort;
-
-    let stream: Awaited<ReturnType<typeof client.chat.completions.create>>;
-    try {
-      stream = await client.chat.completions.create({
+    const commonParams = {
       model: config.model!,
       messages: serializeMessages(messages),
       temperature: options?.temperature ?? 0.3,
       max_tokens: options?.maxTokens ?? 65536,
-      stream: true,
       stream_options: { include_usage: true },
       ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-      response_format: buildResponseFormat(options),
       ...buildTools(options),
-    });
-    } catch (err) {
-      Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
-      throw formatSdkError(err, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+    } as any;
+
+    let stream: any;
+    try {
+      stream = await client.chat.completions.create({
+        ...commonParams,
+        stream: true,
+        response_format: buildResponseFormat(options) as any,
+      });
+    } catch (err: any) {
+      // If json_schema format is not supported by this API, fall back to
+      // json_object (which only forces JSON output without schema enforcement).
+      // The Zod schema validation in Phase 2 still catches schema violations.
+      const usedJsonSchema = !!options?.jsonSchema;
+      const errStr = String(err?.message ?? err?.error?.message ?? '');
+      if (usedJsonSchema && /response_format|json_schema|unsupported/i.test(errStr)) {
+        Log.for('provider').warn(`[openai-compat-sdk] json_schema not supported, falling back to json_object${agentTag}`);
+        try {
+          stream = await client.chat.completions.create({
+            ...commonParams,
+            stream: true,
+            response_format: { type: 'json_object' as const } as any,
+          });
+        } catch (err2) {
+          Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+          throw formatSdkError(err2, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+        }
+      } else {
+        Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+        throw formatSdkError(err, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+      }
     }
 
     let currentToolCall: { id: string; name: string; args: string } | null = null;

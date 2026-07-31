@@ -560,4 +560,143 @@ describe('analystOutputProfile', () => {
     expect(message).toContain('category');
     expect(message).toContain('Set category explicitly');
   });
+
+  it('rejects fabricated compound IDs in dependencies (mixed mode)', () => {
+    // Mixed mode: same-output condition IDs are valid, fabricated ones are not.
+    const mixedProfile = createAnalystOutputProfile(
+      new Set(['STORY-001', 'FLOW-STORY-001']),
+      [],
+      new Map(),
+      new Set(), // no external conditions
+    );
+    expect(() => mixedProfile.parse(mixedProfile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Mixed mode analysis',
+        riskAssessmentSummary: 'Auth risk',
+      },
+      testConditions: [
+        {
+          id: 'C-001', requirementId: 'STORY-001',
+          condition: 'Verify password is masked',
+          conditionType: 'component', flowStepRefs: [],
+          category: 'functional', priority: 'high', riskLevel: 'medium',
+          primaryTechnique: 'Equivalence Partitioning',
+          secondaryTechniques: [], techniqueRationale: 'Input masking',
+          coverageDimensions: ['ui'], dependencies: [],
+        },
+        {
+          id: 'C-002', requirementId: 'FLOW-STORY-001',
+          condition: 'Verify auth session propagation',
+          conditionType: 'flow',
+          flowStepRefs: [{ flowId: 'F-login', sequence: 1, actionSummary: 'Submit' }],
+          category: 'integration', priority: 'critical', riskLevel: 'high',
+          primaryTechnique: 'Use Case Testing',
+          secondaryTechniques: [], techniqueRationale: 'Cross-component',
+          coverageDimensions: ['flow'],
+          // Fabricated compound ID — should be REJECTED
+          dependencies: ['component:req-aut-auth-session-happy:F-001'],
+        },
+      ],
+    }))).toThrow(/NOT a real condition ID/);
+  });
+
+  it('accepts real same-batch condition IDs in dependencies (mixed mode)', () => {
+    const mixedProfile = createAnalystOutputProfile(
+      new Set(['STORY-001', 'FLOW-STORY-001']),
+      [],
+      new Map(),
+      new Set(),
+    );
+    const parsed = mixedProfile.parse(mixedProfile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Mixed mode analysis',
+        riskAssessmentSummary: 'Auth risk',
+      },
+      testConditions: [
+        {
+          id: 'C-001', requirementId: 'STORY-001',
+          condition: 'Verify password is masked',
+          conditionType: 'component', flowStepRefs: [],
+          category: 'functional', priority: 'high', riskLevel: 'medium',
+          primaryTechnique: 'Equivalence Partitioning',
+          secondaryTechniques: [], techniqueRationale: 'Input masking',
+          coverageDimensions: ['ui'], dependencies: [],
+        },
+        {
+          id: 'C-002', requirementId: 'FLOW-STORY-001',
+          condition: 'Verify auth session propagation',
+          conditionType: 'flow',
+          flowStepRefs: [{ flowId: 'F-login', sequence: 1, actionSummary: 'Submit' }],
+          category: 'integration', priority: 'critical', riskLevel: 'high',
+          primaryTechnique: 'Use Case Testing',
+          secondaryTechniques: [], techniqueRationale: 'Cross-component',
+          coverageDimensions: ['flow'],
+          // Real same-batch condition ID — should be ACCEPTED
+          dependencies: ['C-001'],
+        },
+      ],
+    }));
+
+    expect(parsed.testConditions[1].dependencies).toEqual(['C-001']);
+  });
+
+  it('rejects fabricated IDs in dependencies when external IDs are provided (flow mode)', () => {
+    // Flow mode: external component condition IDs from previous batches.
+    const flowProfile = createAnalystOutputProfile(
+      new Set(['FLOW-STORY-001']),
+      [],
+      new Map(),
+      new Set(['C-PREV-001', 'C-PREV-002']), // external IDs from previous batch
+    );
+    expect(() => flowProfile.parse(flowProfile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Flow mode analysis',
+        riskAssessmentSummary: 'Auth risk',
+      },
+      testConditions: [
+        {
+          id: 'C-100', requirementId: 'FLOW-STORY-001',
+          condition: 'Verify auth flow propagation',
+          conditionType: 'flow',
+          flowStepRefs: [{ flowId: 'F-login', sequence: 1, actionSummary: 'Submit' }],
+          category: 'integration', priority: 'critical', riskLevel: 'high',
+          primaryTechnique: 'Use Case Testing',
+          secondaryTechniques: [], techniqueRationale: 'Cross-component',
+          coverageDimensions: ['flow'],
+          // Fabricated ID not in external set — should be REJECTED
+          dependencies: ['C-FAKE-999'],
+        },
+      ],
+    }))).toThrow(/NOT a real condition ID/);
+  });
+
+  it('accepts real external condition IDs in dependencies (flow mode)', () => {
+    const flowProfile = createAnalystOutputProfile(
+      new Set(['FLOW-STORY-001']),
+      [],
+      new Map(),
+      new Set(['C-PREV-001', 'C-PREV-002']),
+    );
+    const parsed = flowProfile.parse(flowProfile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Flow mode analysis',
+        riskAssessmentSummary: 'Auth risk',
+      },
+      testConditions: [
+        {
+          id: 'C-100', requirementId: 'FLOW-STORY-001',
+          condition: 'Verify auth flow propagation',
+          conditionType: 'flow',
+          flowStepRefs: [{ flowId: 'F-login', sequence: 1, actionSummary: 'Submit' }],
+          category: 'integration', priority: 'critical', riskLevel: 'high',
+          primaryTechnique: 'Use Case Testing',
+          secondaryTechniques: [], techniqueRationale: 'Cross-component',
+          coverageDimensions: ['flow'],
+          dependencies: ['C-PREV-001', 'C-PREV-002'],
+        },
+      ],
+    }));
+
+    expect(parsed.testConditions[0].dependencies).toEqual(['C-PREV-001', 'C-PREV-002']);
+  });
 });

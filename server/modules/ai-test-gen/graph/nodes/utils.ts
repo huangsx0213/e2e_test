@@ -656,6 +656,9 @@ export async function callLLMWithStructuredOutput<T>(
             ...fullError.split('\n').map(l => `    ${l}`),
           ].join('\n');
           llmLog.warn(errorBlock);
+          // Attach the raw LLM content to the error so scope.ts can persist it
+          // to error_raw_response for offline debugging.
+          (schemaErr as any).rawResponse = extractContent;
           lastError = schemaErr;
           
           extractionMessages.push({ role: 'assistant', content: extractContent });
@@ -669,6 +672,8 @@ export async function callLLMWithStructuredOutput<T>(
         llmLog.warn(`Phase 2 produced unparseable content on attempt ${attempt} ── length=${extractContent.length} ── content preview: "${preview}"`);
         lastExtractContent = extractContent;
         lastError = new Error('Unparseable content');
+        // Persist the raw content for offline debugging.
+        (lastError as any).rawResponse = extractContent;
         
         extractionMessages.push({ role: 'assistant', content: extractContent });
         extractionMessages.push({ 

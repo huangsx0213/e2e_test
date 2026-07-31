@@ -9,6 +9,21 @@ import {
 import type { StructuredOutputProfile } from './profile.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
+/**
+ * Coerce any value to a string. Handles the LLM's common mistakes:
+ * - nested arrays: ["a", "b"] → "a, b"
+ * - objects: {key: "val"} → '{"key":"val"}'
+ * - numbers/booleans: 123 → "123"
+ * This is a schema-level coercion, not a post-hoc auto-fix.
+ */
+const coercedString = z.preprocess((v) => {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.join(', ');
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}, z.string());
+
 // F19: step atomicity hard constraint — keep `expected` to a single observable
 // outcome. Bundled assertions (containing ";" + conjunction, or > 200 chars) are
 // rejected because the LLM is supposed to split them into separate steps.
@@ -41,7 +56,7 @@ const QualityRuntimeSchema = z.object({
       testLevel: z.enum(['component', 'integration']),
       techniqueApplied: z.string(),
       preconditions: z.array(z.string()),
-      testData: z.array(z.string()),
+      testData: z.array(coercedString),
       steps: z.array(z.object({
         stepNumber: z.number(),
         action: z.string(),
@@ -175,14 +190,14 @@ function validateDraftCaseCoverage(
       ]);
     }
     if (expected.expectedTestLevel && testCase.testLevel !== expected.expectedTestLevel) {
-      // Auto-fix: the LLM occasionally flips testLevel (e.g. integration ->
-      // component) when it thinks the steps don't warrant cross-component
-      // scope. Restore the Designer's testLevel — the coverage matrix depends
-      // on it. Auto-fix philosophy: normalize during parse to prevent Phase 2
-      // retries the LLM consistently fails to self-correct.
-      const log = Log.for('quality:auto-fix');
-      log.warn(`Auto-fixed ${testCase.id}: restored testLevel "${testCase.testLevel}" -> "${expected.expectedTestLevel}" (LLM must not flip testLevel)`);
-      testCase.testLevel = expected.expectedTestLevel;
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['finalTestCases'],
+          message: `Final reviewed case ${testCase.id} has testLevel="${testCase.testLevel}" but the Designer assigned testLevel="${expected.expectedTestLevel}". Quality MUST NOT change testLevel — restore it to "${expected.expectedTestLevel}".`,
+          input: testCase,
+        },
+      ]);
     }
     // F15: integration cases must still declare referencedComponentConditions.
     if (testCase.testLevel === 'integration' && testCase.referencedComponentConditions.length === 0) {
@@ -337,30 +352,15 @@ function coerceChangeLogValue(v: unknown): string | undefined {
 
 function normalizeFinalTestCase(
   value: unknown,
-  expectedById?: Map<string, ExpectedDraftCase>,
+  _expectedById?: Map<string, ExpectedDraftCase>,
 ): Record<string, unknown> {
   const tc = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  const expected = expectedById?.get(String(tc.id ?? ''));
-  const log = Log.for('quality:auto-fix');
-  const steps: Record<string, unknown>[] = Array.isArray(tc.steps)
-    ? tc.steps.flatMap((step) => {
-        const normalizedStep = step && typeof step === 'object' ? step as Record<string, unknown> : {};
-        const action = String(normalizedStep.action ?? '');
-        const expectedText = String(normalizedStep.expected ?? '');
-        // F19 auto-repair: split steps whose `expected` joins multiple
-        // assertions with semicolons into one step per assertion (same as
-        // designer.ts). The LLM consistently violates the one-assertion-per-step
-        // rule even after 3 Phase 2 retries.
-        const segments = expectedText.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
-        if (segments.length <= 1) {
-          return [{ ...normalizedStep, action, expected: expectedText }];
-        }
-        log.warn(`Auto-split ${String(tc.id ?? '?')}: step "${action.slice(0, 60)}" had ${segments.length} semicolon-joined assertions -> ${segments.length} atomic steps`);
-        return segments.map((seg) => ({ ...normalizedStep, action, expected: seg }));
-      })
-    : [];
-  // Renumber sequentially — splitting invalidates the original stepNumber.
-  steps.forEach((s, i) => { s.stepNumber = i + 1; });
+
+  // Structural-only normalization: null→[] for array fields, type coercion
+  // for changeLog values. NO semantic auto-fixes (no semicolon splitting,
+  // no testLevel lowercasing, no fallback to expected draft case values).
+  // The LLM must produce correct values; schema rejection + Phase 2 retry
+  // is the source-level enforcement.
   const changeLog = nullToEmptyArray(tc.changeLog as Record<string, unknown>[] | null | undefined)
     .map((change) => {
       const normalizedChange = change && typeof change === 'object' ? change as Record<string, unknown> : {};
@@ -371,26 +371,14 @@ function normalizeFinalTestCase(
       };
     });
 
-  const rawLevel = tc.testLevel;
-  const testLevel = typeof rawLevel === 'string' ? rawLevel.toLowerCase() : rawLevel;
-
   return {
     ...tc,
-    conditionId: expected?.conditionId ?? tc.conditionId,
-    requirementId: expected?.requirementId ?? tc.requirementId,
     reviewSummary: typeof tc.reviewSummary === 'string' ? tc.reviewSummary : '',
-    testLevel,
-    // F10 / F11: preserve traceability arrays. If the LLM omits them, fall back
-    // to the expected draft case's values, then to safe empty arrays.
-    coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined).length > 0
-      ? (tc.coveredConditions as string[])
-      : (expected?.coveredConditions ?? []),
-    referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined).length > 0
-      ? (tc.referencedComponentConditions as string[])
-      : (expected?.referencedComponentConditions ?? []),
+    coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined),
+    referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined),
     preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
     testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
-    steps,
+    steps: Array.isArray(tc.steps) ? tc.steps : [],
     tags: nullToEmptyArray(tc.tags as string[] | null | undefined),
     changeLog,
   };

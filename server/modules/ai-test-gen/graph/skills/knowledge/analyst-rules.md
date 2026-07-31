@@ -51,6 +51,8 @@ Pick the technique with the strongest fit; do not force a weak match. Record `se
 
 **`flowId` source rule (CRITICAL — prevents duplicate conditions):** The `flowId` in `flowStepRefs` MUST be the exact `id` value from the input `flowBlueprints` array. Do NOT invent flow IDs (e.g., "FLOW-AUTH-SESSION", "FLOW-1") — the input `flowBlueprints` provides the real `id` for each flow path, and these IDs are typically AC-level requirement IDs (e.g., "req-aut-auth-session-happy"). Using a hallucinated flowId causes the system to think the real flow step is uncovered and auto-generate a DUPLICATE flow condition for the same scenario. Before writing `flowStepRefs`, look up the `id` from `flowBlueprints` and copy it verbatim.
 
+**`dependencies` real-ID rule (CRITICAL — prevents fake IDs that break downstream requirement lookup):** Every entry in `dependencies` MUST be a real condition ID — either from the same batch's output (mixed mode: `"C-001"`) or from a previous batch (flow mode: the ID returned by `previous_batch_conditions_query`). NEVER fabricate compound IDs like `"component:req-aut-auth-session-happy:F-001"`. The schema validates every dependency ID and REJECTS unknown values. Fake IDs propagate to the Designer's `referencedComponentConditions` and break related-requirement lookup downstream.
+
 **Non-overlap rule (ANTI-REDUNDANCY — critical):** For the SAME requirement, a `component` condition and a `flow` condition MUST NOT verify the same behavior:
 - A `component` condition verifies the atomic behavior alone (e.g., "empty password is rejected with a validation error").
 - A `flow` condition for the same requirement verifies ONLY the cross-component interaction aspect the component condition did NOT cover (e.g., "no auth request is sent to the auth service when client-side validation fails").
@@ -74,7 +76,7 @@ Pick the technique with the strongest fit; do not force a weak match. Record `se
 
 ## C. Final Self-Check (before closing the JSON block)
 
-For every condition: `requirementId` present and exact, `category` present, `conditionType` is `"component"` or `"flow"`, and if `conditionType === "flow"` then `flowStepRefs` has at least one entry.
+For every condition: `requirementId` present and exact, `category` present, `conditionType` is `"component"` or `"flow"`, and if `conditionType === "flow"` then `flowStepRefs` has at least one entry. Every entry in `dependencies` is a real condition ID (same-batch output or previous-batch query result) — no fabricated compound IDs.
 **HARD RULE: if `primaryTechnique` is "Use Case Testing" then `conditionType` MUST be `"flow"`** — no exceptions. Use Case Testing is inherently multi-step and cross-component; a component condition must use EP, BVA, Decision Table, or State Transition instead.
 Per requirement: at least one component condition exists; a flow condition exists only if the requirement has a cross-component surface; the flow condition does not re-state what the component condition already verifies.
 Per flow step in flow stories: at least one `conditionType="flow"` condition references it via `flowStepRefs`. **Exception/error flow steps are NOT optional** — if a step exists in a flow story's `steps[]`, it MUST be covered. A step with zero references is a hard validation failure.

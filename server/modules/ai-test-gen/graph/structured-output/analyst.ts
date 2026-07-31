@@ -237,10 +237,53 @@ function validateFlowStepCoverage(
   return parsed;
 }
 
+/**
+ * Validate that every `dependencies` entry references a REAL condition ID.
+ * The LLM frequently fabricates compound IDs (e.g.
+ * "component:req-aut-auth-session-happy:F-001") instead of using the plain
+ * condition ID ("C-001"). Fake IDs propagate to the Designer's
+ * `referencedComponentConditions` and break downstream related-requirement
+ * lookup. This hard-checks at the Analyst output level — the source.
+ *
+ * Valid IDs are:
+ *   - same-output condition IDs (mixed mode: component conditions in the same batch)
+ *   - external condition IDs passed in (flow mode: component conditions from previous batches)
+ *
+ * Hard-reject (no auto-fix) because there is no reliable remapping for an
+ * arbitrary fabricated ID. The extractionHints list the valid IDs so the LLM
+ * can self-correct in Phase 2.
+ */
+function validateDependencies(
+  parsed: AnalystRuntimeOutput,
+  externalConditionIds: Set<string>,
+): AnalystRuntimeOutput {
+  // Build the set of all valid condition IDs the LLM may reference.
+  const sameOutputIds = new Set(parsed.testConditions.map((c) => c.id));
+  const validIds = new Set<string>([...sameOutputIds, ...externalConditionIds]);
+
+  if (validIds.size === 0) return parsed;
+
+  for (const cond of parsed.testConditions) {
+    for (const depId of cond.dependencies ?? []) {
+      if (validIds.has(depId)) continue;
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['testConditions'],
+          message: `Condition ${cond.id} has dependency "${depId}" which is NOT a real condition ID. Dependencies must reference actual condition IDs — either from the same batch's output (e.g. "C-001") or from previous batches (obtained via previous_batch_conditions_query). Fabricated compound IDs like "component:req-xxx:F-001" are NOT valid. Remove the fake ID or replace it with a real one.`,
+          input: cond,
+        },
+      ]);
+    }
+  }
+  return parsed;
+}
+
 export function createAnalystOutputProfile(
   allowedReqIds: Set<string> = new Set(),
   flowBlueprints: { id: string; steps: { sequence: number; actionSummary?: string }[] }[] = [],
   acParentMap: Map<string, string> = new Map(),
+  externalConditionIds: Set<string> = new Set(),
 ): StructuredOutputProfile<AnalystRuntimeOutput> {
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(AnalystRuntimeSchema)),
@@ -319,7 +362,8 @@ export function createAnalystOutputProfile(
       const parsed = AnalystRuntimeSchema.parse(normalized);
       const withConditionTypes = validateConditionTypes(parsed);
       const withReqIds = validateRequirementIds(withConditionTypes, allowedReqIds, acParentMap);
-      return validateFlowStepCoverage(withReqIds, flowBlueprints);
+      const withFlowCoverage = validateFlowStepCoverage(withReqIds, flowBlueprints);
+      return validateDependencies(withFlowCoverage, externalConditionIds);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
@@ -329,17 +373,28 @@ export function createAnalystOutputProfile(
         'testConditions.conditionType': 'Set conditionType to "component" (atomic behavior from a requirement AC) or "flow" (cross-component interaction from a flow step).',
         'testConditions.flowStepRefs': 'Flow conditions MUST include at least one { flowId, sequence, actionSummary } entry.',
         'testConditions.coverageDimensions': 'coverageDimensions is a free-form tag array; do NOT use "testLevel:*" tags anymore (use conditionType).',
-        'testConditions.dependencies': 'Use an array, not null, for dependencies.',
+        'testConditions.dependencies': 'dependencies must be an array of REAL condition IDs (e.g. "C-001"). Do NOT fabricate compound IDs like "component:req-xxx:F-001" — use the exact condition ID from the same batch or from previous_batch_conditions_query.',
         'testConditions.dataRequirements': 'Omit dataRequirements or provide an array of strings.',
       });
     },
-    extractionHints: flowBlueprints.length > 0
-      ? [
-        'Flow condition flowStepRefs (HARD constraint — using a wrong flowId causes duplicate auto-generated conditions):',
-        '- `flowStepRefs[].flowId` MUST be one of these EXACT values from the input `flowBlueprints`:',
-        ...flowBlueprints.map(bp => `  "${bp.id}" (step ${bp.steps.map(s => s.sequence).join(', ')}: ${bp.steps.map(s => s.actionSummary ?? '').join(' | ')})`),
-        '- Do NOT invent flow IDs like "FLOW-AUTH-SESSION" — use the exact `id` from `flowBlueprints`.',
-      ].join('\n')
-      : undefined,
+    extractionHints: [
+      ...(flowBlueprints.length > 0
+        ? [
+          'Flow condition flowStepRefs (HARD constraint — using a wrong flowId causes duplicate auto-generated conditions):',
+          '- `flowStepRefs[].flowId` MUST be one of these EXACT values from the input `flowBlueprints`:',
+          ...flowBlueprints.map(bp => `  "${bp.id}" (step ${bp.steps.map(s => s.sequence).join(', ')}: ${bp.steps.map(s => s.actionSummary ?? '').join(' | ')})`),
+          '- Do NOT invent flow IDs like "FLOW-AUTH-SESSION" — use the exact `id` from `flowBlueprints`.',
+        ]
+        : []),
+      ...(externalConditionIds.size > 0
+        ? [
+          '',
+          'Dependencies (HARD constraint — fake IDs break downstream requirement lookup):',
+          '- `dependencies` MUST reference real condition IDs. Use EXACTLY one of these IDs from previous batches:',
+          ...[...externalConditionIds].map(id => `  "${id}"`),
+          '- Do NOT fabricate compound IDs like "component:req-xxx:F-001". Use the plain condition ID only.',
+        ]
+        : []),
+    ].join('\n') || undefined,
   };
 }

@@ -172,7 +172,26 @@ export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: str
   const outputContract = `## Required Fields
 For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`conditionType\`, \`flowStepRefs\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, and \`dependencies\`. \`requirementId\` must be the exact source requirement ID supplied by the batch. \`category\` must be explicitly set.
 
-The result must contain ALL derived test conditions for this batch, not a sample.`;
+The result must contain ALL derived test conditions for this batch, not a sample.
+
+## Strict Schema Constraints (HARD — schema will REJECT violations)
+
+### dependencies — real condition IDs only
+\`dependencies\` MUST contain **real condition IDs** that exist in the output or in previous batches. Fake IDs break downstream related-requirement lookup.
+
+- In **mixed mode**: reference the condition ID (e.g. \`"C-001"\`) of a component condition in the SAME output.
+- In **flow mode**: reference the condition ID returned by **previous_batch_conditions_query** — copy it verbatim.
+
+NEVER fabricate compound IDs. The schema validates every dependency ID against the set of real condition IDs and REJECTS unknown values.
+
+WRONG (fabricated compound ID — will be REJECTED):
+\`\`\`
+"dependencies": ["component:req-aut-auth-session-happy:F-001"]
+\`\`\`
+RIGHT (real condition ID from the output or previous batch):
+\`\`\`
+"dependencies": ["C-001"]
+\`\`\``;
 
   const workflowSteps = isMixedMode
     ? `### Step 1 — Review all input
@@ -481,6 +500,69 @@ Call **designer_rules** to load the complete design rules (step atomicity, techn
 ## Required Fields
 For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`coveredConditions\`, \`referencedComponentConditions\` (for integration cases), \`priority\`, \`category\`, \`testLevel\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. \`testLevel\` must be exactly one of \`"component"\` or \`"integration"\`. \`coveredConditions\` must include the primary \`conditionId\` and may include additional flow conditions. \`referencedComponentConditions\` must be non-empty for any \`testLevel: "integration"\` case. When the user input contains \`availableComponentConditions\`, use one or more of their exact \`referenceId\` values for \`referencedComponentConditions\`; never use an AC ID, a requirement ID, or a bare \`C-*\` ID from another batch. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
 
+## Strict Schema Constraints (HARD — schema will REJECT violations)
+These constraints are enforced by the Zod schema at parse time. Violations cause Phase 2 retries and may fail the entire pipeline after 3 attempts.
+
+### testData format
+\`testData\` MUST be an array of **plain strings**. Do NOT nest arrays or objects inside it.
+- WRONG: \`"testData": ["username = admin", ["role1", "role2"]]\` (nested array)
+- WRONG: \`"testData": ["username = admin", { "key": "value" }]\` (nested object)
+- RIGHT: \`"testData": ["username = admin", "roles = role1, role2"]\` (flat strings)
+
+### testLevel values
+\`testLevel\` must be exactly \`"component"\` or \`"integration"\` — **lowercase only**. \`"Component"\`, \`"Integration"\`, \`"COMPONENT"\` will be rejected.
+
+### coveredConditions
+\`coveredConditions\` MUST be a non-empty array containing at least the primary \`conditionId\`. If you are unsure what to put, use \`[conditionId]\`. An empty array \`[]\` is invalid.
+
+### referencedComponentConditions (integration cases only)
+\`referencedComponentConditions\` must contain **real condition IDs** that exist in the input. You have two valid options:
+
+**Option A (preferred):** Use the plain condition ID from the input conditions list (e.g., \`"C-001"\`, \`"C-007"\`). These are the exact IDs the Analyst assigned to component-typed conditions.
+
+**Option B:** If the input contains \`availableComponentConditions\`, copy their \`referenceId\` value **verbatim**. Do NOT construct your own — the \`referenceId\` is pre-built and must be copied as-is.
+
+NEVER fabricate IDs. The ID must exist in the input — either as a condition ID or as a \`referenceId\`. Fabricated IDs will be rejected by the schema.
+
+WRONG (fabricated — uses flow ID \`F-001\` instead of condition ID \`C-001\`):
+\`\`\`
+"referencedComponentConditions": ["component:req-aut-auth-session-happy:F-001"]
+\`\`\`
+RIGHT (use the real condition ID from the input):
+\`\`\`
+"referencedComponentConditions": ["C-001"]
+\`\`\`
+
+Only **component-typed** condition IDs are valid here — never flow-typed condition IDs. If a condition is flow-typed, put it in \`coveredConditions\` instead.
+
+### expected field (step atomicity)
+Each step's \`expected\` field must contain a **single assertion** — no semicolons (\`;\` or \`；\`) joining multiple assertions. This is the most common schema violation. The LLM frequently joins two related outcomes with a semicolon — the schema will REJECT this every time and Phase 2 retries will fail.
+
+WRONG (semicolon joins two assertions — will be REJECTED):
+\`\`\`
+{ "stepNumber": 3, "action": "Click the Submit button.", "expected": "The form is NOT submitted; no network request to auth API is observed." }
+\`\`\`
+RIGHT (split into two steps — one assertion each):
+\`\`\`
+{ "stepNumber": 3, "action": "Click the Submit button.", "expected": "The form is not submitted." }
+{ "stepNumber": 4, "action": "Observe the browser network tab.", "expected": "No network request to the auth API endpoint is observed." }
+\`\`\`
+
+Other common WRONG patterns (all will be REJECTED):
+- \`"button is disabled; error message appears"\` → split: step A "button is disabled", step B "error message appears"
+- \`"validation error is shown; form remains on the current page"\` → split: step A "validation error is shown", step B "form remains on the current page"
+- \`"API returns 401; user session is not created"\` → split: step A "API returns 401", step B "user session is not created"
+
+**Rule: if your \`expected\` value contains a semicolon (\`;\` or \`；\`), it is WRONG. Split the step into multiple steps.**
+
+### action field (step atomicity)
+Each step's \`action\` field must contain a **single operation**. Forbidden compound patterns:
+- \`"while <gerund>"\` (e.g. "Enter password while leaving username empty")
+- \`", then"\` (e.g. "Enter username, then click submit")
+- \`"but leave/without"\` (e.g. "Enter username but leave password empty")
+- \`"both"\` (e.g. "Ensure both username and password are empty")
+Split these into separate steps — one action per step.
+
 ## Instructions
 1. Design one or more complete test cases for EACH input condition. Ensure EVERY condition provided in the input is fully covered. If a condition contains multiple explicit data variants, ensure the test data covers them. The \`draftTestCases\` array MUST contain all designed test cases. **One condition MAY be split into multiple test cases** when the data variants or alternate paths warrant it; in that case all derived cases MUST list the original condition in \`coveredConditions\`.
 
@@ -585,6 +667,12 @@ ${buildTechniqueFewShot(state)}
 - The block must contain COMPLETE data: ALL draft test cases, not a sample.
 - The \`draftTestCases\` array MUST contain at least one test case.
 - An empty object \`{}\` is always invalid.
+- **\`testData\` must be flat strings** — no nested arrays or objects.
+- **\`testLevel\` must be lowercase** \`"component"\` or \`"integration"\`.
+- **\`coveredConditions\` must be non-empty** — at minimum \`[conditionId]\`.
+- **\`referencedComponentConditions\` (integration only) must use real IDs from the input** — plain condition IDs (e.g. \`C-001\`) or verbatim \`referenceId\` from \`availableComponentConditions\`. Never fabricate IDs.
+- **\`expected\` must not contain semicolons** — one assertion per step.
+- **\`action\` must be a single operation** — no "while <gerund>", ", then", "but leave/without", or "both".
 
 Final check before closing the block — every step has exactly one action and one concrete observable expected result; EP/BVA test data states the partition or boundary position, not a bare value; every case's preconditions are self-contained; every case declares \`testLevel\` as \`"component"\` or \`"integration"\` AND the step design honors that level (integration cases traverse 2+ components, component cases stay within one); **integration cases do NOT re-assert what a sibling component case already covers** (move atomic behavior into preconditions, assert only the cross-component outcome).
 `;
@@ -651,6 +739,41 @@ Call **quality_rules** to load the complete review rules (9 review dimensions, r
 - **previous_batch_cases_query**: query previous batch final test cases — use for D2 cross-batch redundancy check (compare titles, testLevel, conditionId against current batch cases).
 - **istqb_guide(techniques?, context?)**: load ISTQB technique guides for reference when judging Technique Fidelity.
 - **quality_rules**: load detailed review rules (9 dimensions, F17, D2, coverage matrix F27). Call before reviewing.
+
+## Strict Schema Constraints (HARD — schema will REJECT violations)
+These constraints are enforced by the Zod schema at parse time. Violations cause Phase 2 retries and may fail the entire pipeline after 3 attempts.
+
+### testLevel — MUST NOT change
+You MUST NOT change the \`testLevel\` of any draft case. If the Designer assigned \`"integration"\`, the final case MUST remain \`"integration"\`. If the Designer assigned \`"component"\`, it MUST remain \`"component"\`. The schema will REJECT any case where \`testLevel\` differs from the Designer's assignment.
+
+### finalTestCases — MUST include every draft case
+Every draft case ID in the input MUST appear in \`finalTestCases\`. If you want to reject a case, set its \`status\` to \`"rejected"\` and explain in \`reviewSummary\` — but do NOT omit it from the output. Missing cases will be auto-added as rejected with a warning, which wastes a Phase 2 retry.
+
+### testData format
+\`testData\` MUST be an array of **plain strings**. Do NOT nest arrays or objects inside it.
+- WRONG: \`"testData": ["username = admin", ["role1", "role2"]]\` (nested array)
+- RIGHT: \`"testData": ["username = admin", "roles = role1, role2"]\` (flat strings)
+
+### expected field (step atomicity)
+Each step's \`expected\` field must contain a **single assertion** — no semicolons (\`;\` or \`；\`) joining multiple assertions. If you find a draft case with semicolon-joined assertions, split it into separate steps in your final output.
+
+WRONG (will be REJECTED):
+\`\`\`
+{ "stepNumber": 3, "action": "Click the Submit button.", "expected": "The form is NOT submitted; no network request to auth API is observed." }
+\`\`\`
+RIGHT (split into two steps):
+\`\`\`
+{ "stepNumber": 3, "action": "Click the Submit button.", "expected": "The form is not submitted." }
+{ "stepNumber": 4, "action": "Observe the browser network tab.", "expected": "No network request to the auth API endpoint is observed." }
+\`\`\`
+
+**Rule: if your \`expected\` value contains a semicolon, it is WRONG. Always split.**
+
+### testLevel values
+\`testLevel\` must be exactly \`"component"\` or \`"integration"\` — **lowercase only**.
+
+### coveredConditions and referencedComponentConditions
+Preserve these from the draft cases. Do NOT empty them. If a draft case had \`coveredConditions: ["C-001"]\`, the final case must also have \`coveredConditions: ["C-001"]\` (or a superset).
 
 ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
 
@@ -767,6 +890,10 @@ End with a single JSON code block containing the COMPLETE output. Nothing after 
 **Rules:**
 - The \`\`\`json block is the last thing in your response — nothing after it.
 - It must contain ALL final test cases, complete — never a sample. \`finalTestCases.length >= 1\`. An empty object \`{}\` is always invalid.
+- **Every draft case ID from the input MUST appear in \`finalTestCases\`** — rejected cases must have \`status: "rejected"\` and a \`reviewSummary\` explaining why, but must NOT be omitted.
+- **You MUST NOT change \`testLevel\`** — preserve the Designer's assignment exactly.
+- **\`testData\` must be flat strings** — no nested arrays or objects.
+- **\`expected\` must not contain semicolons** — split semicolon-joined assertions into separate steps.
 - Every modified case has a non-empty, field-level \`changeLog\`; every untouched case has \`changeLog: []\`.
 - The \`coverageMatrix\` MUST be present. Every Analyst \`conditionId\` that appears in the input draft cases MUST have exactly one row in \`coverageMatrix.rows\`. \`coveredByCaseIds\` must reference real \`finalTestCases\` ids. The summary \`byConditionType\` field is required.
 `;
