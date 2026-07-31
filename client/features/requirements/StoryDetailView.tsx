@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Save, Edit3, Eye, AlertTriangle, Check, X, Link2, ChevronDown, GitBranch } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { Save, Edit3, Eye, AlertTriangle, Check, X, GitBranch, Pencil } from "lucide-react";
 import type { Requirement } from "../../../shared/contracts/index";
 import { useRequirementMutations, useRequirements } from "../../shared/hooks/useQueryHooks";
 import { parseStoryMarkdown } from "../../shared/requirements/format-parser";
 import { StoryFormatHelpTooltip } from "./StoryFormatHelpTooltip";
 import { ACList } from "./ACList";
+import { FormatSegmentBlock } from "./FormatSegmentBlock";
+import { HelpTooltip } from "@/shared/ui/HelpTooltip";
 
 interface Props {
   story: Requirement;
@@ -15,138 +15,33 @@ interface Props {
   onSaved: () => void;
 }
 
-const typeOptions: { value: NonNullable<Requirement["type"]>; label: string }[] = [
-  { value: "functional", label: "Functional" },
-  { value: "non-functional", label: "Non-Functional" },
-  { value: "security", label: "Security" },
-  { value: "data", label: "Data" },
-];
-
 const statusOptions: { value: Requirement["status"]; label: string }[] = [
   { value: "DRAFT", label: "Draft" },
   { value: "APPROVED", label: "Approved" },
   { value: "DEPRECATED", label: "Deprecated" },
 ];
 
-function DependenciesMultiSelect({
-  story,
-  knownHumanIds,
-  selected,
-  onChange,
-}: {
-  story: Requirement;
-  knownHumanIds: { humanId: string; title: string; id: string }[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // Only show stories as candidate dependencies (not ACs, not other epics).
-  const candidates = knownHumanIds.filter((c) => c.id !== story.id);
-  const isSelected = (id: string) => selected.includes(id);
-
-  const toggle = (id: string) => {
-    if (isSelected(id)) {
-      onChange(selected.filter((s) => s !== id));
-    } else {
-      onChange([...selected, id]);
-    }
-  };
-
-  return (
-    <div
-      className="relative"
-      ref={containerRef}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") setOpen(false);
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        <Link2 size={11} className="text-slate-400" />
-        {selected.length === 0 ? (
-          <span className="text-slate-400">No dependencies</span>
-        ) : (
-          <span className="font-mono">{selected.length} selected</span>
-        )}
-        <ChevronDown size={11} className={`text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          className="absolute z-30 mt-1 w-80 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-1.5"
-        >
-          {candidates.length === 0 ? (
-            <div className="px-3 py-4 text-[11px] text-slate-400 text-center">
-              No other stories in this project
-            </div>
-          ) : (
-            candidates.map((c) => (
-              <label
-                key={c.id}
-                className="flex items-start gap-2 px-2.5 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected(c.id)}
-                  onChange={() => toggle(c.id)}
-                  className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[11px] font-semibold text-slate-700">{c.humanId}</div>
-                  <div className="text-[11px] text-slate-500 truncate">{c.title}</div>
-                </div>
-              </label>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
-  const { update } = useRequirementMutations(projectId);
+  const { update, updateId } = useRequirementMutations(projectId);
   const { data: allItems = [] } = useRequirements(projectId);
+  const [idDraft, setIdDraft] = useState(story.id);
+  const [idEditing, setIdEditing] = useState(false);
   const [title, setTitle] = useState(story.title);
   const [description, setDescription] = useState(story.description);
-  const [humanId, setHumanId] = useState(story.humanId || "");
   const [status, setStatus] = useState<Requirement["status"]>(story.status);
-  const [type, setType] = useState<NonNullable<Requirement["type"]>>(story.type || "functional");
-  const [dependencies, setDependencies] = useState<string[]>(story.dependencies || []);
   const [isFlow, setIsFlow] = useState<boolean>(story.isFlow ?? false);
   const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   useEffect(() => {
     setTitle(story.title);
     setDescription(story.description);
-    setHumanId(story.humanId || "");
     setStatus(story.status);
-    setType(story.type || "functional");
-    setDependencies(story.dependencies || []);
     setIsFlow(story.isFlow ?? false);
+    setIdDraft(story.id);
+    setIdEditing(false);
     setMode("preview");
     setSaveStatus("idle");
-  }, [story.id, story.title, story.description, story.humanId, story.status, story.type, story.dependencies, story.isFlow]);
+  }, [story.id, story.title, story.description, story.status, story.isFlow]);
 
   const parsed = parseStoryMarkdown(description);
   const isEmpty = !description.trim();
@@ -154,19 +49,29 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
 
   const epic = allItems.find((r) => r.id === story.parentId);
 
-  // Candidate dependencies: other stories in the same project.
-  const dependencyCandidates = useMemo(() => {
-    return allItems
-      .filter((r) => r.level === "story" && r.id !== story.id)
-      .map((r) => ({ humanId: r.humanId || r.id, title: r.title, id: r.id }));
-  }, [allItems, story.id]);
+  // ID uniqueness check (case-sensitive) across the current project.
+  const idCollides = useMemo(() => {
+    if (!idEditing) return false;
+    if (idDraft === story.id) return false;
+    return allItems.some((r) => r.id === idDraft);
+  }, [idEditing, idDraft, story.id, allItems]);
 
-  // Validate selected dependencies against known IDs in the same project.
-  const knownIdSet = useMemo(
-    () => new Set(dependencyCandidates.map((c) => c.id)),
-    [dependencyCandidates],
-  );
-  const unknownDeps = dependencies.filter((d) => !knownIdSet.has(d));
+  const idDirty = idDraft !== story.id;
+
+  const handleSaveId = async () => {
+    if (!idDirty || idCollides || !idDraft.trim() || saveStatus === "saving") return;
+    setSaveStatus("saving");
+    try {
+      await updateId(story.id, idDraft.trim());
+      setSaveStatus("success");
+      setIdEditing(false);
+      setTimeout(() => setSaveStatus("idle"), 2000);
+      onSaved();
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+  };
 
   const handleSave = async () => {
     if (!title.trim() || saveStatus === "saving") return;
@@ -175,10 +80,7 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
       await update(story.id, {
         title,
         description,
-        humanId: humanId || null,
         status,
-        type,
-        dependencies,
         isFlow,
       });
       setSaveStatus("success");
@@ -198,7 +100,6 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
           <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
             Story
           </span>
-          {story.humanId && <span className="font-mono text-slate-400">{story.humanId}</span>}
           {epic && (
             <>
               <span className="text-slate-300">·</span>
@@ -258,13 +159,65 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               ID
             </label>
-            <input
-              type="text"
-              value={humanId}
-              onChange={(e) => setHumanId(e.target.value.toUpperCase())}
-              placeholder="AUTH-007"
-              className="font-mono bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none w-28"
-            />
+            {idEditing ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={idDraft}
+                  autoFocus
+                  onChange={(e) => setIdDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveId();
+                    if (e.key === "Escape") {
+                      setIdDraft(story.id);
+                      setIdEditing(false);
+                    }
+                  }}
+                  className={`font-mono bg-slate-50 border rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none w-56 ${
+                    idCollides ? "border-red-300 focus:border-red-500" : "border-slate-200 focus:border-blue-500"
+                  }`}
+                />
+                <button
+                  onClick={handleSaveId}
+                  disabled={!idDirty || idCollides || !idDraft.trim() || saveStatus === "saving"}
+                  className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Save new ID"
+                >
+                  <Check size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    setIdDraft(story.id);
+                    setIdEditing(false);
+                  }}
+                  className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                  title="Cancel"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                  {story.id}
+                </span>
+                <button
+                  onClick={() => setIdEditing(true)}
+                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                  title="Edit ID (cascades to children and references)"
+                >
+                  <Pencil size={12} />
+                </button>
+              </div>
+            )}
+            {idCollides && (
+              <span className="text-[11px] text-red-600">ID already in use</span>
+            )}
+            {idEditing && idDirty && !idCollides && (
+              <span className="text-[11px] text-amber-600">
+                Renaming cascades to children &amp; references
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -284,44 +237,6 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Type
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as NonNullable<Requirement["type"]>)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none cursor-pointer"
-            >
-              {typeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Dependencies
-            </label>
-            {isFlow ? (
-              <span className="text-[11px] text-slate-400 italic">
-                Flow stories use AC-level relatedRequirementIds instead
-              </span>
-            ) : (
-              <DependenciesMultiSelect
-                story={story}
-                knownHumanIds={dependencyCandidates}
-                selected={dependencies}
-                onChange={setDependencies}
-              />
-            )}
-          </div>
-          {unknownDeps.length > 0 && !isFlow && (
-            <div className="text-[11px] text-amber-600">
-              Unknown humanIds: {unknownDeps.join(", ")}
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               Flow
             </label>
             <button
@@ -339,15 +254,14 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
               <GitBranch size={12} className={isFlow ? "text-purple-500" : "text-slate-400"} />
               {isFlow ? "Flow story" : "Standard"}
             </button>
+            {isFlow && (
+              <HelpTooltip
+                content="This is a flow story — its ACs are BDD scenarios (Given/When/Then paths). Use AC-level relatedRequirementIds to link component stories."
+                maxWidthClass="max-w-xs"
+              />
+            )}
           </div>
         </div>
-
-        {isFlow && (
-          <div className="mt-3 px-3 py-2 rounded-md bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-2">
-            <GitBranch size={14} className="shrink-0" />
-            <span>This is a flow story — its ACs are BDD scenarios (Given/When/Then paths).</span>
-          </div>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -394,11 +308,15 @@ export function StoryDetailView({ story, acs, projectId, onSaved }: Props) {
           )}
 
           {mode === "preview" ? (
-            <div className="markdown-body rounded-lg border border-slate-200 bg-slate-50/30 px-5 py-4 text-sm text-slate-700 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {description || "*No description provided*"}
-              </ReactMarkdown>
-            </div>
+            <FormatSegmentBlock
+              variant="story"
+              segments={[
+                { label: "As a", content: parsed.role },
+                { label: "I want", content: parsed.action },
+                { label: "So that", content: parsed.value },
+              ]}
+              remainder={parsed.remainder}
+            />
           ) : (
             <textarea
               value={description}

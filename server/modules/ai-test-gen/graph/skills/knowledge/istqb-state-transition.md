@@ -1,3 +1,8 @@
+---
+name: istqb_state_transition
+description: Load the ISTQB State Transition Testing technique guide (definition, procedure, examples, common mistakes). Use when you need to design tests for systems with states and transitions.
+---
+
 # State Transition Testing
 
 ## Definition

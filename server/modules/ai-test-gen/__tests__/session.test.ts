@@ -41,7 +41,7 @@ describe('TestGenSession', () => {
 
       const outcome = await session.startBatch({
         batchIndex: 0,
-        inputState: { projectId: 'p', runId: 'r', mode: 'auto', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
+        inputState: { projectId: 'p', runId: 'r', mode: 'auto', generationMode: 'component', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
       });
       expect(outcome.type).toBe('complete');
       if (outcome.type === 'complete') {
@@ -55,7 +55,7 @@ describe('TestGenSession', () => {
 
       const outcome = await session.startBatch({
         batchIndex: 0,
-        inputState: { projectId: 'p', runId: 'r', mode: 'interactive', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
+        inputState: { projectId: 'p', runId: 'r', mode: 'interactive', generationMode: 'component', requirementIds: [], currentBatch: [], batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 }, projectContext: { name: '', pages: [], endpoints: [] }, businessFlowBlueprints: undefined, selectedFlowIds: [], phase: 'analysis', errors: [] },
       });
       expect(outcome.type).toBe('interrupt');
     });
@@ -74,6 +74,98 @@ describe('TestGenSession', () => {
 
       await session.resumeAt('run-1-batch-0', { action: 'approve', feedback: 'looks good' });
       expect(receivedInputs.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('retryFromAgentLogs', () => {
+    it('restores completed agent outputs via updateState(asNode) then streams null to resume', async () => {
+      const updateStateCalls: { values: any; asNode?: string }[] = [];
+      const streamInputs: any[] = [];
+      const fakeGraph = {
+        async updateState(_config: any, values: any, asNode?: string) {
+          updateStateCalls.push({ values, asNode });
+          return _config;
+        },
+        async getState() {
+          return { next: ['checkpoint_1'], values: {} };
+        },
+        async *stream(input: any) {
+          streamInputs.push(input);
+          yield { phase: 'complete', finalTestCases: [{ id: 'tc-1' }] };
+        },
+      };
+      vi.spyOn(await import('../graph/graph.ts'), 'buildTestGenGraph').mockReturnValue(fakeGraph as any);
+
+      const baseInput = { projectId: 'p', runId: 'r', generationMode: 'mixed', currentBatch: [] };
+      const completedAgentOutputs = [
+        { agentName: 'test_analyst', outputData: { testConditions: [{ id: 'c1' }], requirementAnalysis: { overallApproach: 'x' } } },
+      ];
+
+      const outcome = await session.retryFromAgentLogs('retry-thread-1', 0, baseInput, completedAgentOutputs);
+
+      // updateState called once with asNode='analyst' (last completed agent's node)
+      expect(updateStateCalls).toHaveLength(1);
+      expect(updateStateCalls[0].asNode).toBe('analyst');
+      // Merged state contains both base input and agent output
+      expect(updateStateCalls[0].values).toMatchObject({
+        generationMode: 'mixed',
+        testConditions: [{ id: 'c1' }],
+        environmentReady: true,
+      });
+
+      // stream called with null (resume from checkpoint, not from START)
+      expect(streamInputs).toHaveLength(1);
+      expect(streamInputs[0]).toBeNull();
+
+      expect(outcome.type).toBe('complete');
+    });
+
+    it('uses asNode=designer when both analyst and designer completed', async () => {
+      const updateStateCalls: { asNode?: string }[] = [];
+      const fakeGraph = {
+        async updateState(_config: any, _values: any, asNode?: string) {
+          updateStateCalls.push({ asNode });
+          return _config;
+        },
+        async getState() {
+          return { next: ['checkpoint_2'], values: {} };
+        },
+        async *stream() {
+          yield { phase: 'complete', finalTestCases: [] };
+        },
+      };
+      vi.spyOn(await import('../graph/graph.ts'), 'buildTestGenGraph').mockReturnValue(fakeGraph as any);
+
+      await session.retryFromAgentLogs('retry-thread-2', 0, { projectId: 'p' }, [
+        { agentName: 'test_analyst', outputData: { testConditions: [] } },
+        { agentName: 'test_designer', outputData: { draftTestCases: [] } },
+      ]);
+
+      // asNode should be 'designer' (the last completed agent)
+      expect(updateStateCalls).toHaveLength(1);
+      expect(updateStateCalls[0].asNode).toBe('designer');
+    });
+
+    it('falls back to asNode=preparation when no agents completed', async () => {
+      const updateStateCalls: { asNode?: string }[] = [];
+      const fakeGraph = {
+        async updateState(_config: any, _values: any, asNode?: string) {
+          updateStateCalls.push({ asNode });
+          return _config;
+        },
+        async getState() {
+          return { next: ['analyst'], values: {} };
+        },
+        async *stream() {
+          yield { phase: 'complete', finalTestCases: [] };
+        },
+      };
+      vi.spyOn(await import('../graph/graph.ts'), 'buildTestGenGraph').mockReturnValue(fakeGraph as any);
+
+      await session.retryFromAgentLogs('retry-thread-3', 0, { projectId: 'p' }, []);
+
+      expect(updateStateCalls).toHaveLength(1);
+      expect(updateStateCalls[0].asNode).toBe('preparation');
     });
   });
 });

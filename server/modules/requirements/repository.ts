@@ -3,7 +3,7 @@ import { db } from '../../shared/db/client.ts';
 import { BaseCrudRepository } from '../../shared/db/BaseCrudRepository.ts';
 import type { DbRequirementRow } from '../../shared/db/types.ts';
 import { randomId } from '../../shared/utils/index.ts';
-import { validateRequirementDependencies, validateRequirementHumanId, validateRequirementFlowType, validateRequirementIsFlow, validateRelatedRequirementIds } from './validation.ts';
+import { validateRequirementFlowType, validateRequirementIsFlow, validateRelatedRequirementIds } from './validation.ts';
 import { regenerateIndexFile } from './index-generator.ts';
 
 class RequirementRepository extends BaseCrudRepository<Requirement> {
@@ -41,30 +41,24 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       ...record,
       id,
       projectId: record.projectId || existing?.projectId || '',
-      dependencies: record.dependencies ?? existing?.dependencies ?? [],
     } as Requirement;
 
-    validateRequirementDependencies(normalizedRecord, this.listByProject(normalizedRecord.projectId));
-    validateRequirementHumanId(normalizedRecord, this.listByProject(normalizedRecord.projectId));
     validateRequirementFlowType(normalizedRecord);
     validateRequirementIsFlow(normalizedRecord);
     validateRelatedRequirementIds(normalizedRecord, this.listByProject(normalizedRecord.projectId));
 
     db.prepare(`
-      INSERT INTO requirements (id, project_id, parent_id, title, description, dependencies, level, status, position, human_id, flow_type, type, is_flow, related_requirement_ids)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO requirements (id, project_id, parent_id, title, description, level, status, position, flow_type, is_flow, related_requirement_ids)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
         parent_id = excluded.parent_id,
         title = excluded.title,
         description = excluded.description,
-        dependencies = excluded.dependencies,
         level = excluded.level,
         status = excluded.status,
         position = excluded.position,
-        human_id = excluded.human_id,
         flow_type = excluded.flow_type,
-        type = excluded.type,
         is_flow = excluded.is_flow,
         related_requirement_ids = excluded.related_requirement_ids,
         updated_at = datetime('now')
@@ -74,13 +68,10 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
       record.parentId !== undefined ? (record.parentId || null) : (existing?.parentId || null),
       record.title || existing?.title || '',
       record.description ?? existing?.description ?? '',
-      JSON.stringify(record.dependencies ?? existing?.dependencies ?? []),
       record.level || existing?.level || 'story',
       record.status || existing?.status || 'DRAFT',
       record.position ?? existing?.position ?? 0,
-      record.humanId !== undefined ? (record.humanId || null) : (existing?.humanId || null),
       record.flowType !== undefined ? (record.flowType || null) : (existing?.flowType || null),
-      record.type || existing?.type || 'functional',
       record.isFlow !== undefined ? (record.isFlow ? 1 : 0) : (existing?.isFlow ? 1 : 0),
       JSON.stringify(record.relatedRequirementIds ?? existing?.relatedRequirementIds ?? []),
     );
@@ -90,19 +81,39 @@ class RequirementRepository extends BaseCrudRepository<Requirement> {
     return result;
   }
 
+  /** Update a requirement's primary key id with cascade updates for parentId
+   *  and relatedRequirementIds references. Caller is responsible for validation
+   *  (newId format + uniqueness) before invoking. */
+  updateId(oldId: string, newId: string): void {
+    const existing = this.get(oldId);
+    if (!existing) throw new Error(`Requirement ${oldId} not found`);
+    // 1. Update the row's own id.
+    db.prepare('UPDATE requirements SET id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(newId, oldId);
+    // 2. Cascade parent_id on children.
+    db.prepare('UPDATE requirements SET parent_id = ? WHERE parent_id = ?').run(newId, oldId);
+    // 3. Cascade relatedRequirementIds references (stored as JSON array string).
+    const allRows = db.prepare('SELECT id, related_requirement_ids FROM requirements').all() as { id: string; related_requirement_ids: string }[];
+    for (const row of allRows) {
+      if (!row.related_requirement_ids) continue;
+      let arr: string[];
+      try { arr = JSON.parse(row.related_requirement_ids); } catch { continue; }
+      if (!Array.isArray(arr) || !arr.includes(oldId)) continue;
+      const next = arr.map((v) => (v === oldId ? newId : v));
+      db.prepare('UPDATE requirements SET related_requirement_ids = ? WHERE id = ?').run(JSON.stringify(next), row.id);
+    }
+    regenerateIndexFile(existing.projectId);
+  }
+
   rowToRequirement(row: DbRequirementRow): Requirement {
     return {
       id: row.id,
       projectId: row.project_id,
       parentId: row.parent_id || undefined,
-      humanId: row.human_id || null,
       title: row.title,
       description: row.description,
-      dependencies: JSON.parse(row.dependencies || '[]'),
       level: (row.level || 'story') as Requirement['level'],
       flowType: (row.flow_type as Requirement['flowType']) || null,
       status: row.status as Requirement['status'],
-      type: ((row.type || 'functional') as Requirement['type']),
       position: row.position,
       isFlow: Boolean(row.is_flow),
       relatedRequirementIds: JSON.parse(row.related_requirement_ids || '[]'),

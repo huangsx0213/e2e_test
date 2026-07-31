@@ -12,6 +12,30 @@ export interface BatchContext {
   processedCount: number;
 }
 
+/**
+ * A requirement record (story or AC) within the current batch. Mirrors the
+ * shape produced by `buildBatchInputState` in orchestrator.ts — including
+ * `isFlow`, `description`, and nested `acceptanceCriteria` so prompt builders
+ * and nodes can access them without per-access casts.
+ */
+export interface BatchRequirement {
+  id: string;
+  title: string;
+  level: string;
+  parentId: string;
+  description?: string;
+  isFlow?: boolean;
+  acceptanceCriteria?: BatchAcceptanceCriteria[];
+}
+
+export interface BatchAcceptanceCriteria {
+  id: string;
+  title: string;
+  description?: string;
+  flowType?: string;
+  relatedRequirementIds?: string[];
+}
+
 export interface SkillCallRecord {
   agent: string;
   skillName: string;
@@ -50,93 +74,124 @@ export const AGENT_NAME_BY_CHECKPOINT: Readonly<Record<number, string>> = {
   3: 'quality_manager',
 };
 
-// L1 索引层：Epic 级全局摘要（替代需求级 globalRequirementIndex 注入到 prompt）
+// L1 index layer: Epic-level global summary (replaces injecting requirement-level globalRequirementIndex into the prompt)
+export interface GlobalEpicEntryChild {
+  id: string;
+  title: string;
+  level: string;       // 'story' | 'ac'
+  isFlow: boolean;
+  // Nested ACs for story-level children (undefined for AC-level children).
+  // Populated so the prompt can list story + AC titles/ids without a tool call.
+  acs?: GlobalEpicEntryChild[];
+}
+
 export interface GlobalEpicEntry {
   epicId: string;
   title: string;
   requirementCount: number;
-  flowCount: number;
+  storyCount: number;
+  nonFlowAcCount: number;
+  flowAcCount: number;
+  flowCount: number;          // flow story count (subset of storyCount)
   statusBreakdown: Record<string, number>;
+  children: GlobalEpicEntryChild[];   // direct children (stories + standalone ACs)
 }
 
-// L2 关联层：跨 Epic 依赖摘要（preparation 节点预计算，仅含与当前批次相关的条目）
+// L2 association layer: cross-epic dependency summary (precomputed by the preparation node, containing only entries relevant to the current batch)
 export interface CrossEpicDependency {
-  fromRequirementId: string;       // 当前批次内的需求
-  toRequirementId: string;         // 跨 Epic 的目标需求
+  fromRequirementId: string;       // Requirement within the current batch
+  toRequirementId: string;         // Cross-epic target requirement
   toEpicId: string;
   toEpicTitle: string;
   toRequirementTitle: string;
-  relationType: 'depends-on' | 'depended-by' | 'sibling-in-other-epic';
+  relationType: 'depends-on' | 'depended-by' | 'sibling-in-other-epic' | 'referenced-by' | 'references';
 }
 
-// L2 关联层：已完成批次的覆盖摘要（按 requirementId 分组，替代 condition 全文累积）
+// L2 association layer: coverage summary of completed batches (grouped by requirementId, replaces accumulating full condition text)
 export interface PreviousBatchCoverageSummary {
   requirementId: string;
   conditionCount: number;
   categories: string[];
   techniques: string[];
-  conditionTitles: string[];       // 仅保留截断后的标题，避免全文累积
-  // case 级跨批次去重视图（让 Designer 知道前面批次已生成哪些用例）
-  caseTitles: string[];            // 截断后的用例标题，按 testLevel 分组注入 prompt
-  caseLevels: string[];            // 与 caseTitles 一一对应：'component' | 'integration'
+  // Case-level cross-batch dedup view: only keeps counts by testLevel to avoid accumulating title lists.
+  // Call previous_batch_cases_query when the LLM needs specific titles.
+  caseCountByLevel: { component: number; integration: number };
 }
 
 export const TestGenStateAnnotation = Annotation.Root({
-  // === 运行标识 ===
+  // === Run Identity ===
   projectId: Annotation<string>,
   runId: Annotation<string>,
   mode: Annotation<'auto' | 'interactive'>,
 
-  // === 批次上下文 ===
+  // === Batch Context ===
   requirementIds: Annotation<string[]>,
-  currentBatch: Annotation<{ id: string; title: string; level: string; parentId: string }[]>,
+  epic: Annotation<{ id: string; title: string; description: string } | undefined>,
+  currentBatch: Annotation<BatchRequirement[]>,
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
 
-  // === 全局统计（所有批次共享） ===
+  // === Global Statistics (shared across all batches) ===
   globalStats: Annotation<{ totalRequirements: number; totalEpics: number; totalFlows: number } | undefined>,
 
-  // === L1 索引层：Epic 级全局摘要（替代需求级列表注入到 prompt） ===
+  // === L1 Index Layer: Epic-level Global Summary (replaces injecting requirement-level list into the prompt) ===
   globalEpicIndex: Annotation<GlobalEpicEntry[] | undefined>,
 
-  // === L2 关联层：跨 Epic 依赖摘要（preparation 节点预计算） ===
+  // === L2 Association Layer: Cross-epic Dependency Summary (precomputed by the preparation node) ===
   crossEpicDependencies: Annotation<CrossEpicDependency[] | undefined>,
 
-  // === L2 关联层：已完成批次覆盖摘要（按 requirementId 分组，替代 condition 全文累积） ===
+  // === L2 Association Layer: Completed Batch Coverage Summary (grouped by requirementId, replaces accumulating full condition text) ===
   previousBatchCoverageSummary: Annotation<PreviousBatchCoverageSummary[] | undefined>,
 
-  // === L2 关联层：与当前批次相关的 flow 蓝图（preparation 节点过滤后写入） ===
+  // === L2 Association Layer: Flow Blueprints Relevant to the Current Batch (written after preparation node filtering) ===
   relevantFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
 
-  // === Preparation 产物 ===
+  // === L2 Association Layer: Component Story Context Referenced by Flows (includes AC, injected as prompt context, does not generate batches separately) ===
+  flowReferencedComponentContext: Annotation<Record<string, any[]> | undefined>,
+
+  // === Preparation Outputs ===
   environmentReady: Annotation<boolean>,
   initializationLogs: Annotation<string[]>,
   tokenBudget: Annotation<{ estimated: number; limit: number | null }>,
 
-  // === Test Analyst 产物 ===
+  // === Test Analyst Outputs ===
   requirementAnalysis: Annotation<{ overallApproach: string; riskAssessmentSummary: string } | undefined>,
   testConditions: Annotation<TestCondition[] | undefined>,
   approvedConditions: Annotation<TestCondition[] | undefined>,
 
-  // === Test Designer 产物 ===
+  // === Test Designer Outputs ===
   draftTestCases: Annotation<NlTestCase[] | undefined>,
   approvedDraftCases: Annotation<NlTestCase[] | undefined>,
 
-  // === Quality Manager 产物 ===
+  // === Quality Manager Outputs ===
   finalTestCases: Annotation<NlTestCase[] | undefined>,
   coverageMatrix: Annotation<CoverageMatrix | undefined>,
 
-  // === 生成模式 ===
+  // === Auto-repair: preserved cases + full condition list for incremental patch ===
+  // When checkpoint_3 routes back to Designer for missing coverage, these hold
+  // the already-reviewed cases and the full condition list so Designer only
+  // generates cases for the missing conditions, and checkpoint_2 merges them back.
+  preservedCases: Annotation<NlTestCase[] | undefined>,
+  allApprovedConditions: Annotation<TestCondition[] | undefined>,
+
+  // === Generation Mode ===
+  generationMode: Annotation<'component' | 'flow' | 'mixed'>,
   selectedFlowIds: Annotation<string[]>,
 
-  // === 审核反馈 ===
+  // === Pre-built Analyst User Prompt JSON ===
+  analystInput: Annotation<Record<string, unknown> | undefined>,
+
+  // === Review Feedback ===
   humanReviewFeedback: Annotation<string>,
 
-  // === Skill 调用记录 ===
+  // === Auto-repair loop counter (Quality → Designer retry for missing coverage) ===
+  designerRetryCount: Annotation<number>,
+
+  // === Skill Call Records ===
   skillCalls: Annotation<SkillCallRecord[]>,
 
-  // === 阶段追踪 ===
+  // === Phase Tracking ===
   phase: Annotation<Phase>,
   errors: Annotation<{ phase: string; agent: string; step: string; message: string; rawResponse?: string; timestamp: number }[]>,
 });

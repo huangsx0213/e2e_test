@@ -5,9 +5,9 @@ import type { CoverageMatrix } from '../../../../../shared/contracts/index.ts';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
 import { buildQualitySystemPrompt, buildQualityUserMessage } from '../prompts';
-import { QUALITY_SKILLS } from '../skills/skills.ts';
+import { buildQualitySkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
-import { createQualityOutputProfile } from '../structured-output/quality.ts';
+import { createQualityOutputProfile, reconcileCoverageMatrix } from '../structured-output/quality.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
@@ -22,7 +22,7 @@ export interface QualityNodeOptions {
 }
 
 export function makeQualityNode(opts: QualityNodeOptions) {
-  const { provider, skills = QUALITY_SKILLS, observer, timeoutMs = 600_000, signal } = opts;
+  const { provider, observer, timeoutMs = 600_000, signal } = opts;
   const agentName = 'quality_manager';
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
@@ -31,6 +31,11 @@ export function makeQualityNode(opts: QualityNodeOptions) {
     const draftCount = (state.approvedDraftCases ?? state.draftTestCases ?? []).length;
     const fb = state.humanReviewFeedback ? `, feedback="${state.humanReviewFeedback.slice(0, 80)}"` : '';
     log.info(`ENTER ── ${draftCount} draft cases to review${fb}`);
+
+    // Build skills dynamically: pass runId for previous_batch_cases_query (D2 cross-batch check)
+    // and currentBatch for requirement_detail_query fallback
+    const skills = opts.skills ?? buildQualitySkills(state.runId, state.currentBatch);
+    log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
 
@@ -67,7 +72,11 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         { signal: nodeSignal, agentName },
       );
 
-      const computedCoverageMatrix = (validated as any).coverageMatrix;
+      const computedCoverageMatrix = reconcileCoverageMatrix(
+        (validated as any).coverageMatrix,
+        validated.finalTestCases,
+        (state.approvedConditions ?? state.testConditions ?? []) as any,
+      );
 
       const latencyMs = Date.now() - startTime;
       const finalCount = validated.finalTestCases?.length ?? 0;

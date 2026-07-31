@@ -1,48 +1,162 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnalystSystemPrompt, buildDesignerSystemPrompt, buildQualitySystemPrompt } from '../graph/prompts.ts';
+import { buildAnalystSystemPrompt, buildDesignerSystemPrompt, buildDesignerUserMessage, buildQualitySystemPrompt } from '../graph/prompts.ts';
 
 describe('buildAnalystSystemPrompt', () => {
-  it('explicitly calls out required test condition fields that are often omitted', () => {
+  it('limits component batches to component conditions and relevant guidance', () => {
     const prompt = buildAnalystSystemPrompt({
-      batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
-      currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
+      generationMode: 'component',
+      batchContext: { currentBatch: 1, totalBatches: 2, processedCount: 0 },
+      currentBatch: [{ id: 'STORY-1', title: 'Login', level: 'story', parentId: '' }],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
-      businessFlowBlueprints: [],
+      businessFlowBlueprints: [{ id: 'FLOW-1', steps: [] }],
       selectedFlowIds: [],
       humanReviewFeedback: '',
     } as any);
 
-    expect(prompt).toContain('For EVERY object in `testConditions`, these fields are mandatory');
-    expect(prompt).toContain('`requirementId` must be the exact source requirement ID');
-    expect(prompt).toContain('`category` must be explicitly set');
-    expect(prompt).toContain('end with a single JSON code block');
-    expect(prompt).toContain('It must contain ALL test conditions');
+    expect(prompt).toContain('Generation Mode: COMPONENT');
+    expect(prompt).toContain('All conditions in this phase must have `conditionType: "component"`');
+    expect(prompt).toContain('Select the applicable technique(s), then load only their ISTQB guide(s)');
+    expect(prompt).not.toContain('conditionType": "flow"');
+    expect(prompt).not.toContain('Load component coverage context');
+    expect(prompt).not.toContain('flow_detail_query');
+    expect(prompt).not.toContain('Business Flows:');
+    expect(prompt).toContain('Do not load all black-box techniques by default');
   });
 
-  it('includes CRITICAL RULES section with conditionType decision table', () => {
+  it('limits flow batches to integration conditions and real component dependencies', () => {
     const prompt = buildAnalystSystemPrompt({
+      generationMode: 'flow',
+      batchContext: { currentBatch: 2, totalBatches: 2, processedCount: 1 },
+      currentBatch: [{ id: 'FLOW-1', title: 'Login Journey', level: 'story', parentId: '' }],
+      projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
+      businessFlowBlueprints: [{ id: 'FLOW-1', steps: [] }],
+      selectedFlowIds: ['FLOW-1'],
+      humanReviewFeedback: '',
+    } as any);
+
+    expect(prompt).toContain('Generation Mode: FLOW');
+    expect(prompt).toContain('All conditions in this phase must have `conditionType: "flow"`');
+    expect(prompt).toContain('previous_batch_conditions_query');
+    expect(prompt).toContain('do NOT invent new conditionIds');
+    expect(prompt).not.toContain('conditionType": "component"');
+  });
+
+  it('mixed mode: derives both component and flow conditions in one batch', () => {
+    const prompt = buildAnalystSystemPrompt({
+      generationMode: 'mixed',
       batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
-      currentBatch: [{ id: 'REQ-1', title: 'Login', level: 'L1', parentId: '' }],
+      currentBatch: [
+        { id: 'STORY-1', title: 'Login UI', level: 'story', parentId: '', isFlow: false },
+        { id: 'FLOW-1', title: 'Login Journey', level: 'story', parentId: '', isFlow: true },
+      ],
+      projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
+      businessFlowBlueprints: [{ id: 'FLOW-1', steps: [] }],
+      selectedFlowIds: ['FLOW-1'],
+      humanReviewFeedback: '',
+    } as any);
+
+    expect(prompt).toContain('Generation Mode: MIXED (component + flow)');
+    // Mixed-mode workflow derives both condition types in the same output
+    expect(prompt).toContain('Derive component conditions for non-flow stories AND flow conditions for flow stories in the SAME output');
+    expect(prompt).toContain('conditionType: "component"');
+    expect(prompt).toContain('conditionType: "flow"');
+    // Cross-reference guidance: same-batch component conditions are referenced directly
+    expect(prompt).toContain('Mixed Mode Cross-Reference');
+    expect(prompt).toContain('reference their condition IDs directly');
+  });
+
+  it('keeps the complete structured-output contract in both modes', () => {
+    for (const generationMode of ['component', 'flow'] as const) {
+      const prompt = buildAnalystSystemPrompt({
+        generationMode,
+        batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
+        currentBatch: [],
+        projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
+        businessFlowBlueprints: [],
+        selectedFlowIds: [],
+        humanReviewFeedback: '',
+      } as any);
+
+      expect(prompt).toContain('For EVERY object in `testConditions`, these fields are mandatory');
+      expect(prompt).toContain('The result must contain ALL derived test conditions');
+      expect(prompt).toContain('End with a single JSON code block');
+      expect(prompt).toContain('analyst_rules');
+    }
+  });
+
+  it('injects only a per-epic summary (no story/AC tree) for the analyst', () => {
+    const prompt = buildAnalystSystemPrompt({
+      generationMode: 'mixed',
+      batchContext: { currentBatch: 1, totalBatches: 1, processedCount: 0 },
+      currentBatch: [
+        { id: 'STORY-1', title: 'Login UI', level: 'story', parentId: '', isFlow: false },
+      ],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
       businessFlowBlueprints: [],
       selectedFlowIds: [],
       humanReviewFeedback: '',
+      globalStats: { totalRequirements: 79, totalEpics: 1, totalFlows: 3 },
+      globalEpicIndex: [{
+        epicId: 'req-aut-auth',
+        title: 'Authentication System',
+        requirementCount: 79,
+        storyCount: 4,
+        nonFlowAcCount: 6,
+        flowAcCount: 4,
+        flowCount: 2,
+        statusBreakdown: { APPROVED: 4 },
+        children: [
+          {
+            id: 'req-aut-auth-login-ui', title: 'Login Page UI', level: 'story', isFlow: false,
+            acs: [{ id: 'req-aut-auth-login-ui-form', title: 'Login form display', level: 'ac', isFlow: false }],
+          },
+        ],
+      }],
     } as any);
 
-    expect(prompt).toContain('CRITICAL RULES');
-    expect(prompt).toContain('Decision rule — assign `conditionType` per CONDITION');
-    // The decision table renders the values as `flow` / `component` (with
-    // backticks) so they stand out as enum literals.
-    expect(prompt).toContain('`flow`');
-    expect(prompt).toContain('`component`');
-    // Anti-redundancy: non-overlap rule replaces the old rigid per-requirement quota
-    expect(prompt).toContain('Non-overlap rule');
-    expect(prompt).toContain('ANTI-REDUNDANCY');
-    expect(prompt).toContain('Final Self-Check');
+    // Per-epic one-line summary is present
+    expect(prompt).toContain('[Epic] req-aut-auth: Authentication System');
+    expect(prompt).toContain('1 epics, 79 requirements, 3 flows total');
+    // The full story/AC tree is NOT injected (moved to on-demand tool)
+    expect(prompt).not.toContain('[Story]');
+    expect(prompt).not.toContain('[AC]');
+    // Pointer to the on-demand tool
+    expect(prompt).toContain('requirement_graph_query');
   });
 });
 
 describe('buildDesignerSystemPrompt', () => {
+  it('includes qualified earlier component references for flow designers', () => {
+    const message = JSON.parse(buildDesignerUserMessage({
+      testConditions: [{
+        id: 'C-001',
+        condition: 'Verify authenticated session handoff',
+        conditionType: 'flow',
+        flowStepRefs: [],
+        priority: 'critical',
+        category: 'integration',
+        primaryTechnique: 'Use Case Testing',
+        secondaryTechniques: [],
+        riskLevel: 'high',
+        requirementId: 'req-auth-session',
+        coverageDimensions: [],
+      }],
+      businessFlowBlueprints: [],
+    } as any, [{
+      referenceId: 'component:req-login-ui-form:C-001',
+      conditionId: 'C-001',
+      requirementId: 'req-login-ui-form',
+      condition: 'Verify that the login form is displayed.',
+    }]));
+
+    expect(message.availableComponentConditions).toEqual([{
+      referenceId: 'component:req-login-ui-form:C-001',
+      conditionId: 'C-001',
+      requirementId: 'req-login-ui-form',
+      condition: 'Verify that the login form is displayed.',
+    }]);
+  });
+
   it('requires complete draftTestCases data without relying on output_result retries', () => {
     const prompt = buildDesignerSystemPrompt({
       approvedConditions: [{
@@ -67,7 +181,7 @@ describe('buildDesignerSystemPrompt', () => {
     expect(prompt).toContain('The block must contain COMPLETE data');
   });
 
-  it('F18: Designer prompt mandates 操作原子性 with the exact failure mode observed in the run', () => {
+  it('instructs the LLM to load designer_rules before designing test cases', () => {
     const prompt = buildDesignerSystemPrompt({
       approvedConditions: [],
       projectContext: { name: 'Demo Project', pages: [], endpoints: [] },
@@ -75,12 +189,15 @@ describe('buildDesignerSystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    // The exact failure mode observed in the latest run appears in the table.
-    expect(prompt).toContain('Submit the login form with admin/admin123');
-    // F18 self-audit still names the four quick checks (verb / object / data / expected).
-    expect(prompt).toContain('一个动词');
-    expect(prompt).toContain('一个目标');
-    expect(prompt).toContain('数据就在该 step 里');
+    // Detailed design rules moved to the designer_rules knowledge skill; the
+    // prompt must tell the LLM to load them before designing any test cases.
+    expect(prompt).toContain('designer_rules');
+    expect(prompt).toContain('Detailed Rules (MANDATORY — load before designing)');
+    expect(prompt).toContain('Step 2.5 — Load detailed rules (MANDATORY)');
+    // The inline rule sections are gone (moved to knowledge/designer-rules.md).
+    expect(prompt).not.toContain('Step-Writing Rules (操作原子性)');
+    expect(prompt).not.toContain('Self-Review Scoring');
+    expect(prompt).not.toContain('Case Budget Guidance (F31)');
   });
 });
 
@@ -107,16 +224,17 @@ describe('buildQualitySystemPrompt', () => {
     expect(prompt).toContain('End with a single JSON code block containing the COMPLETE output. Nothing after it.');
     // F14: Quality must read the Analyst conditions first before judging.
     expect(prompt).toContain('Read the conditions first');
-    // Test level fidelity: Quality must verify the Designer's testLevel by
-    // inspecting steps (not by flipping the level). The old "at least one
-    // component AND integration case" rigid quota was removed.
-    expect(prompt).toContain('Test Level Fidelity');
-    expect(prompt).toContain('do NOT flip a case from `component` to `integration`');
-    // Anti-redundancy: Quality must check non-overlap between component and integration cases.
-    expect(prompt).toContain('Redundancy (F17 — anti-overlap between component and flow cases, hard check)');
+    // Detailed review rules moved to the quality_rules knowledge skill; the
+    // prompt must tell the LLM to load them before reviewing any cases.
+    expect(prompt).toContain('quality_rules');
+    expect(prompt).toContain('Load Detailed Rules (MANDATORY)');
+    expect(prompt).toContain('Detailed Rules (MANDATORY — load before reviewing)');
+    // The inline rule sections are gone (moved to knowledge/quality-rules.md).
+    expect(prompt).not.toContain('Review Dimensions (checklist, not a vibe check)');
+    expect(prompt).not.toContain('Coverage Matrix (MANDATORY — F27');
   });
 
-  it('F18: Quality prompt enforces 操作原子性 against the same compound-action patterns', () => {
+  it('no longer inlines review dimensions (moved to quality_rules skill)', () => {
     const prompt = buildQualitySystemPrompt({
       approvedDraftCases: [{
         id: 'TC-1',
@@ -135,10 +253,12 @@ describe('buildQualitySystemPrompt', () => {
       humanReviewFeedback: '',
     } as any);
 
-    // Quality rejects the exact compound pattern observed in the latest run.
-    expect(prompt).toContain('Submit the login form with admin/admin123');
-    // Quality applies the same 操作原子性 rule as the Designer.
-    expect(prompt).toContain('Clarity (操作原子性，硬约束)');
-    expect(prompt).toContain('只有一个动词');
+    // The 操作原子性 compound-action patterns and review dimensions now live
+    // in knowledge/quality-rules.md, loaded via the quality_rules skill — they
+    // must NOT be inlined in the system prompt anymore.
+    expect(prompt).not.toContain('Submit the login form with admin/admin123');
+    expect(prompt).not.toContain('Clarity (操作原子性，硬约束)');
+    expect(prompt).not.toContain('只有一个动词');
+    expect(prompt).toContain('quality_rules');
   });
 });

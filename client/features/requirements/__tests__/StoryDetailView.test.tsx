@@ -9,6 +9,7 @@ import type { Requirement } from "../../../../shared/contracts/index";
 vi.mock("../../../shared/hooks/useQueryHooks", () => ({
   useRequirementMutations: () => ({
     update: vi.fn().mockResolvedValue(undefined),
+    updateId: vi.fn().mockResolvedValue(undefined),
     create: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
   }),
@@ -23,7 +24,6 @@ function makeStory(overrides: Partial<Requirement> & { id: string }): Requiremen
     description: "As a user\nI want to do x\nSo that y",
     level: "story",
     status: "DRAFT",
-    type: "functional",
     position: 0,
     ...overrides,
   } as Requirement;
@@ -57,8 +57,8 @@ describe("StoryDetailView", () => {
     cleanup();
   });
 
-  it("renders story header with title and human_id", () => {
-    const story = makeStory({ id: "story-1", humanId: "AUTH-007", title: "User changes password" });
+  it("renders story header with title and id", () => {
+    const story = makeStory({ id: "story-1", title: "User changes password" });
     render(
       React.createElement(Wrapper, null,
         React.createElement(StoryDetailView, {
@@ -71,8 +71,8 @@ describe("StoryDetailView", () => {
     );
     // Title is rendered as an <input value=...> — use getByDisplayValue (canonical query for form inputs)
     expect(screen.getByDisplayValue("User changes password")).toBeInTheDocument();
-    // humanId is rendered as text inside a <span>
-    expect(screen.getByText("AUTH-007")).toBeInTheDocument();
+    // id is rendered as text inside a <span>
+    expect(screen.getByText("story-1")).toBeInTheDocument();
   });
 
   it("renders AC summary chip with approved/total count", () => {
@@ -92,56 +92,6 @@ describe("StoryDetailView", () => {
       )
     );
     expect(screen.getByTestId("ac-progress")).toHaveTextContent("1/2 approved");
-  });
-
-  it("renders type select always visible on the same row as status", () => {
-    const story = makeStory({ id: "story-1" });
-    render(
-      React.createElement(Wrapper, null,
-        React.createElement(StoryDetailView, {
-          story,
-          acs: [],
-          projectId: "p1",
-          onSaved: vi.fn(),
-        })
-      )
-    );
-    const typeSelect = screen.getByDisplayValue("Functional") as HTMLSelectElement;
-    expect(typeSelect).toBeInTheDocument();
-    expect(typeSelect.value).toBe("functional");
-  });
-
-  it("renders type select with non-default type", () => {
-    const story = makeStory({ id: "story-1", type: "security" });
-    render(
-      React.createElement(Wrapper, null,
-        React.createElement(StoryDetailView, {
-          story,
-          acs: [],
-          projectId: "p1",
-          onSaved: vi.fn(),
-        })
-      )
-    );
-    const typeSelect = screen.getByDisplayValue("Security") as HTMLSelectElement;
-    expect(typeSelect).toBeInTheDocument();
-    expect(typeSelect.value).toBe("security");
-  });
-
-  it("renders dependencies select", () => {
-    const story = makeStory({ id: "story-1", dependencies: ["AUTH-001"] });
-    render(
-      React.createElement(Wrapper, null,
-        React.createElement(StoryDetailView, {
-          story,
-          acs: [],
-          projectId: "p1",
-          onSaved: vi.fn(),
-        })
-      )
-    );
-    // Dependencies dropdown should be visible
-    expect(screen.getByRole("button", { name: /1 selected/i })).toBeInTheDocument();
   });
 
   it("does not render priority selector (removed field)", () => {

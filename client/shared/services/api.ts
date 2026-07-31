@@ -120,6 +120,11 @@ export const api = {
   requirements: {
     ...createCrudService<Requirement>('requirements'),
     listByProject: (projectId: string) => apiFetch<Requirement[]>(`requirements/by-project/${projectId}`),
+    updateId: (oldId: string, newId: string) =>
+      apiFetch<Requirement>(`requirements/${oldId}/id`, {
+        method: 'PUT',
+        body: JSON.stringify({ newId }),
+      }),
   },
   testGen: {
     runs: (projectId: string) => apiFetch<any[]>(`test-gen/runs/${projectId}`),

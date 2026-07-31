@@ -14,22 +14,26 @@ export function deduplicateTestCases(rawCases: any[]): DedupResult {
   const conflicts: string[] = [];
 
   for (const tc of rawCases) {
-    // 优先用 conditionId + testLevel 作为去重 key：同一条件同一级别不应有两个用例。
+    // 优先用 requirementId + conditionId + testLevel 作为去重 key：
+    // 同一需求同一条件同一级别不应有两个用例。
+    // 包含 requirementId 避免跨批次 conditionId 碰撞（各批次都从 C-001 开始编号）。
     // conditionId 缺失时回退到 title + testLevel（语义较弱，但好过无去重）。
     const levelKey = (tc.testLevel || '').toLowerCase();
     const condKey = (tc.conditionId || '').toLowerCase().trim();
+    const reqKey = (tc.requirementId || '').toLowerCase().trim();
     const titleKey = tc.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
     const key = condKey
-      ? `${condKey}::${levelKey}`
+      ? `${reqKey}::${condKey}::${levelKey}`
       : (levelKey ? `${titleKey}::${levelKey}` : titleKey);
     if (!key) { allCases.push(tc); continue; }
     if (seen.has(key)) {
       const dup = allCases.find(c => {
         const dupLevel = (c.testLevel || '').toLowerCase();
         const dupCond = (c.conditionId || '').toLowerCase().trim();
+        const dupReq = (c.requirementId || '').toLowerCase().trim();
         const dupTitle = c.title?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
         const dupKey = dupCond
-          ? `${dupCond}::${dupLevel}`
+          ? `${dupReq}::${dupCond}::${dupLevel}`
           : (dupLevel ? `${dupTitle}::${dupLevel}` : dupTitle);
         return dupKey === key;
       });
@@ -61,6 +65,10 @@ export interface GroupedEpics {
   rootGroups: Map<string, string[]>;
   totalBatches: number;
   selectedIndex: IndexEntry[];
+}
+
+export function selectedRequirementAndFlowIds(requirementIds: string[], flowIds: string[]): Set<string> {
+  return new Set([...requirementIds, ...flowIds]);
 }
 
 export function groupRequirementsByEpic(allIndex: IndexEntry[], selectedIds: Set<string>): GroupedEpics {

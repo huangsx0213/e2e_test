@@ -335,9 +335,9 @@ const handleRefresh = useCallback(async () => {
         isOpen={showRetryConfirm}
         onClose={() => setShowRetryConfirm(false)}
         onConfirm={() => { setShowRetryConfirm(false); handleRetry(); }}
-        title="Retry this Agent?"
-        message="The current output will be discarded and the agent will re-run from scratch with the same inputs. Any edits made during review will be lost."
-        confirmLabel="Retry Agent"
+        title="Retry from last checkpoint?"
+        message="The agent will re-run from the previous checkpoint with the same inputs. Any edits made during review will be lost."
+        confirmLabel="Retry from last checkpoint"
         type="warning"
       />
     </div>

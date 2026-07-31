@@ -35,8 +35,8 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     const selectedFlowCount = state.selectedFlowIds?.length ?? 0;
     log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, selectedFlows=${selectedFlowCount}`);
 
-    // 在节点内部动态构建 skills：传入 state.runId 让 previous_batch_conditions_query 能查询历史 agent logs
-    const skills = opts.skills ?? buildAnalystSkills(state.runId);
+    // Build skills dynamically inside the node: pass state.runId so previous_batch_conditions_query can query historical agent logs
+    const skills = opts.skills ?? buildAnalystSkills(state.runId, state.currentBatch);
     log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
@@ -51,8 +51,28 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
       ];
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);
-      const allowedReqIds = new Set((state.currentBatch ?? []).map(r => r.id));
-      const analystOutputProfile = createAnalystOutputProfile(allowedReqIds);
+      const allowedReqIds = new Set([
+        ...(state.currentBatch ?? []).map(r => r.id),
+        ...(state.selectedFlowIds ?? []),
+      ]);
+      const flowBlueprints = state.relevantFlowBlueprints ?? state.businessFlowBlueprints ?? [];
+      // Build AC→parent story mapping so the structured-output profile can
+      // auto-fix conditions that incorrectly use AC IDs as requirementId.
+      // Covers ACs from current batch AND from all selected flow blueprints
+      // (which may belong to flow stories not in this batch).
+      const acParentMap = new Map<string, string>();
+      for (const story of state.currentBatch ?? []) {
+        const acs = (story as any).acceptanceCriteria ?? [];
+        for (const ac of acs) {
+          if (ac.id) acParentMap.set(ac.id, story.id);
+        }
+      }
+      for (const bp of flowBlueprints) {
+        if (bp.id && bp.flowStoryId) {
+          acParentMap.set(bp.id, bp.flowStoryId);
+        }
+      }
+      const analystOutputProfile = createAnalystOutputProfile(allowedReqIds, flowBlueprints as any, acParentMap);
       const { output: validated, usage, toolCallRecords } = await callLLMWithStructuredOutput(
         provider,
         messages,

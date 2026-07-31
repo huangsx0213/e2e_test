@@ -3,8 +3,10 @@ import { join, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { SkillDefinition } from '../nodes/types.ts';
+import type { BatchRequirement } from '../state.ts';
 import {
   requirementDetailQuery,
+  makeRequirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
   crossEpicImpactQuery,
@@ -20,22 +22,54 @@ const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url))
 // ============================================================
 
 /**
- * 从 Markdown 文件创建 Knowledge Skill。
- * 文件名即 skill name（去掉 .md 后缀，连字符转下划线）。
+ * Parse YAML frontmatter from a markdown file.
+ * Returns the frontmatter fields and the body (content after the closing `---`).
+ * If no frontmatter is present, returns an empty object and the original content.
+ */
+function parseFrontmatter(content: string): { frontmatter: Record<string, string>; body: string } {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, body: content };
+  const [, rawFm, body] = match;
+  const frontmatter: Record<string, string> = {};
+  for (const line of rawFm.split(/\r?\n/)) {
+    const idx = line.indexOf(':');
+    if (idx === -1) continue;
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    frontmatter[key] = value;
+  }
+  return { frontmatter, body };
+}
+
+/**
+ * Create a Knowledge Skill from a Markdown file following Anthropic's
+ * standard SKILL.md format. The file name becomes the skill name
+ * (stripped of .md suffix, hyphens → underscores). The description is
+ * read from the YAML frontmatter; if absent, a generic one is generated
+ * from the file name. The frontmatter is stripped from the body before
+ * returning the content to the LLM.
  */
 function createKnowledgeSkill(mdFilePath: string): SkillDefinition {
   const fileName = basename(mdFilePath, '.md');
   const skillName = fileName.replace(/-/g, '_');
 
-  // 从文件名推断简短描述
-  const label = fileName
-    .replace(/^istqb_/, '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  // Read once at registration time: extract frontmatter for description,
+  // cache the body (without frontmatter) for runtime invocation.
+  const rawContent = readFileSync(mdFilePath, 'utf-8');
+  const { frontmatter, body } = parseFrontmatter(rawContent);
+
+  // Use frontmatter description if available; otherwise generate from filename
+  const description = frontmatter.description ?? (() => {
+    const label = fileName
+      .replace(/^istqb_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return `Load the "${label}" knowledge guide. Use when you need detailed methodology, steps, examples, or common mistakes for this technique or domain topic.`;
+  })();
 
   return {
     name: skillName,
-    description: `Load the "${label}" knowledge guide. Use when you need detailed methodology, steps, examples, or common mistakes for this technique or domain topic.`,
+    description,
     schema: z.object({
       context: z
         .string()
@@ -43,16 +77,15 @@ function createKnowledgeSkill(mdFilePath: string): SkillDefinition {
         .describe('Brief context of what you are testing, to get tailored guidance'),
     }),
     func: async ({ context }) => {
-      const content = readFileSync(mdFilePath, 'utf-8');
-      Log.for(`skill:${skillName}`).info(`Loaded (${content.length} chars)${context ? `, context: ${String(context).slice(0, 60)}` : ''}`);
-      return context ? `${content}\n\n---\nApplying to your context: ${context}` : content;
+      Log.for(`skill:${skillName}`).info(`Loaded (${body.length} chars)${context ? `, context: ${String(context).slice(0, 60)}` : ''}`);
+      return context ? `${body}\n\n---\nApplying to your context: ${context}` : body;
     },
   };
 }
 
 /**
- * 扫描 knowledge 目录，自动注册所有 .md 文件为 Knowledge Skill。
- * 不包含 ISTQB 单个技术指南（已合并为统一的 istqb_guide）。
+ * Scan the knowledge directory and auto-register all .md files as Knowledge Skills.
+ * Excludes individual ISTQB technique guides (already merged into the unified istqb_guide).
  */
 function loadKnowledgeSkills(): SkillDefinition[] {
   const knowledgeDir = join(__dirname, 'knowledge');
@@ -66,7 +99,7 @@ function loadKnowledgeSkills(): SkillDefinition[] {
 }
 
 /**
- * 合并的 ISTQB 技术指南：一次加载所有 ISTQB 技术文档。
+ * Combined ISTQB technique guides: loads all ISTQB technique documents in one call.
  */
 const ISTQB_GUIDE_FILES = [
   'istqb-equivalence-partitioning.md',
@@ -115,16 +148,28 @@ const istqbGuideSkill: SkillDefinition = {
     const requestedTechniqueAliases = Array.isArray(techniques)
       ? techniques.flatMap((technique) => buildTechniqueAliases(String(technique)))
       : [];
-    const selectedFiles = Array.isArray(techniques) && techniques.length > 0
-      ? ISTQB_GUIDE_FILES.filter((f) => {
-          const fileTechniqueName = f.replace(/^istqb-/, '').replace(/\.md$/, '').replace(/-/g, ' ');
-          const fileAliases = buildTechniqueAliases(fileTechniqueName);
-          return requestedTechniqueAliases.some((requested) => fileAliases.includes(requested));
-        })
-      : ISTQB_GUIDE_FILES;
+
+    // P1: When no techniques specified, return only the compact overview
+    // (decision table + selection rules). The LLM should call again with
+    // specific techniques after deciding which ones to apply.
+    if (!Array.isArray(techniques) || techniques.length === 0) {
+      const overviewRaw = readFileSync(join(knowledgeDir, 'istqb-overview.md'), 'utf-8');
+      const { body: overview } = parseFrontmatter(overviewRaw);
+      Log.for('skill:istqb_guide').info(`Loaded overview only (${overview.length} chars) — call again with techniques for detailed guides`);
+      return context
+        ? `${overview}\n\n---\nApplying to your context: ${context}`
+        : overview;
+    }
+
+    const selectedFiles = ISTQB_GUIDE_FILES.filter((f) => {
+      const fileTechniqueName = f.replace(/^istqb-/, '').replace(/\.md$/, '').replace(/-/g, ' ');
+      const fileAliases = buildTechniqueAliases(fileTechniqueName);
+      return requestedTechniqueAliases.some((requested) => fileAliases.includes(requested));
+    });
     const parts = selectedFiles.map((f) => {
       const content = readFileSync(join(knowledgeDir, f), 'utf-8');
-      return content;
+      const { body } = parseFrontmatter(content);
+      return body;
     });
     const combined = parts.join('\n\n---\n\n');
     Log.for('skill:istqb_guide').info(`Loaded ${selectedFiles.length}/${ISTQB_GUIDE_FILES.length} guides (${combined.length} chars)`);
@@ -143,47 +188,64 @@ const istqbGuideSkill: SkillDefinition = {
 const knowledgeSkills = loadKnowledgeSkills();
 
 /**
- * Analyst 绑定的 skills 工厂函数：Data + ISTQB Guide + Knowledge Base
- * 需要传入 runId，用于 previous_batch_conditions_query 查询历史 agent logs
+ * Skills bound to the Analyst: Data + ISTQB Guide + Knowledge Base.
+ * Requires runId so previous_batch_conditions_query can look up historical agent logs.
+ * Passes batchRequirements for requirement_detail_query fallback.
  */
-export function buildAnalystSkills(runId: string): SkillDefinition[] {
+export function buildAnalystSkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
   return [
-    requirementDetailQuery,
+    makeRequirementDetailQuery(batchRequirements),
     requirementGraphQuery,
     flowDetailQuery,
     crossEpicImpactQuery,
     makePreviousBatchConditionsQuery(runId),
     istqbGuideSkill,
-    ...knowledgeSkills,
+    ...knowledgeSkills.filter((s) => s.name === 'analyst_rules'),
   ];
 }
 
 /**
- * Designer 绑定的 skills 工厂函数：Data (subset) + ISTQB Guide + Knowledge Base
- * 需要传入 runId，用于 previous_batch_cases_query 查询历史 agent logs
+ * Skills bound to the Designer: Data (subset) + ISTQB Guide + Knowledge Base.
+ * Requires runId so previous_batch_cases_query can look up historical agent logs.
+ * Passes batchRequirements for requirement_detail_query fallback.
  */
-export function buildDesignerSkills(runId: string): SkillDefinition[] {
+export function buildDesignerSkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
   return [
-    requirementDetailQuery,
+    makeRequirementDetailQuery(batchRequirements),
     requirementGraphQuery,
     flowDetailQuery,
     makePreviousBatchCasesQuery(runId),
     istqbGuideSkill,
-    ...knowledgeSkills.filter((s) => s.name === 'knowledge_base'),
+    ...knowledgeSkills.filter((s) => s.name === 'designer_rules'),
   ];
 }
 
-/** Quality Manager 绑定的 skills：Data (minimal) + Knowledge Base */
+/**
+ * Skills bound to the Quality Manager: Data + Knowledge Base.
+ * Requires runId so previous_batch_cases_query can look up historical agent logs for D2 cross-batch redundancy.
+ * Passes batchRequirements for requirement_detail_query fallback.
+ */
+export function buildQualitySkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
+  return [
+    makeRequirementDetailQuery(batchRequirements),
+    flowDetailQuery,
+    makePreviousBatchCasesQuery(runId),
+    istqbGuideSkill,
+    ...knowledgeSkills.filter((s) => s.name === 'quality_rules'),
+  ];
+}
+
+/** Skills for contexts without runId/batch (e.g. ALL_SKILLS, debugging) */
 export const QUALITY_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
-  ...knowledgeSkills.filter((s) => s.name === 'knowledge_base'),
+  flowDetailQuery,
+  ...knowledgeSkills.filter((s) => s.name === 'quality_rules'),
 ];
 
-/** 所有 skills（用于调试/日志） */
+/** All skills (for debugging/logging) */
 export const ALL_SKILLS: SkillDefinition[] = [
   requirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
-  crossEpicImpactQuery,
   ...knowledgeSkills,
 ];

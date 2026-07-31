@@ -21,6 +21,10 @@ export function useRequirementMutations(projectId: string) {
     mutationFn: ({ id, data }: { id: string; data: Partial<Requirement> }) => api.requirements.update(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
+  const updateId = useMutation({
+    mutationFn: ({ oldId, newId }: { oldId: string; newId: string }) => api.requirements.updateId(oldId, newId),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
   const remove = useMutation({
     mutationFn: (id: string) => api.requirements.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
@@ -28,6 +32,7 @@ export function useRequirementMutations(projectId: string) {
   return {
     create: (item) => create.mutateAsync(item),
     update: (id, data) => update.mutateAsync({ id, data }),
+    updateId: (oldId: string, newId: string) => updateId.mutateAsync({ oldId, newId }),
     remove: (id) => remove.mutateAsync(id),
   };
 }

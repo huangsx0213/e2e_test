@@ -1,3 +1,8 @@
+---
+name: istqb_integration_testing
+description: Load the ISTQB Integration Testing test-level guide (component vs integration test level decision, integration strategies, examples). Use when you need to decide the test level or design integration test cases.
+---
+
 # Integration Testing (Test Level)
 
 ## Definition

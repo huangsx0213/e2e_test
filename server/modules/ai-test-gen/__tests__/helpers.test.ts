@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deduplicateTestCases, groupRequirementsByEpic } from '../helpers.ts';
+import { deduplicateTestCases, groupRequirementsByEpic, selectedRequirementAndFlowIds } from '../helpers.ts';
 
 describe('deduplicateTestCases', () => {
   it('removes cases with the same title and identical steps', () => {
@@ -108,6 +108,29 @@ describe('groupRequirementsByEpic', () => {
     const result = groupRequirementsByEpic(allIndex, new Set());
     expect(result.epics).toEqual([]);
     expect(result.totalBatches).toBe(0);
+  });
+});
+
+describe('selectedRequirementAndFlowIds', () => {
+  it('keeps explicitly selected flow stories in the same epic batch as component stories', () => {
+    const selectedIds = selectedRequirementAndFlowIds(
+      ['req-login-ui', 'req-login-validation'],
+      ['req-auth-session-flow'],
+    );
+    const index = [
+      { id: 'epic-auth', parent: null, level: 0, title: 'Authentication' },
+      { id: 'req-login-ui', parent: 'epic-auth', level: 1, title: 'Login UI' },
+      { id: 'req-login-validation', parent: 'epic-auth', level: 1, title: 'Login validation' },
+      { id: 'req-auth-session-flow', parent: 'epic-auth', level: 1, title: 'Authentication Session' },
+    ];
+
+    const result = groupRequirementsByEpic(index, selectedIds);
+
+    expect(result.rootGroups.get('epic-auth')).toEqual([
+      'req-login-ui',
+      'req-login-validation',
+      'req-auth-session-flow',
+    ]);
   });
 });
 

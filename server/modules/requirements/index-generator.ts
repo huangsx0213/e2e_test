@@ -8,7 +8,6 @@ interface IndexItem {
   title: string;
   level: number;
   parent: string | null;
-  dependencies: string[];
   summary: string;
   tags: string[];
   testType: string[];
@@ -69,7 +68,6 @@ export function buildRequirementIndex(projectId: string): IndexItem[] {
     title: r.title,
     level: computeLevel(r.id, parentMap),
     parent: r.parentId || null,
-    dependencies: r.dependencies || [],
     summary: truncate(r.description, 200),
     tags: extractTags(r.title + ' ' + r.description),
     testType: inferTestTypes({ description: r.description }),

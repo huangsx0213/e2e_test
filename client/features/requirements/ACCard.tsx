@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Save, Trash2, Edit3, Eye, AlertTriangle, Check, X, Link2, ChevronDown } from "lucide-react";
 import type { Requirement } from "../../../shared/contracts/index";
 import { useRequirementMutations, useRequirements } from "../../shared/hooks/useQueryHooks";
 import { parseACMarkdown } from "../../shared/requirements/format-parser";
 import { ACFormatHelpTooltip } from "./ACFormatHelpTooltip";
 import { ConfirmModal } from "@/shared/ui/ConfirmModal";
+import { FormatSegmentBlock } from "./FormatSegmentBlock";
 
 interface Props {
   ac: Requirement;
@@ -36,7 +35,7 @@ function RelatedRequirementsMultiSelect({
   selected,
   onChange,
 }: {
-  candidates: { humanId: string; title: string; id: string }[];
+  candidates: { id: string; title: string }[];
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -110,7 +109,7 @@ function RelatedRequirementsMultiSelect({
                   className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500/20"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[11px] font-semibold text-slate-700">{c.humanId}</div>
+                  <div className="font-mono text-[11px] font-semibold text-slate-700">{c.id}</div>
                   <div className="text-[11px] text-slate-500 truncate">{c.title}</div>
                 </div>
               </label>
@@ -150,7 +149,7 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
   const relatedCandidates = useMemo(() => {
     return allItems
       .filter((r) => (r.level === "story" || r.level === "ac") && r.id !== ac.id)
-      .map((r) => ({ humanId: r.humanId || r.id, title: r.title, id: r.id }));
+      .map((r) => ({ id: r.id, title: r.title }));
   }, [allItems, ac.id]);
 
   const handleSave = async () => {
@@ -223,8 +222,8 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
     >
       <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
         <span className="font-mono text-[11px] text-slate-500 flex items-center gap-2">
-          {ac.humanId && <span className="font-semibold text-slate-700">{ac.humanId}</span>}
-          {ac.humanId && <span className="text-slate-300">·</span>}
+          <span className="font-semibold text-slate-700">{ac.id}</span>
+          <span className="text-slate-300">·</span>
           <span>#{index}</span>
         </span>
         <button
@@ -298,9 +297,15 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
             Empty — awaiting content
           </div>
         ) : mode === "preview" ? (
-          <div className="markdown-body rounded-lg border border-slate-200 bg-slate-50/30 px-4 py-3 text-sm text-slate-700 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
-          </div>
+          <FormatSegmentBlock
+            variant="ac"
+            segments={[
+              { label: "Given", content: parsed.given },
+              { label: "When", content: parsed.when },
+              { label: "Then", content: parsed.then },
+            ]}
+            remainder={parsed.remainder}
+          />
         ) : (
           <textarea
             value={description}
@@ -371,7 +376,7 @@ export function ACCard({ ac, index, projectId, onSaved, parentStoryIsFlow = fals
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         title="Delete Acceptance Criterion"
-        message={`Delete AC ${ac.humanId || `#${index}`}? This cannot be undone.`}
+        message={`Delete AC ${ac.id}? This cannot be undone.`}
         onConfirm={handleDelete}
         onClose={() => setDeleteConfirmOpen(false)}
       />

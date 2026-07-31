@@ -27,7 +27,7 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
     log.kv('mode', state.mode);
     log.kv('userSelectedFlows', selectedFlowCount);
 
-    // ── L2 关联层预计算 ──
+    // ── L2 Association Layer Precomputation ──
     const currentReqIds = new Set((state.currentBatch ?? []).map(r => r.id));
     const allReqs = requirementRepo.listByProject(state.projectId);
     const epicTitleMap = new Map<string, string>();
@@ -38,7 +38,7 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
         epicIdSet.add(e.epicId);
       }
     }
-    // 动态构建 reqId → epicId：从每个需求向上找 root，root 即 epicId
+    // Dynamically build reqId → epicId: walk up from each requirement to find the root, which is the epicId
     const parentMap = new Map<string, string | null>();
     for (const r of allReqs) parentMap.set(r.id, r.parentId ?? null);
     const reqEpicMap = new Map<string, { epicId: string; epicTitle: string }>();
@@ -55,7 +55,7 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
         current = parentMap.get(current) ?? null;
       }
     }
-    // 当前 Epic ID：从批次内任一需求的 epicId 推断
+    // Current Epic ID: inferred from the epicId of any requirement in the batch
     let currentEpicId: string | null = null;
     for (const reqId of currentReqIds) {
       const m = reqEpicMap.get(reqId);
@@ -64,38 +64,61 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
 
     const crossEpicDependencies: CrossEpicDependency[] = [];
     if (currentEpicId && currentReqIds.size > 0) {
-      for (const reqId of currentReqIds) {
-        const req = allReqs.find(r => r.id === reqId);
-        if (!req) continue;
-        // 上游依赖：当前需求 depends-on 跨 Epic 需求
-        for (const depId of req.dependencies ?? []) {
-          if (currentReqIds.has(depId)) continue; // 同批次内，由 graph_query 处理
-          const depReq = allReqs.find(r => r.id === depId);
-          const depEpic = reqEpicMap.get(depId);
-          if (depReq && depEpic && depEpic.epicId !== currentEpicId) {
-            crossEpicDependencies.push({
-              fromRequirementId: reqId,
-              toRequirementId: depId,
-              toEpicId: depEpic.epicId,
-              toEpicTitle: depEpic.epicTitle,
-              toRequirementTitle: depReq.title,
-              relationType: 'depends-on',
-            });
-          }
+      // Cross-epic relationships are now derived from AC-level
+      // relatedRequirementIds (flow ACs reference component stories in other
+      // epics). The legacy `dependencies` field has been removed.
+      // Build an adjacency: requirementId → set of referenced requirementIds.
+      const refAdjacency = new Map<string, Set<string>>();
+      const reverseRef = new Map<string, Set<string>>();
+      for (const r of allReqs) {
+        if (r.level !== 'ac') continue;
+        for (const refId of r.relatedRequirementIds ?? []) {
+          if (!refAdjacency.has(r.id)) refAdjacency.set(r.id, new Set());
+          refAdjacency.get(r.id)!.add(refId);
+          if (!reverseRef.has(refId)) reverseRef.set(refId, new Set());
+          reverseRef.get(refId)!.add(r.id);
         }
-        // 下游 dependents：跨 Epic 的需求依赖于当前需求
-        for (const other of allReqs) {
-          if (currentReqIds.has(other.id)) continue;
-          if ((other.dependencies ?? []).includes(reqId)) {
-            const otherEpic = reqEpicMap.get(other.id);
-            if (otherEpic && otherEpic.epicId !== currentEpicId) {
+      }
+      // For each requirement in the current batch, walk up to its AC children
+      // and check whether their relatedRequirementIds point to requirements in
+      // other epics (outgoing cross-epic refs).
+      for (const reqId of currentReqIds) {
+        const childACs = allReqs.filter(r => r.parentId === reqId && r.level === 'ac');
+        for (const ac of childACs) {
+          for (const refId of ac.relatedRequirementIds ?? []) {
+            if (currentReqIds.has(refId)) continue; // same batch
+            const refReq = allReqs.find(r => r.id === refId);
+            const refEpic = reqEpicMap.get(refId);
+            if (refReq && refEpic && refEpic.epicId !== currentEpicId) {
               crossEpicDependencies.push({
                 fromRequirementId: reqId,
-                toRequirementId: other.id,
-                toEpicId: otherEpic.epicId,
-                toEpicTitle: otherEpic.epicTitle,
-                toRequirementTitle: other.title,
-                relationType: 'depended-by',
+                toRequirementId: refId,
+                toEpicId: refEpic.epicId,
+                toEpicTitle: refEpic.epicTitle,
+                toRequirementTitle: refReq.title,
+                relationType: 'referenced-by',
+              });
+            }
+          }
+        }
+        // Incoming: other epics' ACs reference current batch requirements.
+        const referencingACIds = reverseRef.get(reqId);
+        if (referencingACIds) {
+          for (const acId of referencingACIds) {
+            const acReq = allReqs.find(r => r.id === acId);
+            if (!acReq) continue;
+            // The referencing AC's parent story is the cross-epic source.
+            const sourceStoryId = acReq.parentId;
+            if (!sourceStoryId || currentReqIds.has(sourceStoryId)) continue;
+            const sourceEpic = reqEpicMap.get(sourceStoryId);
+            if (sourceEpic && sourceEpic.epicId !== currentEpicId) {
+              crossEpicDependencies.push({
+                fromRequirementId: reqId,
+                toRequirementId: sourceStoryId,
+                toEpicId: sourceEpic.epicId,
+                toEpicTitle: sourceEpic.epicTitle,
+                toRequirementTitle: acReq.title,
+                relationType: 'references',
               });
             }
           }
@@ -103,18 +126,18 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
       }
     }
 
-    // L2 关联层：过滤与当前批次需求相关的 flow 蓝图
-    // 优先包含用户显式选中的 flow（用于 integration 测试的强信号），
-    // 再补充与当前批次需求有 requirementId 交集的其他 flow 作为补充 integration 场景
+    // L2 association layer: filter flow blueprints relevant to the current batch requirements
+    // Preferentially include user-explicitly-selected flows (strong signal for integration tests),
+    // then supplement with other flows that share requirementId overlap with the current batch as additional integration scenarios
     const allBlueprints = state.businessFlowBlueprints ?? [];
     const selectedFlowIdSet = new Set(state.selectedFlowIds ?? []);
     const relevantFlowBlueprints = allBlueprints.filter(f => {
-      if (selectedFlowIdSet.has(f.id)) return true; // 用户选中的 flow 一定保留
+      if (selectedFlowIdSet.has(f.id)) return true; // User-selected flows are always retained
       return f.steps?.some((s: any) =>
         (s.requirementIds ?? []).some((rid: string) => currentReqIds.has(rid))
       );
     });
-    // 标记哪些 flow 是用户显式选中的，便于 prompt 区分强信号 vs 推导
+    // Mark which flows were explicitly selected by the user, so the prompt can distinguish strong signals vs. derived ones
     const relevantFlowsWithFlag = relevantFlowBlueprints.map(f => ({
       ...f,
       userSelected: selectedFlowIdSet.has(f.id),

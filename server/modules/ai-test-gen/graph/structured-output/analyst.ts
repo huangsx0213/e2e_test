@@ -6,6 +6,7 @@ import {
   nullToUndefined,
 } from './helpers.ts';
 import type { StructuredOutputProfile } from './profile.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 const FlowStepRefSchema = z.object({
   flowId: z.string().min(1),
@@ -38,6 +39,7 @@ const AnalystRuntimeSchema = z.object({
     dataRequirements: z.array(z.string()).optional(),
     dependencies: z.array(z.string()).default([]),
     requirementLevel: z.string().optional(),
+    recommendedCaseCount: z.number().int().positive().optional(),
   })),
 });
 
@@ -46,11 +48,21 @@ type AnalystRuntimeOutput = z.infer<typeof AnalystRuntimeSchema>;
 function validateRequirementIds(
   parsed: AnalystRuntimeOutput,
   allowedReqIds: Set<string>,
+  acParentMap: Map<string, string>,
 ): AnalystRuntimeOutput {
   if (allowedReqIds.size === 0) return parsed;
 
+  const log = Log.for('analyst:auto-fix');
   for (const condition of parsed.testConditions) {
-    if (!allowedReqIds.has(condition.requirementId)) {
+    if (allowedReqIds.has(condition.requirementId)) continue;
+    // Auto-fix: the LLM frequently uses AC-level IDs (e.g.
+    // "req-aut-auth-login-ui-password-toggle") as requirementId, but only
+    // story-level IDs are in the batch. Remap to the parent story.
+    const parentId = acParentMap.get(condition.requirementId);
+    if (parentId && allowedReqIds.has(parentId)) {
+      log.warn(`Auto-fixed ${condition.id}: remapped requirementId "${condition.requirementId}" → "${parentId}" (AC→parent story)`);
+      condition.requirementId = parentId;
+    } else {
       throw new z.ZodError([
         {
           code: 'custom',
@@ -104,7 +116,7 @@ function validateConditionTypes(
         {
           code: 'custom',
           path: ['testConditions'],
-          message: `Condition ${condition.id} uses Use Case Testing but conditionType is "${condition.conditionType}". Use Case Testing is a multi-step, cross-component technique; set conditionType to "flow".`,
+          message: `Condition ${condition.id} uses Use Case Testing but conditionType is "${condition.conditionType}". Use Case Testing is inherently multi-step and cross-component. FIX with ONE of: (A) set conditionType to "flow" AND add flowStepRefs with at least one { flowId, sequence, actionSummary } entry — use this if the condition verifies a cross-component user journey; OR (B) change primaryTechnique from "Use Case Testing" to a component-appropriate technique — Equivalence Partitioning, Boundary Value Analysis, Decision Table, or State Transition — use this if the condition verifies a single-component behavior.`,
           input: condition,
         },
       ]);
@@ -113,7 +125,123 @@ function validateConditionTypes(
   return parsed;
 }
 
-export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set()): StructuredOutputProfile<AnalystRuntimeOutput> {
+/**
+ * F8: enforce that every flow step in the relevant flow blueprints has at least
+ * one flow condition referencing it. The LLM frequently skips exception/error
+ * flow steps (e.g. "invalid credentials" or "empty fields") because it considers
+ * them already covered by component conditions. Instead of throwing a hard error
+ * (which triggers Phase 2 retries the LLM consistently fails to self-correct),
+ * auto-generate stub flow conditions for uncovered steps.
+ *
+ * F8-flowId: before checking coverage, remap hallucinated flowIds to real
+ * blueprint IDs. The LLM frequently invents flow IDs (e.g. "FLOW-AUTH-SESSION")
+ * that don't match the actual blueprint IDs (which are AC IDs like
+ * "req-aut-auth-session-happy"). Without remapping, ALL steps appear uncovered
+ * and the auto-generation produces DUPLICATE stub conditions alongside the
+ * LLM's own (semantically equivalent) flow conditions. The remap matches by
+ * actionSummary text, which is reliable because the LLM copies the summary
+ * from the blueprint even when it hallucinates the flowId.
+ */
+function validateFlowStepCoverage(
+  parsed: AnalystRuntimeOutput,
+  flowBlueprints: { id: string; steps: { sequence: number; actionSummary?: string }[] }[],
+): AnalystRuntimeOutput {
+  if (flowBlueprints.length === 0) return parsed;
+
+  const validFlowIds = new Set(flowBlueprints.map(bp => bp.id));
+  // Build actionSummary → { flowId, sequence } lookup for remapping hallucinated flowIds.
+  const summaryToBlueprintStep = new Map<string, { flowId: string; sequence: number }>();
+  for (const bp of flowBlueprints) {
+    for (const step of bp.steps) {
+      const summary = (step.actionSummary ?? '').toLowerCase().trim();
+      if (summary) summaryToBlueprintStep.set(summary, { flowId: bp.id, sequence: step.sequence });
+    }
+  }
+
+  // Remap hallucinated flowIds to real blueprint IDs by matching actionSummary.
+  const log = Log.for('analyst:auto-fix');
+  for (const cond of parsed.testConditions) {
+    if (cond.conditionType !== 'flow') continue;
+    for (const ref of cond.flowStepRefs ?? []) {
+      if (validFlowIds.has(ref.flowId)) continue;
+      // flowId doesn't match any blueprint — try to find the real step by actionSummary.
+      const summary = (ref.actionSummary ?? '').toLowerCase().trim();
+      const match = summary ? summaryToBlueprintStep.get(summary) : undefined;
+      if (match) {
+        log.warn(`Auto-fixed ${cond.id}: remapped flowStepRefs flowId "${ref.flowId}" → "${match.flowId}" (matched by actionSummary)`);
+        ref.flowId = match.flowId;
+        ref.sequence = match.sequence;
+      }
+    }
+  }
+
+  const coveredSteps = new Set<string>();
+  for (const cond of parsed.testConditions) {
+    if (cond.conditionType !== 'flow') continue;
+    for (const ref of cond.flowStepRefs ?? []) {
+      coveredSteps.add(`${ref.flowId}:${ref.sequence}`);
+    }
+  }
+
+  const uncoveredSteps: { flowId: string; sequence: number; actionSummary: string; flowName?: string }[] = [];
+  for (const flow of flowBlueprints) {
+    for (const step of flow.steps) {
+      const key = `${flow.id}:${step.sequence}`;
+      if (!coveredSteps.has(key)) {
+        uncoveredSteps.push({
+          flowId: flow.id,
+          sequence: step.sequence,
+          actionSummary: step.actionSummary ?? '',
+          flowName: (flow as any).name,
+        });
+      }
+    }
+  }
+
+  if (uncoveredSteps.length > 0) {
+    const log = Log.for('analyst:auto-fix');
+    // Find the highest existing condition ID number to avoid collisions.
+    const maxIdNum = parsed.testConditions.reduce((max, c) => {
+      const m = c.id.match(/^C-(\d+)$/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+
+    for (let i = 0; i < uncoveredSteps.length; i++) {
+      const step = uncoveredSteps[i];
+      const newId = `C-${String(maxIdNum + i + 1).padStart(3, '0')}`;
+      const autoCondition = {
+        id: newId,
+        requirementId: step.flowId, // flow ID as the requirement anchor
+        condition: `Verify flow behavior: ${step.actionSummary}`,
+        conditionType: 'flow' as const,
+        flowStepRefs: [{
+          flowId: step.flowId,
+          sequence: step.sequence,
+          actionSummary: step.actionSummary,
+          ...(step.flowName ? { flowName: step.flowName } : {}),
+        }],
+        category: 'functional',
+        priority: 'medium',
+        riskLevel: 'medium',
+        primaryTechnique: 'Use Case Testing',
+        secondaryTechniques: [] as string[],
+        techniqueRationale: 'Auto-generated to ensure every flow step has at least one covering flow condition (F8 rule).',
+        coverageDimensions: ['flow-coverage'],
+        dependencies: [] as string[],
+      };
+      parsed.testConditions.push(autoCondition);
+      log.warn(`Auto-generated flow condition ${newId} for uncovered step ${step.flowId}:${step.sequence} (${step.actionSummary})`);
+    }
+  }
+
+  return parsed;
+}
+
+export function createAnalystOutputProfile(
+  allowedReqIds: Set<string> = new Set(),
+  flowBlueprints: { id: string; steps: { sequence: number; actionSummary?: string }[] }[] = [],
+  acParentMap: Map<string, string> = new Map(),
+): StructuredOutputProfile<AnalystRuntimeOutput> {
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(AnalystRuntimeSchema)),
     shouldAttemptPhase1Extraction(raw: unknown): boolean {
@@ -127,19 +255,57 @@ export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set(
             const normalizedCondition = condition && typeof condition === 'object'
               ? condition as Record<string, unknown>
               : {};
+
+            const conditionType = typeof normalizedCondition.conditionType === 'string'
+              ? normalizedCondition.conditionType.toLowerCase()
+              : normalizedCondition.conditionType;
+
+            const flowStepRefs = Array.isArray(normalizedCondition.flowStepRefs)
+              ? normalizedCondition.flowStepRefs.map((ref: any) => {
+                  // Strip null/undefined flowName — LLMs frequently emit
+                  // `flowName: null` which fails the optional string schema.
+                  if (ref && typeof ref === 'object' && (ref.flowName === null || ref.flowName === undefined)) {
+                    const { flowName, ...rest } = ref;
+                    return rest;
+                  }
+                  return ref;
+                })
+              : nullToUndefined(normalizedCondition.flowStepRefs as unknown[] | null | undefined);
+
+            const primaryTechniqueLower = typeof normalizedCondition.primaryTechnique === 'string'
+              ? normalizedCondition.primaryTechnique.toLowerCase()
+              : '';
+
+            // Auto-fix: Use Case Testing is inherently cross-component. Two
+            // sub-cases when the LLM tags it as "component":
+            //   (a) flowStepRefs already provided → the LLM identified a flow
+            //       condition but mislabeled the type → correct to "flow".
+            //   (b) flowStepRefs is empty → the LLM misapplied Use Case Testing
+            //       to a component condition → downgrade primaryTechnique to
+            //       "Equivalence Partitioning" (always valid for component
+            //       conditions) to prevent a schema validation failure that the
+            //       LLM often fails to self-correct across all 3 Phase 2 retries.
+            let autoFixedConditionType = conditionType;
+            let autoFixedPrimaryTechnique = normalizedCondition.primaryTechnique;
+            if (primaryTechniqueLower.includes('use case') && conditionType === 'component') {
+              if (Array.isArray(flowStepRefs) && flowStepRefs.length > 0) {
+                autoFixedConditionType = 'flow';
+              } else {
+                autoFixedPrimaryTechnique = 'Equivalence Partitioning';
+              }
+            }
+
             return {
               ...normalizedCondition,
-              conditionType: typeof normalizedCondition.conditionType === 'string'
-                ? normalizedCondition.conditionType.toLowerCase()
-                : normalizedCondition.conditionType,
-              flowStepRefs: Array.isArray(normalizedCondition.flowStepRefs)
-                ? normalizedCondition.flowStepRefs
-                : nullToUndefined(normalizedCondition.flowStepRefs as unknown[] | null | undefined),
+              conditionType: autoFixedConditionType,
+              primaryTechnique: autoFixedPrimaryTechnique,
+              flowStepRefs,
               secondaryTechniques: nullToEmptyArray(normalizedCondition.secondaryTechniques as string[] | null | undefined),
               coverageDimensions: nullToEmptyArray(normalizedCondition.coverageDimensions as string[] | null | undefined),
               dataRequirements: nullToUndefined(normalizedCondition.dataRequirements as string[] | null | undefined),
               dependencies: nullToEmptyArray(normalizedCondition.dependencies as string[] | null | undefined),
               requirementLevel: nullToUndefined(normalizedCondition.requirementLevel as string | null | undefined),
+              recommendedCaseCount: nullToUndefined(normalizedCondition.recommendedCaseCount as number | null | undefined),
             };
           })
         : [];
@@ -151,7 +317,9 @@ export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set(
     },
     parse(normalized: unknown): AnalystRuntimeOutput {
       const parsed = AnalystRuntimeSchema.parse(normalized);
-      return validateRequirementIds(validateConditionTypes(parsed), allowedReqIds);
+      const withConditionTypes = validateConditionTypes(parsed);
+      const withReqIds = validateRequirementIds(withConditionTypes, allowedReqIds, acParentMap);
+      return validateFlowStepCoverage(withReqIds, flowBlueprints);
     },
     formatValidationError(error: unknown): string {
       return formatZodValidationError(error, {
@@ -165,5 +333,13 @@ export function createAnalystOutputProfile(allowedReqIds: Set<string> = new Set(
         'testConditions.dataRequirements': 'Omit dataRequirements or provide an array of strings.',
       });
     },
+    extractionHints: flowBlueprints.length > 0
+      ? [
+        'Flow condition flowStepRefs (HARD constraint — using a wrong flowId causes duplicate auto-generated conditions):',
+        '- `flowStepRefs[].flowId` MUST be one of these EXACT values from the input `flowBlueprints`:',
+        ...flowBlueprints.map(bp => `  "${bp.id}" (step ${bp.steps.map(s => s.sequence).join(', ')}: ${bp.steps.map(s => s.actionSummary ?? '').join(' | ')})`),
+        '- Do NOT invent flow IDs like "FLOW-AUTH-SESSION" — use the exact `id` from `flowBlueprints`.',
+      ].join('\n')
+      : undefined,
   };
 }

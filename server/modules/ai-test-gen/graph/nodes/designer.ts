@@ -3,7 +3,7 @@ import type { AgentObserver, SkillDefinition } from './types';
 import type { AIProvider } from '../../infra/provider.ts';
 import { mergeSignals } from '../../infra/provider.ts';
 import { callLLMWithStructuredOutput } from './utils';
-import { buildDesignerSystemPrompt, buildDesignerUserMessage } from '../prompts';
+import { buildDesignerSystemPrompt, buildDesignerUserMessage, type ComponentConditionReference } from '../prompts';
 import { buildDesignerSkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createDesignerOutputProfile } from '../structured-output/designer.ts';
@@ -31,8 +31,8 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
     const startTime = Date.now();
     const log = Log.for(agentName);
     const condCount = (state.approvedConditions ?? state.testConditions ?? []).length;
-    // 在节点内部动态构建 skills：传入 state.runId 让 previous_batch_cases_query 能查询历史 agent logs
-    const skills = opts.skills ?? buildDesignerSkills(state.runId);
+    // Build skills dynamically inside the node: pass state.runId so previous_batch_cases_query can query historical agent logs
+    const skills = opts.skills ?? buildDesignerSkills(state.runId, state.currentBatch);
     log.info(`ENTER ── ${condCount} conditions to design`);
 
     observer?.onStart?.(agentName);
@@ -41,6 +41,40 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
       const override = pipelineRepo.getPromptOverride(state.projectId, agentName);
       const systemPrompt = buildDesignerSystemPrompt(state, override?.custom_prompt ?? undefined);
       const conditions = state.approvedConditions ?? state.testConditions ?? [];
+      const availableComponentConditions = new Map<string, ComponentConditionReference>();
+      if (state.generationMode === 'flow' || state.generationMode === 'mixed') {
+        if (state.generationMode === 'mixed') {
+          // Mixed mode: component conditions are in the SAME batch's state
+          // (already approved by the reviewer). Load from current state, not
+          // from previous batch logs.
+          const currentConditions = state.approvedConditions ?? state.testConditions ?? [];
+          for (const condition of currentConditions) {
+            if (condition.conditionType !== 'component') continue;
+            const referenceId = `component:${condition.requirementId}:${condition.id}`;
+            availableComponentConditions.set(referenceId, {
+              referenceId,
+              conditionId: condition.id,
+              requirementId: condition.requirementId,
+              condition: condition.condition,
+            });
+          }
+        } else {
+          // Flow mode: load component conditions from previous batch logs
+          for (const logEntry of pipelineRepo.getAgentLogs(state.runId, 'test_analyst')) {
+            for (const condition of logEntry.output_data?.testConditions ?? []) {
+              if (condition.conditionType !== 'component') continue;
+              const referenceId = `component:${condition.requirementId}:${condition.id}`;
+              availableComponentConditions.set(referenceId, {
+                referenceId,
+                conditionId: condition.id,
+                requirementId: condition.requirementId,
+                condition: condition.condition,
+              });
+            }
+          }
+        }
+      }
+      const componentConditionReferences = [...availableComponentConditions.values()];
       const outputProfile = createDesignerOutputProfile(conditions.map((condition) => {
         // F1: derive expectedTestLevel from the new conditionType field
         // directly. The legacy "testLevel:*" tag in coverageDimensions is
@@ -58,11 +92,11 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
           // F1: forward the new conditionType to the schema validator.
           conditionType: ct,
         };
-      }));
+      }), componentConditionReferences.map((condition) => condition.referenceId));
 
       const messages = [
         { role: 'system' as const, content: systemPrompt },
-        { role: 'user' as const, content: buildDesignerUserMessage(state) },
+        { role: 'user' as const, content: buildDesignerUserMessage(state, componentConditionReferences) },
       ];
 
       const nodeSignal = signal ? mergeSignals(signal, AbortSignal.timeout(timeoutMs)) : AbortSignal.timeout(timeoutMs);

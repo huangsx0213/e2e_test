@@ -1,3 +1,8 @@
+---
+name: istqb_equivalence_partitioning
+description: Load the ISTQB Equivalence Partitioning (EP) technique guide (definition, procedure, examples, common mistakes). Use when you need to design tests for inputs with distinct valid/invalid value classes.
+---
+
 # Equivalence Partitioning (EP)
 
 ## Definition

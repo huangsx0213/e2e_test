@@ -45,11 +45,11 @@ describe("ACCard", () => {
     cleanup();
   });
 
-  it("renders AC human_id and index", () => {
+  it("renders AC id and index", () => {
     render(
       React.createElement(Wrapper, null,
         React.createElement(ACCard, {
-          ac: makeAC({ id: "ac-1", humanId: "AUTH-007-001", title: "First AC" }),
+          ac: makeAC({ id: "ac-1", title: "First AC" }),
           index: 1,
           parentStoryId: "story-1",
           projectId: "p1",
@@ -57,7 +57,7 @@ describe("ACCard", () => {
         })
       )
     );
-    expect(screen.getByText("AUTH-007-001")).toBeInTheDocument();
+    expect(screen.getByText("ac-1")).toBeInTheDocument();
     expect(screen.getByText("#1")).toBeInTheDocument();
   });
 

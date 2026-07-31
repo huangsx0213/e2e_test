@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Save, Edit3, Eye, Check, X } from "lucide-react";
+import { Save, Edit3, Eye, Check, X, Pencil } from "lucide-react";
 import type { Requirement } from "../../../shared/contracts/index";
-import { useRequirementMutations } from "../../shared/hooks/useQueryHooks";
+import { useRequirementMutations, useRequirements } from "../../shared/hooks/useQueryHooks";
 
 interface Props {
   epic: Requirement;
@@ -12,20 +12,46 @@ interface Props {
 }
 
 export function EpicDetailView({ epic, projectId, onSaved }: Props) {
-  const { update } = useRequirementMutations(projectId);
+  const { update, updateId } = useRequirementMutations(projectId);
+  const { data: allItems = [] } = useRequirements(projectId);
   const [title, setTitle] = useState(epic.title);
   const [description, setDescription] = useState(epic.description);
-  const [humanId, setHumanId] = useState(epic.humanId || "");
+  const [idDraft, setIdDraft] = useState(epic.id);
+  const [idEditing, setIdEditing] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
 
   useEffect(() => {
     setTitle(epic.title);
     setDescription(epic.description);
-    setHumanId(epic.humanId || "");
+    setIdDraft(epic.id);
+    setIdEditing(false);
     setShowPreview(true);
     setSaveStatus("idle");
-  }, [epic.id, epic.title, epic.description, epic.humanId]);
+  }, [epic.id, epic.title, epic.description]);
+
+  const idCollides = useMemo(() => {
+    if (!idEditing) return false;
+    if (idDraft === epic.id) return false;
+    return allItems.some((r) => r.id === idDraft);
+  }, [idEditing, idDraft, epic.id, allItems]);
+
+  const idDirty = idDraft !== epic.id;
+
+  const handleSaveId = async () => {
+    if (!idDirty || idCollides || !idDraft.trim() || saveStatus === "saving") return;
+    setSaveStatus("saving");
+    try {
+      await updateId(epic.id, idDraft.trim());
+      setSaveStatus("success");
+      setIdEditing(false);
+      setTimeout(() => setSaveStatus("idle"), 2000);
+      onSaved();
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    }
+  };
 
   const handleSave = async () => {
     if (!title.trim() || saveStatus === "saving") return;
@@ -34,7 +60,6 @@ export function EpicDetailView({ epic, projectId, onSaved }: Props) {
       await update(epic.id, {
         title,
         description,
-        humanId: humanId || null,
       });
       setSaveStatus("success");
       setShowPreview(true);
@@ -53,7 +78,6 @@ export function EpicDetailView({ epic, projectId, onSaved }: Props) {
           <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
             Epic
           </span>
-          {epic.humanId && <span className="font-mono text-slate-400">{epic.humanId}</span>}
         </div>
 
         <div className="flex items-start gap-4">
@@ -94,13 +118,65 @@ export function EpicDetailView({ epic, projectId, onSaved }: Props) {
           <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
             ID
           </label>
-          <input
-            type="text"
-            value={humanId}
-            onChange={(e) => setHumanId(e.target.value.toUpperCase())}
-            placeholder="E-001"
-            className="font-mono bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none w-32"
-          />
+          {idEditing ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={idDraft}
+                autoFocus
+                onChange={(e) => setIdDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveId();
+                  if (e.key === "Escape") {
+                    setIdDraft(epic.id);
+                    setIdEditing(false);
+                  }
+                }}
+                className={`font-mono bg-slate-50 border rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 outline-none w-56 ${
+                  idCollides ? "border-red-300 focus:border-red-500" : "border-slate-200 focus:border-blue-500"
+                }`}
+              />
+              <button
+                onClick={handleSaveId}
+                disabled={!idDirty || idCollides || !idDraft.trim() || saveStatus === "saving"}
+                className="p-1 text-green-600 hover:bg-green-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Save new ID"
+              >
+                <Check size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  setIdDraft(epic.id);
+                  setIdEditing(false);
+                }}
+                className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                title="Cancel"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                {epic.id}
+              </span>
+              <button
+                onClick={() => setIdEditing(true)}
+                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                title="Edit ID (cascades to children and references)"
+              >
+                <Pencil size={12} />
+              </button>
+            </div>
+          )}
+          {idCollides && (
+            <span className="text-[11px] text-red-600">ID already in use</span>
+          )}
+          {idEditing && idDirty && !idCollides && (
+            <span className="text-[11px] text-amber-600">
+              Renaming cascades to children &amp; references
+            </span>
+          )}
         </div>
       </div>
 

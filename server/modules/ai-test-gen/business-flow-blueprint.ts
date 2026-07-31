@@ -5,6 +5,14 @@ interface BuildBlueprintsInput {
   flowStories: Requirement[];
 }
 
+/**
+ * Build business-flow blueprints from flow stories.
+ *
+ * Domain model: each AC of a flow story represents a **separate business-flow
+ * path**, NOT a sequential step within one flow. This function emits one
+ * blueprint per AC. The path type (happy/exception/alternate) is inferred by
+ * the LLM from the AC's given/when/then semantics — not pre-classified.
+ */
 export function buildBlueprintsFromFlowStories({ flowStories }: BuildBlueprintsInput): PipelineBusinessFlowBlueprint[] {
   if (flowStories.length === 0) return [];
 
@@ -20,26 +28,34 @@ export function buildBlueprintsFromFlowStories({ flowStories }: BuildBlueprintsI
     }
   }
 
-  return flowStories.map(story => ({
-    id: story.id,
-    name: story.title,
-    type: 'happy-path',
-    steps: (childrenByParent.get(story.id) || [])
+  const blueprints: PipelineBusinessFlowBlueprint[] = [];
+
+  for (const story of flowStories) {
+    const acs = (childrenByParent.get(story.id) || [])
       .filter(r => r.level === 'ac')
-      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-      .map(ac => {
-        const requirementIds = ac.relatedRequirementIds ?? [];
-        const primaryReqId = requirementIds[0] ?? story.id;
-        const primaryReq = reqMap.get(primaryReqId);
-        return {
-          sequence: ac.position ?? 0,
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
+    for (const ac of acs) {
+      const requirementIds = ac.relatedRequirementIds ?? [];
+      const primaryReqId = requirementIds[0] ?? story.id;
+      const primaryReq = reqMap.get(primaryReqId);
+
+      blueprints.push({
+        id: ac.id,
+        flowStoryId: story.id,
+        name: `${story.title} — ${ac.title}`,
+        steps: [{
+          sequence: 1,
           requirementId: primaryReqId,
           requirementIds,
           requirementTitle: primaryReq?.title ?? ac.title,
           requirementLevel: primaryReq?.level ?? 'story',
           actionSummary: ac.title,
           acceptanceCriteria: [ac.description].filter(Boolean),
-        };
-      }),
-  }));
+        }],
+      });
+    }
+  }
+
+  return blueprints;
 }

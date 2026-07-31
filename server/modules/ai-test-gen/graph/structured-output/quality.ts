@@ -2,12 +2,12 @@ import { z } from 'zod';
 import { makeSchemaOpenAICompatible, zodToJsonSchema } from '../nodes/utils.ts';
 import {
   arrayFromRecordValues,
-  coerceNumber,
   formatZodValidationError,
   nullToEmptyArray,
   nullToUndefined,
 } from './helpers.ts';
 import type { StructuredOutputProfile } from './profile.ts';
+import { Log } from '../../../../shared/services/logger.ts';
 
 // F19: step atomicity hard constraint — keep `expected` to a single observable
 // outcome. Bundled assertions (containing ";" + conjunction, or > 200 chars) are
@@ -15,12 +15,12 @@ import type { StructuredOutputProfile } from './profile.ts';
 const atomicExpected = (value: string): true | string => {
   const v = String(value ?? '');
   if (v.length > 200) {
-    return `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps.`;
+    return `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps. Value: "${v.slice(0, 80)}${v.length > 80 ? '...' : ''}"`;
   }
   // Reject multiple semicolon-separated assertions in a single expected.
   const segments = v.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
   if (segments.length > 1) {
-    return `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps.`;
+    return `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps — one assertion per step. Value: "${v.slice(0, 80)}${v.length > 80 ? '...' : ''}"`;
   }
   return true;
 };
@@ -126,14 +126,39 @@ function validateDraftCaseCoverage(
     .filter((draftCaseId) => !coveredIds.has(draftCaseId));
 
   if (missingIds.length > 0) {
-    throw new z.ZodError([
-      {
-        code: 'custom',
-        path: ['finalTestCases'],
-        message: `Missing final reviewed cases for draft case ids: ${missingIds.join(', ')}`,
-        input: parsed,
-      },
-    ]);
+    // Auto-fix: instead of failing the entire Quality node, auto-add missing
+    // cases as "rejected". This prevents a single LLM omission from crashing
+    // the pipeline and making the run unrecoverable via retry. The auto-repair
+    // loop (checkpoint_3) or manual review can address the gap later.
+    const log = Log.for('quality:auto-fix');
+    log.warn(`LLM omitted ${missingIds.length} draft case(s) [${missingIds.join(', ')}] — auto-adding as rejected`);
+    for (const missingId of missingIds) {
+      const expected = expectedById.get(missingId);
+      if (!expected) continue;
+      parsed.finalTestCases.push({
+        id: expected.id,
+        title: `Auto-rejected: omitted by Quality LLM`,
+        conditionId: expected.conditionId,
+        requirementId: expected.requirementId,
+        coveredConditions: expected.coveredConditions ?? [],
+        referencedComponentConditions: expected.referencedComponentConditions ?? [],
+        priority: 'medium',
+        category: 'functional',
+        testLevel: expected.expectedTestLevel ?? 'component',
+        techniqueApplied: 'Unknown',
+        preconditions: [],
+        testData: [],
+        steps: [{
+          stepNumber: 1,
+          action: 'N/A — case auto-rejected by validation',
+          expected: 'Case was omitted by Quality LLM and requires manual review.',
+        }],
+        tags: ['auto-rejected'],
+        status: 'rejected',
+        reviewSummary: 'Auto-rejected: case was omitted from Quality LLM output. Requires manual review or re-generation.',
+        changeLog: [],
+      });
+    }
   }
 
   for (const testCase of parsed.finalTestCases) {
@@ -150,14 +175,14 @@ function validateDraftCaseCoverage(
       ]);
     }
     if (expected.expectedTestLevel && testCase.testLevel !== expected.expectedTestLevel) {
-      throw new z.ZodError([
-        {
-          code: 'custom',
-          path: ['finalTestCases'],
-          message: `Final reviewed case ${testCase.id} has testLevel "${testCase.testLevel}" but the draft case was "${expected.expectedTestLevel}". Preserve the Designer's testLevel; fix the steps instead of flipping the level.`,
-          input: testCase,
-        },
-      ]);
+      // Auto-fix: the LLM occasionally flips testLevel (e.g. integration ->
+      // component) when it thinks the steps don't warrant cross-component
+      // scope. Restore the Designer's testLevel — the coverage matrix depends
+      // on it. Auto-fix philosophy: normalize during parse to prevent Phase 2
+      // retries the LLM consistently fails to self-correct.
+      const log = Log.for('quality:auto-fix');
+      log.warn(`Auto-fixed ${testCase.id}: restored testLevel "${testCase.testLevel}" -> "${expected.expectedTestLevel}" (LLM must not flip testLevel)`);
+      testCase.testLevel = expected.expectedTestLevel;
     }
     // F15: integration cases must still declare referencedComponentConditions.
     if (testCase.testLevel === 'integration' && testCase.referencedComponentConditions.length === 0) {
@@ -267,20 +292,47 @@ function validateAntiRedundancy(
     (f) => !changedCaseIds.has(f.integrationCaseId),
   );
   if (flags.length > 0) {
+    // Auto-fix: instead of blocking the entire batch with a hard validation
+    // error (which the LLM often fails to self-correct across all 3 Phase 2
+    // retries), auto-add changeLog entries for the unresolved redundancy.
+    // The changeLog entry makes the redundancy visible to the reviewer, who
+    // can decide whether to fix it (move to preconditions) or accept it.
+    // This is consistent with the D2 cross-batch redundancy pattern: flag,
+    // don't delete, let the reviewer decide.
+    const log = Log.for('quality:auto-redundancy');
+    const byId = new Map(parsed.finalTestCases.map(c => [c.id, c]));
+    for (const flag of flags) {
+      const tc = byId.get(flag.integrationCaseId);
+      if (tc) {
+        tc.changeLog.push({
+          field: 'steps',
+          reason: `redundancy: auto-detected overlap with ${flag.componentCaseId} (overlap=${flag.overlap.toFixed(2)}) — integration step "${flag.integrationExpected}" duplicates component step "${flag.componentExpected}". Reviewer should move to preconditions if needed.`,
+        });
+        if (tc.status === 'approved') {
+          tc.status = 'approved_with_changes';
+        }
+      }
+    }
     const summary = flags
-      .slice(0, 3)
+      .slice(0, 5)
       .map((f) => `${f.integrationCaseId} ↔ ${f.componentCaseId} (overlap=${f.overlap.toFixed(2)})`)
       .join('; ');
-    throw new z.ZodError([
-      {
-        code: 'custom',
-        path: ['finalTestCases'],
-        message: `Redundancy detected: integration cases re-assert behavior already covered by sibling component cases. Examples: ${summary}. Move the overlapping assertion into the integration case's referencedComponentConditions (precondition) and keep only cross-component assertions in steps. Log the de-duplication in changeLog with a 'redundancy' reason.`,
-        input: parsed,
-      },
-    ]);
+    log.warn(`Auto-flagged ${flags.length} redundancy issue(s): ${summary}`);
   }
   return parsed;
+}
+
+/**
+ * Coerce a changeLog from/to value to string. The LLM frequently returns
+ * arrays (e.g. when the changed field is coveredConditions), which causes
+ * schema validation to fail because from/to are typed as string.
+ */
+function coerceChangeLogValue(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
 }
 
 function normalizeFinalTestCase(
@@ -289,24 +341,33 @@ function normalizeFinalTestCase(
 ): Record<string, unknown> {
   const tc = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const expected = expectedById?.get(String(tc.id ?? ''));
-  const steps = Array.isArray(tc.steps)
-    ? tc.steps.map((step) => {
+  const log = Log.for('quality:auto-fix');
+  const steps: Record<string, unknown>[] = Array.isArray(tc.steps)
+    ? tc.steps.flatMap((step) => {
         const normalizedStep = step && typeof step === 'object' ? step as Record<string, unknown> : {};
-        return {
-          ...normalizedStep,
-          stepNumber: coerceNumber(normalizedStep.stepNumber, 1),
-          action: String(normalizedStep.action ?? ''),
-          expected: String(normalizedStep.expected ?? ''),
-        };
+        const action = String(normalizedStep.action ?? '');
+        const expectedText = String(normalizedStep.expected ?? '');
+        // F19 auto-repair: split steps whose `expected` joins multiple
+        // assertions with semicolons into one step per assertion (same as
+        // designer.ts). The LLM consistently violates the one-assertion-per-step
+        // rule even after 3 Phase 2 retries.
+        const segments = expectedText.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
+        if (segments.length <= 1) {
+          return [{ ...normalizedStep, action, expected: expectedText }];
+        }
+        log.warn(`Auto-split ${String(tc.id ?? '?')}: step "${action.slice(0, 60)}" had ${segments.length} semicolon-joined assertions -> ${segments.length} atomic steps`);
+        return segments.map((seg) => ({ ...normalizedStep, action, expected: seg }));
       })
     : [];
+  // Renumber sequentially — splitting invalidates the original stepNumber.
+  steps.forEach((s, i) => { s.stepNumber = i + 1; });
   const changeLog = nullToEmptyArray(tc.changeLog as Record<string, unknown>[] | null | undefined)
     .map((change) => {
       const normalizedChange = change && typeof change === 'object' ? change as Record<string, unknown> : {};
       return {
         ...normalizedChange,
-        from: nullToUndefined(normalizedChange.from as string | null | undefined),
-        to: nullToUndefined(normalizedChange.to as string | null | undefined),
+        from: coerceChangeLogValue(normalizedChange.from),
+        to: coerceChangeLogValue(normalizedChange.to),
       };
     });
 
@@ -317,6 +378,7 @@ function normalizeFinalTestCase(
     ...tc,
     conditionId: expected?.conditionId ?? tc.conditionId,
     requirementId: expected?.requirementId ?? tc.requirementId,
+    reviewSummary: typeof tc.reviewSummary === 'string' ? tc.reviewSummary : '',
     testLevel,
     // F10 / F11: preserve traceability arrays. If the LLM omits them, fall back
     // to the expected draft case's values, then to safe empty arrays.
@@ -435,7 +497,108 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
         'coverageMatrix.summary': 'Provide totalConditions, coveredConditions, missingConditions, byTestLevel, byTechnique, byCategory. byConditionType is optional but recommended.',
       });
     },
+    extractionHints: [
+      'Step atomicity (HARD constraint — schema validation will reject violations):',
+      '- Each step must have exactly ONE action and ONE observable expected result.',
+      '- `expected` must be ≤ 200 chars and contain NO semicolons separating multiple assertions.',
+      '  WRONG: "button is disabled; error message appears" (two assertions)',
+      '  RIGHT: split into two steps — step A expected "button is disabled", step B expected "error message appears".',
+      '- `action` must be a single operation (no "and"/"then"/"with X/Y" bundling).',
+    ].join('\n'),
   };
 }
 
 export const qualityOutputProfile: StructuredOutputProfile<QualityRuntimeOutput> = createQualityOutputProfile();
+
+// ============================================================
+// D1: Hybrid Coverage Matrix Reconciliation
+// TS computes deterministic mapping fields (coveredByCaseIds,
+// coverageStatus, summary), LLM provides assessment fields
+// (notes, conditionSummary). This eliminates LLM mapping errors
+// while preserving semantic evaluation.
+// ============================================================
+
+interface ReconcileCondition {
+  id: string;
+  requirementId: string;
+  conditionType?: 'component' | 'flow';
+  primaryTechnique?: string;
+  category?: string;
+  condition: string;
+  flowStepRefs?: Array<{ flowId: string; sequence: number; actionSummary?: string }>;
+}
+
+export function reconcileCoverageMatrix(
+  llmMatrix: QualityRuntimeOutput['coverageMatrix'],
+  finalTestCases: QualityRuntimeOutput['finalTestCases'],
+  conditions: ReconcileCondition[],
+): QualityRuntimeOutput['coverageMatrix'] {
+  if (!llmMatrix || !conditions.length) return llmMatrix;
+
+  // Build conditionId → testCaseIds mapping from finalTestCases
+  const caseIdsByCondition = new Map<string, string[]>();
+  for (const tc of finalTestCases) {
+    const allCondIds = new Set<string>();
+    if (tc.conditionId) allCondIds.add(tc.conditionId);
+    for (const cid of tc.coveredConditions ?? []) allCondIds.add(cid);
+    for (const cid of allCondIds) {
+      if (!caseIdsByCondition.has(cid)) caseIdsByCondition.set(cid, []);
+      caseIdsByCondition.get(cid)!.push(tc.id);
+    }
+  }
+
+  // Build LLM row lookup (for notes, conditionSummary, flowStepRef)
+  const llmRowByCond = new Map<string, any>();
+  for (const row of llmMatrix.rows ?? []) {
+    llmRowByCond.set(row.conditionId, row);
+  }
+
+  // Reconcile each row
+  const rows = conditions.map(cond => {
+    const llmRow = llmRowByCond.get(cond.id);
+    const coveredBy = caseIdsByCondition.get(cond.id) ?? [];
+    const conditionType = cond.conditionType ?? (llmRow?.conditionType as 'component' | 'flow' | undefined);
+    return {
+      conditionId: cond.id,
+      conditionSummary: llmRow?.conditionSummary ?? cond.condition.slice(0, 120),
+      requirementId: cond.requirementId,
+      testLevel: conditionType === 'flow' ? 'integration' : (llmRow?.testLevel ?? 'component'),
+      primaryTechnique: cond.primaryTechnique ?? llmRow?.primaryTechnique ?? '',
+      category: cond.category ?? llmRow?.category ?? '',
+      conditionType,
+      flowStepRef: llmRow?.flowStepRef ?? (cond.flowStepRefs?.[0]
+        ? { flowId: cond.flowStepRefs[0].flowId, sequence: cond.flowStepRefs[0].sequence, actionSummary: cond.flowStepRefs[0].actionSummary }
+        : undefined),
+      coveredByCaseIds: coveredBy,
+      coverageStatus: (coveredBy.length > 0 ? 'covered' : 'missing') as 'covered' | 'missing',
+      notes: llmRow?.notes ?? '',
+    };
+  });
+
+  // Recompute summary
+  const byTestLevel: Record<string, number> = {};
+  const byTechnique: Record<string, number> = {};
+  const byCategory: Record<string, number> = {};
+  const byConditionType: Record<string, number> = {};
+  let covered = 0;
+  for (const row of rows) {
+    byTestLevel[row.testLevel] = (byTestLevel[row.testLevel] ?? 0) + 1;
+    if (row.primaryTechnique) byTechnique[row.primaryTechnique] = (byTechnique[row.primaryTechnique] ?? 0) + 1;
+    if (row.category) byCategory[row.category] = (byCategory[row.category] ?? 0) + 1;
+    if (row.conditionType) byConditionType[row.conditionType] = (byConditionType[row.conditionType] ?? 0) + 1;
+    if (row.coverageStatus === 'covered') covered++;
+  }
+
+  return {
+    rows,
+    summary: {
+      totalConditions: rows.length,
+      coveredConditions: covered,
+      missingConditions: rows.length - covered,
+      byTestLevel,
+      byTechnique,
+      byCategory,
+      byConditionType,
+    },
+  } as any;
+}

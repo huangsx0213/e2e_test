@@ -89,11 +89,11 @@ export function atomicAction(value: string): true | string {
 export function atomicExpected(value: string): true | string {
   const v = String(value ?? '');
   if (v.length > 200) {
-    return `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps.`;
+    return `expected must be a single observable outcome (<= 200 chars), got ${v.length} chars. Split into multiple steps. Value: "${v.slice(0, 80)}${v.length > 80 ? '...' : ''}"`;
   }
   const segments = v.split(/[;；]/).map((s) => s.trim()).filter(Boolean);
   if (segments.length > 1) {
-    return `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps.`;
+    return `expected must contain a single assertion (found ${segments.length} semicolon-separated segments). Split into multiple steps — one assertion per step. Value: "${v.slice(0, 80)}${v.length > 80 ? '...' : ''}"`;
   }
   return true;
 }

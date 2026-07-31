@@ -117,8 +117,12 @@ export class RunScope {
   recordAgentStart(agentName: string, inputPrompt?: ChatMessage[]): void {
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
+    // Reuse existing logId if this agent already ran in this batch (e.g. auto-repair loop).
+    // This ensures saveAgentLog's ON CONFLICT(id) DO UPDATE overwrites the previous entry
+    // instead of creating a duplicate row that would pollute previous_batch_cases_query.
+    const existing = this.agentStates.get(key);
     const snap: AgentRunSnapshot = {
-      logId: randomId('aglog'),
+      logId: existing?.logId ?? randomId('aglog'),
       agentName,
       batch,
       inputPrompt: inputPrompt ?? null,
@@ -237,6 +241,19 @@ export class RunScope {
       }, this.runId);
     }
     this.emit('agent:error', { agentName, batch, message: error.message, timestamp: Date.now() });
+
+    // Save the failed agent's phase to the database so that retry logic
+    // knows which agent failed (row.phase). Without this, row.phase stays
+    // at whatever the last successful checkpoint set it to.
+    const phaseByAgent: Record<string, string> = {
+      test_analyst: 'analysis',
+      test_designer: 'design',
+      quality_manager: 'quality',
+    };
+    const failedPhase = phaseByAgent[agentName];
+    if (failedPhase) {
+      pipelineRepo.updatePhase(this.runId, failedPhase);
+    }
 
     // Incrementally persist thinking data after agent error
     this.persistThinkingData();

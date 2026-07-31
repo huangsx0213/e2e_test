@@ -358,7 +358,7 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
                   <th className="text-left px-4 py-2 font-semibold text-slate-500 w-12">#</th>
                   <th className="text-left px-3 py-2 font-semibold text-slate-500 w-32">ID</th>
                   <th className="text-left px-3 py-2 font-semibold text-slate-500">Name</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500 w-24">Steps</th>
+                  <th className="text-left px-3 py-2 font-semibold text-slate-500 w-24">Level</th>
                 </tr>
               </thead>
               <tbody>
@@ -368,7 +368,7 @@ function PreparationSummaryView({ node, agentLog, thinkingText, allAgentLogs, st
                     <td className="px-3 py-2 font-mono text-purple-600 truncate max-w-[120px]">{flow.id}</td>
                     <td className="px-3 py-2 text-slate-700 truncate max-w-[400px]" title={flow.title}>{flow.title}</td>
                     <td className="px-3 py-2 text-slate-600">
-                      <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-bold">{flow.steps?.length || 0}</span>
+                      <span className="bg-purple-50 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-purple-700">Flow</span>
                     </td>
                   </tr>
                 ))}
@@ -3242,7 +3242,7 @@ export function TestGenDetailPanel({
               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
             >
               <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
-              {retrying ? 'Retrying...' : 'Retry from Checkpoint'}
+              {retrying ? 'Retrying...' : 'Retry from last checkpoint'}
             </button>
           </div>
         )}

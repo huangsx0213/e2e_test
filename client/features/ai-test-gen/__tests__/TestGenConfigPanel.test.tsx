@@ -10,6 +10,15 @@ vi.mock('@/shared/ui/HelpTooltip', () => ({
   HelpTooltip: ({ content }: { content: string }) => React.createElement('span', { 'data-testid': 'help-tooltip' }, content),
 }));
 
+vi.mock('../requirements/FormatSegmentBlock', () => ({
+  FormatSegmentBlock: () => React.createElement('div', { 'data-testid': 'format-segment-block' }),
+}));
+
+vi.mock('../../shared/requirements/format-parser', () => ({
+  parseStoryMarkdown: () => ({ role: '', action: '', value: '', remainder: '', hasAllSegments: true }),
+  parseACMarkdown: () => ({ given: '', when: '', then: '', remainder: '', hasAllSegments: true }),
+}));
+
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return {
@@ -101,32 +110,108 @@ describe('TestGenConfigPanel', () => {
 
     const checkbox = screen.getAllByLabelText('Select all')[0];
     fireEvent.click(checkbox);
-    expect(screen.getByText('4')).toBeTruthy();
+    // 3 stories selected (epic is not counted as a selectable leaf)
+    expect(screen.getByText('3')).toBeTruthy();
 
     fireEvent.click(checkbox);
-    expect(screen.queryByText('4')).toBeNull();
+    expect(screen.queryByText('3')).toBeNull();
   });
 
-  it('TC-1.4: Business Flow only shows approved by default', () => {
+  it('TC-1.4: Flow stories appear in the requirements tree', () => {
+    const epic = makeRequirement({ id: 'epic-flow', title: 'Flow Epic', level: 'epic' as const, parentId: null });
     const flows = [
-      makeFlowStory({ id: 'f1', title: 'Approved Flow', status: 'APPROVED' }),
-      makeFlowStory({ id: 'f2', title: 'Draft Flow', status: 'DRAFT' }),
+      makeFlowStory({ id: 'f1', title: 'Approved Flow', status: 'APPROVED', parentId: epic.id }),
+      makeFlowStory({ id: 'f2', title: 'Draft Flow', status: 'DRAFT', parentId: epic.id }),
     ];
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, flowStories: flows }));
+    const allReqs = [epic, ...flows];
+    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, requirements: allReqs, flowStories: flows }));
+    // Epic is visible in the tree
+    expect(screen.getByText('Flow Epic')).toBeTruthy();
+    // Expand all to reveal flow story children
+    const expandBtn = screen.getByText('Expand');
+    fireEvent.click(expandBtn);
     expect(screen.getByText('Approved Flow')).toBeTruthy();
-    expect(screen.queryByText('Draft Flow')).toBeNull();
+    expect(screen.getByText('Draft Flow')).toBeTruthy();
   });
 
-  it('TC-1.5: toggle show approved only shows all flows', () => {
-    const flows = [
-      makeFlowStory({ id: 'f1', title: 'Approved Flow', status: 'APPROVED' }),
-      makeFlowStory({ id: 'f2', title: 'Draft Flow', status: 'DRAFT' }),
-    ];
-    renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps, flowStories: flows }));
+  it('TC-1.4a: Toggling a flow story only adds it to flowIds (no auto-linking)', () => {
+    // Structure: epic → componentStory (with AC) + flowStory (with flow AC referencing componentStory)
+    const epic = makeRequirement({ id: 'epic-1', title: 'Auth Epic', level: 'epic' as const, parentId: null });
+    const componentStory = makeRequirement({ id: 'story-1', title: 'Login UI', level: 'story' as const, parentId: epic.id, isFlow: false });
+    const flowStory = makeFlowStory({ id: 'flow-1', title: 'Login Flow', parentId: epic.id });
+    const flowAC = makeRequirement({
+      id: 'flow-1-ac1',
+      title: 'Happy path login',
+      level: 'ac' as const,
+      parentId: flowStory.id,
+      flowType: 'flow',
+      relatedRequirementIds: ['story-1'],
+    });
+    const allReqs = [epic, componentStory, flowStory, flowAC];
+    const onStart = vi.fn();
+    renderWithQuery(React.createElement(TestGenConfigPanel, {
+      ...defaultProps,
+      requirements: allReqs,
+      flowStories: [flowStory],
+      onStart,
+    }));
 
-    const checkbox = screen.getByLabelText('Approved only');
-    fireEvent.click(checkbox);
-    expect(screen.getByText('Draft Flow')).toBeTruthy();
+    // Expand tree to see flow story
+    fireEvent.click(screen.getByText('Expand'));
+
+    // Click the flow story's checkbox (purple checkbox for flow)
+    const flowRow = screen.getByText('Login Flow').closest('div');
+    const flowCheckbox = flowRow!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    fireEvent.click(flowCheckbox);
+
+    // Verify onStart receives flowIds only — component stories are NOT auto-linked
+    // (the backend resolves them at orchestration time)
+    const startBtn = screen.getByRole('button', { name: /Start|Generate/i });
+    fireEvent.click(startBtn);
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    const call = onStart.mock.calls[0][0] as TestGenStartConfig;
+    expect(call.flowIds).toContain('flow-1');
+    expect(call.requirementIds).not.toContain('story-1');
+  });
+
+  it('TC-1.4b: Toggling flow off removes it from flowIds', () => {
+    const epic = makeRequirement({ id: 'epic-1', title: 'Auth Epic', level: 'epic' as const, parentId: null });
+    const componentStory = makeRequirement({ id: 'story-1', title: 'Login UI', level: 'story' as const, parentId: epic.id, isFlow: false });
+    const flowStory = makeFlowStory({ id: 'flow-1', title: 'Login Flow', parentId: epic.id });
+    const flowAC = makeRequirement({
+      id: 'flow-1-ac1',
+      title: 'Happy path login',
+      level: 'ac' as const,
+      parentId: flowStory.id,
+      flowType: 'flow',
+      relatedRequirementIds: ['story-1'],
+    });
+    const allReqs = [epic, componentStory, flowStory, flowAC];
+    const onStart = vi.fn();
+    renderWithQuery(React.createElement(TestGenConfigPanel, {
+      ...defaultProps,
+      requirements: allReqs,
+      flowStories: [flowStory],
+      onStart,
+    }));
+
+    fireEvent.click(screen.getByText('Expand'));
+
+    // First: toggle flow ON — should show flow count badge only
+    const flowRow = screen.getByText('Login Flow').closest('div');
+    const flowCheckbox = flowRow!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    fireEvent.click(flowCheckbox);
+
+    // Verify the purple flow badge appears (1 flow)
+    expect(screen.getAllByText('1').length).toBeGreaterThanOrEqual(1);
+
+    // Then: toggle flow OFF
+    fireEvent.click(flowCheckbox);
+
+    // Verify the count badge is gone
+    const reqBadges = screen.queryAllByText('1');
+    expect(reqBadges.length).toBe(0);
   });
 
   it('TC-1.6: mode toggle switches Auto/Interactive', () => {

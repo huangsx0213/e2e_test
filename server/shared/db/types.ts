@@ -193,13 +193,10 @@ export type DbRequirementRow = {
   parent_id: string | null;
   title: string;
   description: string;
-  dependencies: string;
   level: string;
   status: string;
   position: number;
-  human_id: string | null;
   flow_type: string | null;
-  type: string | null;
   is_flow: number;
   related_requirement_ids: string;
 };

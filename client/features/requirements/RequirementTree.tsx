@@ -185,11 +185,6 @@ export function RequirementTree({
                   {r.title}
                 </span>
               )}
-              {r.humanId && (
-                <span className="hidden sm:inline-block font-mono text-[10px] text-slate-400 shrink-0 bg-slate-100 border border-slate-200 px-1 py-0.5 rounded">
-                  {r.humanId}
-                </span>
-              )}
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-auto">
                 {onCopy && (
                   <button

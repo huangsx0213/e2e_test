@@ -446,19 +446,15 @@ export interface Requirement {
   id: string;
   projectId: string;
   parentId?: string | null;
-  humanId?: string | null;
   title: string;
   description: string;
-  dependencies?: string[];
   level: 'epic' | 'story' | 'ac';
   flowType?: 'atomic' | 'flow' | null;
   status: 'DRAFT' | 'APPROVED' | 'DEPRECATED';
-  // Functional category (story/epic). Drives AI generation strategy. Optional for backward compatibility.
-  type?: 'functional' | 'non-functional' | 'security' | 'data';
   position: number;
-  // NEW – story-level only: marks this story as a business flow (BDD Feature)
+  // story-level only: marks this story as a business flow (BDD Feature)
   isFlow?: boolean;
-  // NEW – AC-level only: functional requirements this scenario involves
+  // AC-level only: functional requirements this scenario involves
   relatedRequirementIds?: string[];
 }
 
@@ -474,8 +470,8 @@ export interface PipelineBusinessFlowBlueprintStep {
 
 export interface PipelineBusinessFlowBlueprint {
   id: string;
+  flowStoryId: string;
   name: string;
-  type: 'happy-path' | 'alternate' | 'exception';
   steps: PipelineBusinessFlowBlueprintStep[];
 }
 
@@ -491,8 +487,8 @@ export const PipelineBusinessFlowBlueprintStepSchema = z.object({
 
 export const PipelineBusinessFlowBlueprintSchema = z.object({
   id: z.string(),
+  flowStoryId: z.string(),
   name: z.string(),
-  type: z.enum(['happy-path', 'alternate', 'exception']),
   steps: z.array(PipelineBusinessFlowBlueprintStepSchema),
 });
 

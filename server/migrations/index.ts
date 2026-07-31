@@ -9,6 +9,7 @@ import { migration005DropPriorityAndTagsAndInProgress } from './005_drop_priorit
 import { migration006DropMetadataAndTestScenario } from './006_drop_metadata_and_test_scenario.ts';
 import { migration007AddIsFlowAndRelatedRequirements } from './007_add_is_flow_and_related_requirements.ts';
 import { migration008MigrateBusinessFlows } from './008_migrate_business_flows_to_requirements.ts';
+import { migration009DropHumanIdDependenciesType } from './009_drop_human_id_dependencies_type.ts';
 import { seedDefaults } from '../seed.ts';
 import type { Migration } from './types.ts';
 
@@ -22,6 +23,7 @@ export const migrations: Migration[] = [
   migration006DropMetadataAndTestScenario,
   migration007AddIsFlowAndRelatedRequirements,
   migration008MigrateBusinessFlows,
+  migration009DropHumanIdDependenciesType,
 ];
 
 function appliedMigrationIds(): Set<string> {

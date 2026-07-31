@@ -63,16 +63,16 @@ describe('RequirementTree', () => {
       expect(screen.queryByText('Hidden Root')).not.toBeInTheDocument();
     });
 
-    it('renders human_id next to title', () => {
+    it('does not render id badge next to title', () => {
       const items = [
-        makeReq({ id: 'T1', title: 'Alpha Feature', humanId: 'AUTH-001' }),
+        makeReq({ id: 'T1', title: 'Alpha Feature' }),
       ];
       render(
         React.createElement(Wrapper, null,
           React.createElement(RequirementTree, { items, selectedId: null, onSelect, onRefresh, projectId: 'proj-1', expandedIds: defaultExpandedIds, onToggleExpand })
         )
       );
-      expect(screen.getByText('AUTH-001')).toBeInTheDocument();
+      expect(screen.queryByText('T1')).not.toBeInTheDocument();
     });
 
     it('does not render level letter labels', () => {

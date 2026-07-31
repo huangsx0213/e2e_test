@@ -27,7 +27,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
   const log = Log.for('graph');
   log.info('Building LangGraph state graph with 8 nodes...');
 
-  // 创建各节点
+  // Create each node
   const preparationNode = makePreparationNode({ observer });
   const analystNode = makeAnalystNode({
     provider: opts.provider,
@@ -59,7 +59,7 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
     .addNode('designer', designerNode)
     .addNode('checkpoint_2', checkpoint2, { ends: ['designer', 'quality'] })
     .addNode('quality', qualityNode)
-    .addNode('checkpoint_3', checkpoint3, { ends: ['quality', 'complete'] })
+    .addNode('checkpoint_3', checkpoint3, { ends: ['quality', 'designer', 'complete'] })
     .addNode('complete', completeNode);
 
   graph.addEdge(START, 'preparation');

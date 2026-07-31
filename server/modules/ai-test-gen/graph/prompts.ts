@@ -1,5 +1,162 @@
 import type { TestGenState } from './state';
 
+export interface ComponentConditionReference {
+  referenceId: string;
+  conditionId: string;
+  requirementId: string;
+  condition: string;
+}
+
+/**
+ * Build the unified `## Context and Global View` section shared by all three
+ * agent prompts. Replaces the role-specific `## Context` +
+ * `## Global Context & Cross-Batch Awareness` / `## L2 Cross-Batch Context`
+ * blocks.
+ *
+ * - Always lists Cross-Epic Dependencies and Already Covered, even when empty
+ *   (renders "None") so the LLM explicitly knows there is nothing to
+ *   cross-reference.
+ * - Epic Landscape is only shown for the Analyst (Designer/Quality do not
+ *   receive the global epic index).
+ * - Tool-usage directives stay inline next to the relevant item.
+ */
+export function buildContextSection(state: TestGenState, role: 'analyst' | 'designer' | 'quality'): string {
+  const lines: string[] = ['## Context and Global View', ''];
+
+  // === Current Batch (role-specific) ===
+  lines.push('### Current Batch');
+  if (role === 'analyst') {
+    const batch = state.batchContext;
+    const generationMode = state.generationMode ?? 'component';
+    const isComponentMode = generationMode === 'component';
+    const isMixedMode = generationMode === 'mixed';
+    const records = state.currentBatch ?? [];
+    const stories = records.filter(r => r.level === 'story');
+    const acs = records.filter(r => r.level === 'ac');
+    const componentStories = stories.filter(r => !r.isFlow).length;
+    const flowStories = stories.filter(r => r.isFlow).length;
+    const nonFlowAcs = acs.filter(r => !r.isFlow).length;
+    const flowAcs = acs.filter(r => r.isFlow).length;
+    lines.push(`- Batch: ${batch.currentBatch}/${batch.totalBatches} (${records.length} requirement records: ${stories.length} stories [${componentStories} component + ${flowStories} flow], ${acs.length} ACs [${nonFlowAcs} non-flow + ${flowAcs} flow])`);
+    lines.push(`- Generation Mode: ${isMixedMode ? 'MIXED (component + flow)' : isComponentMode ? 'COMPONENT' : 'FLOW'}`);
+    lines.push(`- Project: ${state.projectContext?.name ?? 'Unknown'}`);
+    const epic = state.epic;
+    if (epic) {
+      lines.push(`- Epic: ${epic.id}: ${epic.title}`);
+    }
+    if (!isComponentMode && state.businessFlowBlueprints?.length) {
+      lines.push(`- Business Flows: ${state.businessFlowBlueprints.length} available`);
+    }
+  } else if (role === 'designer') {
+    const conditions = state.approvedConditions ?? state.testConditions ?? [];
+    const criticalCount = conditions.filter(c => c.priority === 'critical').length;
+    const highCount = conditions.filter(c => c.priority === 'high').length;
+    const hasUserFlows = (state.selectedFlowIds?.length ?? 0) > 0;
+    lines.push(`- Test Conditions: ${conditions.length} total (${criticalCount} critical, ${highCount} high)`);
+    lines.push(`- Project: ${state.projectContext?.name ?? 'Unknown'}`);
+    if (state.businessFlowBlueprints?.length) {
+      lines.push(`- Business Flows: ${state.businessFlowBlueprints.length} available`);
+    }
+    lines.push(hasUserFlows
+      ? `- User-selected flows: ${state.selectedFlowIds.length}`
+      : '- No user-selected flows (derive integration surfaces from requirement dependencies and cross-epic context)');
+  } else {
+    // quality
+    const draftCases = state.approvedDraftCases ?? state.draftTestCases ?? [];
+    const conditions = state.approvedConditions ?? state.testConditions ?? [];
+    lines.push(`- Draft Cases: ${draftCases.length}`);
+    lines.push(`- Test Conditions: ${conditions.length}`);
+    lines.push(`- Project: ${state.projectContext?.name ?? 'Unknown'}`);
+  }
+
+  // === Global Index ===
+  lines.push('');
+  lines.push('### Global Index');
+
+  // Epic Landscape — Analyst only (Designer/Quality do not receive it).
+  // Inject only a concise per-epic summary for cross-epic risk awareness.
+  // The full story/AC tree is NOT injected: it duplicates the current batch
+  // already present in the user message and bloats the prompt for large epics.
+  // Use `requirement_graph_query` to resolve sibling references on demand.
+  if (role === 'analyst') {
+    if (state.globalEpicIndex) {
+      const stats = state.globalStats;
+      lines.push(`- Epic Landscape: ${stats?.totalEpics ?? 0} epics, ${stats?.totalRequirements ?? 0} requirements, ${stats?.totalFlows ?? 0} flows total`);
+      for (const e of state.globalEpicIndex) {
+        const componentStoryCount = e.storyCount - e.flowCount;
+        lines.push(`  - [Epic] ${e.epicId}: ${e.title} — ${e.storyCount} stories (${componentStoryCount} component + ${e.flowCount} flow), ${e.nonFlowAcCount + e.flowAcCount} ACs (${e.nonFlowAcCount} non-flow + ${e.flowAcCount} flow), status: ${JSON.stringify(e.statusBreakdown)}`);
+      }
+      lines.push('  Use **requirement_graph_query** to inspect sibling requirements/flows outside the current batch when local input is insufficient.');
+    } else {
+      lines.push('- Epic Landscape: Not available');
+    }
+  }
+
+  // Cross-Epic Dependencies — always shown (None when empty)
+  if (state.crossEpicDependencies && state.crossEpicDependencies.length > 0) {
+    lines.push('- Cross-Epic Dependencies:');
+    for (const d of state.crossEpicDependencies) {
+      lines.push(`  - [${d.fromRequirementId}] ${d.relationType} → [${d.toRequirementId}] "${d.toRequirementTitle}" (in Epic "${d.toEpicTitle}")`);
+    }
+    if (role === 'analyst') {
+      lines.push('  Use **cross_epic_impact_query** when relationType suggests shared data/state.');
+    } else if (role === 'designer') {
+      lines.push('  When designing test data and preconditions for conditions whose `requirementId` appears above, account for the cross-epic dependency\'s data/state assumptions — e.g., if a condition depends on a requirement from another Epic, state that assumption explicitly in `preconditions` rather than silently assuming it.');
+    } else {
+      lines.push('  When reviewing completeness, check whether cases for conditions whose `requirementId` appears above acknowledge the cross-epic dependency in their preconditions or test data. Missing cross-epic context is a Completeness gap.');
+    }
+  } else {
+    lines.push('- Cross-Epic Dependencies: None');
+  }
+
+  // Already Covered — always shown (None when empty)
+  if (state.previousBatchCoverageSummary && state.previousBatchCoverageSummary.length > 0) {
+    lines.push('- Already Covered:');
+    for (const c of state.previousBatchCoverageSummary) {
+      if (role === 'analyst') {
+        lines.push(`  - [${c.requirementId}] ${c.conditionCount} conditions — ${c.categories.join('/')}, ${c.techniques.join('/')}`);
+      } else {
+        lines.push(`  - [${c.requirementId}] ${c.conditionCount} conditions — categories: ${c.categories.join('/')}, techniques: ${c.techniques.join('/')}`);
+      }
+    }
+    if (role === 'analyst') {
+      lines.push('  Use **previous_batch_conditions_query** to inspect titles before deciding to merge/skip.');
+    } else if (role === 'designer') {
+      const reqsWithCases = state.previousBatchCoverageSummary.filter(c => c.caseCountByLevel.component > 0 || c.caseCountByLevel.integration > 0);
+      if (reqsWithCases.length > 0) {
+        lines.push('  Already Generated Cases in Previous Batches (DO NOT DUPLICATE):');
+        for (const c of reqsWithCases) {
+          lines.push(`  - [${c.requirementId}]`);
+          if (c.caseCountByLevel.component > 0) lines.push(`    - component: ${c.caseCountByLevel.component} case(s)`);
+          if (c.caseCountByLevel.integration > 0) lines.push(`    - integration: ${c.caseCountByLevel.integration} case(s)`);
+        }
+        lines.push('  Dedup rule: Counts above show how many cases were already generated per testLevel for each requirement. Before finalizing a draft case, if the relevant requirement already has cases at the same testLevel, call **previous_batch_cases_query** with the `requirementId` to inspect the existing titles and SKIP any near-duplicate (same `conditionId` + `testLevel`). Near-duplicate titles with different `conditionId` are allowed (they test different conditions).');
+      } else {
+        lines.push('  No prior-batch case counts available for dedup reference. If you suspect overlap with earlier batches, call **previous_batch_cases_query** with the `requirementId` to inspect.');
+      }
+    } else {
+      lines.push('  Use this to judge whether the current batch\'s cases are redundant with prior batches. If a case appears to duplicate prior coverage of the same requirement and technique, note it in that requirement\'s `reviewSummary`.');
+    }
+  } else {
+    lines.push('- Already Covered: None');
+  }
+
+  // Analyst flow-mode cross-reference (only when flow mode + relevant flows +
+  // prior coverage exist)
+  if (role === 'analyst') {
+    const generationMode = state.generationMode ?? 'component';
+    const isComponentMode = generationMode === 'component';
+    const isMixedMode = generationMode === 'mixed';
+    if (isMixedMode) {
+      lines.push('- Mixed Mode Cross-Reference: Component and flow stories are in the SAME batch. Reference component condition IDs directly from your own output for flow `dependencies`. Call **previous_batch_conditions_query** only for requirements from OTHER batches.');
+    } else if (!isComponentMode && state.relevantFlowBlueprints && state.relevantFlowBlueprints.length > 0 && state.previousBatchCoverageSummary && state.previousBatchCoverageSummary.length > 0) {
+      lines.push('- Flow Batch Cross-Reference: This batch has flow stories whose component stories were processed earlier. Call **previous_batch_conditions_query** to get real conditionIds for `dependencies` — do NOT invent new conditionIds.');
+    }
+  }
+
+  return lines.join('\n') + '\n';
+}
+
 // ============================================================
 // Test Analyst Prompts
 // ============================================================
@@ -8,245 +165,233 @@ export function buildAnalystSystemPrompt(state: TestGenState, customPrompt?: str
   if (customPrompt) {
     return replacePromptVariables(customPrompt, state);
   }
-  const batch = state.batchContext;
-  const hasUserFlows = (state.selectedFlowIds?.length ?? 0) > 0;
+  const generationMode = state.generationMode ?? 'component';
+  const isComponentMode = generationMode === 'component';
+  const isMixedMode = generationMode === 'mixed';
 
-  const workflowSteps = `### Step 1 — Gather requirement details
-Call **requirement_detail_query** with an array of ALL requirement IDs in the batch (single call).
+  const outputContract = `## Required Fields
+For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`conditionType\`, \`flowStepRefs\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, and \`dependencies\`. \`requirementId\` must be the exact source requirement ID supplied by the batch. \`category\` must be explicitly set.
 
-### Step 2 — Gather flow context
-${hasUserFlows
-  ? 'The user selected flows — call **flow_detail_query** with "selectedFlowIds" to load them.'
-  : 'No user-selected flows. If "businessFlowBlueprints" / "relevantFlowBlueprints" is present, call **flow_detail_query** with all blueprint IDs to discover candidate integration scenarios.'}
+The result must contain ALL derived test conditions for this batch, not a sample.`;
 
-### Step 3 — Expand the requirement graph (MANDATORY)
-Call **requirement_graph_query** with the requirement IDs (pass any selected/blueprint flow IDs as \`flowId\`). This step is NOT optional. It surfaces cross-batch dependencies and integration surfaces that are invisible in the current batch alone. Cross-epic dependencies are already summarized in Global Context above — for any entry whose \`relationType\` is \`depended-by\` or whose title suggests shared data/state, call **cross_epic_impact_query** to load its details; otherwise skip.
+  const workflowSteps = isMixedMode
+    ? `### Step 1 — Review all input
+The user message contains BOTH component Stories (non-flow, with \`isFlow: false\`) and Flow Stories (\`isFlow: true\`). Derive component conditions for non-flow stories AND flow conditions for flow stories in the SAME output.
 
-### Step 4 — Load ISTQB guides (techniques + test levels)
-Call **istqb_guide** once, loading all techniques AND the Integration Testing test-level guide. You must load at least one guide before deriving conditions.
+### Step 2 — Cross-reference component conditions for flow dependencies
+Flow Stories' referenced component stories may be in the SAME batch. When they are, reference their condition IDs directly in \`dependencies\`. Call **previous_batch_conditions_query** only for component stories from OTHER batches.
 
-### Step 5 — Assess risk (see Risk Assessment below), then Step 6 — select techniques (see Technique Selection below), then Step 7 — derive conditions.`;
+### Step 3 — Gather additional context only when needed
+Call **requirement_graph_query** only when local input is insufficient. Call **flow_detail_query** only if injected Flow data is incomplete. Call **cross_epic_impact_query** only for a real shared data/state risk.
 
-  // L1+L2 分层注入：Epic 级索引 + 跨 Epic 依赖 + 已覆盖摘要（替代需求级全量列表）
-  const globalContextSection = state.globalEpicIndex ? `
-## Global Context & Cross-Batch Awareness
-You are processing Batch ${batch.currentBatch} of ${batch.totalBatches}.
+### Step 4 — Load test-design guidance
+Call **analyst_rules** before deriving conditions. Select the applicable technique(s), then load only their ISTQB guide(s). For flow stories, also load the Integration Testing guide and Use Case Testing or State Transition Testing.
 
-**Global Epic Landscape** (${state.globalStats?.totalEpics ?? 0} epics, ${state.globalStats?.totalRequirements ?? 0} requirements, ${state.globalStats?.totalFlows ?? 0} flows total):
-${state.globalEpicIndex.map(e =>
-  `- [Epic] ${e.epicId}: ${e.title} — ${e.requirementCount} reqs, ${e.flowCount} flows, status: ${JSON.stringify(e.statusBreakdown)}`
-).join('\n')}
+### Step 5 — Derive conditions
+- For non-flow stories: set \`conditionType: "component"\` and \`flowStepRefs: []\`. Focus on single-component behavior.
+- For flow stories: set \`conditionType: "flow"\`, include non-empty \`flowStepRefs\`, and focus on cross-component integration behavior. Reference component condition IDs in \`dependencies\`.
+- Flow conditions must NOT duplicate atomic behaviors already covered by component conditions — only verify cross-component interactions.`
+    : isComponentMode
+    ? `### Step 1 — Review component input
+The user message contains only non-flow Stories and their ACs. Derive only component behavior from this input.
 
-${state.crossEpicDependencies && state.crossEpicDependencies.length > 0
-  ? `\n**Cross-Epic Dependencies (RELEVANT to this batch — investigate these):**\n${state.crossEpicDependencies.map(d =>
-      `- [${d.fromRequirementId}] ${d.relationType} → [${d.toRequirementId}] "${d.toRequirementTitle}" (in Epic "${d.toEpicTitle}")`
-    ).join('\n')}\n  Use **cross_epic_impact_query** to load the target requirement's details when its interaction with the current batch is unclear. Do NOT query every cross-epic target by default — only those whose relationType or title suggests a real coverage risk (e.g. shared data, shared state, depended-by).`
-  : '\n*No cross-epic dependencies detected for this batch.*'}
+### Step 2 — Gather additional context only when needed
+Call **requirement_graph_query** only when an AC has \`relatedRequirementIds\`, Global Context identifies a cross-Epic data/state risk, or local input is insufficient. Call **cross_epic_impact_query** only for a real shared data/state risk.
 
-${state.previousBatchCoverageSummary && state.previousBatchCoverageSummary.length > 0
-  ? `\n**Already Covered (DO NOT DUPLICATE — aggregated by requirement):**\n${state.previousBatchCoverageSummary.map(c =>
-      `- [${c.requirementId}] ${c.conditionCount} conditions — categories: ${c.categories.join('/')}, techniques: ${c.techniques.join('/')}`
-    ).join('\n')}\n  Condition titles are intentionally omitted to save context. If a new condition you are about to derive seems to overlap with the above, use **previous_batch_conditions_query** to inspect the specific condition titles for that requirement before deciding to merge or skip.`
-  : '\n*No previous batches processed yet.*'}
-` : '';
+### Step 3 — Load test-design guidance
+Call **analyst_rules** before deriving conditions. Select the applicable technique(s), then load only their ISTQB guide(s). Do not load all black-box techniques by default.
+
+### Step 4 — Derive component conditions
+All conditions in this phase must have \`conditionType: "component"\` and \`flowStepRefs: []\`. Do not derive integration or Flow conditions.`
+    : `### Step 1 — Review Flow input
+The user message contains only Flow Stories and their BDD Scenario ACs. Derive only cross-component state-transition and interface-contract coverage.
+
+### Step 2 — Load component coverage context
+For every component Story referenced by a Flow AC's \`relatedRequirementIds\`, call **previous_batch_conditions_query**. Record only returned condition IDs in \`dependencies\`; do NOT invent new conditionIds.
+
+### Step 3 — Gather incomplete context only when needed
+Call **requirement_graph_query** for missing relationships. Call **flow_detail_query** only if the injected Flow Story or Scenario data is incomplete. Call **cross_epic_impact_query** only for a real shared data/state risk.
+
+### Step 4 — Load test-design guidance
+Call **analyst_rules** and the Integration Testing guide. Load Use Case Testing or State Transition Testing when the selected Flow scenario requires that technique.
+
+### Step 5 — Derive flow conditions
+All conditions in this phase must have \`conditionType: "flow"\`, include non-empty \`flowStepRefs\`, and focus on integration behavior already outside component coverage.`;
+
+  const availableTools = isMixedMode
+    ? `- **requirement_detail_query(requirementId)**: details for requirements outside the current batch.
+- **requirement_graph_query(requirementId, flowId?)**: relationship details when local input is insufficient.
+- **flow_detail_query(flowId)**: Flow details only when injected Flow data is incomplete.
+- **cross_epic_impact_query(requirementId)**: cross-Epic reference details for a real shared data/state risk.
+- **previous_batch_conditions_query(requirementId)**: prior condition IDs for requirements from OTHER batches (same-batch conditions are already in your output).
+- **istqb_guide(techniques?, context?)**: selected ISTQB technique guides including Integration Testing for flow stories.
+- **analyst_rules**: required condition derivation rules.`
+    : isComponentMode
+    ? `- **requirement_detail_query(requirementId)**: details for requirements outside the current batch.
+- **requirement_graph_query(requirementId)**: relationship details when local input is insufficient.
+- **cross_epic_impact_query(requirementId)**: cross-Epic reference details for a real shared data/state risk.
+- **previous_batch_conditions_query(requirementId)**: prior condition titles when duplicate coverage is suspected.
+- **istqb_guide(techniques?, context?)**: selected ISTQB technique guides.
+- **analyst_rules**: required condition derivation rules.`
+    : `- **requirement_detail_query(requirementId)**: details for requirements outside the current batch.
+- **requirement_graph_query(requirementId, flowId?)**: missing relationship details for the current Flow.
+- **flow_detail_query(flowId)**: Flow details only when injected Flow data is incomplete.
+- **cross_epic_impact_query(requirementId)**: cross-Epic reference details for a real shared data/state risk.
+- **previous_batch_conditions_query(requirementId)**: real component condition IDs for Flow dependencies.
+- **istqb_guide(techniques?, context?)**: Integration Testing and applicable Flow technique guides.
+- **analyst_rules**: required condition derivation rules.`;
+
+  const outputExample = isMixedMode
+    ? `{
+  "requirementAnalysis": { "overallApproach": "...", "riskAssessmentSummary": "..." },
+  "testConditions": [
+    {
+      "id": "C-001", "requirementId": "STORY-001",
+      "condition": "Verify that ...",
+      "conditionType": "component",
+      "flowStepRefs": [],
+      "category": "error", "priority": "high", "riskLevel": "high",
+      "primaryTechnique": "Equivalence Partitioning",
+      "secondaryTechniques": [],
+      "techniqueRationale": "...",
+      "coverageDimensions": ["..."],
+      "dependencies": []
+    },
+    {
+      "id": "C-002", "requirementId": "FLOW-STORY-001",
+      "condition": "Verify that ...",
+      "conditionType": "flow",
+      "flowStepRefs": [{ "flowId": "FLOW-1", "sequence": 1, "actionSummary": "..." }],
+      "category": "integration", "priority": "critical", "riskLevel": "critical",
+      "primaryTechnique": "Use Case Testing",
+      "secondaryTechniques": ["State Transition Testing"],
+      "techniqueRationale": "...",
+      "coverageDimensions": ["..."],
+      "dependencies": ["C-001"]
+    }
+  ]
+}`
+    : isComponentMode
+    ? `{
+  "requirementAnalysis": { "overallApproach": "...", "riskAssessmentSummary": "..." },
+  "testConditions": [
+    {
+      "id": "C-001", "requirementId": "STORY-001",
+      "condition": "Verify that ...",
+      "conditionType": "component",
+      "flowStepRefs": [],
+      "category": "error", "priority": "high", "riskLevel": "high",
+      "primaryTechnique": "Equivalence Partitioning",
+      "secondaryTechniques": [],
+      "techniqueRationale": "...",
+      "coverageDimensions": ["..."],
+      "dependencies": []
+    }
+  ]
+}`
+    : `{
+  "requirementAnalysis": { "overallApproach": "...", "riskAssessmentSummary": "..." },
+  "testConditions": [
+    {
+      "id": "C-001", "requirementId": "FLOW-STORY-001",
+      "condition": "Verify that ...",
+      "conditionType": "flow",
+      "flowStepRefs": [{ "flowId": "FLOW-1", "sequence": 1, "actionSummary": "..." }],
+      "category": "integration", "priority": "critical", "riskLevel": "critical",
+      "primaryTechnique": "Use Case Testing",
+      "secondaryTechniques": ["State Transition Testing"],
+      "techniqueRationale": "...",
+      "coverageDimensions": ["..."],
+      "dependencies": ["C-EXISTING-COMPONENT-001"]
+    }
+  ]
+}`;
 
   return `You are a senior ISTQB Test Analyst (CTFL/CTAL Test Analyst level). Perform risk-based analysis of the input and derive a complete, non-redundant set of test conditions using formal ISTQB black-box test design techniques.
 
-## Context
-- Batch: ${batch.currentBatch}/${batch.totalBatches} (This batch has ${state.currentBatch.length} requirements)
-- Project: ${state.projectContext.name}
-${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-${globalContextSection}
-## Mandatory Tool Usage Workflow
+${buildContextSection(state, 'analyst')}## Mandatory Tool Usage Workflow
 ${workflowSteps}
 
-## Risk Assessment (ISTQB Risk-Based Testing)
-Rate each requirement on TWO independent axes before assigning priority:
-- **Likelihood**: complexity, novelty, change frequency, number of dependencies, history of defects in similar features.
-- **Impact**: business criticality, user/data exposure, regulatory or financial consequence, blast radius if it breaks.
-\`critical\` priority requires BOTH axes high. Routine CRUD or display-only items are usually \`medium\`/\`low\` — do not inflate everything to \`high\`/\`critical\`.
-
-## Technique Selection (decision rule, not habit)
-| Technique | Use when... |
-|---|---|
-| Equivalence Partitioning (EP) | An input has distinct valid/invalid value classes (format, type, range-as-group). |
-| Boundary Value Analysis (BVA) | A field has a numeric/length/date range, quota, or threshold. Always pair with EP on the same field. |
-| Decision Table | An outcome depends on 2+ independent conditions combining (pricing, eligibility, permissions, approval routing). |
-| State Transition | An entity has a lifecycle/status, or a control's behavior depends on prior actions (wizards, session state). |
-| Use Case | An end-to-end goal spans multiple steps/screens/services and sequence/actor intent matters more than any single input. |
-
-Pick the technique with the strongest fit; do not force a weak match. Record \`secondaryTechniques\` only when genuinely applicable, and justify each choice in \`techniqueRationale\` by naming the specific characteristic that triggered it (e.g., "Decision Table because role AND resource-type jointly determine access").
-
-## Sizing & Hygiene
-- **Technique-Driven Count**: Scale the number of conditions based on requirement complexity (typically 2-4 for simple rules, but higher for complex logic). Let the test design technique dictate the final count. Never under-cover a technique just to hit a round number.
-- **Smart Deduplication**: Merge near-duplicate conditions that test the same aspect with only data variants. Never merge valid-partition into invalid-partition, and never merge invalid conditions that trigger distinct error handling paths.
-- **Strict Traceability**: Every condition must trace to at least one source \`requirementId\` taken verbatim from the input.
-
-## Required Fields
-For EVERY object in \`testConditions\`, these fields are mandatory: \`id\`, \`requirementId\`, \`condition\`, \`category\`, \`priority\`, \`riskLevel\`, \`primaryTechnique\`, \`secondaryTechniques\`, \`techniqueRationale\`, \`coverageDimensions\`, \`dependencies\`. \`requirementId\` must be the exact source requirement ID — never paraphrased. \`category\` must be explicitly set (functional, boundary, error, validation, integration).
+${outputContract}
 
 ## Available Tools
-- **requirement_detail_query(requirementId)**: requirement details — single ID or array for batch query.
-- **requirement_graph_query(requirementId, flowId?)**: parent/children/siblings/dependencies/associated flows. Optional flowId to include user-selected flows.
-- **flow_detail_query(flowId)**: business flow details — single ID or array for batch query.
-- **cross_epic_impact_query(requirementId)**: details of a cross-epic dependency target listed in the Global Context. Use ONLY when a cross-epic dependency's title or relationType suggests a real coverage risk.
-- **previous_batch_conditions_query(requirementId)**: condition titles already generated for a requirement in previous batches. Use ONLY when you suspect a new condition might duplicate an existing one.
-- **istqb_guide(techniques?, context?)**: ISTQB technique guides. Omit \`techniques\` to load all.
-- **knowledge_base(context?)**: project-specific domain knowledge.
+${availableTools}
 
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
 ## Output Format
-Stream your analysis as plain text in markdown. After your analysis, end with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
+Stream your analysis as plain text in markdown. End with a single JSON code block containing the COMPLETE structured output. Do NOT add any text after this block.
 
 \`\`\`json
-{
-  "requirementAnalysis": {
-    "overallApproach": "...",
-    "riskAssessmentSummary": "..."
-  },
-  "testConditions": [
-    {
-      "id": "C-001", "requirementId": "REQ-001",
-      "condition": "Verify that submitting an invalid password (wrong but well-formed) is rejected with an error message.",
-      "conditionType": "component",
-      "flowStepRefs": [],
-      "category": "error",
-      "priority": "high",
-      "riskLevel": "high",
-      "primaryTechnique": "Equivalence Partitioning",
-      "secondaryTechniques": [],
-      "techniqueRationale": "Invalid-credential partition — EP requires both valid and invalid partitions.",
-      "coverageDimensions": ["authentication", "negative"],
-      "dataRequirements": ["valid username: admin", "invalid password: wrongpass"],
-      "dependencies": [],
-      "requirementLevel": "AC"
-    },
-    {
-      "id": "C-002", "requirementId": "REQ-001",
-      "condition": "Verify that submitting valid administrator credentials authenticates successfully, hands off state to the session component, and redirects to the dashboard.",
-      "conditionType": "flow",
-      "flowStepRefs": [
-        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 2, "actionSummary": "Submit credentials" },
-        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 3, "actionSummary": "Auth API returns 200 + session token" },
-        { "flowId": "F-login-happy", "flowName": "Login (happy path)", "sequence": 4, "actionSummary": "Redirect to dashboard" }
-      ],
-      "category": "functional",
-      "priority": "critical",
-      "riskLevel": "critical",
-      "primaryTechnique": "Use Case Testing",
-      "secondaryTechniques": ["State Transition Testing"],
-      "techniqueRationale": "Multi-step end-to-end user goal spanning auth API, session store, and dashboard rendering — Use Case Testing is the strongest fit.",
-      "coverageDimensions": ["authentication", "positive"],
-      "dataRequirements": ["valid username: admin", "valid password: admin123"],
-      "dependencies": [],
-      "requirementLevel": "AC"
-    }
-  ]
-}
+${outputExample}
 \`\`\`
 
-The \`\`\`json block must be at the very end — nothing after it. It must contain ALL test conditions, not a sample. An empty object \`{}\` is always invalid.
-
----
-
-## CRITICAL RULES (read before generating — these are non-negotiable)
-
-### A. Condition Type: component vs flow
-
-**Definitions:**
-- **component condition** — verifies ONE requirement's atomic behavior in isolation. Source: a single requirement AC (single-field validation, single business rule, internal state transition). The test that covers it stays inside one component.
-- **flow condition** — verifies cross-component interaction derived from a business flow. Source: a flow step (data handoff, end-to-end sequence across modules, state propagation). The test that covers it traverses 2+ components.
-
-**Decision rule — assign \`conditionType\` per CONDITION (not per requirement):**
-
-| Source / characteristic | conditionType | flowStepRefs required? |
-|---|---|---|
-| Condition is derived from a **flow step** — verifies cross-component data flow, interface contract, state handoff, or end-to-end sequence across modules | \`flow\` | YES (the exact \`{ flowId, sequence, actionSummary }\` this condition comes from) |
-| Condition uses **Use Case Testing** as primary technique (multi-step goal spanning services) | \`flow\` | YES |
-| Condition verifies a **requirement AC** — single field's input validation, format, or range (EP/BVA) | \`component\` | no |
-| Condition verifies a **requirement AC** — single business rule's outcome in isolation (Decision Table on one requirement) | \`component\` | no |
-| Condition verifies a **requirement AC** — invalid input or boundary on a single field with no cross-component effect | \`component\` | no |
-| Condition verifies a **requirement AC** — state transition within a single module's lifecycle | \`component\` | no |
-| **F22** Condition comes from a flow step but only validates an atomic input/format of one field (e.g. "password is masked as it's typed" inside a login flow) | \`component\` (with the flow step's requirementId still recorded) | no |
-
-**Key principle:** the primary signal is what the condition VERIFIES (atomic vs cross-component), not just where it came from. A flow that contains a password-input step still has a component condition for the masking rule.
-
-**\`flowStepRefs\` rule:** every \`conditionType: "flow"\` condition MUST list at least one \`{ flowId, sequence, actionSummary }\` in \`flowStepRefs\`. This is the bridge that lets the Designer and Quality trace the condition back to a specific flow step and lets the user (and downstream AI) answer "which flow steps are uncovered?".
-
-**Non-overlap rule (ANTI-REDUNDANCY — critical):** For the SAME requirement, a \`component\` condition and a \`flow\` condition MUST NOT verify the same behavior:
-- A \`component\` condition verifies the atomic behavior alone (e.g., "empty password is rejected with a validation error").
-- A \`flow\` condition for the same requirement verifies ONLY the cross-component interaction aspect the component condition did NOT cover (e.g., "no auth request is sent to the auth service when client-side validation fails").
-- The \`flow\` condition's \`condition\` text must NOT re-state the atomic behavior. It should describe the interaction surface (data handoff, state propagation, downstream effect, sequence across modules) and ASSUME the atomic behavior works.
-
-**Per-requirement guidance (replaces rigid quota):**
-- Every requirement MUST produce at least one \`component\` condition (for its atomic behavior).
-- A requirement produces a \`flow\` condition ONLY IF it has a genuine cross-component interaction surface (appears in a flow, has dependencies, or touches an external system). When it does, the flow condition must be non-overlapping with the component condition.
-
-**F8 — flow-step coverage rule:** For every step in \`businessFlows[].steps[]\` (i.e. every \`{ flowId, sequence }\` that the user message exposes), the batch MUST produce at least one \`flow\` condition whose \`flowStepRefs\` references that step. A flow step with no condition referencing it is a coverage gap — surface it in the \`requirementAnalysis.riskAssessmentSummary\`.
-
-### B. Technique Coverage (per-technique hard requirements)
-
-| Technique | Mandatory coverage |
-|---|---|
-| EP | valid-partition condition AND at least one invalid-partition condition (separate conditions, never merged) |
-| BVA | \`condition\` text must name the actual boundary and its position (e.g., "exactly at the 100-character limit") — never "test with large input" |
-| Decision Table | cover every business-relevant rule combination, including "no rule matches" / default case |
-| State Transition | include at least one invalid/disallowed transition per modeled entity |
-| Every requirement | at least one condition in \`error\`, \`boundary\`, or \`validation\` category — happy-path-only coverage is under-testing |
-
-### C. Final Self-Check (before closing the JSON block)
-
-For every condition: \`requirementId\` present and exact, \`category\` present, \`conditionType\` is \`"component"\` or \`"flow"\`, and if \`conditionType === "flow"\` then \`flowStepRefs\` has at least one entry.
-Per requirement: at least one component condition exists; a flow condition exists only if the requirement has a cross-component surface; the flow condition does not re-state what the component condition already verifies.
-Per flow step in the input: at least one condition references it via \`flowStepRefs\`. A step with zero references is a coverage gap.
-Per technique used: coverage rules from section B are satisfied.
-\`coverageDimensions\` is free-form tags — do NOT use \`testLevel:*\` tags anymore (use the \`conditionType\` field).
+The \`\`\`json block must be at the very end — nothing after it. An empty object \`{}\` is always invalid.
 `;
 }
 
 /**
- * F6 / F7: serialize a business flow with its COMPLETE step list so the LLM
- * can derive component and flow conditions / test cases without having to
- * call flow_detail_query. Each step carries its actionSummary, the requirement
- * IDs it links to, the primary requirement title, the requirement level, and
- * any acceptance criteria already attached to the step.
+ * Parse a free-text Given/When/Then AC description into structured fields.
+ * Falls back to raw description if the pattern doesn't match.
  */
-function serializeFlow(f: any) {
+export function parseGivenWhenThen(description: string): { given?: string; when?: string; then?: string } {
+  if (!description) return {};
+  const givenMatch = description.match(/(?:^|\n)\s*Given\s+(.*?)(?=\n\s*(?:When|Then)\b|$)/is);
+  const whenMatch = description.match(/(?:^|\n)\s*When\s+(.*?)(?=\n\s*Then\b|$)/is);
+  const thenMatch = description.match(/(?:^|\n)\s*Then\s+(.*?)$/is);
+  const result: { given?: string; when?: string; then?: string } = {};
+  if (givenMatch) result.given = givenMatch[1].trim();
+  if (whenMatch) result.when = whenMatch[1].trim();
+  if (thenMatch) result.then = thenMatch[1].trim();
+  return result;
+}
+
+/**
+ * Serialize an AC for the prompt — structured given/when/then instead of
+ * free-text description. Omits default values (flowType="atomic",
+ * relatedRequirementIds=[]) to save tokens.
+ */
+export function serializeAC(ac: any) {
+  const gwt = parseGivenWhenThen(ac.description ?? '');
+  const result: Record<string, unknown> = {
+    id: ac.id,
+    title: ac.title,
+  };
+  if (gwt.given) result.given = gwt.given;
+  if (gwt.when) result.when = gwt.when;
+  if (gwt.then) result.then = gwt.then;
+  if (!gwt.given && !gwt.when && !gwt.then && ac.description) result.description = ac.description;
+  if (ac.flowType && ac.flowType !== 'atomic') result.flowType = ac.flowType;
+  const related = ac.relatedRequirementIds ?? [];
+  if (related.length > 0) result.relatedRequirementIds = related;
+  return result;
+}
+
+/**
+ * Flow serialization for Designer/Quality prompts — keeps long key names
+ * (sequence, actionSummary, requirementIds) since those prompts reference
+ * them in instructions.
+ */
+function serializeFlowForDesigner(f: any) {
   return {
     id: f.id,
     name: f.name,
-    type: f.type,
-    description: f.description ?? '',
-    source: f.source ?? 'auto', // 'user-selected' | 'blueprint' | 'auto'
     steps: (f.steps ?? []).map((s: any) => ({
       sequence: s.sequence,
       actionSummary: s.actionSummary ?? '',
       requirementIds: s.requirementIds ?? (s.requirementId ? [s.requirementId] : []),
-      requirementTitle: s.requirementTitle ?? '',
-      requirementLevel: s.requirementLevel ?? '',
-      acceptanceCriteria: s.acceptanceCriteria ?? [],
     })),
   };
 }
 
 export function buildAnalystUserMessage(state: TestGenState): string {
-  // 优先使用 preparation 节点过滤后的 relevantFlowBlueprints（仅含与当前批次需求有交集的 flow），
-  // 没有时回退到全量 businessFlowBlueprints
-  const flows = state.relevantFlowBlueprints ?? state.businessFlowBlueprints ?? [];
-  return JSON.stringify({
-    requirements: state.currentBatch.map(r => ({
-      id: r.id,
-      title: r.title,
-      level: r.level,
-      parentId: r.parentId,
-    })),
-    // F6: full flow context, including every step's description, linked
-    // requirements, and AC. The LLM no longer needs to call flow_detail_query
-    // just to discover what each step covers.
-    businessFlows: flows.map(serializeFlow),
-    selectedFlowIds: state.selectedFlowIds,
-  }, null, 2);
+  // The analystInput object is pre-built in buildBatchInputState (orchestrator.ts)
+  // so we just serialize it here. Falls back to legacy assembly if not available.
+  if (state.analystInput) {
+    return JSON.stringify(state.analystInput, null, 2);
+  }
+  // Legacy fallback (should not be hit after migration)
+  return JSON.stringify({ epic: state.epic, stories: [] }, null, 2);
 }
 
 // ============================================================
@@ -254,175 +399,97 @@ export function buildAnalystUserMessage(state: TestGenState): string {
 // ============================================================
 
 /**
- * 构造 Designer / Quality 共享的 L2 上下文片段（精简版，不含 skill 调用提示）。
- * - crossEpicDependencies：只列摘要，让 Designer 在设计 test data / preconditions 时考虑跨 Epic 依赖
- * - previousBatchCoverageSummary：让 Quality 在评审覆盖度时参考已覆盖的需求
+ * Detect which ISTQB techniques are present in the batch's conditions and
+ * inject a targeted few-shot example for techniques that are error-prone.
+ * This supplements the generic 2-case example already in the Designer prompt.
  */
-function buildL2ContextSection(state: TestGenState, role: 'designer' | 'quality'): string {
-  const parts: string[] = [];
-  if (state.crossEpicDependencies && state.crossEpicDependencies.length > 0) {
-    parts.push(`**Cross-Epic Dependencies (context for this batch):**
-${state.crossEpicDependencies.map(d =>
-  `- [${d.fromRequirementId}] ${d.relationType} → [${d.toRequirementId}] "${d.toRequirementTitle}" (in Epic "${d.toEpicTitle}")`
-).join('\n')}`);
-    if (role === 'designer') {
-      parts.push(`When designing test data and preconditions for conditions whose \`requirementId\` appears above, account for the cross-epic dependency's data/state assumptions — e.g., if a condition depends on a requirement from another Epic, state that assumption explicitly in \`preconditions\` rather than silently assuming it.`);
-    } else {
-      parts.push(`When reviewing completeness, check whether cases for conditions whose \`requirementId\` appears above acknowledge the cross-epic dependency in their preconditions or test data. Missing cross-epic context is a Completeness gap.`);
-    }
-  }
-  if (state.previousBatchCoverageSummary && state.previousBatchCoverageSummary.length > 0) {
-    const summaries = state.previousBatchCoverageSummary;
-    parts.push(`**Already Covered in Previous Batches (by requirement):**
-${summaries.map(c =>
-  `- [${c.requirementId}] ${c.conditionCount} conditions — categories: ${c.categories.join('/')}, techniques: ${c.techniques.join('/')}`
-).join('\n')}`);
+function buildTechniqueFewShot(state: TestGenState): string {
+  const conditions = state.approvedConditions ?? state.testConditions ?? [];
+  const techniqueStrings = conditions
+    .map((c) => String(c.primaryTechnique ?? '').toLowerCase());
 
-    if (role === 'designer') {
-      // 注入 case 级跨批次去重视图：按 testLevel 分组展示已生成用例标题
-      const reqsWithCases = summaries.filter(c => c.caseTitles.length > 0);
-      if (reqsWithCases.length > 0) {
-        parts.push(`**Already Generated Cases in Previous Batches (DO NOT DUPLICATE):**
-${reqsWithCases.map(c => {
-  const componentTitles: string[] = [];
-  const integrationTitles: string[] = [];
-  c.caseTitles.forEach((t, i) => {
-    const lvl = c.caseLevels[i] || '';
-    if (lvl === 'integration') integrationTitles.push(t);
-    else componentTitles.push(t);
-  });
-  const lines = [`- [${c.requirementId}]`];
-  if (componentTitles.length) lines.push(`  - component: ${componentTitles.map(t => `"${t}"`).join(', ')}`);
-  if (integrationTitles.length) lines.push(`  - integration: ${integrationTitles.map(t => `"${t}"`).join(', ')}`);
-  return lines.join('\n');
-}).join('\n')}
+  const blocks: string[] = [];
 
-**Dedup rule:** Before finalizing a draft case, compare its title + testLevel against the list above. If a prior batch already generated a case with the same \`conditionId\` + \`testLevel\`, SKIP it (do not regenerate). If you suspect overlap but are unsure, call **previous_batch_cases_query** with the \`requirementId\` to inspect full titles. Near-duplicate titles with different \`conditionId\` are allowed (they test different conditions).`);
-      } else {
-        parts.push(`No prior-batch case titles available for dedup reference. If you suspect overlap with earlier batches, call **previous_batch_cases_query** with the \`requirementId\` to inspect.`);
-      }
-    } else {
-      parts.push(`Use this to judge whether the current batch's cases are redundant with prior batches. If a case appears to duplicate prior coverage of the same requirement and technique, note it in that requirement's \`reviewSummary\`.`);
-    }
+  if (techniqueStrings.some((t) => t.includes('decision'))) {
+    blocks.push(`## Technique-Specific Example — Decision Table (Negative-Case Step Splitting)
+When designing Decision Table test cases for validation rules, the "action did NOT happen" and "error IS shown" are TWO separate observable outcomes. Never join them with a semicolon.
+
+WRONG (one step, two assertions):
+  { "action": "Click Submit", "expected": "No API request is sent; error message is displayed" }
+
+CORRECT (two atomic steps):
+  { "stepNumber": 3, "action": "Click the Submit button.", "expected": "No network request is sent to the auth API endpoint" }
+  { "stepNumber": 4, "action": "Observe the validation error area.", "expected": "An error message 'Please enter your username and password' is displayed" }
+
+Label each testData entry with the rule row being exercised, e.g.: \`username = "" (empty — Rule 1: both empty)\`
+Every rule column in the decision table MUST have at least one test case.`);
   }
-  return parts.length > 0 ? `\n## L2 Cross-Batch Context\n${parts.join('\n\n')}\n` : '';
+
+  if (techniqueStrings.some((t) => t.includes('use case') || t.includes('use-case'))) {
+    blocks.push(`## Technique-Specific Example — Use Case Testing (Integration F12 Anti-Redundancy)
+Use Case test cases are \`testLevel: "integration"\`. They MUST:
+1. List the flow condition ID in \`coveredConditions\`.
+2. List component condition IDs in \`referencedComponentConditions\` (atomic behaviors assumed as preconditions).
+3. NOT re-assert component behavior in \`steps[].expected\` — only assert cross-component outcomes (API call, token storage, redirect, downstream effect).
+
+Preconditions must describe concrete settable system states — NOT behavior assertions.
+Wrong:  "Client-side validation passes (per C-006)"
+Right:  "Login page is loaded at /login with all form fields empty"
+
+At least one test case per use case scenario (main success + each alternative + each exception path).`);
+  }
+
+  if (techniqueStrings.some((t) => t.includes('state'))) {
+    blocks.push(`## Technique-Specific Example — State Transition Testing
+For each transition, create a test case that:
+1. Sets the initial state as a precondition (concrete, settable).
+2. Triggers the transition event as the action.
+3. Asserts the new state as the expected result.
+4. Includes a separate test case for each valid transition AND each invalid transition (attempting an impossible transition should be rejected).
+
+Do NOT combine "trigger event" and "verify new state" into one step — they are separate: one action, one observable result.`);
+  }
+
+  return blocks.length > 0
+    ? '\n' + blocks.join('\n\n') + '\n'
+    : '';
 }
 
 export function buildDesignerSystemPrompt(state: TestGenState, customPrompt?: string): string {
   if (customPrompt) {
     return replacePromptVariables(customPrompt, state);
   }
-  const conditions = state.approvedConditions ?? state.testConditions ?? [];
-  const criticalCount = conditions.filter(c => c.priority === 'critical').length;
-  const highCount = conditions.filter(c => c.priority === 'high').length;
-  const hasUserFlows = (state.selectedFlowIds?.length ?? 0) > 0;
 
   return `You are a senior ISTQB Test Designer (CTFL/CTAL Test Analyst level). Convert each test condition into a complete, executable, independently runnable test case that faithfully implements the condition's assigned technique AND test level.
 
-## Context
-- Test Conditions: ${conditions.length} total (${criticalCount} critical, ${highCount} high)
-- Project: ${state.projectContext.name}
-${state.businessFlowBlueprints?.length ? `- Business Flows: ${state.businessFlowBlueprints.length} available` : ''}
-${hasUserFlows ? `- User-selected flows: ${state.selectedFlowIds.length}` : '- No user-selected flows (derive integration surfaces from requirement dependencies and cross-epic context)'}
-${buildL2ContextSection(state, 'designer')}
-## Mandatory Tool Usage Workflow
+${buildContextSection(state, 'designer')}## Mandatory Tool Usage Workflow
 ### Step 1 — Verify requirement details
 For EACH condition, call **requirement_detail_query** with its \`requirementId\` (cached, so repeats are cheap). For conditions tagged \`"testLevel:integration"\` or whose \`primaryTechnique\` is Use Case / State Transition, also call **flow_detail_query** to load the associated flow.
 
 ### Step 2 — Load ISTQB guides (mandatory, every run)
 Call **istqb_guide** once — loading all technique guides AND the Integration Testing test-level guide. Do not skip this even if you already "know" the techniques; the guide enforces the method, not just the name.
 
+### Step 2.5 — Load detailed rules (MANDATORY)
+Call **designer_rules** to load the complete test case design rules. You MUST load these before designing any test cases.
+
 ### Step 3 — Design test cases
 Apply the rules below. Decide \`testLevel\` per case using the Test Level Decision Rule.
 
-## Step-Writing Rules (操作原子性)
-
-**核心原则：一步 = 一个操作 = 一个可观察结果。** 每个 step 只能描述一个动作，且这个动作的结果必须能被独立验证。多个动作合并到一个 step 里会导致失败时无法定位根因，因此一律禁止。
-
-### 什么算"一个操作"
-
-- **输入字段** = 一个 step（\`Enter 'admin' into username\` 是一个完整 step，不是"submit 之前顺便输入"）
-- **点击/触发** = 一个 step
-- **等待异步结果** = 一个 step（与点击分开）
-- **断言/观察** = 一个 step（与等待分开）
-
-### 一律拆分的复合动作
-
-| 写错的（禁止） | 拆开的（正确） |
-|---|---|
-| \`"Submit the login form with admin/admin123"\` | step 1: \`"Enter 'admin' into the username field"\` → step 2: \`"Enter 'admin123' into the password field"\` → step 3: \`"Click the Sign in button"\` |
-| \`"Enter username and password"\` | 每个字段一个 \`Enter\` step |
-| \`"Click login and verify dashboard appears"\` | 点击 → 等待 → 断言 三个 step |
-| \`"Fill out the form with valid data and submit"\` | 每个字段一个 step + 一个 submit step |
-| \`"Set username to admin and password to p@ss then click submit"\` | 每个字段一个 step + 一个 click step |
-
-### expected 的硬约束
-
-- 描述该 step 执行**之后**的系统状态，不是多个动作的总和
-- 必须机器可检测（DOM 状态、HTTP 状态、返回值、元素存在性），不能写"works correctly" / "behaves as expected"
-- schema 强制：≤ 200 字符、至多一个分号段
-
-### 步骤顺序
-
-按因果链排列：每个 step 的前置状态由上一步的后置结果满足。标准顺序是：输入 → 触发 → 等待 → 断言。
-
-## Technique Fidelity (apply per the condition's \`primaryTechnique\`)
-| Technique | What the test case must do |
-|---|---|
-| Equivalence Partitioning | \`testData\` states which partition the value belongs to (e.g., "email = invalid-format (no @) — invalid partition"). Include specific data examples if the condition listed multiple variants. |
-| Boundary Value Analysis | \`testData\` states the exact boundary value AND its position (e.g., "quantity = 0 (one below minimum 1)"). Generic data like "a large number" is a rejected design. |
-| Decision Table | \`preconditions\`/\`testData\` enumerate every condition-column input for that specific rule row, so the rule under test is unambiguous. |
-| State Transition | \`preconditions\` state the starting state explicitly; the final step's \`expected\` states the resulting state (or confirms an invalid transition was correctly rejected). |
-| Use Case | Steps mirror the use case's actual sequence (main scenario or the specific alternate/exception branch named in the condition) — do not collapse a multi-actor flow into one actor's view if a system-initiated step (async response, webhook) is part of it. |
-
-Copying the technique name into \`techniqueApplied\` without honoring its method above is not acceptable.
-
-## Test Level Decision Rule (MANDATORY — every case must declare \`testLevel\`)
-The Analyst has already tagged each condition with \`conditionType: "component"\` or \`conditionType: "flow"\` AND, for flow conditions, supplied \`flowStepRefs\`. **You MUST honor both.** Do not override the conditionType.
-
-The Analyst guarantees **non-overlap**: a sibling component condition already covers the atomic behavior, so a flow condition verifies ONLY the cross-component interaction aspect. The Designer's job is to turn this into test cases that **explicitly reference the conditions** they cover.
-
-| Condition type | testLevel | \`coveredConditions\` | \`referencedComponentConditions\` | Step design constraint |
-|---|---|---|---|---|
-| \`conditionType: "component"\` | \`component\` | MUST list this condition's id (e.g. \`["C-001"]\`) | leave \`[]\` | Steps' assertions stay within the component under test. The final \`expected\` must verify the component's own behavior, not another component's state. |
-| \`conditionType: "flow"\` | \`integration\` | MUST list the flow condition id(s) this case covers (e.g. \`["C-002"]\` or \`["C-002", "C-003"]\` if the case spans multiple flow conditions) | MUST list at least one component condition id the case assumes as a precondition (the atomic behaviors already verified by sibling component cases) | Steps must traverse 2+ components/modules; \`preconditions\` must NAME the interacting components AND reference the assumed component conditions; steps assert only the cross-component outcome (data handoff, state propagation, downstream effect, sequence across modules). Do NOT re-assert atomic behavior that \`referencedComponentConditions\` already covers. |
-
-**F12 — Anti-redundancy check (for every integration case, before finalizing):**
-1. Read the condition text for each entry in \`referencedComponentConditions\` (the Analyst's component conditions).
-2. Ask: "Does my integration case's \`steps[].expected\` re-assert behavior that one of those component conditions already verifies?"
-3. If yes, MOVE that assertion into \`preconditions\` (e.g. "client-side validation has passed per C-001") and keep only the cross-component assertion in \`steps\`. Do not delete the integration case — just remove the overlapping assertion.
-
-**F18 — 操作原子性自检（生成 JSON 块之前必做）**
-
-对每个 step 快速过一遍：
-1. 一个动词？\`action\` 里只有一个动作（Enter/Click/Type/Submit/...），没有 "and" / "then" / "with" / "using" 串起多个动作。
-2. 一个目标？\`action\` 指向一个字段/按钮/API，不是一组。
-3. 数据就在该 step 里？输入字段的 value 写在 \`Enter\` 这步里，不要甩给后面的 \`Submit\` 当 "with X/Y" 后缀。
-4. \`expected\` 是一个观察项？不是"works correctly"之类的主观描述。
-
-任何一项不过，拆 step 重写，不许直接出。典型的错误形态：\`"Submit the login form with admin/admin123"\`、\`"Enter username and password"\`、\`"Click login and verify dashboard appears"\`、\`"Fill out the form and submit"\`、\`"Set username to admin and password to p@ss then click submit"\`。
-
-## Test Independence (ISTQB Principle)
-Each case must run standalone from only its stated \`preconditions\` — never assume another case in the batch ran first. If setup depends on data another flow would create (e.g., "user must already exist"), state that explicitly as a precondition rather than assuming it silently. For integration cases, this means explicitly seeding the dependent component's data in \`preconditions\`. **When the precondition describes a behavior already covered by another Analyst condition, list that condition id in \`referencedComponentConditions\`** so the Quality reviewer can audit the dependency.
+## Detailed Rules (MANDATORY — load before designing)
+Call **designer_rules** to load the complete design rules (step atomicity, technique fidelity, test level decision, F12 anti-redundancy, F18 self-check, F31 budget, F32 test data format, self-review scoring). You MUST call this before designing any test cases.
 
 ## Required Fields
-For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`coveredConditions\`, \`referencedComponentConditions\` (for integration cases), \`priority\`, \`category\`, \`testLevel\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. \`testLevel\` must be exactly one of \`"component"\` or \`"integration"\`. \`coveredConditions\` must include the primary \`conditionId\` and may include additional flow conditions. \`referencedComponentConditions\` must be non-empty for any \`testLevel: "integration"\` case. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
+For EVERY object in \`draftTestCases\`, these fields are mandatory: \`id\`, \`title\`, \`conditionId\`, \`requirementId\`, \`coveredConditions\`, \`referencedComponentConditions\` (for integration cases), \`priority\`, \`category\`, \`testLevel\`, \`techniqueApplied\`, \`preconditions\`, \`testData\`, \`steps\`, \`postconditions\`, \`tags\`, \`selfReview\`. \`testLevel\` must be exactly one of \`"component"\` or \`"integration"\`. \`coveredConditions\` must include the primary \`conditionId\` and may include additional flow conditions. \`referencedComponentConditions\` must be non-empty for any \`testLevel: "integration"\` case. When the user input contains \`availableComponentConditions\`, use one or more of their exact \`referenceId\` values for \`referencedComponentConditions\`; never use an AC ID, a requirement ID, or a bare \`C-*\` ID from another batch. An empty object \`{}\` is always invalid. Do not end your analysis until you have described at least one complete test case for extraction.
 
 ## Instructions
 1. Design one or more complete test cases for EACH input condition. Ensure EVERY condition provided in the input is fully covered. If a condition contains multiple explicit data variants, ensure the test data covers them. The \`draftTestCases\` array MUST contain all designed test cases. **One condition MAY be split into multiple test cases** when the data variants or alternate paths warrant it; in that case all derived cases MUST list the original condition in \`coveredConditions\`.
-
-## Self-Review Scoring (be a genuine critic, not a rubber stamp)
-- **9-10**: every step atomic and verifiable; test data technique-correct and concrete; case fully independent; \`testLevel\` correctly chosen and honored in step design; traces cleanly to the condition.
-- **6-8**: minor gaps — e.g. one step bundles two actions, or test data lacks a partition/boundary label, or \`testLevel\` declared but step design doesn't actually reflect the level (e.g., labeled \`integration\` but only touches one component).
-- **1-5**: missing preconditions, vague expected results, technique not actually applied (e.g. labeled BVA but uses an arbitrary mid-range value), \`testLevel\` missing or contradicts the condition's tag, or hidden dependency on external state.
-Always list concrete \`weaknesses\`/\`suggestions\` if any exist — do not output empty arrays purely because the score is high, unless the case is genuinely flawless.
 
 ## Available Tools
 - **requirement_detail_query(requirementId)**: requirement details for accurate test data/preconditions.
 - **requirement_graph_query(requirementId, flowId?)**: related requirements/flows for integration coverage.
 - **flow_detail_query(flowId)**: flow details — single ID or array.
 - **istqb_guide(techniques?, context?)**: ISTQB technique + test-level guides. Omit \`techniques\` to load all.
-- **knowledge_base(context?)**: project-specific domain knowledge.
+- **designer_rules**: load detailed design rules (step atomicity, technique fidelity, test level, F12, F18, F31, F32). Call before designing.
 
 ${state.humanReviewFeedback ? `## Previous Feedback\n${state.humanReviewFeedback}` : ''}
 
@@ -512,7 +579,7 @@ After your analysis, end with a single JSON code block containing the COMPLETE s
   ]
 }
 \`\`\`
-
+${buildTechniqueFewShot(state)}
 **Rules:**
 - The \`\`\`json block must be at the very end of your response — nothing after it.
 - The block must contain COMPLETE data: ALL draft test cases, not a sample.
@@ -523,7 +590,10 @@ Final check before closing the block — every step has exactly one action and o
 `;
 }
 
-export function buildDesignerUserMessage(state: TestGenState): string {
+export function buildDesignerUserMessage(
+  state: TestGenState,
+  availableComponentConditions: ComponentConditionReference[] = [],
+): string {
   const conditions = state.approvedConditions ?? state.testConditions ?? [];
   const flows = state.relevantFlowBlueprints ?? state.businessFlowBlueprints ?? [];
   return JSON.stringify({
@@ -543,11 +613,17 @@ export function buildDesignerUserMessage(state: TestGenState): string {
       riskLevel: c.riskLevel,
       requirementId: c.requirementId,
       coverageDimensions: c.coverageDimensions,
+      // Pass Analyst's dataRequirements to Designer so it can reuse
+      // partition/boundary annotations instead of re-deriving them.
+      dataRequirements: (c as any).dataRequirements,
     })),
     // F7: full flow context (same shape as the Analyst receives). The
     // Designer needs the actionSummary and requirementIds to write steps
     // that traverse components in the right order.
-    businessFlows: flows.map(serializeFlow),
+    businessFlows: flows.map(serializeFlowForDesigner),
+    availableComponentConditions: availableComponentConditions.length > 0
+      ? availableComponentConditions
+      : undefined,
   }, null, 2);
 }
 
@@ -564,48 +640,17 @@ export function buildQualitySystemPrompt(state: TestGenState, customPrompt?: str
 ## Read the conditions first (F14)
 For every draft case in the input, you will see \`coveredConditions\` (the Analyst condition ids the case claims to cover) and, for integration cases, \`referencedComponentConditions\` (the component conditions the case assumes as preconditions). **Before you judge a case's correctness, you MUST look up the actual condition text for each id in those arrays** (the Analyst's conditions are exposed in the user message's \`conditions\` field). A case that "looks right" but is silently testing a different behavior than the condition says is a defect.
 
-## Review Dimensions (checklist, not a vibe check)
-1. **Clarity (操作原子性，硬约束)** — 每个 step 必须满足：只有一个动词（Enter/Click/Type/Submit/...），没有一个目标是一组，数据值就在该 step 的 action 内（不甩给后续 step 当 "with X/Y"），\`expected\` 是一个机器可检测的观察项。违反任何一项就拆 step 重写该 case，\`status: approved_with_changes\`，在 \`changeLog\` 记下拆分原因。典型错误形态：\`"Submit the login form with admin/admin123"\`、\`"Enter username and password"\`、\`"Click login and verify dashboard appears"\`、\`"Fill out the form with valid data and submit"\`、\`"Set username to admin and password to p@ss then click submit"\`。
-2. **Completeness** — Does the case's technique application satisfy what that technique actually requires (BVA names the real boundary; Decision Table states every condition input for its rule; EP is paired with its complementary partition elsewhere in the set)? If the condition includes specific data variants, does the test case explicitly test those variants? Across the requirement's full case set, is there both happy-path AND negative/error/boundary coverage?
-3. **Correctness** — Do expected results match what the requirement/acceptance criteria actually specify — not merely what "sounds plausible"? Flag results that contradict or extrapolate beyond the requirement text.
-4. **Traceability** — Every case MUST list its primary condition in \`coveredConditions\`. A \`conditionId\` that is NOT in \`coveredConditions\` is a defect. For flow conditions whose \`flowStepRefs\` exists, the case's steps should mirror the flow's actual sequence (\`sequence\` order).
-5. **Data Validity** — Is test data concrete, realistic, and technique-correct (partition/boundary explicitly named, per the Designer's annotations)? Flag placeholder-looking data ("test123", "foo") that doesn't represent a real partition or boundary.
-6. **Maintainability** — Are preconditions self-contained, with no hidden dependency on another case's side effects, and are steps free of brittle over-specific selectors while still concrete enough to execute?
-7. **Test Level Fidelity** — The \`testLevel\` is set by the Designer and MUST be preserved — do NOT flip a case from \`component\` to \`integration\` or vice versa. Your job is to check whether the **steps actually honor** the declared level: an \`integration\` case MUST traverse 2+ components/modules/systems and assert the downstream state change (not just the boundary response); a \`component\` case MUST stay within a single component and not assert side effects in other components. If the steps don't match the level, **fix the steps** (add/remove cross-component assertions) and set \`status\` to \`approved_with_changes\` — never change \`testLevel\` itself. Integration cases must also have a non-empty \`referencedComponentConditions\`; if empty, that is a defect.
-8. **Redundancy (F17 — anti-overlap between component and flow cases, hard check)** — For each requirement that has BOTH a \`component\` case AND an \`integration\` (flow) case, compare the integration case's \`steps[].expected\` against every component case's \`steps[].expected\` (using token overlap, not just your gut). If the integration case re-asserts the atomic behavior the component case already covers, that is a redundancy defect: **fix it** by moving the duplicated assertion into the integration case's \`preconditions\` (as an assumed given) and keeping ONLY the cross-component outcome assertion in \`steps\`. Set \`status\` to \`approved_with_changes\` and log the de-duplication in \`changeLog\` (field: \`steps\`/\`preconditions\`, reason starting with the keyword \`"redundancy"\` so the TS validator knows you handled it). Do NOT delete the integration case — just remove the overlapping assertion.
-${buildL2ContextSection(state, 'quality')}
-## Review Discipline
-- Every returned case needs a \`status\`: \`approved\` (no changes needed) or \`approved_with_changes\` (you fixed something). Never silently pass a flawed case — if you alter any field, set \`status\` to \`approved_with_changes\`, apply the fix in the case content, and log it.
-- \`changeLog\` is non-empty if and only if you changed the case: every altered case needs a specific field-level entry (what changed, why); every untouched case keeps \`changeLog: []\`. Do not invent entries for cosmetic non-changes.
-- Judge substance, not polish — a well-formatted case can still fail Completeness (claims a boundary it doesn't actually test) or Correctness (an expected result the requirement never implies).
-- After the per-case pass, do one set-level pass per requirement: confirm its cases collectively include both a positive and a negative/boundary/error condition. If a requirement's cases are all happy-path, you cannot add a new case yourself — but say so in that requirement's \`reviewSummary\` so the gap is visible in the coverage matrix.
-- After the per-requirement pass, do one batch-level pass: confirm each flow step exposed in the user message has at least one flow condition (and therefore one flow case) referencing it. If a flow step is uncovered, flag it in the coverage matrix row whose \`flowStepRef\` points at it.
-
-## Coverage Matrix (MANDATORY — F27, LLM is the source of truth)
-After the per-case and set-level passes, produce a \`coverageMatrix\` object that maps EVERY Analyst test condition to its coverage by the final test cases. The TS layer NO LONGER recomputes this — your output is what gets stored. This is a summary of how the analysis-phase conditions were realized.
-
-For each \`conditionId\` from the Analyst's output (one row per condition, no more, no less):
-- \`conditionId\`, \`requirementId\`, \`conditionType\` (the new "component" or "flow" field, not the old testLevel tag), \`primaryTechnique\`, \`category\` — copy EXACTLY from the Analyst's condition. The conditionType MUST match the Analyst's value. For \`conditionType: "flow"\` rows, also copy \`flowStepRef\` (just one entry — the primary step this condition traces to).
-- \`testLevel\` — the test level assigned to the matching case (\`"component"\` or \`"integration"\`); copy from the case that has this \`conditionId\` in its \`coveredConditions\`.
-- \`conditionSummary\` — a short phrase (≤ 120 chars) describing what the condition verifies, derived from the Analyst's condition text.
-- \`coveredByCaseIds\` — array of \`finalTestCases\` ids whose \`coveredConditions\` includes this \`conditionId\`. Usually one id; multiple if the Designer split a condition into several cases.
-- \`coverageStatus\` — \`"covered"\` if ≥1 final case covers it, \`"missing"\` if none (this is a defect — flag in \`notes\`).
-- \`notes\` — any gap or concern (e.g., "only valid partition covered, invalid partition missing", "integration case re-asserts component behavior — moved to preconditions (redundancy fix)"). Empty string if none.
-
-Plus a \`summary\` object aggregating ALL rows:
-- \`totalConditions\` — total rows.
-- \`coveredConditions\` — count where status = \`covered\`.
-- \`missingConditions\` — count where status = \`missing\`.
-- \`byTestLevel\` — object like \`{ "component": 6, "integration": 5 }\`.
-- \`byTechnique\` — object like \`{ "Equivalence Partitioning": 4, "Boundary Value Analysis": 3, ... }\`.
-- \`byCategory\` — object like \`{ "functional": 5, "error": 3, "boundary": 2, ... }\`.
-- \`byConditionType\` — object like \`{ "component": 6, "flow": 5 }\` (F29: required for the UI to show component-vs-flow split).
-
-The matrix is the single most useful artifact for the reviewer — invest in it. Do NOT omit it. Do NOT omit the \`byConditionType\` summary field.
+## Load Detailed Rules (MANDATORY)
+Call **quality_rules** to load the complete review dimensions, discipline rules, and coverage matrix format. You MUST load these before reviewing any cases.
+${buildContextSection(state, 'quality')}## Detailed Rules (MANDATORY — load before reviewing)
+Call **quality_rules** to load the complete review rules (9 review dimensions, review discipline, coverage matrix F27, F17 redundancy, D2 cross-batch redundancy). You MUST call this before reviewing any cases.
 
 ## Available Tools
 - **requirement_detail_query**: verify requirement details when judging Correctness.
-- **knowledge_base**: project-specific domain standards or rules.
+- **flow_detail_query(flowId)**: load flow step details — use to verify integration test cases against actual flow steps (Correctness dimension).
+- **previous_batch_cases_query**: query previous batch final test cases — use for D2 cross-batch redundancy check (compare titles, testLevel, conditionId against current batch cases).
+- **istqb_guide(techniques?, context?)**: load ISTQB technique guides for reference when judging Technique Fidelity.
+- **quality_rules**: load detailed review rules (9 dimensions, F17, D2, coverage matrix F27). Call before reviewing.
 
 ${state.humanReviewFeedback ? `## Reviewer Feedback\n${state.humanReviewFeedback}` : ''}
 
@@ -762,11 +807,19 @@ export function buildQualityUserMessage(state: TestGenState): string {
       category: c.category,
     })),
     // F8 / F27: flow context so the reviewer can verify flow-step coverage.
-    businessFlows: flows.map(serializeFlow),
+    businessFlows: flows.map(serializeFlowForDesigner),
     requirements: state.currentBatch?.map(r => ({
       id: r.id,
       title: r.title,
       level: (r as any).level ?? '',
+    })),
+    // D2: cross-batch coverage summary so Quality can detect redundancy
+    // with cases from previous batches.
+    previousBatchCoverage: (state.previousBatchCoverageSummary ?? []).map(c => ({
+      requirementId: c.requirementId,
+      conditionCount: c.conditionCount,
+      categories: c.categories,
+      techniques: c.techniques,
     })),
   }, null, 2);
 }
@@ -782,5 +835,5 @@ function replacePromptVariables(template: string, state: TestGenState): string {
     .replace(/\{batch\.totalBatches\}/g, String(batch?.totalBatches ?? ''))
     .replace(/\{currentBatch\.length\}/g, String(state.currentBatch?.length ?? 0))
     .replace(/\{projectContext\.name\}/g, state.projectContext?.name ?? '')
-    .replace(/\{mode\}/g, 'dual-level');
+    .replace(/\{mode\}/g, String(state.generationMode ?? 'dual-level'));
 }

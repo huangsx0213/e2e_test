@@ -7,37 +7,11 @@ import { createEnvironment, updateEnvironmentVariables } from './modules/environ
 import { saveApiEndpoint } from './modules/endpoints/repository.ts';
 import { saveHeaderProfile } from './modules/headers/repository.ts';
 import { saveProject } from './modules/projects/repository.ts';
-import { requirementRepo } from './modules/requirements/repository.ts';
+import { seedRequirements } from './modules/requirements/seed-data.ts';
 import { saveSettings } from './modules/settings/repository.ts';
 import { saveSuite } from './modules/suites/repository.ts';
 import { db } from './shared/db/client.ts';
 import { businessConfigSeed } from './seed-data/business-config.ts';
-
-function seedRequirements(): void {
-  const pending = [...businessConfigSeed.requirements];
-  const inserted = new Set<string>();
-
-  while (pending.length > 0) {
-    let insertedThisPass = 0;
-
-    for (let index = pending.length - 1; index >= 0; index--) {
-      const requirement = pending[index];
-      if (requirement.parentId && !inserted.has(requirement.parentId)) {
-        continue;
-      }
-
-      requirementRepo.save(requirement);
-      inserted.add(requirement.id);
-      pending.splice(index, 1);
-      insertedThisPass++;
-    }
-
-    if (insertedThisPass === 0) {
-      const blocked = pending.map((requirement) => `${requirement.id}->${requirement.parentId ?? 'ROOT'}`).join(', ');
-      throw new Error(`Unable to seed requirements due to unresolved parent references: ${blocked}`);
-    }
-  }
-}
 
 function clearAllData(): void {
   db.exec(`

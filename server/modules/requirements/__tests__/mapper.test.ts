@@ -18,14 +18,6 @@ describe('normalizeRequirement', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test' });
     expect(result.status).toBe('DRAFT');
   });
-  it('preserves dependencies as an array of strings', () => {
-    const result = normalizeRequirement({
-      projectId: 'proj-1',
-      title: 'Test',
-      dependencies: ['req-1', 'req-2'],
-    });
-    expect(result.dependencies).toEqual(['req-1', 'req-2']);
-  });
   it('accepts null parentId', () => {
     const result = normalizeRequirement({ projectId: 'proj-1', title: 'Test', parentId: null });
     expect(result.parentId).toBeUndefined();

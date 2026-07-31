@@ -1,3 +1,8 @@
+---
+name: istqb_boundary_value_analysis
+description: Load the ISTQB Boundary Value Analysis (BVA) technique guide (definition, procedure, examples, common mistakes). Use when you need to design tests for inputs with numeric/range boundaries.
+---
+
 # Boundary Value Analysis (BVA)
 
 ## Definition

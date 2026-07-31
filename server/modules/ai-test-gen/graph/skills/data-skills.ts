@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
+import type { BatchRequirement } from '../state.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 
 // ============================================================
@@ -17,140 +18,136 @@ export function clearQueryCache(): void {
 
 // ============================================================
 // requirement_detail_query (supports single or batch)
+// Factory accepts optional batch context for graceful fallback
+// when a requirement is not found in the DB.
 // ============================================================
-export const requirementDetailQuery: SkillDefinition = {
-  name: 'requirement_detail_query',
-  description:
-    'Query full details of one or more requirements including description, acceptance criteria (AC), child requirements, and dependencies. Pass a single requirementId or an array of requirementIds for batch query.',
-  schema: z.object({
-    requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs for batch query'),
-  }),
-  func: async (args) => {
-    const rawId = args.requirementId;
-    const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
-    const isBatch = ids.length > 1 || Array.isArray(rawId);
 
-    // Dedup: separate cached vs new
-    const cached: string[] = [];
-    const newIds: string[] = [];
-    for (const id of ids) {
-      if (reqDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
+/**
+ * Build a requirement_detail_query skill with optional fallback to batch context.
+ * When a requirement ID is not found in the DB, the skill falls back to the
+ * batch context (currentBatch records) to provide title/description/level.
+ */
+export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[]): SkillDefinition {
+  // Build a lookup map for O(1) fallback
+  const fallbackMap = new Map<string, BatchRequirement>();
+  if (batchRequirements) {
+    for (const req of batchRequirements) {
+      fallbackMap.set(req.id, req);
     }
-    const rqLog = Log.for('skill:req_detail_query');
-    if (cached.length > 0) {
-      rqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
-    } else if (newIds.length > 0) {
-      rqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} requirements` : `Querying requirement ${newIds[0]}`);
-    }
+  }
 
-    const queryOne = (id: string) => {
-      const req = requirementRepo.get(id);
-      if (!req) return { error: `Requirement ${id} not found` };
+  return {
+    name: 'requirement_detail_query',
+    description:
+      'Query full details of one or more requirements including description, acceptance criteria (AC), child requirements, and relatedRequirementIds. Use when you need to inspect a requirement OUTSIDE the current batch, or verify details for accurate test data/preconditions. Pass a single requirementId or an array of requirementIds for batch query.',
+    schema: z.object({
+      requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs for batch query'),
+    }),
+    func: async (args) => {
+      const rawId = args.requirementId;
+      const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
+      const isBatch = ids.length > 1 || Array.isArray(rawId);
 
-      const children = requirementRepo
-        .listByProject(req.projectId)
-        .filter((r) => r.parentId === id);
-
-      const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
-
-      const result = {
-        id: req.id,
-        title: req.title,
-        description: req.description,
-        level: req.level,
-        status: req.status,
-        dependencies: req.dependencies,
-        parent: parent
-          ? { id: parent.id, title: parent.title, level: parent.level }
-          : null,
-        children: children.map((c) => ({
-          id: c.id,
-          title: c.title,
-          level: c.level,
-        })),
-      };
-      reqDetailCache.set(id, result);
-      return result;
-    };
-
-    // Query only new IDs
-    for (const id of newIds) {
-      queryOne(id);
-    }
-
-    // Build merged results in original order
-    const merged: Record<string, unknown> = {};
-    let found = 0;
-    for (const id of ids) {
-      const cachedResult = reqDetailCache.get(id);
-      if (cachedResult && !(cachedResult as any).error) {
-        merged[id] = cachedResult;
-        found++;
-      } else if (cachedResult) {
-        merged[id] = cachedResult;
+      // Dedup: separate cached vs new
+      const cached: string[] = [];
+      const newIds: string[] = [];
+      for (const id of ids) {
+        if (reqDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
       }
-    }
+      const rqLog = Log.for('skill:req_detail_query');
+      if (cached.length > 0) {
+        rqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
+      } else if (newIds.length > 0) {
+        rqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} requirements` : `Querying requirement ${newIds[0]}`);
+      }
 
-    if (newIds.length > 0) {
-      rqLog.info(`Found ${found}/${ids.length} requirements (${cached.length} cached)`);
-    }
+      const queryOne = (id: string) => {
+        const req = requirementRepo.get(id);
+        if (!req) {
+          // Graceful fallback: use batch context if available
+          const batchReq = fallbackMap.get(id);
+          if (batchReq) {
+            rqLog.warn(`Requirement ${id} not found in DB — using batch context fallback`);
+            const result = {
+              id: batchReq.id,
+              title: batchReq.title,
+              description: batchReq.description ?? '',
+              level: batchReq.level,
+              status: 'unknown',
+              isFlow: batchReq.isFlow ?? false,
+              flowType: null,
+              relatedRequirementIds: [],
+              parent: null,
+              children: [],
+              _warning: 'Requirement not found in DB; data derived from batch context. Some fields may be incomplete.',
+            };
+            reqDetailCache.set(id, result);
+            return result;
+          }
+          const result = { error: `Requirement ${id} not found` };
+          reqDetailCache.set(id, result);
+          return result;
+        }
 
-    return isBatch ? merged : merged[ids[0]];
-  },
-};
+        const children = requirementRepo
+          .listByProject(req.projectId)
+          .filter((r) => r.parentId === id);
 
-// ============================================================
-// related_requirements_query
-// ============================================================
-export const relatedRequirementsQuery: SkillDefinition = {
-  name: 'related_requirements_query',
-  description:
-    'Query requirements related to a given requirement: siblings (same parent), dependency chain (upstream/downstream). Use for risk assessment and understanding requirement interconnections.',
-  schema: z.object({
-    requirementId: z.string().describe('The requirement ID to find relations for'),
-  }),
-  func: async (args) => {
-    const rrqLog = Log.for('skill:related_req_query');
-    const requirementId = args.requirementId as string;
-    rrqLog.info(`Querying relations for ${requirementId}`);
-    const req = requirementRepo.get(requirementId);
-    if (!req) {
-      rrqLog.warn(`Requirement ${requirementId} not found`);
-      return { error: `Requirement ${requirementId} not found` };
-    }
+        const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
 
-    const allReqs = requirementRepo.listByProject(req.projectId);
+        const result = {
+          id: req.id,
+          title: req.title,
+          description: req.description,
+          level: req.level,
+          status: req.status,
+          isFlow: req.isFlow ?? false,
+          flowType: req.flowType ?? null,
+          relatedRequirementIds: req.relatedRequirementIds ?? [],
+          parent: parent
+            ? { id: parent.id, title: parent.title, level: parent.level }
+            : null,
+          children: children.map((c) => ({
+            id: c.id,
+            title: c.title,
+            level: c.level,
+            flowType: c.flowType ?? null,
+            relatedRequirementIds: c.relatedRequirementIds ?? [],
+          })),
+        };
+        reqDetailCache.set(id, result);
+        return result;
+      };
 
-    const siblings = req.parentId
-      ? allReqs.filter((r) => r.parentId === req.parentId && r.id !== req.id)
-      : [];
+      // Query only new IDs
+      for (const id of newIds) {
+        queryOne(id);
+      }
 
-    const dependencies = (req.dependencies || [])
-      .map((depId) => {
-        const dep = allReqs.find((r) => r.id === depId);
-        return dep
-          ? { id: dep.id, title: dep.title, level: dep.level }
-          : null;
-      })
-      .filter(Boolean);
+      // Build merged results in original order
+      const merged: Record<string, unknown> = {};
+      let found = 0;
+      for (const id of ids) {
+        const cachedResult = reqDetailCache.get(id);
+        if (cachedResult && !(cachedResult as any).error) {
+          merged[id] = cachedResult;
+          found++;
+        } else if (cachedResult) {
+          merged[id] = cachedResult;
+        }
+      }
 
-    const dependents = allReqs
-      .filter((r) => (r.dependencies || []).includes(requirementId))
-      .map((r) => ({ id: r.id, title: r.title, level: r.level }));
+      if (newIds.length > 0) {
+        rqLog.info(`Found ${found}/${ids.length} requirements (${cached.length} cached)`);
+      }
 
-    rrqLog.info(`Found: ${siblings.length} siblings, ${dependencies.length} deps, ${dependents.length} dependents`);
+      return isBatch ? merged : merged[ids[0]];
+    },
+  };
+}
 
-    return {
-      siblings: siblings.map((s) => ({
-        id: s.id,
-        title: s.title,
-        level: s.level,
-      })),
-      dependencies,
-      dependents,
-    };
-  },
-};
+// Module-level constant for contexts without batch fallback (e.g. Quality, ALL_SKILLS)
+export const requirementDetailQuery: SkillDefinition = makeRequirementDetailQuery();
 
 // ============================================================
 // requirement_graph_query (expands related requirements + flows)
@@ -158,7 +155,7 @@ export const relatedRequirementsQuery: SkillDefinition = {
 export const requirementGraphQuery: SkillDefinition = {
   name: 'requirement_graph_query',
   description:
-    'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, dependencies, and associated business flows. Used for both component-level and integration-level test planning: dependencies and flow associations help identify integration surfaces. Optionally pass flowIds to include user-selected flows in the graph result. Pass a single requirementId or an array for batch expansion.',
+    'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, relatedRequirementIds references (incoming/outgoing), and associated business flows. Use when you need to discover integration surfaces, cross-requirement dependencies, or associated flows for test planning — relatedRequirementIds and flow associations help identify component vs flow boundaries. Optionally pass flowIds to include user-selected flows in the graph result. Pass a single requirementId or an array for batch expansion.',
   schema: z.object({
     requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs to expand from'),
     flowId: z.union([z.string(), z.array(z.string())]).optional().describe('Optional: user-selected flow IDs to include in the graph result'),
@@ -208,14 +205,24 @@ export const requirementGraphQuery: SkillDefinition = {
         : [];
       siblings.forEach((s) => collectedReqIds.add(s.id));
 
-      // Upstream dependencies
-      const deps = (req.dependencies || [])
-        .filter((depId) => allReqs.some((r) => r.id === depId));
-      deps.forEach((d) => collectedReqIds.add(d));
+      // Outgoing references: this requirement's AC children's relatedRequirementIds
+      const outgoingRefs = new Set<string>();
+      for (const ac of allReqs.filter(r => r.parentId === seedId && r.level === 'ac')) {
+        for (const refId of ac.relatedRequirementIds ?? []) {
+          if (allReqs.some(r => r.id === refId)) outgoingRefs.add(refId);
+        }
+      }
+      outgoingRefs.forEach((d) => collectedReqIds.add(d));
 
-      // Downstream dependents
-      const dependents = allReqs.filter((r) => (r.dependencies || []).includes(seedId));
-      dependents.forEach((d) => collectedReqIds.add(d.id));
+      // Incoming references: other ACs that reference this requirement
+      const incomingRefs = new Set<string>();
+      for (const other of allReqs) {
+        if (other.level !== 'ac') continue;
+        if ((other.relatedRequirementIds ?? []).includes(seedId)) {
+          if (other.parentId) incomingRefs.add(other.parentId);
+        }
+      }
+      incomingRefs.forEach((d) => collectedReqIds.add(d));
 
       // Associated business flows
       const associatedFlows = allFlowStories.filter(flowStory => {
@@ -226,11 +233,17 @@ export const requirementGraphQuery: SkillDefinition = {
 
       graphEntries[seedId] = {
         seed: { id: req.id, title: req.title, level: req.level },
-        parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
-        children: children.map((c) => ({ id: c.id, title: c.title, level: c.level })),
-        siblings: siblings.map((s) => ({ id: s.id, title: s.title, level: s.level })),
-        dependencies: deps,
-        dependents: dependents.map((d) => ({ id: d.id, title: d.title, level: d.level })),
+        parent: parent ? { id: parent.id, level: parent.level } : null,
+        children: children.map((c) => ({ id: c.id, level: c.level })),
+        siblings: siblings.map((s) => ({ id: s.id, level: s.level })),
+        outgoingReferences: [...outgoingRefs].map((id) => {
+          const r = allReqs.find(x => x.id === id);
+          return r ? { id: r.id, level: r.level } : null;
+        }).filter(Boolean),
+        incomingReferences: [...incomingRefs].map((id) => {
+          const r = allReqs.find(x => x.id === id);
+          return r ? { id: r.id, level: r.level } : null;
+        }).filter(Boolean),
         associatedFlows: associatedFlows.map((f) => ({
           id: f.id,
           name: f.title,
@@ -300,7 +313,7 @@ export const requirementGraphQuery: SkillDefinition = {
 export const flowDetailQuery: SkillDefinition = {
   name: 'flow_detail_query',
   description:
-    'Query full details of one or more business flows including each step, associated requirements, acceptance criteria, and action summaries. Pass a single flowId or an array of flowIds for batch query.',
+    'Query full details of one or more business flows including each step, associated requirements, acceptance criteria, and action summaries. Use when the flow context in the user message is incomplete and you need full step-by-step details to derive flow conditions or design integration test cases. Pass a single flowId or an array of flowIds for batch query.',
   schema: z.object({
     flowId: z.union([z.string(), z.array(z.string())]).describe('A single flow ID or an array of IDs for batch query'),
   }),
@@ -323,7 +336,11 @@ export const flowDetailQuery: SkillDefinition = {
 
     const queryOne = (flowId: string) => {
       const flowStory = requirementRepo.get(flowId);
-      if (!flowStory || !flowStory.isFlow || flowStory.status !== 'APPROVED') return { error: `Flow ${flowId} not found` };
+      if (!flowStory || !flowStory.isFlow || flowStory.status !== 'APPROVED') {
+        const errResult = { error: `Flow ${flowId} not found` };
+        flowDetailCache.set(flowId, errResult);
+        return errResult;
+      }
 
       const flowACs = requirementRepo
         .listByProject(flowStory.projectId)
@@ -387,15 +404,16 @@ export const flowDetailQuery: SkillDefinition = {
 };
 
 // ============================================================
-// cross_epic_impact_query — 查询跨 Epic 依赖目标的详情
-// 仅返回需求本体 + 直接依赖，不递归展开，避免上下文膨胀
+// cross_epic_impact_query — query cross-epic dependency target details
+// Returns only the requirement itself + direct dependencies, without
+// recursing into children, to keep context bounded.
 // ============================================================
 export const crossEpicImpactQuery: SkillDefinition = {
   name: 'cross_epic_impact_query',
   description:
-    'Query the full details of a cross-epic dependency target listed in the Global Context. Use ONLY when a cross-epic dependency\'s title or relationType suggests a real coverage risk (e.g. shared data, shared state, depended-by). Returns the target requirement\'s description, dependencies, and parent — without recursing into its children, to keep context bounded.',
+    'Query the full details of a cross-epic reference target listed in the Global Context. Use ONLY when a cross-epic reference\'s title or relationType suggests a real coverage risk (e.g. shared data, shared state). Returns the target requirement\'s description, relatedRequirementIds, and parent — without recursing into its children, to keep context bounded.',
   schema: z.object({
-    requirementId: z.string().describe('The cross-epic target requirement ID (from Global Context → Cross-Epic Dependencies)'),
+    requirementId: z.string().describe('The cross-epic target requirement ID (from Global Context → Cross-Epic References)'),
   }),
   func: async (args) => {
     const id = String(args.requirementId);
@@ -409,31 +427,36 @@ export const crossEpicImpactQuery: SkillDefinition = {
     }
 
     const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
-    // 不返回 children，避免上下文爆炸；analyst 如需可单独调 requirement_detail_query
+    // Do not return children to avoid context bloat; the analyst can call
+    // requirement_detail_query separately if it needs them.
+    const relatedRequirementIds = req.relatedRequirementIds ?? [];
     const result = {
       id: req.id,
       title: req.title,
       description: req.description,
       level: req.level,
       status: req.status,
-      dependencies: req.dependencies ?? [],
+      isFlow: req.isFlow ?? false,
+      flowType: req.flowType ?? null,
+      relatedRequirementIds,
       parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
     };
-    log.kv('deps', result.dependencies.length);
+    log.kv('refs', relatedRequirementIds.length);
     return result;
   },
 };
 
 // ============================================================
-// previous_batch_conditions_query — 查询某需求已生成的 condition 标题
-// 仅在怀疑重复时调用，避免每次都展开全文
-// 工厂函数：需要传入 runId 才能查询 pipelineRepo
+// previous_batch_conditions_query — query condition titles already
+// generated for a given requirement. Call only when duplication is
+// suspected, to avoid expanding full text every time.
+// Factory function: requires runId to query pipelineRepo.
 // ============================================================
 export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition {
   return {
     name: 'previous_batch_conditions_query',
     description:
-      'Inspect the condition titles already generated for a specific requirement in previous batches. Use ONLY when you suspect a new condition might duplicate an existing one. Returns condition id, title (truncated), category, and primary technique for that requirement.',
+      'Inspect conditions already generated for a specific requirement in previous batches. Returns a qualified referenceId, condition id, title (truncated), category, and primary technique. Use referenceId when linking a flow to an earlier component condition.',
     schema: z.object({
       requirementId: z.string().describe('The requirement ID to check for existing conditions'),
     }),
@@ -444,12 +467,13 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
 
       try {
         const logs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-        const conditions: Array<{ id: string; title: string; category: string; primaryTechnique: string }> = [];
+        const conditions: Array<{ referenceId: string; id: string; title: string; category: string; primaryTechnique: string }> = [];
         for (const logEntry of logs) {
           const tcs: any[] = logEntry.output_data?.testConditions ?? [];
           for (const tc of tcs) {
-            if (tc.requirementId === id) {
+            if (tc.requirementId === id && tc.conditionType === 'component') {
               conditions.push({
+                referenceId: `component:${tc.requirementId}:${tc.id}`,
                 id: tc.id,
                 title: (tc.condition ?? '').slice(0, 120),
                 category: tc.category ?? 'functional',
@@ -469,9 +493,11 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
 }
 
 // ============================================================
-// previous_batch_cases_query — 查询某需求已生成的 finalTestCase 标题
-// Designer 在怀疑跨批次 case 重复时调用，避免重新生成相同用例
-// 工厂函数：需要传入 runId 才能查询 pipelineRepo
+// previous_batch_cases_query — query finalTestCase titles already
+// generated for a given requirement. Called by the Designer when
+// cross-batch case duplication is suspected, to avoid regenerating
+// identical cases.
+// Factory function: requires runId to query pipelineRepo.
 // ============================================================
 export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
   return {
