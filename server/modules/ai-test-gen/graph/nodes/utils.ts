@@ -604,13 +604,17 @@ export async function callLLMWithStructuredOutput<T>(
   const MAX_PHASE2_RETRIES = 3;
   let lastError: Error | null = null;
   const baseMessagesLength = extractionMessages.length;
+  let lastErrorFeedback: ChatMessage[] | null = null;
 
   let lastExtractContent = '';
 
   for (let attempt = 1; attempt <= MAX_PHASE2_RETRIES; attempt++) {
-    // Reset to base messages to avoid token growth across retries
-    if (extractionMessages.length > baseMessagesLength) {
-      extractionMessages.splice(baseMessagesLength);
+    // Reset to base messages, then re-attach the most recent error feedback so
+    // the LLM can self-correct on the next attempt (without unbounded token
+    // growth from accumulating feedback across all retries).
+    extractionMessages.splice(baseMessagesLength);
+    if (lastErrorFeedback) {
+      extractionMessages.push(...lastErrorFeedback);
     }
 
     if ((extra as any)?.signal?.aborted) {
@@ -660,12 +664,11 @@ export async function callLLMWithStructuredOutput<T>(
           // to error_raw_response for offline debugging.
           (schemaErr as any).rawResponse = extractContent;
           lastError = schemaErr;
-          
-          extractionMessages.push({ role: 'assistant', content: extractContent });
-          extractionMessages.push({ 
-            role: 'user', 
-            content: `Your JSON was valid, but schema validation failed: ${outputProfile.formatValidationError(schemaErr)} Please fix these errors and output the corrected JSON matching the schema exactly.`
-          });
+
+          lastErrorFeedback = [
+            { role: 'assistant', content: extractContent },
+            { role: 'user', content: `Your JSON was valid, but schema validation failed: ${outputProfile.formatValidationError(schemaErr)} Please fix these errors and output the corrected JSON matching the schema exactly.` },
+          ];
         }
       } else {
         const preview = extractContent.length > 500 ? `${extractContent.slice(0, 500)}...` : extractContent;
@@ -674,22 +677,20 @@ export async function callLLMWithStructuredOutput<T>(
         lastError = new Error('Unparseable content');
         // Persist the raw content for offline debugging.
         (lastError as any).rawResponse = extractContent;
-        
-        extractionMessages.push({ role: 'assistant', content: extractContent });
-        extractionMessages.push({ 
-          role: 'user', 
-          content: 'The output was not valid JSON. Common issues: missing commas between properties, unquoted property names (use "key" not key), trailing commas before ] or }, or unclosed braces/brackets. Output a single valid JSON object matching the schema with no extra text.'
-        });
+
+        lastErrorFeedback = [
+          { role: 'assistant', content: extractContent },
+          { role: 'user', content: 'The output was not valid JSON. Common issues: missing commas between properties, unquoted property names (use "key" not key), trailing commas before ] or }, or unclosed braces/brackets. Output a single valid JSON object matching the schema with no extra text.' },
+        ];
       }
     } else {
       llmLog.warn(`Phase 2 produced no content on attempt ${attempt}`);
       lastError = new Error('No content produced');
-      
-      extractionMessages.push({ role: 'assistant', content: '(no output)' });
-      extractionMessages.push({ 
-        role: 'user', 
-        content: 'No content was generated. Please ensure you output a single valid JSON object matching the schema.'
-      });
+
+      lastErrorFeedback = [
+        { role: 'assistant', content: '(no output)' },
+        { role: 'user', content: 'No content was generated. Please ensure you output a single valid JSON object matching the schema.' },
+      ];
     }
   }
 

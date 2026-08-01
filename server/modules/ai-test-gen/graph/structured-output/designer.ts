@@ -179,6 +179,12 @@ function wrapDesignerRoot(raw: unknown): Record<string, unknown> {
     if ('steps' in input || 'conditionId' in input || 'title' in input) {
       return { draftTestCases: wrapSingleObjectInArray(input) };
     }
+    // Handle array-like objects: { "0": {...}, "1": {...}, ... }
+    // Some LLMs serialize an array as an object with numeric string keys.
+    const keys = Object.keys(input);
+    if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+      return { draftTestCases: arrayFromRecordValues(input) };
+    }
   }
   return raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
 }
@@ -311,9 +317,11 @@ export function createDesignerOutputProfile(
       // Accept the standard wrapper OR a bare single test case object.
       // wrapDesignerRoot (called in normalize) handles wrapping a bare
       // {id, title, conditionId, ...} into {draftTestCases: [...]}.
-      return 'draftTestCases' in obj
-        || 'conditionId' in obj
-        || 'steps' in obj;
+      if ('draftTestCases' in obj || 'conditionId' in obj || 'steps' in obj) return true;
+      // Accept array-like objects: { "0": {...}, "1": {...}, ... }
+      // Some LLMs serialize an array as an object with numeric string keys.
+      const keys = Object.keys(obj);
+      return keys.length > 0 && keys.every(k => /^\d+$/.test(k));
     },
     normalize(raw: unknown): unknown {
       const input = wrapDesignerRoot(raw);

@@ -453,11 +453,22 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
   return {
     toolSchema: makeSchemaOpenAICompatible(zodToJsonSchema(QualityRuntimeSchema)),
     shouldAttemptPhase1Extraction(raw: unknown): boolean {
-      return !!raw && typeof raw === 'object' && !Array.isArray(raw)
-        && 'finalTestCases' in (raw as Record<string, unknown>);
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+      const obj = raw as Record<string, unknown>;
+      if ('finalTestCases' in obj) return true;
+      // Accept array-like objects: { "0": {...}, "1": {...}, ... }
+      const keys = Object.keys(obj);
+      return keys.length > 0 && keys.every(k => /^\d+$/.test(k));
     },
     normalize(raw: unknown): unknown {
-      const input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      let input = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      // Handle array-like objects: { "0": {...}, "1": {...}, ... }
+      if (!('finalTestCases' in input) && !('coverageMatrix' in input)) {
+        const keys = Object.keys(input);
+        if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+          input = { finalTestCases: arrayFromRecordValues<unknown>(input) };
+        }
+      }
       const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));
       const normalized: Record<string, unknown> = {
         finalTestCases: arrayFromRecordValues<unknown>(input.finalTestCases).map((testCase) => normalizeFinalTestCase(testCase, expectedById)),

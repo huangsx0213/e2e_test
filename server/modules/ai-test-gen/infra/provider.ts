@@ -167,6 +167,22 @@ function formatSdkError(err: unknown, providerName: string, agentTag: string, ex
   return err instanceof Error ? err : new Error(String(err));
 }
 
+// ─── Token limit ladder ───
+// Many OpenAI-compatible endpoints reject max_tokens above the model's context
+// cap. Try 1M → 500k → 200k → 120k → 60k, downgrading on rejection.
+const MAX_TOKEN_LADDER = [1_000_000, 500_000, 200_000, 120_000, 60_000];
+
+function buildMaxTokenLadder(requested: number | undefined): number[] {
+  if (requested == null) return MAX_TOKEN_LADDER;
+  const filtered = MAX_TOKEN_LADDER.filter(t => t <= requested);
+  return filtered.length > 0 ? filtered : [requested];
+}
+
+function isMaxTokenLimitError(err: unknown): boolean {
+  const msg = err instanceof APIError ? err.message : (err instanceof Error ? err.message : String(err));
+  return /max_tokens|max[ _-]?tokens|max[ _-]?output[ _-]?tokens|maximum[^]{0,20}token|token[^]{0,20}limit|too large|greater than|exceed|context[^]{0,15}length/i.test(msg);
+}
+
 export function createAIProvider(config: ProviderConfig): AIProvider {
   switch (config.type) {
     case 'azure-openai': return createAzureOpenAIProvider(config);
@@ -219,41 +235,72 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
     return undefined;
   }
 
+  // Cache the max_tokens value resolved by the ladder on first successful
+  // call — subsequent calls reuse it to avoid repeated probe-and-reject cycles.
+  let cachedMaxTokens: number | undefined;
+
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const input = buildInput(messages);
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     Log.for('provider').info(`[azure-sdk] POST${agentTag} input=${input.length} items`);
 
-    const reasoningEffort = options?.reasoningEffort ?? config.reasoningEffort ?? 'medium';
+    // Phase 2 extraction (jsonSchema) lowers reasoning effort to avoid
+    // exhausting max_output_tokens in the reasoning channel.
+    const isExtraction = !!options?.jsonSchema;
+    const reasoningEffort = isExtraction ? 'low' : (options?.reasoningEffort ?? config.reasoningEffort ?? 'medium');
     const reasoningSummary = options?.reasoningSummary ?? config.reasoningSummary ?? 'auto';
     const textVerbosity = options?.textVerbosity ?? config.textVerbosity ?? 'medium';
 
-    let stream: Awaited<ReturnType<typeof client.responses.create>>;
-    try {
-      stream = await client.responses.create({
-      model: config.deployment,
-      input: input as any,
-      max_output_tokens: options?.maxTokens ?? 65536,
-      reasoning: { effort: reasoningEffort, summary: reasoningSummary },
-      stream: true,
-      text: { ...(buildTextConfig(options) ?? {}), verbosity: textVerbosity } as any,
-      ...(() => {
-        if (!options?.tools?.length) return {};
-        return {
-          tools: options.tools.map(t => ({
-            type: 'function' as const,
-            name: t.name,
-            description: t.description,
-            strict: t.strict ?? false,
-            parameters: t.parameters as any,
-          })),
-        };
-      })(),
-    });
-    } catch (err) {
-      Log.for('provider').error(`[azure-sdk] stream request failed${agentTag}: model=${config.deployment} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
-      throw formatSdkError(err, 'azure', agentTag, `endpoint=${config.endpoint} model=${config.deployment}`);
+    const requestedMax = options?.maxTokens;
+    const effectiveRequest = cachedMaxTokens !== undefined
+      ? Math.min(requestedMax ?? cachedMaxTokens, cachedMaxTokens)
+      : requestedMax;
+    const tokenLadder = buildMaxTokenLadder(effectiveRequest);
+    const initialMax = tokenLadder[0];
+    let usedMax = initialMax;
+    let stream: any;
+    let lastErr: unknown;
+    for (let i = 0; i < tokenLadder.length; i++) {
+      const maxTok = tokenLadder[i];
+      try {
+        stream = await client.responses.create({
+        model: config.deployment,
+        input: input as any,
+        max_output_tokens: maxTok,
+        reasoning: { effort: reasoningEffort, summary: reasoningSummary },
+        stream: true,
+        text: { ...(buildTextConfig(options) ?? {}), verbosity: textVerbosity } as any,
+        ...(() => {
+          if (!options?.tools?.length) return {};
+          return {
+            tools: options.tools.map(t => ({
+              type: 'function' as const,
+              name: t.name,
+              description: t.description,
+              strict: t.strict ?? false,
+              parameters: t.parameters as any,
+            })),
+          };
+        })(),
+      });
+        usedMax = maxTok;
+        cachedMaxTokens = usedMax;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (isMaxTokenLimitError(err) && i < tokenLadder.length - 1) {
+          continue;
+        }
+        Log.for('provider').error(`[azure-sdk] stream request failed${agentTag}: model=${config.deployment} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${maxTok} tools=${options?.tools?.length ?? 0}`);
+        throw formatSdkError(err, 'azure', agentTag, `endpoint=${config.endpoint} model=${config.deployment}`);
+      }
+    }
+    if (!stream) {
+      throw formatSdkError(lastErr, 'azure', agentTag, `endpoint=${config.endpoint} model=${config.deployment}`);
+    }
+    if (usedMax !== initialMax) {
+      Log.for('provider').warn(`[azure-sdk] max_output_tokens downgraded ${initialMax} → ${usedMax}${agentTag}`);
     }
 
     let currentToolCall: { id: string; name: string; args: string } | null = null;
@@ -376,15 +423,14 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
   }
 
   function buildResponseFormat(options?: ChatOptions) {
-    // Phase 2 extraction passes jsonSchema — convert to the Chat Completions
-    // API's response_format: { type: 'json_schema', json_schema: { name, schema, strict } }.
-    // Without this, the LLM has no API-level JSON constraint and may produce
-    // unparseable text (the root cause of "Unparseable content" errors).
+    // Phase 2 extraction passes jsonSchema — use json_object to force JSON
+    // output. We use json_object (not json_schema) because many OpenAI-compatible
+    // APIs (e.g. agnes) silently return empty content when json_schema + strict
+    // is used. json_object is universally supported and, combined with the
+    // schema in the extraction prompt + Zod validation, provides sufficient
+    // constraint. The openai-responses provider uses json_schema (it supports it).
     if (options?.jsonSchema) {
-      return {
-        type: 'json_schema' as const,
-        json_schema: normalizeStructuredOutputSchema(options.jsonSchema, options?.agentName),
-      };
+      return { type: 'json_object' as const };
     }
     if (options?.responseFormat === 'json_object') {
       return { type: 'json_object' as const };
@@ -392,50 +438,62 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
     return undefined;
   }
 
+  // Cache the max_tokens value resolved by the ladder on first successful
+  // call — subsequent calls reuse it to avoid repeated probe-and-reject cycles.
+  let cachedMaxTokens: number | undefined;
+
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
     Log.for('provider').info(`[openai-compat-sdk] POST${agentTag} messages=${messages.length}`);
 
-    const reasoningEffort = options?.reasoningEffort ?? config.reasoningEffort;
-    const commonParams = {
-      model: config.model!,
-      messages: serializeMessages(messages),
-      temperature: options?.temperature ?? 0.3,
-      max_tokens: options?.maxTokens ?? 65536,
-      stream_options: { include_usage: true },
-      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-      ...buildTools(options),
-    } as any;
+    // Phase 2 extraction (jsonSchema) does not need reasoning — reasoning models
+    // can exhaust max_tokens in the reasoning_content channel and emit empty
+    // content. Skip reasoning_effort entirely for extraction.
+    const isExtraction = !!options?.jsonSchema;
+    const reasoningEffort = isExtraction ? undefined : (options?.reasoningEffort ?? config.reasoningEffort);
 
+    const requestedMax = options?.maxTokens;
+    const effectiveRequest = cachedMaxTokens !== undefined
+      ? Math.min(requestedMax ?? cachedMaxTokens, cachedMaxTokens)
+      : requestedMax;
+    const tokenLadder = buildMaxTokenLadder(effectiveRequest);
+    const initialMax = tokenLadder[0];
+    let usedMax = initialMax;
     let stream: any;
-    try {
-      stream = await client.chat.completions.create({
-        ...commonParams,
-        stream: true,
-        response_format: buildResponseFormat(options) as any,
-      });
-    } catch (err: any) {
-      // If json_schema format is not supported by this API, fall back to
-      // json_object (which only forces JSON output without schema enforcement).
-      // The Zod schema validation in Phase 2 still catches schema violations.
-      const usedJsonSchema = !!options?.jsonSchema;
-      const errStr = String(err?.message ?? err?.error?.message ?? '');
-      if (usedJsonSchema && /response_format|json_schema|unsupported/i.test(errStr)) {
-        Log.for('provider').warn(`[openai-compat-sdk] json_schema not supported, falling back to json_object${agentTag}`);
-        try {
-          stream = await client.chat.completions.create({
-            ...commonParams,
-            stream: true,
-            response_format: { type: 'json_object' as const } as any,
-          });
-        } catch (err2) {
-          Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
-          throw formatSdkError(err2, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+    let lastErr: unknown;
+    for (let i = 0; i < tokenLadder.length; i++) {
+      const maxTok = tokenLadder[i];
+      try {
+        stream = await client.chat.completions.create({
+          ...({
+            model: config.model!,
+            messages: serializeMessages(messages),
+            temperature: options?.temperature ?? 0.3,
+            max_tokens: maxTok,
+            stream_options: { include_usage: true },
+            ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+            ...buildTools(options),
+          } as any),
+          stream: true,
+          response_format: buildResponseFormat(options) as any,
+        });
+        usedMax = maxTok;
+        cachedMaxTokens = usedMax;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (isMaxTokenLimitError(err) && i < tokenLadder.length - 1) {
+          continue;
         }
-      } else {
-        Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
+        Log.for('provider').error(`[openai-compat-sdk] stream request failed${agentTag}: model=${config.model} endpoint=${config.endpoint || 'default'} messages=${messages.length} temperature=${options?.temperature ?? 0.3} max_tokens=${maxTok} tools=${options?.tools?.length ?? 0}`);
         throw formatSdkError(err, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
       }
+    }
+    if (!stream) {
+      throw formatSdkError(lastErr, 'openai-compat', agentTag, `endpoint=${config.endpoint || 'default'} model=${config.model}`);
+    }
+    if (usedMax !== initialMax) {
+      Log.for('provider').warn(`[openai-compat-sdk] max_tokens downgraded ${initialMax} → ${usedMax}${agentTag}`);
     }
 
     let currentToolCall: { id: string; name: string; args: string } | null = null;
@@ -548,41 +606,72 @@ function createOpenAIResponsesProvider(config: ProviderConfig & { type: 'openai-
     return undefined;
   }
 
+  // Cache the max_tokens value resolved by the ladder on first successful
+  // call — subsequent calls reuse it to avoid repeated probe-and-reject cycles.
+  let cachedMaxTokens: number | undefined;
+
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const input = buildInput(messages);
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
     const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     Log.for('provider').info(`[openai-responses] POST${agentTag} input=${input.length} items`);
 
-    const reasoningEffort = options?.reasoningEffort ?? config.reasoningEffort ?? 'medium';
+    // Phase 2 extraction (jsonSchema) lowers reasoning effort to avoid
+    // exhausting max_output_tokens in the reasoning channel.
+    const isExtraction = !!options?.jsonSchema;
+    const reasoningEffort = isExtraction ? 'low' : (options?.reasoningEffort ?? config.reasoningEffort ?? 'medium');
     const reasoningSummary = options?.reasoningSummary ?? config.reasoningSummary ?? 'auto';
     const textVerbosity = options?.textVerbosity ?? config.textVerbosity ?? 'medium';
 
-    let stream: Awaited<ReturnType<typeof client.responses.create>>;
-    try {
-      stream = await client.responses.create({
-      model: config.model,
-      input: input as any,
-      max_output_tokens: options?.maxTokens ?? 65536,
-      reasoning: { effort: reasoningEffort, summary: reasoningSummary },
-      stream: true,
-      text: { ...(buildTextConfig(options) ?? {}), verbosity: textVerbosity } as any,
-      ...(() => {
-        if (!options?.tools?.length) return {};
-        return {
-          tools: options.tools.map(t => ({
-            type: 'function' as const,
-            name: t.name,
-            description: t.description,
-            strict: t.strict ?? false,
-            parameters: t.parameters as any,
-          })),
-        };
-      })(),
-    });
-    } catch (err) {
-      Log.for('provider').error(`[openai-responses] stream request failed${agentTag}: model=${config.model} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${options?.maxTokens ?? 65536} tools=${options?.tools?.length ?? 0}`);
-      throw formatSdkError(err, 'openai-responses', agentTag, `model=${config.model}`);
+    const requestedMax = options?.maxTokens;
+    const effectiveRequest = cachedMaxTokens !== undefined
+      ? Math.min(requestedMax ?? cachedMaxTokens, cachedMaxTokens)
+      : requestedMax;
+    const tokenLadder = buildMaxTokenLadder(effectiveRequest);
+    const initialMax = tokenLadder[0];
+    let usedMax = initialMax;
+    let stream: any;
+    let lastErr: unknown;
+    for (let i = 0; i < tokenLadder.length; i++) {
+      const maxTok = tokenLadder[i];
+      try {
+        stream = await client.responses.create({
+        model: config.model,
+        input: input as any,
+        max_output_tokens: maxTok,
+        reasoning: { effort: reasoningEffort, summary: reasoningSummary },
+        stream: true,
+        text: { ...(buildTextConfig(options) ?? {}), verbosity: textVerbosity } as any,
+        ...(() => {
+          if (!options?.tools?.length) return {};
+          return {
+            tools: options.tools.map(t => ({
+              type: 'function' as const,
+              name: t.name,
+              description: t.description,
+              strict: t.strict ?? false,
+              parameters: t.parameters as any,
+            })),
+          };
+        })(),
+      });
+        usedMax = maxTok;
+        cachedMaxTokens = usedMax;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (isMaxTokenLimitError(err) && i < tokenLadder.length - 1) {
+          continue;
+        }
+        Log.for('provider').error(`[openai-responses] stream request failed${agentTag}: model=${config.model} input=${input.length} items temperature=${options?.temperature ?? 0.3} max_tokens=${maxTok} tools=${options?.tools?.length ?? 0}`);
+        throw formatSdkError(err, 'openai-responses', agentTag, `model=${config.model}`);
+      }
+    }
+    if (!stream) {
+      throw formatSdkError(lastErr, 'openai-responses', agentTag, `model=${config.model}`);
+    }
+    if (usedMax !== initialMax) {
+      Log.for('provider').warn(`[openai-responses] max_output_tokens downgraded ${initialMax} → ${usedMax}${agentTag}`);
     }
 
     let currentToolCall: { id: string; name: string; args: string } | null = null;

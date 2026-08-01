@@ -130,6 +130,15 @@ function buildTechniqueAliases(value: string): string[] {
   return Array.from(aliases);
 }
 
+// Cache ISTQB guide file contents at registration time — files are static,
+// avoids repeated readFileSync on every LLM skill invocation.
+const _istqbKnowledgeDir = join(__dirname, 'knowledge');
+const _istqbOverviewBody = parseFrontmatter(readFileSync(join(_istqbKnowledgeDir, 'istqb-overview.md'), 'utf-8')).body;
+const _istqbGuideBodies: Record<string, string> = {};
+for (const f of ISTQB_GUIDE_FILES) {
+  _istqbGuideBodies[f] = parseFrontmatter(readFileSync(join(_istqbKnowledgeDir, f), 'utf-8')).body;
+}
+
 const istqbGuideSkill: SkillDefinition = {
   name: 'istqb_guide',
   description: 'Load ALL ISTQB technique guides combined (Equivalence Partitioning, Boundary Value Analysis, Decision Table, State Transition, Use Case Testing) PLUS the Integration Testing test-level guide (component vs integration test level decision). Use when you need methodology, steps, examples, or common mistakes for any test design technique or test level.',
@@ -144,7 +153,6 @@ const istqbGuideSkill: SkillDefinition = {
       .describe('Brief context of what you are testing'),
   }),
   func: async ({ techniques, context }) => {
-    const knowledgeDir = join(__dirname, 'knowledge');
     const requestedTechniqueAliases = Array.isArray(techniques)
       ? techniques.flatMap((technique) => buildTechniqueAliases(String(technique)))
       : [];
@@ -153,8 +161,7 @@ const istqbGuideSkill: SkillDefinition = {
     // (decision table + selection rules). The LLM should call again with
     // specific techniques after deciding which ones to apply.
     if (!Array.isArray(techniques) || techniques.length === 0) {
-      const overviewRaw = readFileSync(join(knowledgeDir, 'istqb-overview.md'), 'utf-8');
-      const { body: overview } = parseFrontmatter(overviewRaw);
+      const overview = _istqbOverviewBody;
       Log.for('skill:istqb_guide').info(`Loaded overview only (${overview.length} chars) — call again with techniques for detailed guides`);
       return context
         ? `${overview}\n\n---\nApplying to your context: ${context}`
@@ -166,11 +173,7 @@ const istqbGuideSkill: SkillDefinition = {
       const fileAliases = buildTechniqueAliases(fileTechniqueName);
       return requestedTechniqueAliases.some((requested) => fileAliases.includes(requested));
     });
-    const parts = selectedFiles.map((f) => {
-      const content = readFileSync(join(knowledgeDir, f), 'utf-8');
-      const { body } = parseFrontmatter(content);
-      return body;
-    });
+    const parts = selectedFiles.map((f) => _istqbGuideBodies[f]);
     const combined = parts.join('\n\n---\n\n');
     Log.for('skill:istqb_guide').info(`Loaded ${selectedFiles.length}/${ISTQB_GUIDE_FILES.length} guides (${combined.length} chars)`);
     return context

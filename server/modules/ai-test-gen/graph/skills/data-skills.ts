@@ -453,6 +453,10 @@ export const crossEpicImpactQuery: SkillDefinition = {
 // Factory function: requires runId to query pipelineRepo.
 // ============================================================
 export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition {
+  // Cache agent logs for the lifetime of this skill instance (one node
+  // execution) — LLM may call this for multiple requirements; avoid
+  // re-scanning the same logs each time.
+  let cachedLogs: any[] | null = null;
   return {
     name: 'previous_batch_conditions_query',
     description:
@@ -466,7 +470,10 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
       log.info(`Querying previous-batch conditions for ${id} (runId=${runId})`);
 
       try {
-        const logs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+        if (cachedLogs === null) {
+          cachedLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+        }
+        const logs = cachedLogs;
         const conditions: Array<{ referenceId: string; id: string; title: string; category: string; primaryTechnique: string }> = [];
         for (const logEntry of logs) {
           const tcs: any[] = logEntry.output_data?.testConditions ?? [];
@@ -500,6 +507,10 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
 // Factory function: requires runId to query pipelineRepo.
 // ============================================================
 export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
+  // Cache agent logs for the lifetime of this skill instance (one node
+  // execution) — LLM may call this for multiple requirements; avoid
+  // re-scanning the same logs each time.
+  let cachedLogs: any[] | null = null;
   return {
     name: 'previous_batch_cases_query',
     description:
@@ -513,7 +524,10 @@ export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
       log.info(`Querying previous-batch cases for ${id} (runId=${runId})`);
 
       try {
-        const logs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+        if (cachedLogs === null) {
+          cachedLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+        }
+        const logs = cachedLogs;
         const cases: Array<{ title: string; testLevel: string; conditionId: string }> = [];
         for (const logEntry of logs) {
           const ftc: any[] = logEntry.output_data?.finalTestCases ?? [];
