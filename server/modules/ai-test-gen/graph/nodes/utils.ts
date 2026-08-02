@@ -534,7 +534,7 @@ export async function callLLMWithStructuredOutput<T>(
     for await (const chunk of provider.streamChat(nudgeMessages, buildExtractionChatOptions(outputProfile, extra))) {
       if (chunk.type === 'content' && chunk.content) {
         nudgeContent += chunk.content;
-        observer?.onThinking?.(name, chunk.content, 'content', 'nudge');
+        observer?.onThinking?.(name, chunk.content, 'content', 'extraction');
       }
       if (chunk.type === 'done' && chunk.usage) {
         capturedUsage.input += (chunk.usage.promptTokens || 0);

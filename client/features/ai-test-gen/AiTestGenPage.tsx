@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2, PlayCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRequirements } from '@/shared/hooks/useQueryHooks';
 import { useTestGenRun } from '@/shared/test-gen-run';
@@ -28,7 +28,9 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [activeTab, setActiveTab] = useState<TabId>('new');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
   const [showRetryConfirm, setShowRetryConfirm] = useState(false);
+  const [showResumeConfirm, setShowResumeConfirm] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: activeTab !== 'history' });
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
@@ -137,6 +139,24 @@ const handleRefresh = useCallback(async () => {
     }
   }, [pipeline, queryClient, currentProjectId]);
 
+  const handleResumeAbortedRun = useCallback(async () => {
+    if (!pipeline.runId) return;
+    setResuming(true);
+    try {
+      // Find the first error or incomplete agent node to mark as retrying
+      const errorNode = pipeline.nodes.find((n: any) => n.status === 'error');
+      if (errorNode) pipeline.startRetry(errorNode.id);
+      const { api } = await import('@/shared/services/api');
+      await api.testGen.retry(pipeline.runId);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.testGen.runs(currentProjectId || '') });
+      setActiveTab('runtime');
+    } catch {
+      // error surfaced via SSE
+    } finally {
+      setResuming(false);
+    }
+  }, [pipeline, queryClient, currentProjectId]);
+
   const handleRetryFailedRun = useCallback(async (runId: string) => {
     try {
       const errorNode = pipeline.nodes.find((n: any) => n.status === 'error');
@@ -191,6 +211,18 @@ const handleRefresh = useCallback(async () => {
 
   const selectedAgentLog = pipeline.selectedAgentLog;
 
+  // Detect if current run is resumable (FAILED/aborted with progress)
+  const isResumable = useMemo(() => {
+    if (pipeline.isRunning || !pipeline.runId) return false;
+    // Has at least one node that was attempted (so we can resume it)
+    const hasAttempted = pipeline.nodes.some(
+      (n: any) => (n.kind === 'agent' || n.kind === 'preparation') && n.status !== 'idle'
+    );
+    // Not fully completed
+    const isComplete = pipeline.nodes.find((n: any) => n.id === 'complete')?.status === 'completed';
+    return hasAttempted && !isComplete;
+  }, [pipeline.isRunning, pipeline.runId, pipeline.nodes]);
+
   if (!currentProjectId) {
     return <div className="h-full flex items-center justify-center text-slate-400">Select a project to continue</div>;
   }
@@ -237,6 +269,16 @@ const handleRefresh = useCallback(async () => {
               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
             >
               Abort
+            </button>
+          )}
+          {isResumable && !pipeline.isRunning && (
+            <button
+              onClick={() => setShowResumeConfirm(true)}
+              disabled={resuming}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+            >
+              <PlayCircle size={14} className={resuming ? 'animate-spin' : ''} />
+              {resuming ? 'Resuming...' : 'Resume from Checkpoint'}
             </button>
           )}
         </div>
@@ -338,6 +380,16 @@ const handleRefresh = useCallback(async () => {
         title="Retry from last checkpoint?"
         message="The agent will re-run from the previous checkpoint with the same inputs. Any edits made during review will be lost."
         confirmLabel="Retry from last checkpoint"
+        type="warning"
+      />
+
+      <ConfirmModal
+        isOpen={showResumeConfirm}
+        onClose={() => setShowResumeConfirm(false)}
+        onConfirm={() => { setShowResumeConfirm(false); handleResumeAbortedRun(); }}
+        title="Resume from Checkpoint?"
+        message="The pipeline will resume from the last successful checkpoint. Previously completed batches and their test cases are preserved. The failed or interrupted agent will be re-executed."
+        confirmLabel="Resume Pipeline"
         type="warning"
       />
     </div>

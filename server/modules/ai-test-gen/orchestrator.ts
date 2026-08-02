@@ -81,6 +81,94 @@ function mergeCaseCoverage(
     });
   }
 }
+function buildGlobalEpicIndex(
+  epics: any[],
+  rootGroups: Map<string, string[]>,
+  requirements: any[],
+  allFlowStories: any[],
+): GlobalEpicEntry[] {
+  return epics.map(epic => {
+    const childIds = rootGroups.get(epic.id) ?? [];
+    const childReqSet = new Set(childIds);
+    const childReqs = requirements.filter(r => childReqSet.has(r.id));
+    const epicFlowCount = allFlowStories.filter(s =>
+      childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
+    ).length;
+    const statusBreakdown: Record<string, number> = {};
+    for (const r of childReqs) {
+      statusBreakdown[r.status] = (statusBreakdown[r.status] ?? 0) + 1;
+    }
+    const stories = childReqs.filter(r => r.level === 'story');
+    const storyIds = new Set(stories.map(s => s.id));
+    const flowStoryIds = new Set(stories.filter((s: any) => s.isFlow).map(s => s.id));
+    const allAcs = requirements.filter(r => storyIds.has(r.parentId) && r.level === 'ac');
+    // ACs under flow stories inherit the flow flag from their parent story,
+    // since the DB may not set isFlow=true on ACs individually.
+    const nonFlowAcCount = allAcs.filter(a => !a.isFlow && !flowStoryIds.has(a.parentId)).length;
+    const flowAcCount = allAcs.filter(a => a.isFlow || flowStoryIds.has(a.parentId)).length;
+    return {
+      epicId: epic.id,
+      title: epic.title,
+      requirementCount: childReqs.length,
+      storyCount: stories.length,
+      nonFlowAcCount,
+      flowAcCount,
+      flowCount: epicFlowCount,
+      statusBreakdown,
+      children: childReqs.map(r => ({
+        id: r.id, title: r.title, level: r.level, isFlow: r.isFlow ?? false,
+        // Nested ACs for story-level children so the prompt can list
+        // story + AC titles/ids without a tool call.
+        acs: r.level === 'story'
+          ? allAcs
+              .filter(a => a.parentId === r.id)
+              .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+              .map(a => ({ id: a.id, title: a.title, level: 'ac', isFlow: r.isFlow || a.isFlow || false }))
+          : undefined,
+      })),
+    };
+  });
+}
+
+function computeTotalSubBatches(
+  epics: any[],
+  rootGroups: Map<string, string[]>,
+  reqMap: Map<string, any>,
+): number {
+  let totalSubBatches = 0;
+  for (const epic of epics) {
+    const childIds = rootGroups.get(epic.id) ?? [];
+    const hasComponentStories = childIds.some(id => {
+      const r = reqMap.get(id);
+      return r && r.level === 'story' && !r.isFlow;
+    });
+    const hasFlowStories = childIds.some(id => {
+      const r = reqMap.get(id);
+      return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
+    });
+    if (hasComponentStories || hasFlowStories) totalSubBatches++;
+  }
+  return totalSubBatches;
+}
+
+interface BatchLoopParams {
+  runId: string;
+  projectId: string;
+  requirementIds: string[];
+  flowIds: string[];
+  mode: 'auto' | 'interactive';
+  epics: any[];
+  rootGroups: Map<string, string[]>;
+  reqMap: Map<string, any>;
+  requirements: any[];
+  businessFlows: any[];
+  flowReferencedComponentContext: Map<string, any[]>;
+  globalStats: { totalRequirements: number; totalEpics: number; totalFlows: number };
+  globalEpicIndex: GlobalEpicEntry[];
+  accumulatedCoverage: Map<string, PreviousBatchCoverageSummary>;
+  startFrom: number;
+  totalSubBatches: number;
+}
 
 export class Orchestrator {
   private readonly contextBuilder: ContextBuilder;
@@ -170,70 +258,98 @@ export class Orchestrator {
       const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
       log.info(`Flow stories: ${allFlowStories.length} total, ${filteredFlowStories.length} selected, ${businessFlows.length} blueprints`);
 
-      // 计算总批次数：每个 epic 一个批次（component + flow 合并）
-      let totalSubBatches = 0;
+      // ── Pre-flight validation (P1.4, P1.5) ──
+      // Validate selected flows and component stories before entering the batch loop
+      const validationErrors: string[] = [];
+      
+      // 1. Validate flow stories
+      for (const flowId of selectedFlowSet) {
+        const flowStory = reqMap.get(flowId);
+        if (!flowStory) {
+          validationErrors.push(`Flow story ${flowId} not found`);
+          continue;
+        }
+        if (!flowStory.isFlow) {
+          validationErrors.push(`Requirement ${flowId} is not a flow story (isFlow=false)`);
+        }
+        if (flowStory.status !== 'APPROVED') {
+          validationErrors.push(`Flow story "${flowStory.title}" (${flowId}) status is ${flowStory.status}, must be APPROVED`);
+        }
+        // Validate flow AC relatedRequirementIds point to existing APPROVED component stories
+        const flowAcs = requirements.filter(r => r.parentId === flowId && r.level === 'ac');
+        for (const ac of flowAcs) {
+          const refs = (ac as any).relatedRequirementIds as string[] | undefined;
+          if (!refs || refs.length === 0) continue;
+          for (const refId of refs) {
+            const ref = reqMap.get(refId);
+            if (!ref) {
+              validationErrors.push(`Flow "${flowStory.title}" AC "${ac.title}" references non-existent requirement ${refId}`);
+            } else if (ref.status !== 'APPROVED') {
+              validationErrors.push(`Flow "${flowStory.title}" AC "${ac.title}" references ${ref.title || refId} with status ${ref.status} (must be APPROVED)`);
+            }
+          }
+        }
+      }
+
+      // 2. Validate component stories
       for (const epic of epics) {
         const childIds = rootGroups.get(epic.id) ?? [];
-        const hasComponentStories = childIds.some(id => {
+        for (const id of childIds) {
           const r = reqMap.get(id);
-          return r && r.level === 'story' && !r.isFlow;
-        });
-        const hasFlowStories = childIds.some(id => {
-          const r = reqMap.get(id);
-          return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
-        });
-        if (hasComponentStories || hasFlowStories) totalSubBatches++;
+          if (r && r.level === 'story' && !r.isFlow) {
+            if (r.status !== 'APPROVED') {
+              validationErrors.push(`Component story "${r.title}" (${r.id}) status is ${r.status}, must be APPROVED`);
+            }
+          }
+        }
       }
+
+      if (validationErrors.length > 0) {
+        const msg = `Pre-flight validation failed (${validationErrors.length} errors):\n  - ${validationErrors.join('\n  - ')}`;
+        log.error(msg);
+        ctx.sendEvent('pipeline:error', { phase: 'preflight', message: msg, recoverable: false });
+        throw new Error(msg);
+      }
+      log.info(`Pre-flight validation passed: ${selectedFlowSet.size} flow(s), all references and component stories valid`);
+
+      // ── Orphan requirements warning (P1.6) ──
+      const parentMap = new Map(allIndex.map(i => [i.id, i.parent]));
+      function findRoot(id: string): string | null {
+        let curr = id;
+        for (let j = 0; j < 20; j++) {
+          const p = parentMap.get(curr);
+          if (!p) return curr;
+          curr = p;
+        }
+        return curr;
+      }
+      const epicIdSet = new Set(epics.map(e => e.id));
+      const orphanIds = selectedIndex
+        .filter(item => {
+          const r = findRoot(item.id);
+          return !r || !epicIdSet.has(r);
+        })
+        .map(item => item.id);
+      
+      if (orphanIds.length > 0) {
+        log.warn(`Orphan requirements detected (ignored because their root is not a level 0 Epic): ${orphanIds.join(', ')}`);
+        ctx.sendEvent('pipeline:warning', {
+          message: `The following selected requirements were skipped because they do not belong to any top-level Epic: ${orphanIds.join(', ')}`,
+        });
+      }
+
+      // 计算总批次数：每个 epic 一个批次（component + flow 合并）
+      const totalSubBatches = computeTotalSubBatches(epics, rootGroups, reqMap);
       pipelineRepo.updateBatchCount(runId, totalSubBatches);
       log.info(`Total sub-batches: ${totalSubBatches} (component + flow per epic)`);
 
-      // ── 构建全局统计 + L1 Epic 索引（所有批次共享） ──
+      // ── 构建全局统计 + L1 Epic 索引（所有批次共享）（P0.1, P0.3） ──
       const globalStats = {
         totalRequirements: requirements.length,
         totalEpics: epics.length,
         totalFlows: allFlowStories.length,
       };
-      const globalEpicIndex: GlobalEpicEntry[] = epics.map(epic => {
-        const childIds = rootGroups.get(epic.id) ?? [];
-        const childReqSet = new Set(childIds);
-        const childReqs = requirements.filter(r => childReqSet.has(r.id));
-        const epicFlowCount = allFlowStories.filter(s =>
-          childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
-        ).length;
-        const statusBreakdown: Record<string, number> = {};
-        for (const r of childReqs) {
-          statusBreakdown[r.status] = (statusBreakdown[r.status] ?? 0) + 1;
-        }
-        const stories = childReqs.filter(r => r.level === 'story');
-        const storyIds = new Set(stories.map(s => s.id));
-        const flowStoryIds = new Set(stories.filter((s: any) => s.isFlow).map(s => s.id));
-        const allAcs = requirements.filter(r => storyIds.has(r.parentId) && r.level === 'ac');
-        // ACs under flow stories inherit the flow flag from their parent story,
-        // since the DB may not set isFlow=true on ACs individually.
-        const nonFlowAcCount = allAcs.filter(a => !a.isFlow && !flowStoryIds.has(a.parentId)).length;
-        const flowAcCount = allAcs.filter(a => a.isFlow || flowStoryIds.has(a.parentId)).length;
-        return {
-          epicId: epic.id,
-          title: epic.title,
-          requirementCount: childReqs.length,
-          storyCount: stories.length,
-          nonFlowAcCount,
-          flowAcCount,
-          flowCount: epicFlowCount,
-          statusBreakdown,
-          children: childReqs.map(r => ({
-            id: r.id, title: r.title, level: r.level, isFlow: r.isFlow ?? false,
-            // Nested ACs for story-level children so the prompt can list
-            // story + AC titles/ids without a tool call.
-            acs: r.level === 'story'
-              ? allAcs
-                  .filter(a => a.parentId === r.id)
-                  .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
-                  .map(a => ({ id: a.id, title: a.title, level: 'ac', isFlow: r.isFlow || a.isFlow || false }))
-              : undefined,
-          })),
-        };
-      });
+      const globalEpicIndex = buildGlobalEpicIndex(epics, rootGroups, requirements, allFlowStories);
       log.info(`Global snapshot: ${globalStats.totalRequirements} requirements, ${globalStats.totalEpics} epics, ${globalStats.totalFlows} flows; L1 Epic index built`);
 
       // 发送准备阶段事件
@@ -275,7 +391,7 @@ export class Orchestrator {
 
       // 执行批次（累积 previousBatchCoverageSummary 给后续批次使用）
       const allResults: BatchResult[] = [];
-      // L2 累积：按 requirementId 分组的覆盖摘要
+      // L2 累积：按 requirementId 分组 of 覆盖摘要
       const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
 
       // 如果指定了参考的其他 Runs，则从其历史中提取已生成的 test conditions 和 finalTestCases，避免生成重复用例
@@ -307,124 +423,29 @@ export class Orchestrator {
         log.info(`Total accumulated reference requirements: ${accumulatedCoverage.size}`);
       }
 
-      // ── Pre-flight validation ──
-      // Validate selected flows and their AC references before entering the
-      // batch loop, so we fail fast on data issues instead of wasting tokens.
-      const validationErrors: string[] = [];
-      for (const flowId of selectedFlowSet) {
-        const flowStory = reqMap.get(flowId);
-        if (!flowStory) {
-          validationErrors.push(`Flow ${flowId} not found`);
-          continue;
-        }
-        if (!flowStory.isFlow) {
-          validationErrors.push(`Requirement ${flowId} is not a flow story (isFlow=false)`);
-        }
-        if (flowStory.status !== 'APPROVED') {
-          validationErrors.push(`Flow ${flowId} status is ${flowStory.status}, must be APPROVED`);
-        }
-        // Validate flow AC relatedRequirementIds point to existing APPROVED component stories
-        const flowAcs = requirements.filter(r => r.parentId === flowId && r.level === 'ac');
-        for (const ac of flowAcs) {
-          const refs = (ac as any).relatedRequirementIds as string[] | undefined;
-          if (!refs || refs.length === 0) continue;
-          for (const refId of refs) {
-            const ref = reqMap.get(refId);
-            if (!ref) {
-              validationErrors.push(`Flow "${flowStory.title}" AC "${ac.title}" references non-existent requirement ${refId}`);
-            } else if (ref.status !== 'APPROVED') {
-              validationErrors.push(`Flow "${flowStory.title}" AC "${ac.title}" references ${refId} with status ${ref.status} (must be APPROVED)`);
-            }
-          }
-        }
-      }
-      if (validationErrors.length > 0) {
-        const msg = `Pre-flight validation failed (${validationErrors.length} errors):\n  - ${validationErrors.join('\n  - ')}`;
-        log.error(msg);
-        ctx.sendEvent('pipeline:error', { phase: 'preflight', message: msg, recoverable: false });
-        throw new Error(msg);
-      }
-      log.info(`Pre-flight validation passed: ${selectedFlowSet.size} flow(s), all references valid`);
+      // 执行批次循环 (P0.2)
+      const loopRes = await this.executeBatchLoop(ctx, {
+        runId,
+        projectId,
+        requirementIds: params.requirementIds || [],
+        flowIds: params.flowIds || [],
+        mode: params.mode,
+        epics,
+        rootGroups,
+        reqMap,
+        requirements,
+        businessFlows,
+        flowReferencedComponentContext,
+        globalStats,
+        globalEpicIndex,
+        accumulatedCoverage,
+        startFrom: 0,
+        totalSubBatches,
+      }, allResults);
 
-      let subBatchIndex = 0;
-      for (let i = 0; i < epics.length; i++) {
-        if (ctx.isAborted()) break;
-        const epic = epics[i];
-        const childIds = rootGroups.get(epic.id) ?? [];
-        // 合并 component 和 flow stories 为一个批次
-        const componentStoryIds = childIds.filter(id => {
-          const r = reqMap.get(id);
-          return r && r.level === 'story' && !r.isFlow;
-        });
-        const flowStoryIds = childIds.filter(id => {
-          const r = reqMap.get(id);
-          return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
-        });
-        const combinedStoryIds = [...componentStoryIds, ...flowStoryIds];
-
-        if (combinedStoryIds.length > 0) {
-          subBatchIndex++;
-          if (ctx.isAborted()) break;
-          Log.subsection(`Batch ${subBatchIndex}/${totalSubBatches} START ── epic: ${epic.id ?? 'N/A'} [MIXED]`);
-          ctx.scope.setBatch(subBatchIndex, totalSubBatches);
-          pipelineRepo.updateCurrentBatch(runId, subBatchIndex);
-          pipelineRepo.updateThreadId(runId, `${runId}-batch-${i}-mixed`);
-
-          const previousBatchCoverageSummary = [...accumulatedCoverage.values()];
-
-          const batchInput: BatchInput = {
-            batchIndex: subBatchIndex - 1,
-            inputState: {
-              ...this.buildBatchInputState(
-                runId, projectId, params.requirementIds, requirements, rootGroups, epic, subBatchIndex - 1, totalSubBatches, businessFlows,
-                params.mode, params.flowIds,
-                'mixed', // generationMode — component + flow in one batch
-                combinedStoryIds,
-                flowReferencedComponentContext,
-              ),
-              // 注入全局上下文
-              globalStats,
-              globalEpicIndex,
-              previousBatchCoverageSummary: previousBatchCoverageSummary.length > 0 ? previousBatchCoverageSummary : undefined,
-              flowReferencedComponentContext: flowReferencedComponentContext.size > 0
-                ? Object.fromEntries(flowReferencedComponentContext)
-                : undefined,
-            },
-          };
-
-          const outcome = await ctx.session.startBatch(batchInput);
-          if (outcome.type === 'interrupt') {
-            log.info(`Batch ${subBatchIndex} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
-            ctx.scope.flushAndPersistThinking();
-            pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
-            this.sseGateway.emit(runId, 'checkpoint:waiting', {
-              checkpointNumber: outcome.interrupt.checkpointNumber,
-              phase: outcome.interrupt.phase,
-              summary: 'Awaiting Review',
-              payload: outcome.interrupt.payload,
-            });
-            keepSse = true;
-            return;
-          }
-
-          // 累积本批次已生成的 conditions 摘要，供后续批次参考
-          const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
-          for (const tc of batchConditions) {
-            mergeCoverage(accumulatedCoverage, tc);
-          }
-          // 累积本批次已生成的 finalTestCases 标题+级别，供 Designer 跨批次去重参考
-          const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
-          for (const tc of batchCases) {
-            mergeCaseCoverage(accumulatedCoverage, tc);
-          }
-          log.success(`Batch ${subBatchIndex}/${totalSubBatches} complete ── ${outcome.result.cases.length} test cases (MIXED), ${batchConditions.length} conditions, ${batchCases.length} cases accumulated`);
-          allResults.push(outcome.result);
-          ctx.sendEvent('batch:complete', {
-            batch: subBatchIndex, total: totalSubBatches,
-            testCases: outcome.result.cases.length,
-            mode: 'mixed',
-          });
-        }
+      if (loopRes.interrupted) {
+        keepSse = true;
+        return;
       }
 
       // 完成：totalCases 使用原始计数（与保存行为一致），去重仅作度量告警
@@ -511,6 +532,25 @@ export class Orchestrator {
         });
         keepSse = true;
         return;
+      }
+
+      // Update state for the newly completed resumed batch (P1.8)
+      try {
+        const stateStr = pipelineRepo.getRunState(runId);
+        const coverage = new Map<string, PreviousBatchCoverageSummary>();
+        if (stateStr) {
+          const parsed = JSON.parse(stateStr);
+          if (Array.isArray(parsed)) {
+            for (const [key, value] of parsed) coverage.set(key, value);
+          }
+        }
+        const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
+        for (const tc of batchConditions) mergeCoverage(coverage, tc);
+        const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
+        for (const tc of batchCases) mergeCaseCoverage(coverage, tc);
+        pipelineRepo.updateRunState(runId, JSON.stringify([...coverage.entries()]));
+      } catch (err: any) {
+        Log.for('orchestrator').warn(`Failed to update serialized coverage state after resume: ${err.message}`);
       }
 
       // 继续剩余批次
@@ -650,6 +690,38 @@ export class Orchestrator {
         return;
       }
 
+      // Update state for the newly completed retried batch (P1.8)
+      try {
+        const stateStr = pipelineRepo.getRunState(runId);
+        const coverage = new Map<string, PreviousBatchCoverageSummary>();
+        if (stateStr) {
+          const parsed = JSON.parse(stateStr);
+          if (Array.isArray(parsed)) {
+            for (const [key, value] of parsed) coverage.set(key, value);
+          }
+        } else {
+          const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+          for (const logEntry of pastAnalystLogs) {
+            const tcs: any[] = logEntry.output_data?.testConditions ?? [];
+            for (const tc of tcs) {
+              if (tc.id && tc.condition && tc.requirementId) mergeCoverage(coverage, tc);
+            }
+          }
+          const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+          for (const logEntry of pastQualityLogs) {
+            const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
+            for (const tc of cases) mergeCaseCoverage(coverage, tc);
+          }
+        }
+        const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
+        for (const tc of batchConditions) mergeCoverage(coverage, tc);
+        const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
+        for (const tc of batchCases) mergeCaseCoverage(coverage, tc);
+        pipelineRepo.updateRunState(runId, JSON.stringify([...coverage.entries()]));
+      } catch (err: any) {
+        Log.for('orchestrator').warn(`Failed to update serialized coverage state after retry: ${err.message}`);
+      }
+
       // 继续剩余批次
       const allResults: BatchResult[] = [outcome.result];
       const totalBatches = row.total_batches || 0;
@@ -711,20 +783,8 @@ export class Orchestrator {
     const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
     const reqMap = new Map(requirements.map(r => [r.id, r]));
 
-    // Compute total sub-batches: 1 per epic (component + flow merged, mixed mode)
-    let totalSubBatches = 0;
-    for (const epic of epics) {
-      const childIds = rootGroups.get(epic.id) ?? [];
-      const hasComponentStories = childIds.some(id => {
-        const r = reqMap.get(id);
-        return r && r.level === 'story' && !r.isFlow;
-      });
-      const hasFlowStories = childIds.some(id => {
-        const r = reqMap.get(id);
-        return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
-      });
-      if (hasComponentStories || hasFlowStories) totalSubBatches++;
-    }
+    // Compute total sub-batches: 1 per epic (component + flow merged, mixed mode) (P0.3)
+    const totalSubBatches = computeTotalSubBatches(epics, rootGroups, reqMap);
 
     // Find the epic for the current batch number (mixed mode: 1 batch per epic)
     let batchCounter = 0;
@@ -760,47 +820,13 @@ export class Orchestrator {
 
     const flowReferencedComponentContext = this.buildFlowReferencedComponentContext(selectedFlowSet, requirements, reqMap);
 
-    // Rebuild global context (same as continueRemainingBatches)
+    // Rebuild global context (same as continueRemainingBatches) (P0.1)
     const globalStats = {
       totalRequirements: requirements.length,
       totalEpics: epics.length,
       totalFlows: allFlowStories.length,
     };
-    const globalEpicIndex: GlobalEpicEntry[] = epics.map(epic => {
-      const childIds = rootGroups.get(epic.id) ?? [];
-      const childReqSet = new Set(childIds);
-      const childReqs = requirements.filter(r => childReqSet.has(r.id));
-      const epicFlowCount = allFlowStories.filter(s =>
-        childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
-      ).length;
-      const statusBreakdown: Record<string, number> = {};
-      for (const r of childReqs) {
-        statusBreakdown[r.status] = (statusBreakdown[r.status] ?? 0) + 1;
-      }
-      const stories = childReqs.filter(r => r.level === 'story');
-      const storyIds = new Set(stories.map(s => s.id));
-      const allAcs = requirements.filter(r => storyIds.has(r.parentId) && r.level === 'ac');
-      // ACs inherit flow status from their parent story — the DB does not set
-      // isFlow on AC records individually.
-      const flowStoryIds = new Set(stories.filter((s: any) => s.isFlow).map(s => s.id));
-      const nonFlowAcCount = allAcs.filter(a => !a.isFlow && !flowStoryIds.has(a.parentId)).length;
-      const flowAcCount = allAcs.filter(a => a.isFlow || flowStoryIds.has(a.parentId)).length;
-      return {
-        epicId: epic.id, title: epic.title,
-        requirementCount: childReqs.length,
-        storyCount: stories.length,
-        nonFlowAcCount, flowAcCount,
-        flowCount: epicFlowCount, statusBreakdown,
-        children: childReqs.map(r => ({
-          id: r.id, title: r.title, level: r.level, isFlow: r.isFlow ?? false,
-          acs: r.level === 'story'
-            ? allAcs.filter(a => a.parentId === r.id)
-                .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
-                .map(a => ({ id: a.id, title: a.title, level: 'ac', isFlow: a.isFlow || flowStoryIds.has(a.parentId) || false }))
-            : undefined,
-        })),
-      };
-    });
+    const globalEpicIndex = buildGlobalEpicIndex(epics, rootGroups, requirements, allFlowStories);
 
     // Load accumulated coverage from past agent logs
     const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
@@ -937,171 +963,193 @@ export class Orchestrator {
     const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
     const reqMap = new Map(requirements.map(r => [r.id, r]));
 
-    // 计算总子批次数：每个 epic 一个批次（component + flow 合并，mixed mode）
-    let totalSubBatches = 0;
-    for (const epic of epics) {
-      const childIds = rootGroups.get(epic.id) ?? [];
-      const hasComponentStories = childIds.some(id => {
-        const r = reqMap.get(id);
-        return r && r.level === 'story' && !r.isFlow;
-      });
-      const hasFlowStories = childIds.some(id => {
-        const r = reqMap.get(id);
-        return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
-      });
-      if (hasComponentStories || hasFlowStories) totalSubBatches++;
-    }
+    // 计算总子批次数：每个 epic 一个批次（component + flow 合并，mixed mode） (P0.3)
+    const totalSubBatches = computeTotalSubBatches(epics, rootGroups, reqMap);
 
     const flowReferencedComponentContext = this.buildFlowReferencedComponentContext(selectedFlowSet, requirements, reqMap);
 
-    // Rebuild global context
+    // Rebuild global context (P0.1)
     const globalStats = {
       totalRequirements: requirements.length,
       totalEpics: epics.length,
       totalFlows: allFlowStories.length,
     };
-
-    // L1 索引层重建
-    const globalEpicIndex: GlobalEpicEntry[] = epics.map(epic => {
-      const childIds = rootGroups.get(epic.id) ?? [];
-      const childReqSet = new Set(childIds);
-      const childReqs = requirements.filter(r => childReqSet.has(r.id));
-      const epicFlowCount = allFlowStories.filter(s =>
-        childReqSet.has(s.id) || childReqSet.has(s.parentId || '')
-      ).length;
-      const statusBreakdown: Record<string, number> = {};
-      for (const r of childReqs) {
-        statusBreakdown[r.status] = (statusBreakdown[r.status] ?? 0) + 1;
-      }
-      const stories = childReqs.filter(r => r.level === 'story');
-      const storyIds = new Set(stories.map(s => s.id));
-      const allAcs = requirements.filter(r => storyIds.has(r.parentId) && r.level === 'ac');
-      // ACs inherit flow status from their parent story — the DB does not set
-      // isFlow on AC records individually.
-      const flowStoryIds = new Set(stories.filter((s: any) => s.isFlow).map(s => s.id));
-      const nonFlowAcCount = allAcs.filter(a => !a.isFlow && !flowStoryIds.has(a.parentId)).length;
-      const flowAcCount = allAcs.filter(a => a.isFlow || flowStoryIds.has(a.parentId)).length;
-      return {
-        epicId: epic.id, title: epic.title,
-        requirementCount: childReqs.length,
-        storyCount: stories.length,
-        nonFlowAcCount, flowAcCount,
-        flowCount: epicFlowCount, statusBreakdown,
-        children: childReqs.map(r => ({
-          id: r.id, title: r.title, level: r.level, isFlow: r.isFlow ?? false,
-          acs: r.level === 'story'
-            ? allAcs
-                .filter(a => a.parentId === r.id)
-                .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
-                .map(a => ({ id: a.id, title: a.title, level: 'ac', isFlow: a.isFlow || flowStoryIds.has(a.parentId) || false }))
-            : undefined,
-        })),
-      };
-    });
+    const globalEpicIndex = buildGlobalEpicIndex(epics, rootGroups, requirements, allFlowStories);
 
     const allResults: BatchResult[] = [];
     // L2 累积：从已完成的 agent logs 加载，避免 resume 后跨批次防重复失效
     const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
-    try {
-      const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-      for (const logEntry of pastAnalystLogs) {
-        const tcs: any[] = logEntry.output_data?.testConditions ?? [];
-        for (const tc of tcs) {
-          if (tc.id && tc.condition && tc.requirementId) {
-            mergeCoverage(accumulatedCoverage, tc);
+    
+    // First, attempt to load from serialized storage (P1.8)
+    const stateStr = pipelineRepo.getRunState(runId);
+    let loadedFromState = false;
+    if (stateStr) {
+      try {
+        const parsed = JSON.parse(stateStr);
+        if (Array.isArray(parsed)) {
+          for (const [key, value] of parsed) {
+            accumulatedCoverage.set(key, value);
           }
+          Log.for('orchestrator').info(`Loaded ${accumulatedCoverage.size} coverage entries from serialized state for run ${runId}`);
+          loadedFromState = true;
         }
+      } catch (err: any) {
+        Log.for('orchestrator').warn(`Failed to parse serialized coverage state: ${err.message}`);
       }
-      // 同步加载历史 finalTestCases，让 Designer 跨批次 case 级去重生效
-      const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
-      for (const logEntry of pastQualityLogs) {
-        const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
-        for (const tc of cases) {
-          mergeCaseCoverage(accumulatedCoverage, tc);
-        }
-      }
-      if (accumulatedCoverage.size > 0) {
-        Log.for('orchestrator').info(`Pre-loaded coverage for ${accumulatedCoverage.size} requirements from past batches before continuing`);
-      }
-    } catch (e) {
-      Log.for('orchestrator').warn(`Failed to pre-load past batch coverage: ${e}`);
     }
 
-    // Iterate through ALL epics (not sliced) and count sub-batches.
-    // Only process batches with batchCounter > startFrom (i.e., batches
-    // AFTER the one that just completed/retried). This fixes the bug where
-    // epics.slice(startFrom) treated the batch number as an epic index,
-    // causing sub-batches within the same epic to be skipped.
-    let batchCounter = 0;
-    for (let i = 0; i < epics.length; i++) {
-      if (ctx.isAborted()) break;
-      const epic = epics[i];
-      const childIds = rootGroups.get(epic.id) ?? [];
+    if (!loadedFromState) {
+      try {
+        const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+        for (const logEntry of pastAnalystLogs) {
+          const tcs: any[] = logEntry.output_data?.testConditions ?? [];
+          for (const tc of tcs) {
+            if (tc.id && tc.condition && tc.requirementId) {
+              mergeCoverage(accumulatedCoverage, tc);
+            }
+          }
+        }
+        // 同步加载历史 finalTestCases，让 Designer 跨批次 case 级去重生效
+        const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+        for (const logEntry of pastQualityLogs) {
+          const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
+          for (const tc of cases) {
+            mergeCaseCoverage(accumulatedCoverage, tc);
+          }
+        }
+        if (accumulatedCoverage.size > 0) {
+          Log.for('orchestrator').info(`Pre-loaded coverage for ${accumulatedCoverage.size} requirements from past logs before continuing`);
+        }
+      } catch (e) {
+        Log.for('orchestrator').warn(`Failed to pre-load past batch coverage from logs: ${e}`);
+      }
+    }
 
-      // 合并 component 和 flow stories 为一个批次
+    // 执行批次循环 (P0.2)
+    const loopRes = await this.executeBatchLoop(ctx, {
+      runId,
+      projectId,
+      requirementIds,
+      flowIds,
+      mode: config.mode || 'auto',
+      epics,
+      rootGroups,
+      reqMap,
+      requirements,
+      businessFlows,
+      flowReferencedComponentContext,
+      globalStats,
+      globalEpicIndex,
+      accumulatedCoverage,
+      startFrom,
+      totalSubBatches,
+    }, allResults);
+
+    return { allResults, interrupted: loopRes.interrupted };
+  }
+
+  private async executeBatchLoop(
+    ctx: RunContext,
+    params: BatchLoopParams,
+    allResults: BatchResult[],
+  ): Promise<{ interrupted: boolean; keepSse: boolean }> {
+    const log = Log.for('orchestrator');
+    let batchCounter = 0;
+
+    for (let i = 0; i < params.epics.length; i++) {
+      if (ctx.isAborted()) break;
+      const epic = params.epics[i];
+      const childIds = params.rootGroups.get(epic.id) ?? [];
+
       const componentStoryIds = childIds.filter(id => {
-        const r = reqMap.get(id);
+        const r = params.reqMap.get(id);
         return r && r.level === 'story' && !r.isFlow;
       });
       const flowStoryIds = childIds.filter(id => {
-        const r = reqMap.get(id);
+        const r = params.reqMap.get(id);
         return r && r.level === 'story' && r.isFlow && r.status === 'APPROVED';
       });
       const combinedStoryIds = [...componentStoryIds, ...flowStoryIds];
 
       if (combinedStoryIds.length > 0) {
         batchCounter++;
-        if (batchCounter > startFrom) {
+        if (batchCounter > params.startFrom) {
           if (ctx.isAborted()) break;
 
-          ctx.scope.setBatch(batchCounter, totalSubBatches);
-          pipelineRepo.updateCurrentBatch(runId, batchCounter);
-          pipelineRepo.updateThreadId(runId, `${runId}-batch-${epic.id}-mixed`);
+          Log.subsection(`Batch ${batchCounter}/${params.totalSubBatches} START ── epic: ${epic.id ?? 'N/A'} [MIXED]`);
+          ctx.scope.setBatch(batchCounter, params.totalSubBatches);
+          pipelineRepo.updateCurrentBatch(params.runId, batchCounter);
+          // 使用统一的 threadId 命名，避免 start 和 continue/retry 差异
+          const threadId = `${params.runId}-batch-${epic.id}-mixed`;
+          pipelineRepo.updateThreadId(params.runId, threadId);
 
-          const previousBatchCoverageSummary = [...accumulatedCoverage.values()];
+          const previousBatchCoverageSummary = [...params.accumulatedCoverage.values()];
 
-          const batchInput = {
+          const batchInput: BatchInput = {
             batchIndex: batchCounter - 1,
             inputState: {
-              ...this.buildBatchInputState(runId, projectId, requirementIds, requirements, rootGroups, epic, batchCounter - 1, totalSubBatches, businessFlows, config.mode || 'auto', config.flowIds, 'mixed', combinedStoryIds, flowReferencedComponentContext),
-              flowReferencedComponentContext: flowReferencedComponentContext.size > 0
-                ? Object.fromEntries(flowReferencedComponentContext)
-                : undefined,
-              globalStats,
-              globalEpicIndex,
+              ...this.buildBatchInputState(
+                params.runId, params.projectId, params.requirementIds, params.requirements, params.rootGroups, epic, batchCounter - 1, params.totalSubBatches, params.businessFlows,
+                params.mode, params.flowIds,
+                'mixed',
+                combinedStoryIds,
+                params.flowReferencedComponentContext,
+              ),
+              globalStats: params.globalStats,
+              globalEpicIndex: params.globalEpicIndex,
               previousBatchCoverageSummary: previousBatchCoverageSummary.length > 0 ? previousBatchCoverageSummary : undefined,
+              flowReferencedComponentContext: params.flowReferencedComponentContext.size > 0
+                ? Object.fromEntries(params.flowReferencedComponentContext)
+                : undefined,
             },
           };
 
-          const outcome = await ctx.session.startBatch(batchInput);
+          const outcome = await ctx.session.startBatch(batchInput, threadId);
           if (outcome.type === 'interrupt') {
+            log.info(`Batch ${batchCounter} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
             ctx.scope.flushAndPersistThinking();
-            pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
-            return { allResults, interrupted: true };
+            pipelineRepo.setRunWaiting(params.runId, outcome.interrupt.phase);
+            this.sseGateway.emit(params.runId, 'checkpoint:waiting', {
+              checkpointNumber: outcome.interrupt.checkpointNumber,
+              phase: outcome.interrupt.phase,
+              summary: 'Awaiting Review',
+              payload: outcome.interrupt.payload,
+            });
+            return { interrupted: true, keepSse: true };
           }
 
-          // 累积本批次 conditions 摘要
+          // 累积本批次已生成的 conditions 摘要
           const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
           for (const tc of batchConditions) {
-            mergeCoverage(accumulatedCoverage, tc);
+            mergeCoverage(params.accumulatedCoverage, tc);
           }
-          // 累积本批次 finalTestCases 标题+级别
+          // 累积本批次已生成的 finalTestCases 标题+级别
           const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
           for (const tc of batchCases) {
-            mergeCaseCoverage(accumulatedCoverage, tc);
+            mergeCaseCoverage(params.accumulatedCoverage, tc);
           }
 
+          // Serialized storage for accumulatedCoverage (P1.8)
+          try {
+            const stateStr = JSON.stringify([...params.accumulatedCoverage.entries()]);
+            pipelineRepo.updateRunState(params.runId, stateStr);
+          } catch (err: any) {
+            log.warn(`Failed to serialize accumulated coverage state: ${err.message}`);
+          }
+
+          log.success(`Batch ${batchCounter}/${params.totalSubBatches} complete ── ${outcome.result.cases.length} test cases (MIXED), ${batchConditions.length} conditions, ${batchCases.length} cases accumulated`);
           allResults.push(outcome.result);
           ctx.sendEvent('batch:complete', {
-            batch: batchCounter, total: totalSubBatches,
+            batch: batchCounter, total: params.totalSubBatches,
             testCases: outcome.result.cases.length,
             mode: 'mixed',
           });
         }
       }
     }
-    return { allResults, interrupted: false };
+    return { interrupted: false, keepSse: false };
   }
+
 
   /**
    * For each selected flow, collect its referenced component stories (with

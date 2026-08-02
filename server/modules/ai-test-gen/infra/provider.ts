@@ -283,7 +283,7 @@ function createAzureOpenAIProvider(config: ProviderConfig & { type: 'azure-opena
             })),
           };
         })(),
-      });
+      }, { signal });
         usedMax = maxTok;
         cachedMaxTokens = usedMax;
         break;
@@ -444,6 +444,7 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
 
   async function* streamChat(messages: ChatMessage[], options?: ChatOptions): AsyncGenerator<StreamChunk> {
     const agentTag = options?.agentName ? ` agent=${options.agentName}` : '';
+    const signal = mergeSignals(options?.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS));
     Log.for('provider').info(`[openai-compat-sdk] POST${agentTag} messages=${messages.length}`);
 
     // Phase 2 extraction (jsonSchema) does not need reasoning — reasoning models
@@ -476,7 +477,7 @@ function createOpenAICompatibleProvider(config: ProviderConfig & { type: 'openai
           } as any),
           stream: true,
           response_format: buildResponseFormat(options) as any,
-        });
+        }, { signal });
         usedMax = maxTok;
         cachedMaxTokens = usedMax;
         break;
@@ -654,7 +655,7 @@ function createOpenAIResponsesProvider(config: ProviderConfig & { type: 'openai-
             })),
           };
         })(),
-      });
+      }, { signal });
         usedMax = maxTok;
         cachedMaxTokens = usedMax;
         break;

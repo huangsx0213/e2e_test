@@ -72,9 +72,9 @@ describe('mapAssertions', () => {
       makeStep({ id: 's3', action: 'assertText', target: 'Title', data: 'Dashboard' }),
     ];
     const result = mapAssertions(steps);
-    expect(result[0].isAssertion).toBeFalsy();
-    expect(result[1].isAssertion).toBe(true);
-    expect(result[2].isAssertion).toBe(true);
+    expect((result[0] as any).isAssertion).toBeFalsy();
+    expect((result[1] as any).isAssertion).toBe(true);
+    expect((result[2] as any).isAssertion).toBe(true);
   });
 });
 
@@ -120,8 +120,8 @@ describe('expandSelectors', () => {
       },
     });
     const result = expandSelectors([step]);
-    expect(result[0].metadata?.recorder?.allLocators).toBeDefined();
-    expect(result[0].metadata?.recorder?.allLocators.length).toBe(3); // primary + 2 candidates
+    expect((result[0].metadata?.recorder as any)?.allLocators).toBeDefined();
+    expect((result[0].metadata?.recorder as any)?.allLocators.length).toBe(3); // primary + 2 candidates
   });
 });
 
@@ -129,7 +129,7 @@ describe('markProvenance', () => {
   it('marks each step with ai-recorder provenance', () => {
     const steps = [makeStep()];
     const result = markProvenance(steps, { source: 'ai-recorder', runId: 'run-1', ts: 1000 });
-    expect(result[0].metadata?.provenance?.source).toBe('ai-recorder');
-    expect(result[0].metadata?.provenance?.runId).toBe('run-1');
+    expect((result[0].metadata?.provenance as any)?.source).toBe('ai-recorder');
+    expect((result[0].metadata?.provenance as any)?.runId).toBe('run-1');
   });
 });

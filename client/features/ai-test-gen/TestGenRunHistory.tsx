@@ -207,7 +207,7 @@ export function TestGenRunHistory({ runs, onSelect, onBack, onDeleteRun, onRetry
                           }
                         }}
                         className="text-amber-500 hover:text-amber-700 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                        title="Retry from last checkpoint"
+                        title="Resume from last checkpoint"
                       >
                         <RefreshCw size={14} className={retryingRunId === run.id ? 'animate-spin' : ''} />
                       </button>

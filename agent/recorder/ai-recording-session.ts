@@ -31,6 +31,7 @@ import type { RecorderStepPayload, LocatorRef } from './protocol.ts';
 import type {
   TestStep,
   TestCase,
+  TestSuite,
   NlTestCase,
   NlTestCaseStep,
 } from '../../shared/contracts/index.ts';
@@ -252,9 +253,10 @@ export class AIRecordingSession {
     this.stagehand = new Stagehand({
       env: 'LOCAL' as const,
       verbose: 0,
-      debugDom: false,
-      model: modelName,
-      modelClientOptions: buildModelClientOptions(providerConfig),
+      model: {
+        modelName: modelName as any,
+        ...buildModelClientOptions(providerConfig),
+      },
       localBrowserLaunchOptions: { headless: this.isHeadless, ...(executablePath ? { executablePath } : {}) },
     });
     await this.stagehand.init();

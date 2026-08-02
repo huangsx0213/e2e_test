@@ -277,9 +277,14 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
     case 'RUN_ABORTED':
       return {
         ...state,
+        nodes: state.nodes.map(n =>
+          n.status === 'running' || n.status === 'waiting'
+            ? { ...n, status: 'error' as const }
+            : n
+        ),
         isRunning: false,
         isConnected: false,
-        error: null,
+        error: { message: 'Run was aborted by user.' },
       };
 
     case 'RETRY_STARTED': {

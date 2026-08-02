@@ -163,6 +163,15 @@ export class TestGenRepository {
     db.prepare("UPDATE test_gen_runs SET status = 'FAILED', updated_at = datetime('now') || 'Z' WHERE id = ?").run(runId);
   }
 
+  updateRunState(runId: string, state: string): void {
+    db.prepare("UPDATE test_gen_runs SET state = ?, updated_at = datetime('now') || 'Z' WHERE id = ?").run(state, runId);
+  }
+
+  getRunState(runId: string): string | null {
+    const row = db.prepare('SELECT state FROM test_gen_runs WHERE id = ?').get(runId) as any;
+    return row?.state ?? null;
+  }
+
   updatePhase(runId: string, phase: string): void {
     db.prepare("UPDATE test_gen_runs SET phase = ?, updated_at = datetime('now') || 'Z' WHERE id = ?").run(phase, runId);
   }
