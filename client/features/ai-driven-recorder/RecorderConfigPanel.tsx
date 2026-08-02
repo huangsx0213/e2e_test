@@ -1,12 +1,14 @@
 /**
- * RecorderConfigPanel — AI 录制启动配置
+ * RecorderConfigPanel — AI 录制启动配置（三栏布局）
  *
- * 选择 NlCase + ProviderConfig + options（headless 等）
- * 参考 docs/05-AIDrivenRecordingEngine.md §8.4.1
+ * 左栏：NL Test Cases 列表（单选）
+ * 中栏：选中用例的完整详情
+ * 右栏：录制配置（model / headless / retries / timeout）+ 启动
+ * 参考 TestGenConfigPanel 的三栏结构。
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
+import { Loader2, AlertCircle, ChevronDown, FileText, Settings2, Play } from 'lucide-react';
 import type { StartConfig } from '@/shared/ai-driven-recorder-run';
 
 interface RecorderConfigPanelProps {
@@ -23,6 +25,26 @@ const PROVIDER_LABELS: Record<string, { level: 'certified' | 'experimental' | 'u
   'openai-compatible': { level: 'unverified', canTrigger: false, label: 'Unverified' },
   anthropic: { level: 'experimental', canTrigger: true, label: 'Beta' },
   google: { level: 'experimental', canTrigger: true, label: 'Beta' },
+};
+
+const priorityDotColors: Record<string, string> = {
+  critical: 'bg-red-500',
+  high: 'bg-orange-500',
+  medium: 'bg-yellow-500',
+  low: 'bg-slate-400',
+};
+
+const priorityTextColors: Record<string, string> = {
+  critical: 'text-red-600',
+  high: 'text-orange-600',
+  medium: 'text-yellow-600',
+  low: 'text-slate-500',
+};
+
+const statusColors: Record<string, string> = {
+  APPROVED: 'bg-blue-100 text-blue-700',
+  DRAFT: 'bg-yellow-100 text-yellow-700',
+  FINAL: 'bg-green-100 text-green-700',
 };
 
 const RECORDER_CONFIG_KEY = 'ai-recorder-config';
@@ -170,114 +192,250 @@ export function RecorderConfigPanel({
   }, [nlCaseId, providerConfigId, model, headless, maxRetries, timeoutPerStep, selectedCase, onStart]);
 
   return (
-    <div className="h-full overflow-y-auto bg-white">
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={18} className="text-blue-500" />
-            <h2 className="text-lg font-bold text-slate-800">AI-Driven Recording</h2>
+    <div className="h-full flex overflow-hidden bg-white">
+      {/* Column 1: NL Test Cases */}
+      <div className="w-80 shrink-0 flex flex-col overflow-hidden border-r border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-50">
+            <FileText size={14} className="text-blue-600" />
           </div>
-          <p className="text-sm text-slate-500">
-            Select an approved NL test case and a certified provider. Stagehand will drive the browser,
-            capture actions, and generate a draft test suite.
-          </p>
+          <h3 className="text-[13px] font-semibold text-slate-700">NL Test Cases</h3>
+          {approvedCases.length > 0 && (
+            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {approvedCases.length}
+            </span>
+          )}
         </div>
-
-        {/* NL Case Selection */}
-        <div className="mb-6">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            NL Test Case
-          </label>
+        <div className="flex-1 overflow-y-auto px-2 py-2">
           {approvedCases.length === 0 ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700 m-2">
               <AlertCircle size={14} className="shrink-0" />
               No approved NL test cases available. Approve cases in the NL Test Cases page first.
             </div>
           ) : (
-            <select
-              value={nlCaseId}
-              onChange={(e) => setNlCaseId(e.target.value)}
-              disabled={disabled}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-400 disabled:opacity-50"
-            >
-              <option value="">— Select a test case —</option>
-              {approvedCases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title} ({c.steps?.length ?? 0} steps)
-                </option>
-              ))}
-            </select>
-          )}
-          {selectedCase && (
-            <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-              <div className="text-xs font-semibold text-slate-600 mb-2">Steps Preview</div>
-              <ol className="space-y-1">
-                {selectedCase.steps?.map((s: any, i: number) => (
-                  <li key={i} className="flex gap-2 text-xs text-slate-500">
-                    <span className="font-mono text-slate-400 shrink-0">{i + 1}.</span>
-                    <span>{s.action}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            approvedCases.map((c) => {
+              const isSelected = c.id === nlCaseId;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setNlCaseId(c.id)}
+                  disabled={disabled}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                    isSelected
+                      ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                      : 'border border-transparent hover:bg-slate-100'
+                  } disabled:opacity-50`}
+                >
+                  <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${priorityDotColors[c.priority] || 'bg-slate-400'}`} />
+                  <span className={`flex-1 min-w-0 truncate text-sm ${isSelected ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
+                    {c.title}
+                  </span>
+                  <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                    {c.steps?.length ?? 0} steps
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
+      </div>
 
-    {/* Model Selection */}
-    <div className="mb-6">
-      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-        Model
-      </label>
-      {modelOptions.length === 0 ? (
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700">
-          <AlertCircle size={14} className="shrink-0" />
-          Selected provider has no models configured. Add models in Settings.
+      {/* Column 2: Case Detail */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-100">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-50">
+            <FileText size={14} className="text-blue-600" />
+          </div>
+          <h3 className="text-[13px] font-semibold text-slate-700 truncate">
+            {selectedCase ? selectedCase.title : 'Detail'}
+          </h3>
+          {selectedCase?.status && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${statusColors[selectedCase.status] || 'bg-slate-100 text-slate-600'}`}>
+              {selectedCase.status}
+            </span>
+          )}
+          {selectedCase?.id && (
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{selectedCase.id}</span>
+          )}
         </div>
-      ) : (
-        <div className="relative" ref={modelDropdownRef}>
-          <button
-            onClick={() => !disabled && setModelOpen(!modelOpen)}
-            disabled={disabled}
-            className="w-full flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white hover:border-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all disabled:opacity-50"
-          >
-            <span className="text-slate-700">{model || 'Select a model'}</span>
-            <ChevronDown size={14} className={`text-slate-400 transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {modelOpen && (
-            <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-              {modelGroups.map((group) => (
-                <div key={group.providerName}>
-                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">{group.providerName}</div>
-                  {group.models.map((o, i) => (
-                    <button
-                      key={`${o.providerName}-${o.model}-${i}`}
-                      onClick={() => { setModel(o.model); setModelName(`${o.model} (${o.providerName})`); setProviderConfigId(o.providerConfigId); setModelOpen(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
-                        model === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
-                      }`}
-                    >
-                      {o.model}
-                    </button>
-                  ))}
+        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
+          {selectedCase ? (
+            <div className="space-y-5">
+              {/* Metadata */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                <span>Priority: <span className={`font-medium ${priorityTextColors[selectedCase.priority] || 'text-slate-700'}`}>{selectedCase.priority}</span></span>
+                {selectedCase.testLevel && (
+                  <span>Test Level: <span className="font-medium text-slate-700">{selectedCase.testLevel}</span></span>
+                )}
+                {selectedCase.category && (
+                  <span>Category: <span className="font-medium text-slate-700">{selectedCase.category}</span></span>
+                )}
+                {selectedCase.techniqueApplied && (
+                  <span>Technique: <span className="font-medium text-slate-700">{selectedCase.techniqueApplied}</span></span>
+                )}
+              </div>
+
+              {/* Preconditions */}
+              {selectedCase.preconditions?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Preconditions</label>
+                  <ul className="space-y-1">
+                    {selectedCase.preconditions.map((p: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-600">
+                        <span className="font-mono text-slate-400 shrink-0">{i + 1}.</span>
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ))}
+              )}
+
+              {/* Steps */}
+              {selectedCase.steps?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
+                    Steps ({selectedCase.steps.length})
+                  </label>
+                  <ol className="space-y-2">
+                    {selectedCase.steps.map((s: any, i: number) => (
+                      <li key={i} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <div className="flex gap-2 text-xs text-slate-700">
+                          <span className="font-mono text-slate-400 shrink-0">{s.sequence ?? i + 1}.</span>
+                          <span>{s.action}</span>
+                        </div>
+                        {s.expected && (
+                          <div className="mt-1 pl-6 text-[11px] text-slate-500">
+                            <span className="font-medium text-slate-400 mr-1">Expected:</span>
+                            {s.expected}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {/* Test Data */}
+              {selectedCase.testData?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Test Data</label>
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-left text-[10px] text-slate-400 uppercase tracking-wider">
+                          <th className="px-3 py-1.5 font-semibold">Key</th>
+                          <th className="px-3 py-1.5 font-semibold">Value</th>
+                          <th className="px-3 py-1.5 font-semibold">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedCase.testData.map((td: any, i: number) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 font-mono text-slate-500">{td.key}</td>
+                            <td className="px-3 py-1.5 text-slate-700">{td.value}</td>
+                            <td className="px-3 py-1.5 text-slate-500">{td.description}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Postconditions */}
+              {selectedCase.postconditions?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Postconditions</label>
+                  <ul className="space-y-1">
+                    {selectedCase.postconditions.map((p: string, i: number) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-600">
+                        <span className="font-mono text-slate-400 shrink-0">{i + 1}.</span>
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Tags */}
+              {selectedCase.tags?.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">Tags</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCase.tags.map((t: string, i: number) => (
+                      <span key={i} className="text-[10px] font-medium text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+              <FileText size={28} className="mb-2 opacity-40" />
+              <p className="text-xs">Select a test case to view details</p>
             </div>
           )}
         </div>
-      )}
-    </div>
+      </div>
 
-    {/* Options */}
-    <div className="mb-6">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-            Recording Options
-          </label>
-          <div className="space-y-3 p-4 rounded-lg border border-slate-100 bg-slate-50/50">
-            <div className="flex items-center justify-between">
+      {/* Column 3: Settings */}
+      <div className="w-96 flex flex-col bg-slate-50/50 shrink-0">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100">
+            <Settings2 size={14} className="text-slate-600" />
+          </div>
+          <h3 className="text-[13px] font-semibold text-slate-700">Settings</h3>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Model */}
+          <div className="relative" ref={modelDropdownRef}>
+            <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">Model</label>
+            {modelOptions.length === 0 ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700">
+                <AlertCircle size={14} className="shrink-0" />
+                Selected provider has no models configured. Add models in Settings.
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => !disabled && setModelOpen(!modelOpen)}
+                  disabled={disabled}
+                  className="w-full flex items-center justify-between border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white hover:border-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all disabled:opacity-50"
+                >
+                  <span className="text-slate-700">{model || 'Select a model'}</span>
+                  <ChevronDown size={14} className={`text-slate-400 transition-transform ${modelOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {modelOpen && (
+                  <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {modelGroups.map((group) => (
+                      <div key={group.providerName}>
+                        <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">{group.providerName}</div>
+                        {group.models.map((o, i) => (
+                          <button
+                            key={`${o.providerName}-${o.model}-${i}`}
+                            onClick={() => { setModel(o.model); setModelName(`${o.model} (${o.providerName})`); setProviderConfigId(o.providerConfigId); setModelOpen(false); }}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 transition-colors ${
+                              model === o.model ? 'text-blue-600 font-medium bg-blue-50/50' : 'text-slate-700'
+                            }`}
+                          >
+                            {o.model}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Options */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-white">
               <div>
                 <div className="text-sm font-medium text-slate-700">Headless Mode</div>
-                <div className="text-xs text-slate-400">Run browser without UI (faster, no takeover)</div>
+                <div className="text-[11px] text-slate-400">Run browser without UI (faster, no takeover)</div>
               </div>
               <button
                 onClick={() => !disabled && setHeadless(!headless)}
@@ -287,9 +445,9 @@ export function RecorderConfigPanel({
                 <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${headless ? 'translate-x-5' : ''}`} />
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Max Retries per Step</label>
+                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Max Retries / Step</label>
                 <input
                   type="number"
                   min={0}
@@ -297,11 +455,11 @@ export function RecorderConfigPanel({
                   value={maxRetries}
                   onChange={(e) => setMaxRetries(Number(e.target.value))}
                   disabled={disabled}
-                  className="w-full border border-slate-200 rounded px-2 py-1 text-sm disabled:opacity-50"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 mb-1 block">Timeout per Step (s)</label>
+                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">Timeout / Step (s)</label>
                 <input
                   type="number"
                   min={5}
@@ -309,30 +467,38 @@ export function RecorderConfigPanel({
                   value={timeoutPerStep}
                   onChange={(e) => setTimeoutPerStep(Number(e.target.value))}
                   disabled={disabled}
-                  className="w-full border border-slate-200 rounded px-2 py-1 text-sm disabled:opacity-50"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
                 />
               </div>
             </div>
           </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-xs text-red-700">
+              <AlertCircle size={14} className="shrink-0" />
+              {error}
+            </div>
+          )}
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-xs text-red-700">
-            <AlertCircle size={14} className="shrink-0" />
-            {error}
-          </div>
-        )}
-
-        {/* Start Button */}
-        <button
-          onClick={handleStart}
-          disabled={disabled || !nlCaseId || !providerConfigId}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {disabled ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {disabled ? 'Starting...' : 'Start AI Recording'}
-        </button>
+        {/* Start button */}
+        <div className="p-4 border-t border-slate-100">
+          <button
+            onClick={handleStart}
+            disabled={disabled || !nlCaseId || !providerConfigId}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow disabled:shadow-none"
+          >
+            {disabled ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
+            {disabled ? 'Starting...' : 'Start AI Recording'}
+          </button>
+          {!disabled && !nlCaseId && (
+            <p className="text-[11px] text-slate-400 mt-1.5 text-center">Select a test case to continue</p>
+          )}
+          {!disabled && nlCaseId && !providerConfigId && (
+            <p className="text-[11px] text-amber-600 mt-1.5 text-center">Select a model to continue</p>
+          )}
+        </div>
       </div>
     </div>
   );
