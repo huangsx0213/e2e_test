@@ -398,23 +398,7 @@ export class Orchestrator {
       if (params.referenceRunIds && params.referenceRunIds.length > 0) {
         for (const refId of params.referenceRunIds) {
           try {
-            const refAnalystLogs = pipelineRepo.getAgentLogs(refId, 'test_analyst');
-            for (const refLog of refAnalystLogs) {
-              const batchConditions: any[] = refLog.output_data?.testConditions ?? [];
-              for (const tc of batchConditions) {
-                if (tc.id && tc.condition && tc.requirementId) {
-                  mergeCoverage(accumulatedCoverage, tc);
-                }
-              }
-            }
-            // 同步加载参考 runs 的 finalTestCases，让 Designer case 级去重覆盖跨运行场景
-            const refQualityLogs = pipelineRepo.getAgentLogs(refId, 'quality_manager');
-            for (const refLog of refQualityLogs) {
-              const refCases: any[] = refLog.output_data?.finalTestCases ?? [];
-              for (const tc of refCases) {
-                mergeCaseCoverage(accumulatedCoverage, tc);
-              }
-            }
+            this.loadCoverageFromLogs(refId, accumulatedCoverage);
             log.info(`Loaded conditions+cases from reference run ${refId}`);
           } catch (e) {
             log.error(`Failed to load reference coverage from run ${refId}: ${e}`);
@@ -460,13 +444,8 @@ export class Orchestrator {
         ctx.sendEvent('pipeline:global-coverage', globalSummary);
         log.info(`Global coverage: ${globalSummary.totalConditions} conditions, ${globalSummary.totalCases} cases across ${globalSummary.batchCount} batches`);
 
-        const allRawCases = allResults.flatMap(r => r.lastState?.finalTestCases || r.cases || []);
-        const { removedCount } = deduplicateTestCases(allRawCases);
-        log.success(`All batches done ── ${allRawCases.length} final cases${removedCount > 0 ? ` (${removedCount} suspected duplicates — prevent at generation, not here)` : ''}`);
-        if (removedCount > 0) {
-          ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allRawCases.length - removedCount, total: allRawCases.length });
-        }
-        ctx.scope.markComplete({ totalCases: allRawCases.length, totalBatches: epics.length });
+        const { totalCases, removedCount } = this.finishRun(ctx, allResults, epics.length);
+        log.success(`All batches done ── ${totalCases} final cases${removedCount > 0 ? ` (${removedCount} suspected duplicates — prevent at generation, not here)` : ''}`);
       }
     } catch (err: any) {
       if (ctx) {
@@ -521,34 +500,19 @@ export class Orchestrator {
       });
 
       if (outcome.type === 'interrupt') {
-        ctx.scope.flushAndPersistThinking();
-        pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
-        pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
-        this.sseGateway.emit(runId, 'checkpoint:waiting', {
-          checkpointNumber: outcome.interrupt.checkpointNumber,
-          phase: outcome.interrupt.phase,
-          summary: 'Awaiting Review',
-          payload: outcome.interrupt.payload,
-        });
+        this.handleInterrupt(runId, ctx, outcome.interrupt);
         keepSse = true;
         return;
       }
 
       // Update state for the newly completed resumed batch (P1.8)
       try {
-        const stateStr = pipelineRepo.getRunState(runId);
-        const coverage = new Map<string, PreviousBatchCoverageSummary>();
-        if (stateStr) {
-          const parsed = JSON.parse(stateStr);
-          if (Array.isArray(parsed)) {
-            for (const [key, value] of parsed) coverage.set(key, value);
-          }
-        }
+        const { coverage } = this.readRunStateCoverage(runId);
         const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
         for (const tc of batchConditions) mergeCoverage(coverage, tc);
         const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
         for (const tc of batchCases) mergeCaseCoverage(coverage, tc);
-        pipelineRepo.updateRunState(runId, JSON.stringify([...coverage.entries()]));
+        this.persistRunStateCoverage(runId, coverage);
       } catch (err: any) {
         Log.for('orchestrator').warn(`Failed to update serialized coverage state after resume: ${err.message}`);
       }
@@ -564,12 +528,7 @@ export class Orchestrator {
       }
 
       // totalCases 使用原始计数（与保存行为一致），去重仅作度量告警
-      const allRawCases = allResults.flatMap((r: any) => r.lastState?.finalTestCases || r.cases || []);
-      const { removedCount } = deduplicateTestCases(allRawCases);
-      if (removedCount > 0) {
-        ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allRawCases.length - removedCount, total: allRawCases.length });
-      }
-      ctx.scope.markComplete({ totalCases: allRawCases.length, totalBatches: totalBatches || 1 });
+      this.finishRun(ctx, allResults, totalBatches || 1);
     } catch (err: any) {
       if (ctx) {
         if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
@@ -677,47 +636,20 @@ export class Orchestrator {
       }
 
       if (outcome.type === 'interrupt') {
-        ctx.scope.flushAndPersistThinking();
-        pipelineRepo.updateThreadId(runId, outcome.interrupt.threadId);
-        pipelineRepo.setRunWaiting(runId, outcome.interrupt.phase);
-        this.sseGateway.emit(runId, 'checkpoint:waiting', {
-          checkpointNumber: outcome.interrupt.checkpointNumber,
-          phase: outcome.interrupt.phase,
-          summary: 'Awaiting Review',
-          payload: outcome.interrupt.payload,
-        });
+        this.handleInterrupt(runId, ctx, outcome.interrupt);
         keepSse = true;
         return;
       }
 
       // Update state for the newly completed retried batch (P1.8)
       try {
-        const stateStr = pipelineRepo.getRunState(runId);
-        const coverage = new Map<string, PreviousBatchCoverageSummary>();
-        if (stateStr) {
-          const parsed = JSON.parse(stateStr);
-          if (Array.isArray(parsed)) {
-            for (const [key, value] of parsed) coverage.set(key, value);
-          }
-        } else {
-          const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-          for (const logEntry of pastAnalystLogs) {
-            const tcs: any[] = logEntry.output_data?.testConditions ?? [];
-            for (const tc of tcs) {
-              if (tc.id && tc.condition && tc.requirementId) mergeCoverage(coverage, tc);
-            }
-          }
-          const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
-          for (const logEntry of pastQualityLogs) {
-            const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
-            for (const tc of cases) mergeCaseCoverage(coverage, tc);
-          }
-        }
+        const { coverage, statePresent } = this.readRunStateCoverage(runId);
+        if (!statePresent) this.loadCoverageFromLogs(runId, coverage);
         const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
         for (const tc of batchConditions) mergeCoverage(coverage, tc);
         const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
         for (const tc of batchCases) mergeCaseCoverage(coverage, tc);
-        pipelineRepo.updateRunState(runId, JSON.stringify([...coverage.entries()]));
+        this.persistRunStateCoverage(runId, coverage);
       } catch (err: any) {
         Log.for('orchestrator').warn(`Failed to update serialized coverage state after retry: ${err.message}`);
       }
@@ -733,12 +665,7 @@ export class Orchestrator {
       }
 
       // totalCases 使用原始计数（与保存行为一致），去重仅作度量告警
-      const allRawCases = allResults.flatMap((r: any) => r.lastState?.finalTestCases || r.cases || []);
-      const { removedCount } = deduplicateTestCases(allRawCases);
-      if (removedCount > 0) {
-        ctx.sendEvent('pipeline:dedup', { removed: removedCount, remaining: allRawCases.length - removedCount, total: allRawCases.length });
-      }
-      ctx.scope.markComplete({ totalCases: allRawCases.length, totalBatches: totalBatches || 1 });
+      this.finishRun(ctx, allResults, totalBatches || 1);
     } catch (err: any) {
       if (ctx) {
         if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
@@ -831,22 +758,7 @@ export class Orchestrator {
     // Load accumulated coverage from past agent logs
     const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
     try {
-      const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-      for (const logEntry of pastAnalystLogs) {
-        const tcs: any[] = logEntry.output_data?.testConditions ?? [];
-        for (const tc of tcs) {
-          if (tc.id && tc.condition && tc.requirementId) {
-            mergeCoverage(accumulatedCoverage, tc);
-          }
-        }
-      }
-      const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
-      for (const logEntry of pastQualityLogs) {
-        const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
-        for (const tc of cases) {
-          mergeCaseCoverage(accumulatedCoverage, tc);
-        }
-      }
+      this.loadCoverageFromLogs(runId, accumulatedCoverage);
     } catch (e) {
       Log.for('orchestrator').warn(`Failed to load past coverage for retry: ${e}`);
     }
@@ -981,42 +893,21 @@ export class Orchestrator {
     const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
     
     // First, attempt to load from serialized storage (P1.8)
-    const stateStr = pipelineRepo.getRunState(runId);
     let loadedFromState = false;
-    if (stateStr) {
-      try {
-        const parsed = JSON.parse(stateStr);
-        if (Array.isArray(parsed)) {
-          for (const [key, value] of parsed) {
-            accumulatedCoverage.set(key, value);
-          }
-          Log.for('orchestrator').info(`Loaded ${accumulatedCoverage.size} coverage entries from serialized state for run ${runId}`);
-          loadedFromState = true;
-        }
-      } catch (err: any) {
-        Log.for('orchestrator').warn(`Failed to parse serialized coverage state: ${err.message}`);
+    try {
+      const serialized = this.readRunStateCoverage(runId);
+      if (serialized.loadedFromArray) {
+        for (const [key, value] of serialized.coverage) accumulatedCoverage.set(key, value);
+        Log.for('orchestrator').info(`Loaded ${accumulatedCoverage.size} coverage entries from serialized state for run ${runId}`);
+        loadedFromState = true;
       }
+    } catch (err: any) {
+      Log.for('orchestrator').warn(`Failed to parse serialized coverage state: ${err.message}`);
     }
 
     if (!loadedFromState) {
       try {
-        const pastAnalystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-        for (const logEntry of pastAnalystLogs) {
-          const tcs: any[] = logEntry.output_data?.testConditions ?? [];
-          for (const tc of tcs) {
-            if (tc.id && tc.condition && tc.requirementId) {
-              mergeCoverage(accumulatedCoverage, tc);
-            }
-          }
-        }
-        // 同步加载历史 finalTestCases，让 Designer 跨批次 case 级去重生效
-        const pastQualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
-        for (const logEntry of pastQualityLogs) {
-          const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
-          for (const tc of cases) {
-            mergeCaseCoverage(accumulatedCoverage, tc);
-          }
-        }
+        this.loadCoverageFromLogs(runId, accumulatedCoverage);
         if (accumulatedCoverage.size > 0) {
           Log.for('orchestrator').info(`Pre-loaded coverage for ${accumulatedCoverage.size} requirements from past logs before continuing`);
         }
@@ -1109,12 +1000,7 @@ export class Orchestrator {
             log.info(`Batch ${batchCounter} INTERRUPTED at phase=${outcome.interrupt.phase}, checkpoint=${outcome.interrupt.checkpointNumber}`);
             ctx.scope.flushAndPersistThinking();
             pipelineRepo.setRunWaiting(params.runId, outcome.interrupt.phase);
-            this.sseGateway.emit(params.runId, 'checkpoint:waiting', {
-              checkpointNumber: outcome.interrupt.checkpointNumber,
-              phase: outcome.interrupt.phase,
-              summary: 'Awaiting Review',
-              payload: outcome.interrupt.payload,
-            });
+            this.emitCheckpointWaiting(params.runId, outcome.interrupt);
             return { interrupted: true, keepSse: true };
           }
 
@@ -1131,8 +1017,7 @@ export class Orchestrator {
 
           // Serialized storage for accumulatedCoverage (P1.8)
           try {
-            const stateStr = JSON.stringify([...params.accumulatedCoverage.entries()]);
-            pipelineRepo.updateRunState(params.runId, stateStr);
+            this.persistRunStateCoverage(params.runId, params.accumulatedCoverage);
           } catch (err: any) {
             log.warn(`Failed to serialize accumulated coverage state: ${err.message}`);
           }
@@ -1150,6 +1035,72 @@ export class Orchestrator {
     return { interrupted: false, keepSse: false };
   }
 
+  /** 从已完成的 analyst / quality agent logs 中合并累积覆盖（跨批次、跨运行去重）。 */
+  private loadCoverageFromLogs(runId: string, coverage: Map<string, PreviousBatchCoverageSummary>): void {
+    const analystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+    for (const logEntry of analystLogs) {
+      const tcs: any[] = logEntry.output_data?.testConditions ?? [];
+      for (const tc of tcs) {
+        if (tc.id && tc.condition && tc.requirementId) mergeCoverage(coverage, tc);
+      }
+    }
+    const qualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+    for (const logEntry of qualityLogs) {
+      const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
+      for (const tc of cases) mergeCaseCoverage(coverage, tc);
+    }
+  }
+
+  /** 读取序列化的累积覆盖（getRunState）。JSON 非法时抛错，由调用方 try/catch。 */
+  private readRunStateCoverage(runId: string): {
+    coverage: Map<string, PreviousBatchCoverageSummary>;
+    statePresent: boolean;
+    loadedFromArray: boolean;
+  } {
+    const coverage = new Map<string, PreviousBatchCoverageSummary>();
+    const stateStr = pipelineRepo.getRunState(runId);
+    if (!stateStr) return { coverage, statePresent: false, loadedFromArray: false };
+    const parsed = JSON.parse(stateStr);
+    if (Array.isArray(parsed)) {
+      for (const [key, value] of parsed) coverage.set(key, value);
+      return { coverage, statePresent: true, loadedFromArray: true };
+    }
+    return { coverage, statePresent: true, loadedFromArray: false };
+  }
+
+  private persistRunStateCoverage(runId: string, coverage: Map<string, PreviousBatchCoverageSummary>): void {
+    pipelineRepo.updateRunState(runId, JSON.stringify([...coverage.entries()]));
+  }
+
+  private handleInterrupt(runId: string, ctx: RunContext, interrupt: InterruptInfo): void {
+    ctx.scope.flushAndPersistThinking();
+    pipelineRepo.updateThreadId(runId, interrupt.threadId);
+    pipelineRepo.setRunWaiting(runId, interrupt.phase);
+    this.emitCheckpointWaiting(runId, interrupt);
+  }
+
+  private emitCheckpointWaiting(runId: string, interrupt: InterruptInfo): void {
+    this.sseGateway.emit(runId, 'checkpoint:waiting', {
+      checkpointNumber: interrupt.checkpointNumber,
+      phase: interrupt.phase,
+      summary: 'Awaiting Review',
+      payload: interrupt.payload,
+    });
+  }
+
+  private finishRun(ctx: RunContext, allResults: BatchResult[], totalBatches: number): { totalCases: number; removedCount: number } {
+    const allRawCases = allResults.flatMap((r: any) => r.lastState?.finalTestCases || r.cases || []);
+    const { removedCount } = deduplicateTestCases(allRawCases);
+    if (removedCount > 0) {
+      ctx.sendEvent('pipeline:dedup', {
+        removed: removedCount,
+        remaining: allRawCases.length - removedCount,
+        total: allRawCases.length,
+      });
+    }
+    ctx.scope.markComplete({ totalCases: allRawCases.length, totalBatches });
+    return { totalCases: allRawCases.length, removedCount };
+  }
 
   /**
    * For each selected flow, collect its referenced component stories (with
