@@ -105,6 +105,25 @@ export class RunScope {
     return `${agentName}:${batch}`;
   }
 
+  /** Flush buffered thinking for one agent: emit SSE + accumulate + drop from buffer. */
+  private flushAgentThinking(agentName: string): void {
+    for (const [key, entry] of this.thinkingBuffer) {
+      if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
+        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
+        // Accumulate for persistence
+        const acc = this.thinkingAccumulator.get(agentName) ?? [];
+        const last = acc[acc.length - 1];
+        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
+          last.text += entry.text;
+        } else {
+          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
+        }
+        this.thinkingAccumulator.set(agentName, acc);
+        this.thinkingBuffer.delete(key);
+      }
+    }
+  }
+
   setBatch(batch: number, total: number): void {
     this.currentBatch = batch;
     this.emit('batch:start', { batch, total, timestamp: Date.now() });
@@ -148,21 +167,7 @@ export class RunScope {
     toolHistory?: unknown[];
   }): void {
     // Flush any remaining thinking text for this agent before marking complete
-    for (const [key, entry] of this.thinkingBuffer) {
-      if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
-        // Accumulate for persistence
-        const acc = this.thinkingAccumulator.get(agentName) ?? [];
-        const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
-          last.text += entry.text;
-        } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
-        }
-        this.thinkingAccumulator.set(agentName, acc);
-        this.thinkingBuffer.delete(key);
-      }
-    }
+    this.flushAgentThinking(agentName);
 
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
@@ -209,21 +214,7 @@ export class RunScope {
 
   recordAgentError(agentName: string, error: Error): void {
     // Flush any remaining thinking text for this agent
-    for (const [key, entry] of this.thinkingBuffer) {
-      if (key.startsWith(`${agentName}:`) && entry.text.length > 0) {
-        this.emit('agent:thinking', { agentName, batch: this.currentBatch, text: entry.text, type: entry.type, phase: entry.phase, timestamp: Date.now() });
-        // Accumulate for persistence
-        const acc = this.thinkingAccumulator.get(agentName) ?? [];
-        const last = acc[acc.length - 1];
-        if (last && last.type === entry.type && last.phase === entry.phase && last.batch === this.currentBatch) {
-          last.text += entry.text;
-        } else {
-          acc.push({ type: entry.type, phase: entry.phase, text: entry.text, timestamp: Date.now(), batch: this.currentBatch });
-        }
-        this.thinkingAccumulator.set(agentName, acc);
-        this.thinkingBuffer.delete(key);
-      }
-    }
+    this.flushAgentThinking(agentName);
 
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
