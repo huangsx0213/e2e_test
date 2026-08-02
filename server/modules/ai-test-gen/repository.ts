@@ -366,18 +366,13 @@ export class TestGenRepository {
   }
 
   getAuditLogs(runId: string, checkpointId?: string): any[] {
-    if (checkpointId) {
-      return db.prepare(
-        "SELECT * FROM test_gen_audit_log WHERE run_id = ? AND checkpoint_id = ? ORDER BY created_at DESC"
-      ).all(runId, checkpointId).map((r: any) => ({
-        ...r,
-        snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
-        created_at: r.created_at ? new Date(r.created_at.replace(/Z$/, '') + 'Z').toISOString() : r.created_at,
-      }));
-    }
-    return db.prepare(
-      'SELECT * FROM test_gen_audit_log WHERE run_id = ? ORDER BY created_at DESC'
-    ).all(runId).map((r: any) => ({
+    const sql = checkpointId
+      ? 'SELECT * FROM test_gen_audit_log WHERE run_id = ? AND checkpoint_id = ? ORDER BY created_at DESC'
+      : 'SELECT * FROM test_gen_audit_log WHERE run_id = ? ORDER BY created_at DESC';
+    const rows = checkpointId
+      ? db.prepare(sql).all(runId, checkpointId)
+      : db.prepare(sql).all(runId);
+    return (rows as any[]).map(r => ({
       ...r,
       snapshot: r.snapshot ? JSON.parse(r.snapshot) : null,
       created_at: r.created_at ? new Date(r.created_at.replace(/Z$/, '') + 'Z').toISOString() : r.created_at,
