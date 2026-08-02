@@ -115,14 +115,17 @@ const EXTRACT_ASSERTION_SCHEMA = z.object({
 
 /**
  * 从 NlTestCase 解析起始 URL。
- * 查找 preconditions 中的 URL，或 testData 中 key 包含 "url" 的条目。
+ * 查找 preconditions 中的 URL（支持行内提取），或 testData 中 key 包含 "url" 的条目。
  */
 function resolveStartUrl(nlCase: NlTestCase): string {
   const urlRegex = /^https?:\/\/[^\s]+$/;
-  // 1. 查找 preconditions 中的 URL
+  // 1. 查找 preconditions 中的 URL（允许 URL 与说明文字同行）
   for (const cond of nlCase.preconditions) {
-    const match = cond.trim().match(urlRegex);
-    if (match) return match[0];
+    const match = cond.match(/https?:\/\/[^\s，。；：！？、]+/);
+    if (!match) continue;
+    // 去掉 URL 尾部可能粘连的英文标点
+    const url = match[0].replace(/[.,;:!?)\]]+$/, '');
+    if (urlRegex.test(url)) return url;
   }
   // 2. 查找 testData 中 key 包含 url 的条目
   for (const td of nlCase.testData) {

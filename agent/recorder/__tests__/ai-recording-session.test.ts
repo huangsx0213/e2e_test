@@ -178,6 +178,44 @@ describe('AIRecordingSession', () => {
       expect(mockPage.goto).toHaveBeenCalledWith('https://app.com/login', { waitUntil: 'load' });
     });
 
+    it('preconditions 中的 URL 与说明文字同行时仍能解析', async () => {
+      const nlCase = makeNlCase({
+        preconditions: ['打开浏览器并访问 https://app.com/login，使用测试账号登录'],
+      });
+      const onConsolidatedStep = vi.fn();
+      const onEvent = vi.fn();
+
+      const session = new AIRecordingSession();
+      await session.start({
+        nlCase,
+        providerConfig: makeProviderConfig(),
+        options: { headless: true },
+        onConsolidatedStep,
+        onEvent,
+      });
+
+      expect(mockPage.goto).toHaveBeenCalledWith('https://app.com/login', { waitUntil: 'load' });
+    });
+
+    it('preconditions 中 URL 紧跟中文标点时剥离标点后解析', async () => {
+      const nlCase = makeNlCase({
+        preconditions: ['先访问 https://app.com/login。'],
+      });
+      const onConsolidatedStep = vi.fn();
+      const onEvent = vi.fn();
+
+      const session = new AIRecordingSession();
+      await session.start({
+        nlCase,
+        providerConfig: makeProviderConfig(),
+        options: { headless: true },
+        onConsolidatedStep,
+        onEvent,
+      });
+
+      expect(mockPage.goto).toHaveBeenCalledWith('https://app.com/login', { waitUntil: 'load' });
+    });
+
     it('RecordingResult 包含正确的 stepBoundaries', async () => {
       const nlCase = makeNlCase();
       const onConsolidatedStep = vi.fn();
