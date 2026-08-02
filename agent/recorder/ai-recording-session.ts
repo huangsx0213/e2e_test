@@ -169,6 +169,12 @@ function buildModelClientOptions(config: DecryptedProviderConfig): Record<string
   if (config.apiVersion) {
     opts.apiVersion = config.apiVersion;
   }
+  if (config.type === 'azure-openai') {
+    // @ai-sdk/azure 默认拼接 ${baseURL}/v1，但 Azure OpenAI 真实路径是
+    // /openai/deployments/{deployment}/chat/completions（与 ai test gen 的 provider.ts 一致）。
+    opts.baseURL = `${config.endpoint.replace(/\/+$/, '')}/openai`;
+    opts.useDeploymentBasedUrls = true;
+  }
   return opts;
 }
 
