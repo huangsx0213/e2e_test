@@ -146,9 +146,6 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
   };
 }
 
-// Module-level constant for contexts without batch fallback (e.g. Quality, ALL_SKILLS)
-export const requirementDetailQuery: SkillDefinition = makeRequirementDetailQuery();
-
 // ============================================================
 // requirement_graph_query (expands related requirements + flows)
 // ============================================================

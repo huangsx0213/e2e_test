@@ -5,7 +5,6 @@ import { z } from 'zod';
 import type { SkillDefinition } from '../nodes/types.ts';
 import type { BatchRequirement } from '../state.ts';
 import {
-  requirementDetailQuery,
   makeRequirementDetailQuery,
   requirementGraphQuery,
   flowDetailQuery,
@@ -238,17 +237,3 @@ export function buildQualitySkills(runId: string, batchRequirements?: BatchRequi
   ];
 }
 
-/** Skills for contexts without runId/batch (e.g. ALL_SKILLS, debugging) */
-export const QUALITY_SKILLS: SkillDefinition[] = [
-  requirementDetailQuery,
-  flowDetailQuery,
-  ...knowledgeSkills.filter((s) => s.name === 'quality_rules'),
-];
-
-/** All skills (for debugging/logging) */
-export const ALL_SKILLS: SkillDefinition[] = [
-  requirementDetailQuery,
-  requirementGraphQuery,
-  flowDetailQuery,
-  ...knowledgeSkills,
-];

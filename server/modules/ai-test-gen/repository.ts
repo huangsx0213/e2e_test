@@ -1,7 +1,6 @@
 import { db } from '../../shared/db/client.ts';
 import { randomId } from '../../shared/utils/index.ts';
 import { decryptApiKey } from '../../shared/crypto.ts';
-import type { CacheStore } from './infra/cache.ts';
 
 export interface TestGenRunRow {
   id: string;
@@ -43,38 +42,12 @@ export interface ProviderConfigRow {
 }
 
 export class TestGenRepository {
-  getCacheStore(): CacheStore {
-    return {
-      getCache: (key: string) => {
-        return db.prepare(
-          "SELECT output FROM agent_cache WHERE cache_key = ? AND expires_at > datetime('now')"
-        ).get(key) as { output: string } | undefined;
-      },
-      setCache: (key: string, inputHash: string, promptVersion: string, model: string, output: string) => {
-        db.prepare(`
-          INSERT OR REPLACE INTO agent_cache (cache_key, input_hash, prompt_version, model, output, created_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', '+24 hours'))
-        `).run(key, inputHash, promptVersion, model, output);
-      },
-      invalidateByPromptVersion: (promptVersion: string) => {
-        db.prepare('DELETE FROM agent_cache WHERE prompt_version = ?').run(promptVersion);
-      },
-      invalidateAll: () => {
-        db.prepare('DELETE FROM agent_cache').run();
-      },
-    };
-  }
-
   getActiveProviderConfig(): ProviderConfigRow | undefined {
     return db.prepare('SELECT * FROM provider_configs WHERE is_active = 1 LIMIT 1').get() as any;
   }
 
   getProviderConfigByName(name: string): ProviderConfigRow | undefined {
     return db.prepare('SELECT * FROM provider_configs WHERE name = ? LIMIT 1').get(name) as any;
-  }
-
-  getProviderConfig(id: string): ProviderConfigRow | undefined {
-    return db.prepare('SELECT * FROM provider_configs WHERE id = ? LIMIT 1').get(id) as any;
   }
 
   createRun(runId: string, projectId: string, mode: string, config: unknown, createdBy = 'anonymous'): void {
@@ -297,10 +270,6 @@ export class TestGenRepository {
       reasoning_tokens: row?.reasoning_tokens ?? 0,
       latency_ms: row?.latency_ms ?? 0,
     };
-  }
-
-  markAgentLogFailed(logId: string): void {
-    db.prepare("UPDATE test_gen_agent_logs SET status = 'FAILED' WHERE id = ?").run(logId);
   }
 
   updateAgentLogOutput(runId: string, agentName: string, outputData: Record<string, unknown>): void {

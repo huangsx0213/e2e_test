@@ -269,11 +269,6 @@ export class RunScope {
     }
   }
 
-  recordCheckpointResolved(checkpointNumber: number, action: string): void {
-    pipelineRepo.insertAuditLog(this.runId, `checkpoint_${checkpointNumber}`, action, null);
-    this.emit('checkpoint:resolved', { checkpointNumber, action, timestamp: Date.now() });
-  }
-
   /** Flush buffered thinking text and persist all accumulated thinking data.
    *  Called by orchestrator when pipeline is interrupted at a checkpoint. */
   flushAndPersistThinking(): void {

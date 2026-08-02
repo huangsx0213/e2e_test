@@ -3,7 +3,7 @@ import type { AIProvider } from './infra/provider.ts';
 import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { ContextBuilder, type RunContext, type StartParams } from './context.ts';
-import { TestGenSession, type BatchInput, type BatchResult, type InterruptInfo, type RunOutcome } from './session.ts';
+import { type TestGenSession, type BatchInput, type BatchResult, type InterruptInfo, type RunOutcome } from './session.ts';
 import { requirementRepo } from '../requirements/repository.ts';
 import { buildRequirementIndex } from '../requirements/index-generator.ts';
 import { groupRequirementsByEpic, selectedRequirementAndFlowIds } from './helpers.ts';

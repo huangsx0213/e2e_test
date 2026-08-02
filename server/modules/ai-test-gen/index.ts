@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { withErrorHandling } from '../../shared/http/async-handler.ts';
-import { validateWithSchema } from '../../shared/validation/validate.ts';
 import { TestGenController } from './controller.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
 

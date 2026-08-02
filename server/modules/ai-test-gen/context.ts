@@ -1,7 +1,6 @@
 import { Semaphore } from './infra/semaphore.ts';
 import { createAIProvider } from './infra/provider.ts';
 import { computePromptVersion } from './infra/prompt-version.ts';
-import { useCacheStore } from './infra/cache.ts';
 import { pipelineRepo, decryptApiKey } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
 import { RunScope } from './scope.ts';
@@ -49,7 +48,6 @@ export class ContextBuilder {
     maxConcurrent = 3,
   ) {
     this.concurrencySlot = new Semaphore(maxConcurrent);
-    useCacheStore(pipelineRepo.getCacheStore());
   }
 
   abort(runId: string): void {

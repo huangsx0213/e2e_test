@@ -75,6 +75,3 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
 
   return compiled;
 }
-
-export type CompiledTestGenGraph = ReturnType<typeof buildTestGenGraph>;
-export { type TestGenState };

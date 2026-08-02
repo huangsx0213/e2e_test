@@ -3,7 +3,6 @@ import { buildTestGenGraph } from './graph/graph.ts';
 import { checkpointer } from './graph/checkpointer.ts';
 import type { AIProvider } from './infra/provider.ts';
 import type { AgentObserver } from './graph/nodes/types.ts';
-import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import type { TestGenState, GlobalEpicEntry, CrossEpicDependency, PreviousBatchCoverageSummary } from './graph/state.ts';
 import { clearQueryCache } from './graph/skills/data-skills.ts';
 import { Log } from '../../shared/services/logger.ts';
@@ -280,21 +279,6 @@ export class TestGenSession {
    * 只有当 next 指向一个真实节点（如 'analyst'、'designer'）时，才代表有有意义的
    * checkpoint 可以恢复。
    */
-  async hasCheckpoint(threadId: string): Promise<boolean> {
-    const graph = this.compileGraph();
-    try {
-      const snapshot = await (graph as any).getState({ configurable: { thread_id: threadId } });
-      if (!snapshot || !snapshot.values || Object.keys(snapshot.values).length === 0) return false;
-      const next: string[] = snapshot.next ?? [];
-      // __start__ means no real node has executed yet — can't resume with null input
-      if (next.length === 0) return false;
-      if (next.length === 1 && next[0] === '__start__') return false;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   private async streamToOutcome(
     graph: ReturnType<typeof this.compileGraph>,
     input: Record<string, unknown> | Command | null,
