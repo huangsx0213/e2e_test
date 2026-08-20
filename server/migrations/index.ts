@@ -69,3 +69,31 @@ export function runMigrations(): void {
     seedDefaults();
   }
 }
+
+export function rollbackLastMigration(): void {
+  const applied = appliedMigrationIds();
+  if (applied.size === 0) {
+    Log.for('migrate').info('No migrations to rollback.');
+    return;
+  }
+
+  // Find the last applied migration
+  for (let i = migrations.length - 1; i >= 0; i--) {
+    const migration = migrations[i];
+    if (applied.has(migration.id)) {
+      if (!migration.down) {
+        Log.for('migrate').warn(`Cannot rollback migration ${migration.id}: missing down() function.`);
+        return;
+      }
+
+      const transaction = db.transaction(() => {
+        migration.down!();
+        db.prepare('DELETE FROM schema_migrations WHERE id = ?').run(migration.id);
+      });
+
+      transaction();
+      Log.for('migrate').info(`Rolled back migration ${migration.id}.`);
+      return;
+    }
+  }
+}

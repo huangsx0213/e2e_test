@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: ['qa.huangsx0212.ccwu.cc'],
+      allowedHosts: ['www.vhuang1.ccwu.cc'],
     },
     plugins: [react()],
     resolve: {

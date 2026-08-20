@@ -916,7 +916,7 @@ docker run -p 3000:3000 -v quantum-qa-data:/app quantum-qa
 
 | 变量 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `PORT` | 3000（HF Spaces 为 7860） | HTTP 服务器端口 |
+| `PORT` | 3000 | HTTP 服务器端口 |
 | `HEADLESS` | `true` | Playwright 无头模式 |
 | `AGENT_SECRET` | — | Agent WebSocket 认证密钥 |
 | `FORCE_SEED` | — | 启动时重置数据库 |

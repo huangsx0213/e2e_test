@@ -114,6 +114,8 @@ e2e_test/
 │   │   └── seed_data.json    # Demo project data
 │   ├── modules/              # Domain modules (feature-based)
 │   │   ├── agent/            # Agent lifecycle, registry, dispatch, bundler
+│   │   ├── ai-driven-recorder/ # AI-driven recording (Stagehand, WS relay, Refiner)
+│   │   ├── ai-test-gen/      # AI Test Gen (LangGraph, Requirement Graph, Checkpoints)
 │   │   ├── bodies/           # Body template CRUD
 │   │   ├── common/           # Cross-module mappers (normalizeStep, deserializeStep)
 │   │   ├── dynamic-variables/# Dynamic variable management + preview
@@ -121,9 +123,12 @@ e2e_test/
 │   │   ├── environments/     # Environment + variable management
 │   │   ├── execution/        # Test execution runner, queue, context, interpolator, assertions
 │   │   ├── headers/          # Header profile CRUD
+│   │   ├── nl-cases/         # NL Test Cases management
 │   │   ├── projects/         # Project CRUD (pages, elements, modules, scenarios, plans)
+│   │   ├── provider-configs/ # AI Provider configuration
 │   │   ├── recording/        # Interactive UI + API recording via Playwright
 │   │   ├── reports/          # Execution report CRUD
+│   │   ├── requirements/     # Requirement tree (Epic/Story/AC)
 │   │   ├── settings/         # Global settings CRUD
 │   │   └── suites/           # Test suite CRUD (cases, steps, variables, data rows)
 │   └── shared/               # Server-side shared infrastructure
@@ -165,7 +170,7 @@ server/index.ts
         │     ├── cors() + json()      # Global middleware
         │     ├── runMigrations()      # (Note: called redundantly here too)
         │     └── registerRoutes(app)  # server/app/registerRoutes.ts
-        │           └── app.use(module.basePath, module.router)  × 12 modules
+        │           └── app.use(module.basePath, module.router)  × 17 modules
         ├── Vite middleware (dev) / Static serving (prod)
         ├── http.listen(port)
         └── initializeWebSocket(server)
@@ -565,6 +570,33 @@ graph TD
 
 ---
 
+## 6.5 Requirements & AI Pipelines
+
+### Requirements Management
+The system supports a hierarchical requirement tree (`Epic` → `Story` → `AC`). 
+- Features robust ID management with cascading updates for parent/child and dependency references.
+- Supports distinguishing pure atomic behaviors (`component`) from cross-component interactions (`flow`).
+
+### AI Test Generation Engine (TestGen)
+The AI test generation pipeline uses a `LangGraph` StateGraph to orchestrate a 3-stage agent hierarchy:
+1. **Analyst Agent**: Evaluates requirements and devises a testing approach.
+2. **Designer Agent**: Generates structured Test Conditions and NL Test Cases.
+3. **Quality Manager**: Validates completeness and consistency.
+
+**Key features:**
+- **Requirement Graph**: Automatically expands dependencies (parent/children/siblings/flows) for context-aware batch generation.
+- **Two-Stage JSON Extraction**: Uses ReAct free-form reasoning followed by strict schema-constrained extraction to maximize LLM reliability.
+- **Checkpoint System**: Serializes the `LangGraph` state to allow resuming interrupted or failed runs seamlessly.
+
+### AI-Driven Recording Engine
+An advanced recording session translating NL Test Cases to executable draft suites.
+- Integrates with **Stagehand** for AI-driven `act()`, `observe()`, and `extract()` actions in a browser.
+- Utilizes a synchronized dual-workflow: Playwright's `InjectedScript` captures UI events while network interception records API assets.
+- Remote recording is managed via WebSocket relay (`AI_RECORDER_START/STOP` events) between the server and the agent.
+- A purely functional **Refiner** pipeline handles step consolidation, parameterization, secret redaction, and mapping to the POM.
+
+---
+
 ## 7. Agent System
 
 ### 7.1 Agent Lifecycle
@@ -698,6 +730,11 @@ erDiagram
     Project ||--o{ Module : contains
     Project ||--o{ Scenario : contains
     Project ||--o{ Plan : contains
+    Project ||--o{ Requirement : has
+    Project ||--o{ NlTestCase : has
+    Project ||--o{ ProviderConfig : has
+    Requirement ||--o{ TestCondition : generates
+    TestCondition ||--o{ NlTestCase : generates
     Page ||--o{ Element : has
     Module ||--o{ ModuleParam : has
     Module ||--o{ ModuleStep : has
@@ -736,6 +773,7 @@ erDiagram
 | **007** | Video recording: `record_video` column on `settings` |
 | **008** | Agent infrastructure: `agents` table, `agent_id` on `execution_runs` |
 | **009** | Agent version: `version` column on `agents` |
+| **010+** | Requirements, AI Pipeline state, Provider configs, NL Cases tables and schema evolution |
 
 Migrations are **forward-only** (no `down()` support). The runner auto-applies pending migrations on server startup and auto-seeds the database if empty.
 
@@ -782,7 +820,7 @@ Key environment variables:
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `PORT` | 3000 (7860 for HF Spaces) | HTTP server port |
+| `PORT` | 3000 | HTTP server port |
 | `HEADLESS` | `true` | Playwright headless mode |
 | `AGENT_SECRET` | — | WebSocket authentication secret |
 | `FORCE_SEED` | — | Reset database on startup |
@@ -818,3 +856,4 @@ Key environment variables:
 2. **Decouple WebSocket service** — introduce an event bus or mediator pattern to reduce direct module imports in `websocketService.ts`
 3. **Lazy-initialize database** — defer `db` creation until first use rather than at module import time
 4. **Add down migrations** — for safer schema rollback in production environments
+5. **Stagehand Stability** — As Stagehand v3 requires exact provider configurations, handle API limitations dynamically based on provider capabilities.
