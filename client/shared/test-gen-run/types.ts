@@ -78,6 +78,7 @@ export interface StartConfig {
   reasoningSummary?: string;
   textVerbosity?: string;
   referenceRunIds?: string[];
+  htmlKnowledgeSetId?: string;
 }
 
 export interface TestGenEvent {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Requirement } from '../../../../../shared/contracts/index.ts';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { pipelineRepo } from '../../repository.ts';
 import type { SkillDefinition } from '../nodes/types.ts';
@@ -10,6 +11,18 @@ import { Log } from '../../../../shared/services/logger.ts';
 // ============================================================
 const reqDetailCache = new Map<string, unknown>();
 const flowDetailCache = new Map<string, unknown>();
+
+export interface RequirementSkillRepository {
+  listByProject(projectId: string): Requirement[];
+}
+
+export interface PreviousBatchSkillRepository {
+  getRun(runId: string): { project_id: string } | undefined;
+  getAgentLogs(runId: string, agent?: string): any[];
+}
+
+const OWNERSHIP_SAFE_REQUIREMENT_ERROR = 'Requirement not found in current project';
+const OWNERSHIP_SAFE_FLOW_ERROR = 'Flow not found in current project';
 
 export function clearQueryCache(): void {
   reqDetailCache.clear();
@@ -27,7 +40,12 @@ export function clearQueryCache(): void {
  * When a requirement ID is not found in the DB, the skill falls back to the
  * batch context (currentBatch records) to provide title/description/level.
  */
-export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[]): SkillDefinition {
+export function makeRequirementDetailQuery(
+  projectId: string,
+  batchRequirements?: BatchRequirement[],
+  repository: RequirementSkillRepository = requirementRepo,
+  cacheScope = projectId,
+): SkillDefinition {
   // Build a lookup map for O(1) fallback
   const fallbackMap = new Map<string, BatchRequirement>();
   if (batchRequirements) {
@@ -47,12 +65,16 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
       const rawId = args.requirementId;
       const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
       const isBatch = ids.length > 1 || Array.isArray(rawId);
+      const projectRequirements = repository.listByProject(projectId);
+      const requirementsById = new Map(projectRequirements.map((requirement) => [requirement.id, requirement]));
 
       // Dedup: separate cached vs new
       const cached: string[] = [];
       const newIds: string[] = [];
       for (const id of ids) {
-        if (reqDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
+        const key = scopedCacheKey(cacheScope, id);
+        const isAvailable = requirementsById.has(id) || fallbackMap.has(id);
+        if (isAvailable && reqDetailCache.has(key)) { cached.push(id); } else { newIds.push(id); }
       }
       const rqLog = Log.for('skill:req_detail_query');
       if (cached.length > 0) {
@@ -62,7 +84,8 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
       }
 
       const queryOne = (id: string) => {
-        const req = requirementRepo.get(id);
+        const cacheKey = scopedCacheKey(cacheScope, id);
+        const req = requirementsById.get(id);
         if (!req) {
           // Graceful fallback: use batch context if available
           const batchReq = fallbackMap.get(id);
@@ -81,19 +104,17 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
               children: [],
               _warning: 'Requirement not found in DB; data derived from batch context. Some fields may be incomplete.',
             };
-            reqDetailCache.set(id, result);
+            reqDetailCache.set(cacheKey, result);
             return result;
           }
-          const result = { error: `Requirement ${id} not found` };
-          reqDetailCache.set(id, result);
+          const result = { error: OWNERSHIP_SAFE_REQUIREMENT_ERROR };
+          reqDetailCache.set(cacheKey, result);
           return result;
         }
 
-        const children = requirementRepo
-          .listByProject(req.projectId)
-          .filter((r) => r.parentId === id);
+        const children = projectRequirements.filter((r) => r.parentId === id);
 
-        const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
+        const parent = req.parentId ? requirementsById.get(req.parentId) : undefined;
 
         const result = {
           id: req.id,
@@ -103,7 +124,8 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
           status: req.status,
           isFlow: req.isFlow ?? false,
           flowType: req.flowType ?? null,
-          relatedRequirementIds: req.relatedRequirementIds ?? [],
+          relatedRequirementIds: (req.relatedRequirementIds ?? [])
+            .filter((relatedId) => requirementsById.has(relatedId)),
           parent: parent
             ? { id: parent.id, title: parent.title, level: parent.level }
             : null,
@@ -112,10 +134,11 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
             title: c.title,
             level: c.level,
             flowType: c.flowType ?? null,
-            relatedRequirementIds: c.relatedRequirementIds ?? [],
+            relatedRequirementIds: (c.relatedRequirementIds ?? [])
+              .filter((relatedId) => requirementsById.has(relatedId)),
           })),
         };
-        reqDetailCache.set(id, result);
+        reqDetailCache.set(cacheKey, result);
         return result;
       };
 
@@ -128,7 +151,7 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
       const merged: Record<string, unknown> = {};
       let found = 0;
       for (const id of ids) {
-        const cachedResult = reqDetailCache.get(id);
+        const cachedResult = reqDetailCache.get(scopedCacheKey(cacheScope, id));
         if (cachedResult && !(cachedResult as any).error) {
           merged[id] = cachedResult;
           found++;
@@ -149,299 +172,323 @@ export function makeRequirementDetailQuery(batchRequirements?: BatchRequirement[
 // ============================================================
 // requirement_graph_query (expands related requirements + flows)
 // ============================================================
-export const requirementGraphQuery: SkillDefinition = {
-  name: 'requirement_graph_query',
-  description:
-    'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, relatedRequirementIds references (incoming/outgoing), and associated business flows. Use when you need to discover integration surfaces, cross-requirement dependencies, or associated flows for test planning — relatedRequirementIds and flow associations help identify component vs flow boundaries. Optionally pass flowIds to include user-selected flows in the graph result. Pass a single requirementId or an array for batch expansion.',
-  schema: z.object({
-    requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs to expand from'),
-    flowId: z.union([z.string(), z.array(z.string())]).optional().describe('Optional: user-selected flow IDs to include in the graph result'),
-  }),
-  func: async (args) => {
-    const rawId = args.requirementId;
-    const seedIds: string[] = Array.isArray(rawId) ? rawId : [rawId];
-    const rawFlowId = args.flowId;
-    const selectedFlowIds: string[] = rawFlowId ? (Array.isArray(rawFlowId) ? rawFlowId : [rawFlowId]) : [];
+export function makeRequirementGraphQuery(
+  projectId: string,
+  repository: RequirementSkillRepository = requirementRepo,
+): SkillDefinition {
+  return {
+    name: 'requirement_graph_query',
+    description:
+      'Expand the requirement graph around one or more requirement IDs. Returns parent, children, siblings, relatedRequirementIds references (incoming/outgoing), and associated business flows. Use when you need to discover integration surfaces, cross-requirement dependencies, or associated flows for test planning — relatedRequirementIds and flow associations help identify component vs flow boundaries. Optionally pass flowIds to include user-selected flows in the graph result. Pass a single requirementId or an array for batch expansion.',
+    schema: z.object({
+      requirementId: z.union([z.string(), z.array(z.string())]).describe('A single requirement ID or an array of IDs to expand from'),
+      flowId: z.union([z.string(), z.array(z.string())]).optional().describe('Optional: user-selected flow IDs to include in the graph result'),
+    }),
+    func: async (args) => {
+      const rawId = args.requirementId;
+      const seedIds: string[] = Array.isArray(rawId) ? rawId : [rawId];
+      const rawFlowId = args.flowId;
+      const selectedFlowIds: string[] = rawFlowId ? (Array.isArray(rawFlowId) ? rawFlowId : [rawFlowId]) : [];
 
-    const rgqLog = Log.for('skill:req_graph_query');
-    rgqLog.info(`Expanding graph from ${seedIds.length} seed(s)${selectedFlowIds.length > 0 ? `, ${selectedFlowIds.length} selected flow(s)` : ''}`);
+      const rgqLog = Log.for('skill:req_graph_query');
+      rgqLog.info(`Expanding graph from ${seedIds.length} seed(s)${selectedFlowIds.length > 0 ? `, ${selectedFlowIds.length} selected flow(s)` : ''}`);
 
-    let projectId = '';
-    for (const id of seedIds) {
-      const r = requirementRepo.get(id);
-      if (r) { projectId = r.projectId; break; }
-    }
-    if (!projectId) {
-      rgqLog.warn('No valid seed requirements found');
-      return { error: 'No valid seed requirements found' };
-    }
-
-    const allReqs = requirementRepo.listByProject(projectId);
-    const allFlowStories = allReqs.filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
-
-    // === Build graph for each seed ===
-    const graphEntries: Record<string, unknown> = {};
-    const collectedReqIds = new Set<string>(seedIds);
-    const collectedFlowIds = new Set<string>();
-
-    for (const seedId of seedIds) {
-      const req = requirementRepo.get(seedId);
-      if (!req) continue;
-
-      // Parent
-      const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
-      if (parent) collectedReqIds.add(parent.id);
-
-      // Children
-      const children = allReqs.filter((r) => r.parentId === seedId);
-      children.forEach((c) => collectedReqIds.add(c.id));
-
-      // Siblings
-      const siblings = req.parentId
-        ? allReqs.filter((r) => r.parentId === req.parentId && r.id !== seedId)
-        : [];
-      siblings.forEach((s) => collectedReqIds.add(s.id));
-
-      // Outgoing references: this requirement's AC children's relatedRequirementIds
-      const outgoingRefs = new Set<string>();
-      for (const ac of allReqs.filter(r => r.parentId === seedId && r.level === 'ac')) {
-        for (const refId of ac.relatedRequirementIds ?? []) {
-          if (allReqs.some(r => r.id === refId)) outgoingRefs.add(refId);
-        }
-      }
-      outgoingRefs.forEach((d) => collectedReqIds.add(d));
-
-      // Incoming references: other ACs that reference this requirement
-      const incomingRefs = new Set<string>();
-      for (const other of allReqs) {
-        if (other.level !== 'ac') continue;
-        if ((other.relatedRequirementIds ?? []).includes(seedId)) {
-          if (other.parentId) incomingRefs.add(other.parentId);
-        }
-      }
-      incomingRefs.forEach((d) => collectedReqIds.add(d));
-
-      // Associated business flows
-      const associatedFlows = allFlowStories.filter(flowStory => {
-        const flowACs = allReqs.filter(r => r.parentId === flowStory.id && r.level === 'ac');
-        return flowACs.some(ac => (ac.relatedRequirementIds ?? []).includes(seedId));
+      const allReqs = repository.listByProject(projectId);
+      const requirementsById = new Map(allReqs.map((requirement) => [requirement.id, requirement]));
+      const hasInvalidRequirement = seedIds.some((id) => !requirementsById.has(id));
+      const hasInvalidFlow = selectedFlowIds.some((id) => {
+        const flow = requirementsById.get(id);
+        return !flow || !flow.isFlow || flow.status !== 'APPROVED';
       });
-      associatedFlows.forEach((f) => collectedFlowIds.add(f.id));
+      if (hasInvalidRequirement || hasInvalidFlow) {
+        rgqLog.warn('One or more graph IDs are unavailable in the current project');
+        return { error: 'One or more requirements or flows were not found in current project' };
+      }
+      const allFlowStories = allReqs.filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
 
-      graphEntries[seedId] = {
-        seed: { id: req.id, title: req.title, level: req.level },
-        parent: parent ? { id: parent.id, level: parent.level } : null,
-        children: children.map((c) => ({ id: c.id, level: c.level })),
-        siblings: siblings.map((s) => ({ id: s.id, level: s.level })),
-        outgoingReferences: [...outgoingRefs].map((id) => {
-          const r = allReqs.find(x => x.id === id);
-          return r ? { id: r.id, level: r.level } : null;
-        }).filter(Boolean),
-        incomingReferences: [...incomingRefs].map((id) => {
-          const r = allReqs.find(x => x.id === id);
-          return r ? { id: r.id, level: r.level } : null;
-        }).filter(Boolean),
-        associatedFlows: associatedFlows.map((f) => ({
-          id: f.id,
-          name: f.title,
+      // === Build graph for each seed ===
+      const graphEntries: Record<string, unknown> = {};
+      const collectedReqIds = new Set<string>(seedIds);
+      const collectedFlowIds = new Set<string>();
+
+      for (const seedId of seedIds) {
+        const req = requirementsById.get(seedId);
+        if (!req) continue;
+
+        // Parent
+        const parent = req.parentId ? requirementsById.get(req.parentId) : undefined;
+        if (parent) collectedReqIds.add(parent.id);
+
+        // Children
+        const children = allReqs.filter((r) => r.parentId === seedId);
+        children.forEach((c) => collectedReqIds.add(c.id));
+
+        // Siblings
+        const siblings = req.parentId
+          ? allReqs.filter((r) => r.parentId === req.parentId && r.id !== seedId)
+          : [];
+        siblings.forEach((s) => collectedReqIds.add(s.id));
+
+        // Outgoing references: this requirement's AC children's relatedRequirementIds
+        const outgoingRefs = new Set<string>();
+        for (const ac of allReqs.filter(r => r.parentId === seedId && r.level === 'ac')) {
+          for (const refId of ac.relatedRequirementIds ?? []) {
+            if (requirementsById.has(refId)) outgoingRefs.add(refId);
+          }
+        }
+        outgoingRefs.forEach((d) => collectedReqIds.add(d));
+
+        // Incoming references: other ACs that reference this requirement
+        const incomingRefs = new Set<string>();
+        for (const other of allReqs) {
+          if (other.level !== 'ac') continue;
+          if ((other.relatedRequirementIds ?? []).includes(seedId)) {
+            if (other.parentId && requirementsById.has(other.parentId)) incomingRefs.add(other.parentId);
+          }
+        }
+        incomingRefs.forEach((d) => collectedReqIds.add(d));
+
+        // Associated business flows
+        const associatedFlows = allFlowStories.filter(flowStory => {
+          const flowACs = allReqs.filter(r => r.parentId === flowStory.id && r.level === 'ac');
+          return flowACs.some(ac => (ac.relatedRequirementIds ?? []).includes(seedId));
+        });
+        associatedFlows.forEach((f) => collectedFlowIds.add(f.id));
+
+        graphEntries[seedId] = {
+          seed: { id: req.id, title: req.title, level: req.level },
+          parent: parent ? { id: parent.id, level: parent.level } : null,
+          children: children.map((c) => ({ id: c.id, level: c.level })),
+          siblings: siblings.map((s) => ({ id: s.id, level: s.level })),
+          outgoingReferences: [...outgoingRefs].map((id) => {
+            const r = requirementsById.get(id);
+            return r ? { id: r.id, level: r.level } : null;
+          }).filter(Boolean),
+          incomingReferences: [...incomingRefs].map((id) => {
+            const r = requirementsById.get(id);
+            return r ? { id: r.id, level: r.level } : null;
+          }).filter(Boolean),
+          associatedFlows: associatedFlows.map((f) => ({
+            id: f.id,
+            name: f.title,
+            type: 'happy-path',
+            matchedSteps: allReqs
+              .filter(r => r.parentId === f.id && r.level === 'ac')
+              .filter(ac => (ac.relatedRequirementIds ?? []).includes(seedId))
+              .map(ac => ({ sequence: ac.position ?? 0, actionSummary: ac.title })),
+          })),
+        };
+      }
+
+      // Include user-selected flows that weren't discovered via requirement associations
+      const selectedFlowEntries: Record<string, unknown> = {};
+      for (const fid of selectedFlowIds) {
+        if (collectedFlowIds.has(fid)) continue; // already discovered
+        const flowStory = requirementsById.get(fid);
+        if (!flowStory || !flowStory.isFlow) continue;
+        collectedFlowIds.add(fid);
+        const flowACs = allReqs
+          .filter(r => r.parentId === fid && r.level === 'ac')
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        selectedFlowEntries[fid] = {
+          id: flowStory.id,
+          name: flowStory.title,
           type: 'happy-path',
-          matchedSteps: allReqs
-            .filter(r => r.parentId === f.id && r.level === 'ac')
-            .filter(ac => (ac.relatedRequirementIds ?? []).includes(seedId))
-            .map(ac => ({ sequence: ac.position ?? 0, actionSummary: ac.title })),
-        })),
+          source: 'user-selected',
+          steps: flowACs.map(ac => ({
+            sequence: ac.position ?? 0,
+            actionSummary: ac.title,
+            requirementIds: (ac.relatedRequirementIds ?? [])
+              .filter((requirementId) => requirementsById.has(requirementId)),
+          })),
+        };
+      }
+
+      // Diff: what was introduced by the graph (not in original seed set)
+      const introducedReqIds = [...collectedReqIds].filter((id) => !seedIds.includes(id));
+      const introducedFlowIds = [...collectedFlowIds].filter((id) => !selectedFlowIds.includes(id));
+      const introducedFlowsNames = introducedFlowIds
+        .map((id) => allFlowStories.find((f) => f.id === id))
+        .filter(Boolean)
+        .map((f) => f!.title);
+
+      rgqLog.info(`Graph expanded: +${introducedReqIds.length} related, +${introducedFlowsNames.length} flows, ${selectedFlowIds.length} user-selected`);
+      if (introducedReqIds.length > 0) {
+        rgqLog.info(`Introduced requirements: ${introducedReqIds.join(', ')}`);
+      }
+      if (introducedFlowsNames.length > 0) {
+        rgqLog.info(`Introduced flows: ${introducedFlowsNames.join(', ')}`);
+      }
+
+      return {
+        seedRequirementIds: seedIds,
+        introducedRequirementIds: introducedReqIds,
+        discoveredFlowIds: introducedFlowIds,
+        selectedFlowIds,
+        allFlowIds: [...collectedFlowIds],
+        selectedFlows: selectedFlowEntries,
+        graph: graphEntries,
       };
-    }
-
-    // Include user-selected flows that weren't discovered via requirement associations
-    const selectedFlowEntries: Record<string, unknown> = {};
-    for (const fid of selectedFlowIds) {
-      if (collectedFlowIds.has(fid)) continue; // already discovered
-      const flowStory = requirementRepo.get(fid);
-      if (!flowStory || !flowStory.isFlow) continue;
-      collectedFlowIds.add(fid);
-      const flowACs = allReqs
-        .filter(r => r.parentId === fid && r.level === 'ac')
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-      selectedFlowEntries[fid] = {
-        id: flowStory.id,
-        name: flowStory.title,
-        type: 'happy-path',
-        source: 'user-selected',
-        steps: flowACs.map(ac => ({
-          sequence: ac.position ?? 0,
-          actionSummary: ac.title,
-          requirementIds: ac.relatedRequirementIds ?? [],
-        })),
-      };
-    }
-
-    // Diff: what was introduced by the graph (not in original seed set)
-    const introducedReqIds = [...collectedReqIds].filter((id) => !seedIds.includes(id));
-    const introducedFlowIds = [...collectedFlowIds].filter((id) => !selectedFlowIds.includes(id));
-    const introducedFlowsNames = introducedFlowIds
-      .map((id) => allFlowStories.find((f) => f.id === id))
-      .filter(Boolean)
-      .map((f) => f!.title);
-
-    rgqLog.info(`Graph expanded: +${introducedReqIds.length} related, +${introducedFlowsNames.length} flows, ${selectedFlowIds.length} user-selected`);
-    if (introducedReqIds.length > 0) {
-      rgqLog.info(`Introduced requirements: ${introducedReqIds.join(', ')}`);
-    }
-    if (introducedFlowsNames.length > 0) {
-      rgqLog.info(`Introduced flows: ${introducedFlowsNames.join(', ')}`);
-    }
-
-    return {
-      seedRequirementIds: seedIds,
-      introducedRequirementIds: introducedReqIds,
-      discoveredFlowIds: introducedFlowIds,
-      selectedFlowIds,
-      allFlowIds: [...collectedFlowIds],
-      selectedFlows: selectedFlowEntries,
-      graph: graphEntries,
-    };
-  },
-};
+    },
+  };
+}
 
 // ============================================================
 // flow_detail_query (supports single or batch)
 // ============================================================
-export const flowDetailQuery: SkillDefinition = {
-  name: 'flow_detail_query',
-  description:
-    'Query full details of one or more business flows including each step, associated requirements, acceptance criteria, and action summaries. Use when the flow context in the user message is incomplete and you need full step-by-step details to derive flow conditions or design integration test cases. Pass a single flowId or an array of flowIds for batch query.',
-  schema: z.object({
-    flowId: z.union([z.string(), z.array(z.string())]).describe('A single flow ID or an array of IDs for batch query'),
-  }),
-  func: async (args) => {
-    const rawId = args.flowId;
-    const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
-    const isBatch = ids.length > 1 || Array.isArray(rawId);
+export function makeFlowDetailQuery(
+  projectId: string,
+  repository: RequirementSkillRepository = requirementRepo,
+  cacheScope = projectId,
+): SkillDefinition {
+  return {
+    name: 'flow_detail_query',
+    description:
+      'Query full details of one or more business flows including each step, associated requirements, acceptance criteria, and action summaries. Use when the flow context in the user message is incomplete and you need full step-by-step details to derive flow conditions or design integration test cases. Pass a single flowId or an array of flowIds for batch query.',
+    schema: z.object({
+      flowId: z.union([z.string(), z.array(z.string())]).describe('A single flow ID or an array of IDs for batch query'),
+    }),
+    func: async (args) => {
+      const rawId = args.flowId;
+      const ids: string[] = Array.isArray(rawId) ? rawId : [rawId];
+      const isBatch = ids.length > 1 || Array.isArray(rawId);
+      const projectRequirements = repository.listByProject(projectId);
+      const requirementsById = new Map(projectRequirements.map((requirement) => [requirement.id, requirement]));
 
-    const fdqLog = Log.for('skill:flow_detail_query');
-    const cached: string[] = [];
-    const newIds: string[] = [];
-    for (const id of ids) {
-      if (flowDetailCache.has(id)) { cached.push(id); } else { newIds.push(id); }
-    }
-    if (cached.length > 0) {
-      fdqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
-    } else if (newIds.length > 0) {
-      fdqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} flows` : `Querying flow ${newIds[0]}`);
-    }
-
-    const queryOne = (flowId: string) => {
-      const flowStory = requirementRepo.get(flowId);
-      if (!flowStory || !flowStory.isFlow || flowStory.status !== 'APPROVED') {
-        const errResult = { error: `Flow ${flowId} not found` };
-        flowDetailCache.set(flowId, errResult);
-        return errResult;
+      const fdqLog = Log.for('skill:flow_detail_query');
+      const cached: string[] = [];
+      const newIds: string[] = [];
+      for (const id of ids) {
+        const key = scopedCacheKey(cacheScope, id);
+        const flow = requirementsById.get(id);
+        const isAvailable = Boolean(flow?.isFlow && flow.status === 'APPROVED');
+        if (isAvailable && flowDetailCache.has(key)) { cached.push(id); } else { newIds.push(id); }
+      }
+      if (cached.length > 0) {
+        fdqLog.kv('cache', `hit ${cached.length}, new ${newIds.length}`);
+      } else if (newIds.length > 0) {
+        fdqLog.info(newIds.length > 1 ? `Batch querying ${newIds.length} flows` : `Querying flow ${newIds[0]}`);
       }
 
-      const flowACs = requirementRepo
-        .listByProject(flowStory.projectId)
-        .filter(r => r.parentId === flowId && r.level === 'ac')
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      const queryOne = (flowId: string) => {
+        const cacheKey = scopedCacheKey(cacheScope, flowId);
+        const flowStory = requirementsById.get(flowId);
+        if (!flowStory || !flowStory.isFlow || flowStory.status !== 'APPROVED') {
+          const errResult = { error: OWNERSHIP_SAFE_FLOW_ERROR };
+          flowDetailCache.set(cacheKey, errResult);
+          return errResult;
+        }
 
-      const stepsWithDetails = flowACs.map((ac) => ({
-        sequence: ac.position ?? 0,
-        actionSummary: ac.title,
-        requirements: (ac.relatedRequirementIds ?? []).map((reqId) => {
-          const req = requirementRepo.get(reqId);
-          if (!req) return { id: reqId, title: 'Unknown' };
-          const acs = requirementRepo
-            .listByProject(req.projectId)
-            .filter(r => r.parentId === reqId && r.level === 'ac')
-            .map((ac) => ac.title);
-          return {
-            id: req.id,
-            title: req.title,
-            level: req.level,
-            acceptanceCriteria: acs,
-          };
-        }),
-      }));
+        const flowACs = projectRequirements
+          .filter(r => r.parentId === flowId && r.level === 'ac')
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
-      const result = {
-        id: flowStory.id,
-        name: flowStory.title,
-        type: 'happy-path',
-        description: flowStory.description,
-        steps: stepsWithDetails,
+        const stepsWithDetails = flowACs.map((ac) => ({
+          sequence: ac.position ?? 0,
+          actionSummary: ac.title,
+          requirements: (ac.relatedRequirementIds ?? []).flatMap((reqId) => {
+            const req = requirementsById.get(reqId);
+            if (!req) return [];
+            const acs = projectRequirements
+              .filter(r => r.parentId === reqId && r.level === 'ac')
+              .map((ac) => ac.title);
+            return [{
+              id: req.id,
+              title: req.title,
+              level: req.level,
+              acceptanceCriteria: acs,
+            }];
+          }),
+        }));
+
+        const result = {
+          id: flowStory.id,
+          name: flowStory.title,
+          type: 'happy-path',
+          description: flowStory.description,
+          steps: stepsWithDetails,
+        };
+        flowDetailCache.set(cacheKey, result);
+        return result;
       };
-      flowDetailCache.set(flowId, result);
-      return result;
-    };
 
-    // Query only new IDs
-    for (const id of newIds) {
-      queryOne(id);
-    }
-
-    // Build merged results
-    const merged: Record<string, unknown> = {};
-    let found = 0;
-    for (const id of ids) {
-      const cachedResult = flowDetailCache.get(id);
-      if (cachedResult && !(cachedResult as any).error) {
-        merged[id] = cachedResult;
-        found++;
-      } else if (cachedResult) {
-        merged[id] = cachedResult;
+      // Query only new IDs
+      for (const id of newIds) {
+        queryOne(id);
       }
-    }
 
-    if (newIds.length > 0) {
-      fdqLog.info(`Found ${found}/${ids.length} flows (${cached.length} cached)`);
-    }
+      // Build merged results
+      const merged: Record<string, unknown> = {};
+      let found = 0;
+      for (const id of ids) {
+        const cachedResult = flowDetailCache.get(scopedCacheKey(cacheScope, id));
+        if (cachedResult && !(cachedResult as any).error) {
+          merged[id] = cachedResult;
+          found++;
+        } else if (cachedResult) {
+          merged[id] = cachedResult;
+        }
+      }
 
-    return isBatch ? merged : merged[ids[0]];
-  },
-};
+      if (newIds.length > 0) {
+        fdqLog.info(`Found ${found}/${ids.length} flows (${cached.length} cached)`);
+      }
+
+      return isBatch ? merged : merged[ids[0]];
+    },
+  };
+}
 
 // ============================================================
 // cross_epic_impact_query — query cross-epic dependency target details
 // Returns only the requirement itself + direct dependencies, without
 // recursing into children, to keep context bounded.
 // ============================================================
-export const crossEpicImpactQuery: SkillDefinition = {
-  name: 'cross_epic_impact_query',
-  description:
-    'Query the full details of a cross-epic reference target listed in the Global Context. Use ONLY when a cross-epic reference\'s title or relationType suggests a real coverage risk (e.g. shared data, shared state). Returns the target requirement\'s description, relatedRequirementIds, and parent — without recursing into its children, to keep context bounded.',
-  schema: z.object({
-    requirementId: z.string().describe('The cross-epic target requirement ID (from Global Context → Cross-Epic References)'),
-  }),
-  func: async (args) => {
-    const id = String(args.requirementId);
-    const log = Log.for('skill:cross_epic_impact_query');
-    log.info(`Querying cross-epic target ${id}`);
+export function makeCrossEpicImpactQuery(
+  projectId: string,
+  repository: RequirementSkillRepository = requirementRepo,
+): SkillDefinition {
+  return {
+    name: 'cross_epic_impact_query',
+    description:
+      'Query the full details of a cross-epic reference target listed in the Global Context. Use ONLY when a cross-epic reference\'s title or relationType suggests a real coverage risk (e.g. shared data, shared state). Returns the target requirement\'s description, relatedRequirementIds, and parent — without recursing into its children, to keep context bounded.',
+    schema: z.object({
+      requirementId: z.string().describe('The cross-epic target requirement ID (from Global Context → Cross-Epic References)'),
+    }),
+    func: async (args) => {
+      const id = String(args.requirementId);
+      const log = Log.for('skill:cross_epic_impact_query');
+      log.info(`Querying cross-epic target ${id}`);
 
-    const req = requirementRepo.get(id);
-    if (!req) {
-      log.warn(`Requirement ${id} not found`);
-      return { error: `Requirement ${id} not found` };
-    }
+      const projectRequirements = repository.listByProject(projectId);
+      const requirementsById = new Map(projectRequirements.map((requirement) => [requirement.id, requirement]));
+      const req = requirementsById.get(id);
+      if (!req) {
+        log.warn('Cross-epic target not found in current project');
+        return { error: OWNERSHIP_SAFE_REQUIREMENT_ERROR };
+      }
 
-    const parent = req.parentId ? requirementRepo.get(req.parentId) : null;
-    // Do not return children to avoid context bloat; the analyst can call
-    // requirement_detail_query separately if it needs them.
-    const relatedRequirementIds = req.relatedRequirementIds ?? [];
-    const result = {
-      id: req.id,
-      title: req.title,
-      description: req.description,
-      level: req.level,
-      status: req.status,
-      isFlow: req.isFlow ?? false,
-      flowType: req.flowType ?? null,
-      relatedRequirementIds,
-      parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
-    };
-    log.kv('refs', relatedRequirementIds.length);
-    return result;
-  },
-};
+      const parent = req.parentId ? requirementsById.get(req.parentId) : undefined;
+      // Do not return children to avoid context bloat; the analyst can call
+      // requirement_detail_query separately if it needs them.
+      const relatedRequirementIds = (req.relatedRequirementIds ?? [])
+        .filter((relatedId) => requirementsById.has(relatedId));
+      const result = {
+        id: req.id,
+        title: req.title,
+        description: req.description,
+        level: req.level,
+        status: req.status,
+        isFlow: req.isFlow ?? false,
+        flowType: req.flowType ?? null,
+        relatedRequirementIds,
+        parent: parent ? { id: parent.id, title: parent.title, level: parent.level } : null,
+      };
+      log.kv('refs', relatedRequirementIds.length);
+      return result;
+    },
+  };
+}
 
 // ============================================================
 // previous_batch_conditions_query — query condition titles already
@@ -449,7 +496,12 @@ export const crossEpicImpactQuery: SkillDefinition = {
 // suspected, to avoid expanding full text every time.
 // Factory function: requires runId to query pipelineRepo.
 // ============================================================
-export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition {
+export function makePreviousBatchConditionsQuery(
+  runId: string,
+  projectId: string,
+  historyRepository: PreviousBatchSkillRepository = pipelineRepo,
+  repository: RequirementSkillRepository = requirementRepo,
+): SkillDefinition {
   // Cache agent logs for the lifetime of this skill instance (one node
   // execution) — LLM may call this for multiple requirements; avoid
   // re-scanning the same logs each time.
@@ -467,8 +519,15 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
       log.info(`Querying previous-batch conditions for ${id} (runId=${runId})`);
 
       try {
+        const run = historyRepository.getRun(runId);
+        const isCurrentProjectRequirement = repository
+          .listByProject(projectId)
+          .some((requirement) => requirement.id === id);
+        if (!run || run.project_id !== projectId || !isCurrentProjectRequirement) {
+          return { error: OWNERSHIP_SAFE_REQUIREMENT_ERROR, conditions: [] };
+        }
         if (cachedLogs === null) {
-          cachedLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
+          cachedLogs = historyRepository.getAgentLogs(runId, 'test_analyst');
         }
         const logs = cachedLogs;
         const conditions: Array<{ referenceId: string; id: string; title: string; category: string; primaryTechnique: string }> = [];
@@ -490,7 +549,7 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
         return { requirementId: id, conditions };
       } catch (e: any) {
         log.warn(`Failed to query previous-batch conditions: ${e?.message ?? e}`);
-        return { requirementId: id, conditions: [], error: String(e?.message ?? e) };
+        return { conditions: [], error: 'Previous-batch conditions are unavailable' };
       }
     },
   };
@@ -503,7 +562,12 @@ export function makePreviousBatchConditionsQuery(runId: string): SkillDefinition
 // identical cases.
 // Factory function: requires runId to query pipelineRepo.
 // ============================================================
-export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
+export function makePreviousBatchCasesQuery(
+  runId: string,
+  projectId: string,
+  historyRepository: PreviousBatchSkillRepository = pipelineRepo,
+  repository: RequirementSkillRepository = requirementRepo,
+): SkillDefinition {
   // Cache agent logs for the lifetime of this skill instance (one node
   // execution) — LLM may call this for multiple requirements; avoid
   // re-scanning the same logs each time.
@@ -521,8 +585,15 @@ export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
       log.info(`Querying previous-batch cases for ${id} (runId=${runId})`);
 
       try {
+        const run = historyRepository.getRun(runId);
+        const isCurrentProjectRequirement = repository
+          .listByProject(projectId)
+          .some((requirement) => requirement.id === id);
+        if (!run || run.project_id !== projectId || !isCurrentProjectRequirement) {
+          return { error: OWNERSHIP_SAFE_REQUIREMENT_ERROR, cases: [] };
+        }
         if (cachedLogs === null) {
-          cachedLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
+          cachedLogs = historyRepository.getAgentLogs(runId, 'quality_manager');
         }
         const logs = cachedLogs;
         const cases: Array<{ title: string; testLevel: string; conditionId: string }> = [];
@@ -542,8 +613,12 @@ export function makePreviousBatchCasesQuery(runId: string): SkillDefinition {
         return { requirementId: id, cases };
       } catch (e: any) {
         log.warn(`Failed to query previous-batch cases: ${e?.message ?? e}`);
-        return { requirementId: id, cases: [], error: String(e?.message ?? e) };
+        return { cases: [], error: 'Previous-batch cases are unavailable' };
       }
     },
   };
+}
+
+function scopedCacheKey(projectId: string, id: string): string {
+  return `${projectId}\0${id}`;
 }

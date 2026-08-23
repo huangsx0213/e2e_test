@@ -8,7 +8,7 @@ QuantumQA 是一个统一的低代码 E2E 测试平台，专为实现确定性 U
 
 ### 前提条件
 
-- Node.js v18 或更高版本
+- Node.js 20.19 或更高版本
 - npm 或 yarn
 
 ### 安装

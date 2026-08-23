@@ -41,7 +41,8 @@ Hugging Face Spaces is an excellent free test container platform. For private de
 1. Establish a new Space on [Hugging Face](https://huggingface.co/). Choose **Docker** as the SDK type, and it's highly recommended to set the visibility to **Private**.
 2. Navigate to **Settings** -> **Variables and secrets** on the repository page, and attach variables as needed:
    * **Variables (Plain Text Environment Variables)**: 
-     - `FORCE_SEED`: Setting this to `true` forcefully drops the currently mounted database upon container initialization and reruns `seed.ts`, functioning as a clean-state rollback mechanism.
+      - `FORCE_SEED`: Setting this to `true` forcefully drops the currently mounted database upon container initialization and reruns `seed.ts`, functioning as a clean-state rollback mechanism.
+      - `TRUST_PROXY`: Optional Express proxy trust policy. If omitted, production trusts only `loopback, linklocal, uniquelocal`, while non-production trusts no proxy. Set this to `false`, a numeric hop count, or an Express IP/subnet list for the deployment topology. Explicit `true` is supported only for networks that prevent all direct client access to the application.
 
 ### 2.2 Upload Code Assets (Orphan Git Push Method)
 If you wish to avoid uploading a massive and complex local commit history to the cloud, execute the "Clean Branch Method" (Orphan Push):

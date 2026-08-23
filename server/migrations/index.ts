@@ -10,6 +10,7 @@ import { migration006DropMetadataAndTestScenario } from './006_drop_metadata_and
 import { migration007AddIsFlowAndRelatedRequirements } from './007_add_is_flow_and_related_requirements.ts';
 import { migration008MigrateBusinessFlows } from './008_migrate_business_flows_to_requirements.ts';
 import { migration009DropHumanIdDependenciesType } from './009_drop_human_id_dependencies_type.ts';
+import { migration010AddTestGenHtmlKnowledge } from './010_add_test_gen_html_knowledge.ts';
 import { seedDefaults } from '../seed.ts';
 import type { Migration } from './types.ts';
 
@@ -24,6 +25,7 @@ export const migrations: Migration[] = [
   migration007AddIsFlowAndRelatedRequirements,
   migration008MigrateBusinessFlows,
   migration009DropHumanIdDependenciesType,
+  migration010AddTestGenHtmlKnowledge,
 ];
 
 function appliedMigrationIds(): Set<string> {

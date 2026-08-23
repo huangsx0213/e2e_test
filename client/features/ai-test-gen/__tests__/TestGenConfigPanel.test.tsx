@@ -4,6 +4,10 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { TestGenConfigPanel, type TestGenStartConfig } from '../TestGenConfigPanel';
+import type {
+  HtmlKnowledgeUploadController,
+  HtmlKnowledgeUploadRow,
+} from '../useHtmlKnowledgeUpload';
 import type { Requirement } from '../../../../shared/contracts/index';
 
 vi.mock('@/shared/ui/HelpTooltip', () => ({
@@ -78,6 +82,38 @@ function renderWithQuery(ui: React.ReactElement) {
   return render(React.createElement(QueryClientProvider, { client: queryClient }, ui));
 }
 
+function makeUploadRow(status: HtmlKnowledgeUploadRow['status']): HtmlKnowledgeUploadRow {
+  return {
+    pageId: `page-${status.toLowerCase()}`,
+    fileName: `${status.toLowerCase()}.html`,
+    byteSize: 20,
+    status,
+    canRetry: status === 'FAILED',
+    errorMessage: status === 'FAILED' ? 'Upload failed' : null,
+    pageTitle: null,
+    informationLevel: null,
+    warnings: [],
+  };
+}
+
+function makeUploadController(
+  overrides: Partial<HtmlKnowledgeUploadController> = {},
+): HtmlKnowledgeUploadController {
+  return {
+    rows: [],
+    totalBytes: 0,
+    phase: 'empty',
+    isBlockingStart: false,
+    selectFiles: vi.fn().mockResolvedValue(undefined),
+    retryPage: vi.fn().mockResolvedValue(undefined),
+    retrySet: vi.fn().mockResolvedValue(undefined),
+    removePage: vi.fn().mockResolvedValue(undefined),
+    reset: vi.fn().mockResolvedValue(undefined),
+    releaseAfterStart: vi.fn(),
+    ...overrides,
+  };
+}
+
 function buildTreeSample(): Requirement[] {
   const epic = makeRequirement({ id: 'epic-1', title: 'User Management', level: 'epic' as const, parentId: null });
   const feature = makeRequirement({ id: 'feat-1', title: 'User Registration', level: 'story' as const, parentId: epic.id });
@@ -94,6 +130,7 @@ describe('TestGenConfigPanel', () => {
     requirements: [],
     flowStories: [],
     onStart: vi.fn() as (config: TestGenStartConfig) => void,
+    htmlKnowledgeUpload: makeUploadController(),
     disabled: false,
   };
 
@@ -234,8 +271,12 @@ describe('TestGenConfigPanel', () => {
 
   it('TC-1.8: Start button disabled when no requirements/flows selected', () => {
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
-    const startBtn = screen.getByText('Start Test Gen');
-    expect(startBtn.closest('button')).toBeDisabled();
+    const startButton = screen.getByRole('button', { name: 'Start Test Gen' });
+    const feedback = screen.getByText('Select at least one requirement or flow');
+    expect(startButton).toBeDisabled();
+    expect(feedback).toHaveAttribute('role', 'status');
+    expect(feedback).toHaveAttribute('aria-live', 'polite');
+    expect(startButton).toHaveAttribute('aria-describedby', feedback.id);
   });
 
   it('TC-1.9: Start button enabled when requirements and provider selected', () => {
@@ -248,6 +289,7 @@ describe('TestGenConfigPanel', () => {
     expect(startBtn.closest('button')).not.toBeDisabled();
     fireEvent.click(startBtn);
     expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onStart.mock.calls[0][0].htmlKnowledgeSetId).toBeUndefined();
   });
 
   it('TC-1.10: Start passes an auto-generated run name', () => {
@@ -266,5 +308,165 @@ describe('TestGenConfigPanel', () => {
     vi.mocked(useProviderConfigs).mockReturnValueOnce({ data: [] } as any);
     renderWithQuery(React.createElement(TestGenConfigPanel, { ...defaultProps }));
     expect(screen.getByText(/No models configured/)).toBeTruthy();
+  });
+
+  it('shows the missing-provider start reason after a requirement is selected', () => {
+    const providerHook = vi.mocked(useProviderConfigs);
+    const originalImplementation = providerHook.getMockImplementation();
+    providerHook.mockReturnValue({ data: [] } as any);
+    try {
+      renderWithQuery(<TestGenConfigPanel {...defaultProps} requirements={buildTreeSample()} />);
+      fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+
+      expect(screen.getByText('Select a model to continue')).toBeInTheDocument();
+    } finally {
+      if (originalImplementation) providerHook.mockImplementation(originalImplementation);
+    }
+  });
+
+  it.each([
+    ['invalid', makeUploadController({
+      rows: [makeUploadRow('FAILED')],
+      totalBytes: 20,
+      phase: 'invalid',
+      isBlockingStart: true,
+    })],
+    ['pending', makeUploadController({
+      rows: [makeUploadRow('PENDING')],
+      totalBytes: 20,
+      phase: 'preparing',
+      isBlockingStart: true,
+    })],
+    ['failed', makeUploadController({
+      rows: [makeUploadRow('FAILED')],
+      totalBytes: 20,
+      phase: 'failed',
+      isBlockingStart: true,
+    })],
+  ])('blocks start while HTML knowledge is %s', (_label, htmlKnowledgeUpload) => {
+    const reqs = buildTreeSample();
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={reqs}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+    />);
+
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+
+    expect(screen.getByRole('button', { name: 'Start Test Gen' })).toBeDisabled();
+  });
+
+  it('shows HTML preparation as the blocking reason for a flow-only selection', () => {
+    const flow = makeFlowStory({ id: 'flow-only', title: 'Checkout Flow' });
+    const htmlKnowledgeUpload = makeUploadController({
+      rows: [makeUploadRow('READY')],
+      totalBytes: 20,
+      phase: 'preparing',
+      isBlockingStart: true,
+    });
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={[flow]}
+      flowStories={[flow]}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+    />);
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+
+    expect(screen.getByText('Wait for HTML knowledge preparation to finish')).toBeInTheDocument();
+    expect(screen.queryByText('Select at least one requirement or flow')).not.toBeInTheDocument();
+  });
+
+  it('shows an HTML error reason when the upload set failed', () => {
+    const htmlKnowledgeUpload = makeUploadController({
+      rows: [makeUploadRow('FAILED')],
+      totalBytes: 20,
+      phase: 'failed',
+      isBlockingStart: true,
+    });
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={buildTreeSample()}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+    />);
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+
+    expect(screen.getByText('Resolve HTML knowledge errors before starting')).toBeInTheDocument();
+  });
+
+  it('shows start-attempt progress and disables reset, upload, and Start controls', () => {
+    const htmlKnowledgeUpload = makeUploadController({
+      rows: [makeUploadRow('READY')],
+      totalBytes: 20,
+      phase: 'ready',
+      readySetId: 'set-ready-1',
+    });
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={buildTreeSample()}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+      startPending
+    />);
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+
+    expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
+    expect(screen.getByLabelText('Choose HTML files')).toBeDisabled();
+    const startButton = screen.getByRole('button', { name: /Starting Test Gen/ });
+    const feedback = screen.getByText('Test Gen start is in progress');
+    expect(startButton).toBeDisabled();
+    expect(feedback).toHaveAttribute('role', 'status');
+    expect(feedback).toHaveAttribute('aria-live', 'polite');
+    expect(startButton).toHaveAttribute('aria-describedby', feedback.id);
+  });
+
+  it('allows LOW_INFORMATION HTML and includes the exact ready set ID', () => {
+    const reqs = buildTreeSample();
+    const onStart = vi.fn();
+    const htmlKnowledgeUpload = makeUploadController({
+      rows: [{
+        ...makeUploadRow('READY'),
+        informationLevel: 'LOW_INFORMATION',
+        warnings: ['Only a root mount element was found'],
+      }],
+      totalBytes: 20,
+      phase: 'ready',
+      readySetId: 'set-ready-1',
+      isBlockingStart: false,
+    });
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={reqs}
+      onStart={onStart}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+    />);
+
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Start Test Gen' }));
+
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({
+      htmlKnowledgeSetId: 'set-ready-1',
+    }));
+  });
+
+  it('resets HTML knowledge together with the existing settings', () => {
+    const reqs = buildTreeSample();
+    const htmlKnowledgeUpload = makeUploadController({
+      rows: [makeUploadRow('READY')],
+      totalBytes: 20,
+      phase: 'ready',
+      readySetId: 'set-ready-1',
+    });
+    renderWithQuery(<TestGenConfigPanel
+      {...defaultProps}
+      requirements={reqs}
+      htmlKnowledgeUpload={htmlKnowledgeUpload}
+    />);
+    fireEvent.click(screen.getAllByLabelText('Select all')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Interactive' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+    expect(htmlKnowledgeUpload.reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Run all stages automatically')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start Test Gen' })).toBeDisabled();
   });
 });

@@ -6,6 +6,11 @@ import type { AgentObserver } from './graph/nodes/types.ts';
 import type { TestGenState, GlobalEpicEntry, CrossEpicDependency, PreviousBatchCoverageSummary } from './graph/state.ts';
 import { clearQueryCache } from './graph/skills/data-skills.ts';
 import { Log } from '../../shared/services/logger.ts';
+import type { HtmlKnowledgeReference } from './html-knowledge/types.ts';
+import {
+  requireMatchingHtmlKnowledgeRuntime,
+  type ResolvedHtmlKnowledgeRuntime,
+} from './graph/skills/html-knowledge.ts';
 
 export interface BatchInput {
   batchIndex: number;
@@ -20,6 +25,7 @@ export interface BatchInput {
     batchContext: { currentBatch: number; totalBatches: number; processedCount: number };
     projectContext: { name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] };
     businessFlowBlueprints: any[] | undefined;
+    htmlKnowledgeReference?: HtmlKnowledgeReference;
     selectedFlowIds: string[];
     generationMode: 'component' | 'flow' | 'mixed';
     globalStats?: { totalRequirements: number; totalEpics: number; totalFlows: number };
@@ -54,6 +60,7 @@ export type RunOutcome =
 
 export interface SessionOptions {
   runId: string;
+  projectId: string;
   provider: AIProvider;
   observer: AgentObserver;
   modelName: string;
@@ -61,6 +68,59 @@ export interface SessionOptions {
   timeoutMs?: number;
   useCache?: boolean;
   signal?: AbortSignal;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
+}
+
+export type CheckpointInspection =
+  | { kind: 'none' }
+  | { kind: 'start-only'; values: Partial<TestGenState> }
+  | { kind: 'meaningful'; values: Partial<TestGenState> }
+  | { kind: 'completed'; values: Partial<TestGenState> };
+
+export class CheckpointUnavailableError extends Error {
+  readonly code: string = 'CHECKPOINT_UNAVAILABLE';
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'CheckpointUnavailableError';
+  }
+}
+
+export class CheckpointCorruptError extends CheckpointUnavailableError {
+  readonly code = 'CHECKPOINT_CORRUPT';
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'CheckpointCorruptError';
+  }
+}
+
+export class TestGenSessionAbortedError extends Error {
+  readonly code = 'TEST_GEN_SESSION_ABORTED';
+
+  constructor() {
+    super('Test gen graph stream aborted');
+    this.name = 'TestGenSessionAbortedError';
+  }
+}
+
+export class EmptyGraphStreamError extends CheckpointUnavailableError {
+  readonly code = 'EMPTY_GRAPH_STREAM';
+
+  constructor() {
+    super('Test gen graph stream completed without emitting state');
+    this.name = 'EmptyGraphStreamError';
+  }
+}
+
+export class HtmlKnowledgeReferenceMismatchError extends Error {
+  readonly code = 'HTML_KNOWLEDGE_REFERENCE_MISMATCH';
+  readonly recoverable = true;
+
+  constructor(message = 'Checkpoint HTML knowledge reference does not match the resolved runtime') {
+    super(message);
+    this.name = 'HtmlKnowledgeReferenceMismatchError';
+  }
 }
 
 export class TestGenSession {
@@ -86,6 +146,7 @@ export class TestGenSession {
       useCache: this.opts.useCache,
       signal: this.opts.signal,
       checkpointer,
+      htmlKnowledge: this.opts.htmlKnowledge,
     });
   }
 
@@ -111,6 +172,7 @@ export class TestGenSession {
       batchContext: batch.inputState.batchContext,
       projectContext: batch.inputState.projectContext,
       businessFlowBlueprints: batch.inputState.businessFlowBlueprints,
+      htmlKnowledgeReference: batch.inputState.htmlKnowledgeReference,
       selectedFlowIds: batch.inputState.selectedFlowIds,
       generationMode: batch.inputState.generationMode ?? 'component',
       globalStats: batch.inputState.globalStats,
@@ -132,6 +194,7 @@ export class TestGenSession {
     const log = Log.for('session');
     log.info(`Starting batch ${batch.batchIndex} (threadId=${tid})`);
     clearQueryCache();
+    this.assertHtmlKnowledgeReference(input);
 
     return this.streamToOutcome(graph, input, tid, batch.batchIndex);
   }
@@ -144,6 +207,17 @@ export class TestGenSession {
     resumeInput: { action: 'approve' | 'retry'; feedback?: string; edits?: any },
   ): Promise<RunOutcome> {
     const graph = this.compileGraph();
+    const inspection = await this.inspectCheckpointWithGraph(graph, threadId);
+    if (inspection.kind === 'completed') {
+      return this.completedCheckpointOutcome(inspection.values);
+    }
+    if (inspection.kind !== 'meaningful') {
+      throw new CheckpointUnavailableError(
+        `Checkpoint ${inspection.kind === 'start-only' ? 'contains only __start__' : 'is unavailable'}`,
+      );
+    }
+    this.assertHtmlKnowledgeReference(inspection.values);
+    clearQueryCache();
 
     const resumeCommand = new Command({
       resume: {
@@ -173,23 +247,17 @@ export class TestGenSession {
   async retryFromLastCheckpoint(threadId: string, batchIndex: number): Promise<RunOutcome> {
     const graph = this.compileGraph();
     const log = Log.for('session');
-
-    // Log checkpoint state for diagnostics
-    try {
-      const snapshot = await (graph as any).getState({ configurable: { thread_id: threadId } });
-      const next = snapshot?.next ?? [];
-      const valueKeys = snapshot?.values ? Object.keys(snapshot.values) : [];
-      log.info(`Checkpoint state: next=[${next.join(',')}], values_keys=[${valueKeys.slice(0, 10).join(',')}${valueKeys.length > 10 ? '...' : ''}]`);
-      if (next.length === 0) {
-        log.warn('Checkpoint has no pending nodes (next=[]) — graph may have completed or crashed before any node ran');
-      } else if (next.length === 1 && next[0] === '__start__') {
-        log.warn('Checkpoint is at __start__ — no real node has executed yet, stream(null) will fail');
-      } else {
-        log.info(`Will resume from node: ${next.join(', ')}`);
-      }
-    } catch (snapshotErr: any) {
-      log.warn(`Failed to read checkpoint state: ${snapshotErr.message}`);
+    const inspection = await this.inspectCheckpointWithGraph(graph, threadId);
+    if (inspection.kind === 'completed') {
+      return this.completedCheckpointOutcome(inspection.values, batchIndex);
     }
+    if (inspection.kind !== 'meaningful') {
+      throw new CheckpointUnavailableError(
+        `Checkpoint ${inspection.kind === 'start-only' ? 'contains only __start__' : 'is unavailable'}`,
+      );
+    }
+    this.assertHtmlKnowledgeReference(inspection.values);
+    clearQueryCache();
 
     log.info(`Retrying from last checkpoint (threadId=${threadId}, batch=${batchIndex})`);
     return this.streamToOutcome(graph, null, threadId, batchIndex);
@@ -222,6 +290,8 @@ export class TestGenSession {
     const graph = this.compileGraph();
     const log = Log.for('session');
     const config = { configurable: { thread_id: threadId } };
+    this.assertCheckpointIdentity(baseInput as Partial<TestGenState>);
+    clearQueryCache();
 
     // agent_name → graph node name
     const agentToNode: Record<string, string> = {
@@ -247,6 +317,14 @@ export class TestGenSession {
       const nodeName = agentToNode[agentName];
       if (!nodeName) continue;
       Object.assign(mergedState, outputData);
+      if (baseInput.mode === 'auto' && agentName === 'test_analyst') {
+        mergedState.approvedConditions = outputData.testConditions;
+        mergedState.phase = 'review-conditions';
+      }
+      if (baseInput.mode === 'auto' && agentName === 'test_designer') {
+        mergedState.approvedDraftCases = outputData.draftTestCases;
+        mergedState.phase = 'review-draft';
+      }
       lastNode = nodeName;
     }
 
@@ -266,6 +344,84 @@ export class TestGenSession {
     }
 
     return this.streamToOutcome(graph, null, threadId, batchIndex);
+  }
+
+  async inspectCheckpoint(threadId: string): Promise<CheckpointInspection> {
+    return this.inspectCheckpointWithGraph(this.compileGraph(), threadId);
+  }
+
+  private async inspectCheckpointWithGraph(
+    graph: ReturnType<typeof this.compileGraph>,
+    threadId: string,
+  ): Promise<CheckpointInspection> {
+    let snapshot: any;
+    try {
+      snapshot = await (graph as any).getState({
+        configurable: { thread_id: threadId },
+      });
+    } catch (error) {
+      throw new CheckpointUnavailableError(
+        'Checkpoint is unavailable or corrupt',
+        { cause: error },
+      );
+    }
+    if (!snapshot) return { kind: 'none' };
+
+    const values = snapshot.values && typeof snapshot.values === 'object'
+      ? snapshot.values as Partial<TestGenState>
+      : {};
+    const next = Array.isArray(snapshot.next) ? snapshot.next : [];
+    if (Object.keys(values).length === 0 && next.length === 0) {
+      return { kind: 'none' };
+    }
+    this.assertCheckpointIdentity(values);
+    if (next.length === 1 && next[0] === '__start__') {
+      return { kind: 'start-only', values };
+    }
+    if (next.length === 0) {
+      return { kind: 'completed', values };
+    }
+    return { kind: 'meaningful', values };
+  }
+
+  private assertCheckpointIdentity(state: Partial<TestGenState>): void {
+    if (state.runId !== this.opts.runId || state.projectId !== this.opts.projectId) {
+      throw new CheckpointCorruptError(
+        'Checkpoint run or project identity does not match this session',
+      );
+    }
+    this.assertHtmlKnowledgeReference(state);
+  }
+
+  private assertHtmlKnowledgeReference(state: Record<string, unknown>): void {
+    try {
+      requireMatchingHtmlKnowledgeRuntime(
+        String(state.projectId ?? this.opts.htmlKnowledge?.projectId ?? ''),
+        state.htmlKnowledgeReference as HtmlKnowledgeReference | undefined,
+        this.opts.htmlKnowledge,
+      );
+    } catch {
+      throw new HtmlKnowledgeReferenceMismatchError();
+    }
+  }
+
+  private completedCheckpointOutcome(
+    state: Partial<TestGenState>,
+    fallbackBatchIndex?: number,
+  ): RunOutcome {
+    const currentBatch = state.batchContext?.currentBatch;
+    const batchIndex = fallbackBatchIndex
+      ?? (typeof currentBatch === 'number' && currentBatch > 0 ? currentBatch - 1 : 0);
+    const cases = Array.isArray(state.finalTestCases) ? state.finalTestCases : [];
+    return {
+      type: 'complete',
+      result: {
+        batchIndex,
+        cases,
+        tokenUsage: { input: 0, output: 0, total: 0 },
+        lastState: state,
+      },
+    };
   }
 
   /**
@@ -293,40 +449,58 @@ export class TestGenSession {
     const log = Log.for('session');
     log.info(`Streaming graph (threadId=${tid}, batch=${batchIndex})`);
 
+    if (this.isAborted()) throw new TestGenSessionAbortedError();
+
     // retryFromLastCheckpoint 传入 null，LangGraph 从最后一个 checkpoint 恢复
-    const stream = input === null
-      ? await (graph as any).stream(null, streamOpts)
-      : await (graph as any).stream(input, streamOpts);
+    let stream: AsyncIterable<any>;
+    try {
+      stream = input === null
+        ? await (graph as any).stream(null, streamOpts)
+        : await (graph as any).stream(input, streamOpts);
+    } catch (error) {
+      if (this.isAborted()) throw new TestGenSessionAbortedError();
+      throw error;
+    }
 
     let lastState: any = null;
     let prevPhase: string | undefined;
     let interruptPayload: Record<string, unknown> | null = null;
     let nodeCount = 0;
 
-    for await (const chunk of stream) {
-      if (this.isAborted()) {
-        log.info(`Aborted during streaming (threadId=${tid})`);
-        break;
-      }
-      lastState = chunk;
-      nodeCount++;
+    try {
+      for await (const chunk of stream) {
+        if (this.isAborted()) {
+          log.info(`Aborted during streaming (threadId=${tid})`);
+          throw new TestGenSessionAbortedError();
+        }
+        lastState = chunk;
+        nodeCount++;
 
-      const currentPhase = (chunk as any)?.phase as string | undefined;
-      if (currentPhase && currentPhase !== prevPhase) {
-        log.info(`Phase transition → ${currentPhase}`);
-        prevPhase = currentPhase;
-      }
+        const currentPhase = (chunk as any)?.phase as string | undefined;
+        if (currentPhase && currentPhase !== prevPhase) {
+          log.info(`Phase transition → ${currentPhase}`);
+          prevPhase = currentPhase;
+        }
 
-      const interruptValue = (chunk as any)?.__interrupt__;
-      if (interruptValue && Array.isArray(interruptValue) && interruptValue.length > 0) {
-        const raw = interruptValue[0] as Record<string, unknown>;
-        interruptPayload = (raw?.value as Record<string, unknown>) ?? raw;
-        log.info(`INTERRUPTED at phase=${lastState?.phase}, checkpoint=${(interruptPayload as any).checkpointNumber ?? '?'}`);
-        break;
+        const interruptValue = (chunk as any)?.__interrupt__;
+        if (interruptValue && Array.isArray(interruptValue) && interruptValue.length > 0) {
+          const raw = interruptValue[0] as Record<string, unknown>;
+          interruptPayload = (raw?.value as Record<string, unknown>) ?? raw;
+          log.info(`INTERRUPTED at phase=${lastState?.phase}, checkpoint=${(interruptPayload as any).checkpointNumber ?? '?'}`);
+          break;
+        }
       }
+    } catch (error) {
+      if (this.isAborted() && !(error instanceof TestGenSessionAbortedError)) {
+        throw new TestGenSessionAbortedError();
+      }
+      throw error;
     }
 
     log.info(`Stream complete: ${nodeCount} steps, threadId=${tid}`);
+
+    if (this.isAborted()) throw new TestGenSessionAbortedError();
+    if (nodeCount === 0) throw new EmptyGraphStreamError();
 
     if (interruptPayload) {
       const cpNum = (interruptPayload as any).checkpointNumber ?? 0;

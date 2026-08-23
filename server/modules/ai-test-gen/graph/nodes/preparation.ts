@@ -2,9 +2,15 @@ import type { TestGenState, CrossEpicDependency } from '../state';
 import type { AgentObserver } from './types';
 import { requirementRepo } from '../../../requirements/repository.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import { requirementsFromHtmlSnapshot } from '../../html-knowledge/requirement-snapshot.ts';
+import {
+  requireMatchingHtmlKnowledgeRuntime,
+  type ResolvedHtmlKnowledgeRuntime,
+} from '../skills/html-knowledge.ts';
 
 export interface PreparationNodeOptions {
   observer?: AgentObserver;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
 }
 
 export function makePreparationNode(opts: PreparationNodeOptions) {
@@ -14,6 +20,11 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
 
   return async (state: TestGenState): Promise<Partial<TestGenState>> => {
     const startTime = Date.now();
+    const htmlKnowledge = requireMatchingHtmlKnowledgeRuntime(
+      state.projectId,
+      state.htmlKnowledgeReference,
+      opts.htmlKnowledge,
+    );
     observer?.onStart?.(agentName);
 
     const reqCount = state.currentBatch?.length ?? 0;
@@ -29,7 +40,9 @@ export function makePreparationNode(opts: PreparationNodeOptions) {
 
     // ── L2 Association Layer Precomputation ──
     const currentReqIds = new Set((state.currentBatch ?? []).map(r => r.id));
-    const allReqs = requirementRepo.listByProject(state.projectId);
+    const allReqs = htmlKnowledge
+      ? requirementsFromHtmlSnapshot(htmlKnowledge.snapshot)
+      : requirementRepo.listByProject(state.projectId);
     const epicTitleMap = new Map<string, string>();
     const epicIdSet = new Set<string>();
     if (state.globalEpicIndex) {

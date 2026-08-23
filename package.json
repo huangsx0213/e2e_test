@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "start": "node dist/server.js",
@@ -35,6 +38,7 @@
     "mermaid": "^11.14.0",
     "motion": "^12.38.0",
     "openai": "^6.44.0",
+    "parse5": "^8.0.1",
     "playwright": "1.58.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

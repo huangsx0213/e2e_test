@@ -9,6 +9,10 @@ import { buildQualitySkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createQualityOutputProfile, reconcileCoverageMatrix } from '../structured-output/quality.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import {
+  requireMatchingHtmlKnowledgeRuntime,
+  type ResolvedHtmlKnowledgeRuntime,
+} from '../skills/html-knowledge.ts';
 
 // ============================================================
 // Node
@@ -19,6 +23,7 @@ export interface QualityNodeOptions {
   observer?: AgentObserver;
   timeoutMs?: number;
   signal?: AbortSignal;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
 }
 
 export function makeQualityNode(opts: QualityNodeOptions) {
@@ -32,9 +37,14 @@ export function makeQualityNode(opts: QualityNodeOptions) {
     const fb = state.humanReviewFeedback ? `, feedback="${state.humanReviewFeedback.slice(0, 80)}"` : '';
     log.info(`ENTER ── ${draftCount} draft cases to review${fb}`);
 
+    const htmlKnowledge = requireMatchingHtmlKnowledgeRuntime(
+      state.projectId,
+      state.htmlKnowledgeReference,
+      opts.htmlKnowledge,
+    );
     // Build skills dynamically: pass runId for previous_batch_cases_query (D2 cross-batch check)
     // and currentBatch for requirement_detail_query fallback
-    const skills = opts.skills ?? buildQualitySkills(state.runId, state.currentBatch);
+    const skills = opts.skills ?? buildQualitySkills(state.runId, state.projectId, state.currentBatch, htmlKnowledge);
     log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
@@ -67,7 +77,11 @@ export function makeQualityNode(opts: QualityNodeOptions) {
         messages,
         skills,
         outputProfile,
-        { onStep: observer?.onStep, onThinking: observer?.onThinking },
+        {
+          onStep: observer?.onStep,
+          onThinking: observer?.onThinking,
+          onToolCall: observer?.onToolCall,
+        },
         agentName,
         { signal: nodeSignal, agentName },
       );
@@ -114,7 +128,7 @@ export function makeQualityNode(opts: QualityNodeOptions) {
           skillName: tc.name,
           input: tc.input,
           output: tc.output,
-          latencyMs: 0,
+          latencyMs: tc.latencyMs,
           timestamp: Date.now(),
         })),
         phase: 'final-review' as const,

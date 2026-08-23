@@ -5,6 +5,7 @@ import type {
   CoverageMatrix,
   PipelineBusinessFlowBlueprint,
 } from '../../../../shared/contracts/index.ts';
+import type { HtmlKnowledgeReference } from '../html-knowledge/types.ts';
 
 export interface BatchContext {
   currentBatch: number;
@@ -131,6 +132,7 @@ export const TestGenStateAnnotation = Annotation.Root({
   batchContext: Annotation<BatchContext>,
   projectContext: Annotation<{ name: string; pages: { name: string }[]; endpoints: { name: string; method: string }[] }>,
   businessFlowBlueprints: Annotation<PipelineBusinessFlowBlueprint[] | undefined>,
+  htmlKnowledgeReference: Annotation<HtmlKnowledgeReference | undefined>,
 
   // === Global Statistics (shared across all batches) ===
   globalStats: Annotation<{ totalRequirements: number; totalEpics: number; totalFlows: number } | undefined>,
@@ -189,7 +191,10 @@ export const TestGenStateAnnotation = Annotation.Root({
   designerRetryCount: Annotation<number>,
 
   // === Skill Call Records ===
-  skillCalls: Annotation<SkillCallRecord[]>,
+  skillCalls: Annotation<SkillCallRecord[]>({
+    reducer: (current, update) => [...current, ...update],
+    default: () => [],
+  }),
 
   // === Phase Tracking ===
   phase: Annotation<Phase>,

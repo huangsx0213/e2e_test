@@ -51,7 +51,7 @@ QuantumQA closes the loop from **requirements → test design → recording → 
 
 ### 2.1 Prerequisites
 
-- Node.js **18+** (20+ recommended)
+- Node.js **20.19 or newer**
 - npm or yarn
 - Network access to an LLM service to use AI features (Provider must be configured — see [§5](#5-ai-provider-configuration))
 
@@ -262,10 +262,64 @@ Live preview of the selected Story's ACs (parsed `Given / When / Then`), so you 
 | **Reasoning Summary** (some providers) | `auto / detailed / concise` |
 | **Text Verbosity** (some providers) | output verbosity level |
 | **Prompt Cache** | "Disable cache" checkbox (checked by default) — prompt caching is off, so responses are always fresh |
+| **HTML Knowledge** | Optional multi-file HTML evidence used to ground controls, validation, content, and navigation for this run |
 | **Reference Previous Runs** | Select completed runs so this round avoids duplicates (deduplication) |
 | **Test Levels** | Always on: every run produces both **component** and **integration** level cases (tagged `testLevel`) |
 
 Click **Start Test Gen** (requires ≥1 selected requirement + a selected model).
+
+#### 7.1.1 Optional HTML Knowledge
+
+Use **Settings → HTML Knowledge** when you have static HTML for the pages covered by the selected requirements. HTML is optional; with **No HTML selected**, the run behaves as before.
+
+**Select and prepare pages**:
+
+1. Under **Attach page HTML**, click **Choose HTML files** and make one multi-file selection.
+2. Select 1-20 `.html` or `.htm` files. Each file may be at most **512 KiB**, and the complete selection may be at most **5 MiB**. Duplicate file names are not allowed, including names that differ only by case.
+3. The selection replaces any previous HTML selection. The panel shows the file count, total size, and one row per file.
+4. The platform creates a manifest, uploads and parses the pages, then automatically finalizes the set as soon as every remaining page is ready. There is no separate Finalize action.
+5. Wait for **HTML knowledge ready**, then click **Start Test Gen**. While the panel says **Preparing HTML knowledge**, **HTML selection is invalid**, or **HTML knowledge needs attention**, **Start Test Gen** is disabled.
+
+Per-file statuses and actions:
+
+| Status | Meaning and action |
+| :--- | :--- |
+| `PENDING` | Before manifest creation, this can be a client-local row for a valid selection. After creation, it is mapped to a server-persisted page that is waiting to upload. |
+| `UPLOADING` | The browser is uploading the page and the server is parsing/indexing it. |
+| `READY` | The page was indexed successfully. When all remaining rows are `READY`, finalization runs automatically. |
+| `FAILED` | This can be a local validation error or a server-backed upload/index failure. **Retry** appears only for the server-backed page; otherwise use **Remove** or choose a new valid selection. |
+
+For local validation failures, the panel states **Validation errors cannot be retried. Remove invalid files or choose a new valid selection.** Once the manifest exists, page-level **Retry** is used for upload/index request failures. If manifest creation or automatic finalization fails, the panel instead shows the set-level action **Retry set**. A lost upload/finalize response is reconciled against persisted server status before the operation is retried.
+
+After ownership and mutable-set preflight succeeds, the server records the page as `FAILED` and leaves it retryable when it rejects non-identity content encoding, a missing/malformed/unsupported HTML media type or charset, or an oversized request with HTTP `413`. Upload admission is limited to two concurrent requests before body receipt; a body that does not complete within 30 seconds returns JSON `408` and releases its slot. A wrong project/page, an upload-rate or parser-capacity `429`, and an aborted or timed-out request do not change the persisted page state. The client reconciles the existing server-backed row after request failures.
+
+Removing the final file returns the panel to **No HTML selected**. Because a finalized set is immutable, removing a `READY` page after finalization automatically deletes that unbound set and rebuilds/finalizes a new set from the remaining files.
+
+A `LOW_INFORMATION` result is non-blocking and appears as:
+
+> **Low information. A rendered DOM snapshot may provide better knowledge.**
+
+This is common for single-page applications whose saved source contains only a framework mount element and script references. Upload a saved **rendered DOM snapshot** if you need labels, controls, validation text, or links created by JavaScript. The platform does not render the page or infer JavaScript-only behavior itself.
+
+**How the evidence is used**:
+
+- Requirements, acceptance criteria, and approved flows remain authoritative. HTML cannot override them or add tests for unrelated features that only appear in the markup.
+- HTML can make generated cases more concrete by supplying static page/field/button names, labels, IDs, input types, required/min/max/length/pattern constraints, validation text, link targets, form actions, and relationships between uploaded pages.
+- HTML is supporting evidence, not proof of runtime visibility or behavior. No relevant match does not prove that a requirement is unimplemented.
+- The Analyst uses it to refine UI risks, boundaries, states, and interactions; the Designer uses it for concrete steps and requirement-consistent cross-page ordering; the Quality Manager uses it to check fabricated controls, constraints, navigation, and page names.
+
+**Safety and provider disclosure**:
+
+- The panel states: **Relevant HTML excerpts may be sent to the configured AI provider.** If the selected provider is remote, tool responses containing bounded structured evidence and safe page metadata/outlines, including file names, page titles, and warnings, may leave your network. This includes metadata-only fallback results when no chunk matches. Complete HTML files are not inserted into the normal initial agent prompts.
+- **Scripts are not executed and linked resources are not fetched.** The server parses static markup without opening it in a browser, and the UI never renders uploaded HTML.
+- Script/style content and executable URLs are not searchable evidence; URL-derived evidence also drops URL credentials and query values. Only bounded structured evidence and safe metadata/outlines are exposed to agents.
+
+**Cleanup and deletion**:
+
+- Before a run starts, replacing the selection, clicking **Reset** or **Clear**, leaving the **New** tab, switching projects, or removing the last page triggers best-effort deletion of the unbound set.
+- If that browser cleanup cannot complete, the server deletes abandoned unbound sets after 24 hours. Cleanup runs once when the server starts listening and then hourly.
+- After **Start Test Gen**, the finalized set is bound to that run and cannot be edited directly. It remains available for checkpoint resume and retry, including after requirement text is changed.
+- Deleting the Test Gen run deletes its bound HTML source and index. Deleting the project first stops and deletes its Test Gen runs, then removes both bound and unbound HTML knowledge.
 
 ### 7.2 Runtime — Pipeline
 
@@ -314,9 +368,11 @@ Three agents with interchangeable models, per-agent tool toggles, and prompt edi
 
 | Agent | Tools |
 | :--- | :--- |
-| `test_analyst` | requirement_detail_query, requirement_graph_query, flow_detail_query, istqb_equivalence_partitioning, istqb_boundary_value_analysis, istqb_decision_table, istqb_state_transition, istqb_use_case_testing, knowledge_base |
-| `test_designer` | same set + draft case generation |
-| `quality_manager` | requirement_detail_query, knowledge_base |
+| `test_analyst` | requirement_detail_query, requirement_graph_query, flow_detail_query, istqb_equivalence_partitioning, istqb_boundary_value_analysis, istqb_decision_table, istqb_state_transition, istqb_use_case_testing, knowledge_base, html_knowledge_query |
+| `test_designer` | same tool list as `test_analyst` |
+| `quality_manager` | requirement_detail_query, knowledge_base, html_knowledge_query |
+
+`html_knowledge_query` is shown for all three roles, but the server registers it for execution only when the run has a finalized HTML Knowledge set. Its source-of-truth rules are appended even when an agent uses a custom prompt.
 
 ---
 

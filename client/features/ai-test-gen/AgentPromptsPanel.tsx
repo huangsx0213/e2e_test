@@ -16,9 +16,9 @@ const AGENTS = [
 type AgentName = typeof AGENTS[number]['name'];
 
 const AGENT_TOOLS: Record<AgentName, string[]> = {
-  test_analyst: ['requirement_detail_query', 'requirement_graph_query', 'flow_detail_query', 'istqb_equivalence_partitioning', 'istqb_boundary_value_analysis', 'istqb_decision_table', 'istqb_state_transition', 'istqb_use_case_testing', 'knowledge_base'],
-  test_designer: ['requirement_detail_query', 'requirement_graph_query', 'flow_detail_query', 'istqb_equivalence_partitioning', 'istqb_boundary_value_analysis', 'istqb_decision_table', 'istqb_state_transition', 'istqb_use_case_testing', 'knowledge_base'],
-  quality_manager: ['requirement_detail_query', 'knowledge_base'],
+  test_analyst: ['requirement_detail_query', 'requirement_graph_query', 'flow_detail_query', 'istqb_equivalence_partitioning', 'istqb_boundary_value_analysis', 'istqb_decision_table', 'istqb_state_transition', 'istqb_use_case_testing', 'knowledge_base', 'html_knowledge_query'],
+  test_designer: ['requirement_detail_query', 'requirement_graph_query', 'flow_detail_query', 'istqb_equivalence_partitioning', 'istqb_boundary_value_analysis', 'istqb_decision_table', 'istqb_state_transition', 'istqb_use_case_testing', 'knowledge_base', 'html_knowledge_query'],
+  quality_manager: ['requirement_detail_query', 'knowledge_base', 'html_knowledge_query'],
 };
 
 export function AgentPromptsPanel({ projectId }: AgentPromptsPanelProps) {

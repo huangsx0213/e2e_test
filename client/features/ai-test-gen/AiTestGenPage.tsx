@@ -9,6 +9,7 @@ import { TestGenStepper } from './TestGenStepper';
 import { TestGenDetailPanel } from './TestGenDetailPanel';
 import { TestGenRunHistory } from './TestGenRunHistory';
 import { AgentPromptsPanel } from './AgentPromptsPanel';
+import { useHtmlKnowledgeUpload } from './useHtmlKnowledgeUpload';
 import { ConfirmModal } from '@/shared/ui/ConfirmModal';
 
 type TabId = 'new' | 'runtime' | 'history' | 'prompts';
@@ -24,6 +25,12 @@ interface AiTestGenPageProps {
   currentProjectId: string | null;
 }
 
+interface StartAttempt {
+  token: number;
+  projectId: string;
+  htmlKnowledgeSetId?: string;
+}
+
 export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [activeTab, setActiveTab] = useState<TabId>('new');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
@@ -31,13 +38,35 @@ export function AiTestGenPage({ currentProjectId }: AiTestGenPageProps) {
   const [showResumeConfirm, setShowResumeConfirm] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [isStartPending, setIsStartPending] = useState(false);
   const pipeline = useTestGenRun(currentProjectId, { detailPanelVisible: activeTab !== 'history' });
+  const htmlKnowledgeUpload = useHtmlKnowledgeUpload(currentProjectId);
   const queryClient = useQueryClient();
   const checkpointEditedData = useRef<any>(null);
+  const previousTabRef = useRef<TabId>('new');
+  const startAttemptTokenRef = useRef(0);
+  const startAttemptRef = useRef<StartAttempt | null>(null);
+  const currentProjectIdRef = useRef(currentProjectId);
+  currentProjectIdRef.current = currentProjectId;
   const [reviewMode, setReviewMode] = useState(false);
 
   const { data: requirements = [] } = useRequirements(currentProjectId || '');
   const flowStories = useMemo(() => requirements.filter(r => r.isFlow), [requirements]);
+
+  useEffect(() => {
+    if (previousTabRef.current === 'new' && activeTab !== 'new') {
+      void htmlKnowledgeUpload.reset();
+    }
+    previousTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    setIsStartPending(false);
+    return () => {
+      startAttemptTokenRef.current += 1;
+      startAttemptRef.current = null;
+    };
+  }, [currentProjectId]);
 
 const handleRefresh = useCallback(async () => {
     // Always refresh the runs list (history)
@@ -51,6 +80,23 @@ const handleRefresh = useCallback(async () => {
   }, [pipeline, queryClient, currentProjectId]);
 
   const handleStart = useCallback(async (config: TestGenStartConfig) => {
+    if (!currentProjectId || startAttemptRef.current) return;
+    const htmlKnowledgeSetId = config.htmlKnowledgeSetId;
+    const attempt: StartAttempt = {
+      token: ++startAttemptTokenRef.current,
+      projectId: currentProjectId,
+      htmlKnowledgeSetId,
+    };
+    startAttemptRef.current = attempt;
+    setIsStartPending(true);
+    const isCurrentAttempt = () => {
+      const activeAttempt = startAttemptRef.current;
+      return startAttemptTokenRef.current === attempt.token
+        && activeAttempt?.token === attempt.token
+        && activeAttempt.projectId === attempt.projectId
+        && activeAttempt.htmlKnowledgeSetId === attempt.htmlKnowledgeSetId
+        && currentProjectIdRef.current === attempt.projectId;
+    };
     try {
       await pipeline.start({
         requirementIds: config.requirementIds,
@@ -64,12 +110,23 @@ const handleRefresh = useCallback(async () => {
         reasoningSummary: config.reasoningSummary,
         textVerbosity: config.textVerbosity,
         referenceRunIds: config.referenceRunIds,
+        htmlKnowledgeSetId,
       });
+      if (!isCurrentAttempt()) return;
+      if (htmlKnowledgeSetId) {
+        htmlKnowledgeUpload.releaseAfterStart(htmlKnowledgeSetId);
+      }
+      startAttemptRef.current = null;
+      setIsStartPending(false);
       setActiveTab('runtime');
     } catch {
+      if (isCurrentAttempt()) {
+        startAttemptRef.current = null;
+        setIsStartPending(false);
+      }
       // error dispatched to reducer via SET_ERROR
     }
-  }, [pipeline]);
+  }, [currentProjectId, pipeline, htmlKnowledgeUpload]);
 
   const handleDeleteRun = useCallback(async (runId: string) => {
     try {
@@ -80,8 +137,15 @@ const handleRefresh = useCallback(async () => {
   }, [currentProjectId, queryClient]);
 
   const handleClear = useCallback(() => {
+    if (startAttemptRef.current) return;
+    void htmlKnowledgeUpload.reset();
     pipeline.reset();
-  }, [pipeline]);
+  }, [pipeline, htmlKnowledgeUpload]);
+
+  const handleTabChange = (tabId: TabId) => {
+    if (startAttemptRef.current) return;
+    setActiveTab(tabId);
+  };
 
   const handleAbort = useCallback(async () => {
     setShowAbortConfirm(false);
@@ -140,7 +204,7 @@ const handleRefresh = useCallback(async () => {
   }, [pipeline, queryClient, currentProjectId]);
 
   const handleResumeAbortedRun = useCallback(async () => {
-    if (!pipeline.runId) return;
+    if (isStartPending || !pipeline.runId) return;
     setResuming(true);
     try {
       // Find the first error or incomplete agent node to mark as retrying
@@ -155,7 +219,7 @@ const handleRefresh = useCallback(async () => {
     } finally {
       setResuming(false);
     }
-  }, [pipeline, queryClient, currentProjectId]);
+  }, [pipeline, queryClient, currentProjectId, isStartPending]);
 
   const handleRetryFailedRun = useCallback(async (runId: string) => {
     try {
@@ -234,7 +298,7 @@ const handleRefresh = useCallback(async () => {
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider">AI Test Gen</h2>
           {pipeline.error && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 max-w-md truncate">
+            <span role="alert" className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 max-w-md truncate">
               {pipeline.error.message}
             </span>
           )}
@@ -249,7 +313,8 @@ const handleRefresh = useCallback(async () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handleClear}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            disabled={isStartPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="Clear current pipeline to start fresh"
           >
             <Trash2 size={14} />
@@ -274,7 +339,7 @@ const handleRefresh = useCallback(async () => {
           {isResumable && !pipeline.isRunning && (
             <button
               onClick={() => setShowResumeConfirm(true)}
-              disabled={resuming}
+              disabled={resuming || isStartPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
             >
               <PlayCircle size={14} className={resuming ? 'animate-spin' : ''} />
@@ -289,12 +354,13 @@ const handleRefresh = useCallback(async () => {
         {TABS.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabChange(tab.id)}
+            disabled={isStartPending}
             className={`px-4 py-2 text-xs font-medium transition-colors ${
               activeTab === tab.id
                 ? 'text-blue-600 border-b-2 border-blue-600 -mb-px'
                 : 'text-slate-500 hover:text-slate-700'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {tab.label}
           </button>
@@ -305,11 +371,14 @@ const handleRefresh = useCallback(async () => {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'new' && (
           <TestGenConfigPanel
+            key={currentProjectId}
             projectId={currentProjectId}
             requirements={requirements}
             flowStories={flowStories}
+            htmlKnowledgeUpload={htmlKnowledgeUpload}
             onStart={handleStart}
             disabled={pipeline.isRunning}
+            startPending={isStartPending}
           />
         )}
         {activeTab === 'runtime' && (

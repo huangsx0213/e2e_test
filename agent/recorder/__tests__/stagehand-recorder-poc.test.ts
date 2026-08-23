@@ -26,7 +26,7 @@
  * USAGE:
  *   npx vitest run agent/recorder/__tests__/stagehand-recorder-poc.test.ts
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 const TEST_HTML = `
 <html><body>
@@ -101,18 +101,14 @@ function getStagehandConfig() {
   return config;
 }
 
-const hasApiKey = !!(process.env.MODEL_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.AZURE_API_KEY);
+const hasApiKey = !!(
+  process.env.MODEL_API_KEY
+  || process.env.OPENAI_API_KEY
+  || (process.env.AZURE_API_KEY && process.env.AZURE_DEPLOYMENT)
+);
+const aiIt = it.skipIf(!hasApiKey);
 
 describe('Stagehand v3 + _enableRecorder compatibility POC', () => {
-  beforeAll(() => {
-    if (!hasApiKey) {
-      console.warn(
-        '[SKIP] No API key set. Set MODEL_API_KEY (or OPENAI_API_KEY) to run this POC.\n' +
-        '  Example: $env:MODEL_API_KEY="sk-..."; $env:MODEL_BASE_URL="https://your-endpoint/v1"'
-      );
-    }
-  });
-
   /**
    * Test 1: Stagehand launches browser → Playwright connectOverCDP → _enableRecorder
    *
@@ -123,11 +119,9 @@ describe('Stagehand v3 + _enableRecorder compatibility POC', () => {
    *   Stagehand act() performs actions
    *   _enableRecorder should capture them
    */
-  it(
+  aiIt(
     'Test 1: Stagehand act() via CDP-connected Playwright + _enableRecorder',
     async () => {
-      if (!hasApiKey) return;
-
       const { Stagehand } = await import('@browserbasehq/stagehand');
       const { chromium } = await import('playwright-core');
       const { PlaywrightRecorderAdapter } = await import('../adapter');
@@ -225,11 +219,9 @@ describe('Stagehand v3 + _enableRecorder compatibility POC', () => {
    * Click is proven. But fill and select go through different CDP paths.
    * This test validates that _enableRecorder captures them too.
    */
-  it(
+  aiIt(
     'Test 1b: Stagehand act() fill + select + navigate + _enableRecorder',
     async () => {
-      if (!hasApiKey) return;
-
       const { Stagehand } = await import('@browserbasehq/stagehand');
       const { chromium } = await import('playwright-core');
       const { PlaywrightRecorderAdapter } = await import('../adapter');
@@ -327,11 +319,9 @@ describe('Stagehand v3 + _enableRecorder compatibility POC', () => {
    * Even if _enableRecorder doesn't work, Stagehand act() returns
    * ActResult with selector info. Can we use that to build TestSteps?
    */
-  it(
+  aiIt(
     'Test 2: Stagehand act() on its own page — ActResult analysis',
     async () => {
-      if (!hasApiKey) return;
-
       const { Stagehand } = await import('@browserbasehq/stagehand');
 
       const config = getStagehandConfig();
@@ -376,11 +366,9 @@ describe('Stagehand v3 + _enableRecorder compatibility POC', () => {
   /**
    * Test 3: Stagehand observe() — what selector format does it return?
    */
-  it(
+  aiIt(
     'Test 3: Stagehand observe() — selector format analysis',
     async () => {
-      if (!hasApiKey) return;
-
       const { Stagehand } = await import('@browserbasehq/stagehand');
 
       const config = getStagehandConfig();

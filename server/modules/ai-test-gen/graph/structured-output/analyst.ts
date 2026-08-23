@@ -315,43 +315,17 @@ export function createAnalystOutputProfile(
                 })
               : nullToUndefined(normalizedCondition.flowStepRefs as unknown[] | null | undefined);
 
-            const primaryTechniqueLower = typeof normalizedCondition.primaryTechnique === 'string'
-              ? normalizedCondition.primaryTechnique.toLowerCase()
-              : '';
-
-            // Auto-fix: Use Case Testing is inherently cross-component. Two
-            // sub-cases when the LLM tags it as "component":
-            //   (a) flowStepRefs already provided → the LLM identified a flow
-            //       condition but mislabeled the type → correct to "flow".
-            //   (b) flowStepRefs is empty → the LLM misapplied Use Case Testing
-            //       to a component condition → downgrade primaryTechnique to
-            //       "Equivalence Partitioning" (always valid for component
-            //       conditions) to prevent a schema validation failure that the
-            //       LLM often fails to self-correct across all 3 Phase 2 retries.
-            let autoFixedConditionType = conditionType;
-            let autoFixedPrimaryTechnique = normalizedCondition.primaryTechnique;
-            if (primaryTechniqueLower.includes('use case') && conditionType === 'component') {
-              if (Array.isArray(flowStepRefs) && flowStepRefs.length > 0) {
-                autoFixedConditionType = 'flow';
-              } else {
-                autoFixedPrimaryTechnique = 'Equivalence Partitioning';
-              }
-            }
-
             return {
               ...normalizedCondition,
-              conditionType: autoFixedConditionType,
-              primaryTechnique: autoFixedPrimaryTechnique,
+              conditionType,
               flowStepRefs,
-              secondaryTechniques: nullToEmptyArray(normalizedCondition.secondaryTechniques as string[] | null | undefined),
-              coverageDimensions: nullToEmptyArray(normalizedCondition.coverageDimensions as string[] | null | undefined),
               dataRequirements: nullToUndefined(normalizedCondition.dataRequirements as string[] | null | undefined),
               dependencies: nullToEmptyArray(normalizedCondition.dependencies as string[] | null | undefined),
               requirementLevel: nullToUndefined(normalizedCondition.requirementLevel as string | null | undefined),
               recommendedCaseCount: nullToUndefined(normalizedCondition.recommendedCaseCount as number | null | undefined),
             };
           })
-        : [];
+        : input.testConditions;
 
       return {
         requirementAnalysis: input.requirementAnalysis,

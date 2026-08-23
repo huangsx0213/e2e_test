@@ -20,6 +20,12 @@ import {
   AI_RECORDER_START_EVENT,
   AI_RECORDER_STOP_EVENT,
 } from '../../../shared/recording/protocol.ts';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+  ValidationError,
+} from '../../shared/http/errors.ts';
 
 export interface StartRunRequest {
   nlCaseId: string;
@@ -65,27 +71,31 @@ export class AiDrivenRecorderController {
   /** 启动 AI 录制 run */
   startRun(projectId: string, body: unknown): StartRunResponse {
     const params = body as StartRunRequest;
-    if (!params?.nlCaseId) throw new Error('nlCaseId is required');
-    if (!params?.providerConfigId) throw new Error('providerConfigId is required');
+    if (!params?.nlCaseId) throw new ValidationError('nlCaseId is required');
+    if (!params?.providerConfigId) throw new ValidationError('providerConfigId is required');
 
     // 1. 校验 NlCase 存在且为 APPROVED 状态
     const nlCase = nlCaseRepo.get(params.nlCaseId);
-    if (!nlCase) throw new Error(`NlCase not found: ${params.nlCaseId}`);
-    if (nlCase.projectId !== projectId) throw new Error('NlCase does not belong to this project');
+    if (!nlCase) throw new NotFoundError(`NlCase not found: ${params.nlCaseId}`);
+    if (nlCase.projectId !== projectId) {
+      throw new NotFoundError('NlCase does not belong to this project');
+    }
     if (nlCase.status !== 'APPROVED') {
-      throw new Error(`NlCase must be APPROVED, current: ${nlCase.status}`);
+      throw new ConflictError(`NlCase must be APPROVED, current: ${nlCase.status}`);
     }
     if (nlCase.generatedSuiteId) {
-      throw new Error(`NlCase already has generatedSuiteId: ${nlCase.generatedSuiteId}`);
+      throw new ConflictError(`NlCase already has generatedSuiteId: ${nlCase.generatedSuiteId}`);
     }
 
     // 2. 校验 providerConfig 存在且在认证矩阵中允许触发
     const providerConfig = this.repository.getDecryptedProviderConfig(params.providerConfigId);
     if (!providerConfig) {
-      throw new Error(`Provider config not found: ${params.providerConfigId}`);
+      throw new NotFoundError(`Provider config not found: ${params.providerConfigId}`);
     }
     if (!canTriggerAiRecording(providerConfig)) {
-      throw new Error(`Provider type ${providerConfig.type} is not allowed for AI recording (unverified)`);
+      throw new ConflictError(
+        `Provider type ${providerConfig.type} is not allowed for AI recording (unverified)`,
+      );
     }
 
     // 3. 检查是否有进行中的 run（同一 NlCase 不允许并发录制）
@@ -94,7 +104,7 @@ export class AiDrivenRecorderController {
       (r) => r.nl_case_id === params.nlCaseId && (r.status === 'running' || r.status === 'refining' || r.status === 'replaying'),
     );
     if (conflictingRun) {
-      throw new Error(`NlCase already has an active run: ${conflictingRun.id}`);
+      throw new ConflictError(`NlCase already has an active run: ${conflictingRun.id}`);
     }
 
     // 4. 预分配 draft suiteId / caseId（Agent 完成后回填内容）
@@ -130,7 +140,7 @@ export class AiDrivenRecorderController {
     }
     if (!idleAgent) {
       this.repository.updateRunStatus(runId, 'failed', 'No idle agent available');
-      throw new Error('No idle agent available');
+      throw new ServiceUnavailableError('No idle agent available');
     }
 
     // 7. 通过 WS 下发 AI_RECORDER_START
@@ -160,8 +170,10 @@ export class AiDrivenRecorderController {
   /** 查询 run 状态 */
   getRun(projectId: string, runId: string): RunStatusResponse {
     const run = this.repository.getRun(runId);
-    if (!run) throw new Error(`Run not found: ${runId}`);
-    if (run.project_id !== projectId) throw new Error('Run does not belong to this project');
+    if (!run) throw new NotFoundError(`Run not found: ${runId}`);
+    if (run.project_id !== projectId) {
+      throw new NotFoundError('Run does not belong to this project');
+    }
 
     const response: RunStatusResponse = {
       runId: run.id,
@@ -212,8 +224,10 @@ export class AiDrivenRecorderController {
   /** 中止并删除 run */
   deleteRun(projectId: string, runId: string): { success: true } {
     const run = this.repository.getRun(runId);
-    if (!run) throw new Error(`Run not found: ${runId}`);
-    if (run.project_id !== projectId) throw new Error('Run does not belong to this project');
+    if (!run) throw new NotFoundError(`Run not found: ${runId}`);
+    if (run.project_id !== projectId) {
+      throw new NotFoundError('Run does not belong to this project');
+    }
 
     // 如果 run 还在进行中，先发送 STOP 给 Agent
     if (run.status === 'running' || run.status === 'refining' || run.status === 'replaying') {

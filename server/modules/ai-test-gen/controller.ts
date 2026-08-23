@@ -1,3 +1,5 @@
+import { ZodError } from 'zod';
+
 import { randomId } from '../../shared/utils/index.ts';
 import { pipelineRepo } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
@@ -5,14 +7,32 @@ import { Orchestrator } from './orchestrator.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
 import { nlCaseRepo } from '../nl-cases/repository.ts';
 import { Log } from '../../shared/services/logger.ts';
+import { HtmlKnowledgeService } from './html-knowledge/service.ts';
+import {
+  ProjectDeletionLock,
+  projectDeletionLock,
+} from './project-deletion-lock.ts';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '../../shared/http/errors.ts';
 
 export class TestGenController {
   public readonly orchestrator: Orchestrator;
   public readonly sseGateway: SSEGateway;
+  private readonly htmlKnowledgeService: HtmlKnowledgeService;
 
-  constructor() {
+  constructor(private readonly deletionLock: ProjectDeletionLock = projectDeletionLock) {
     this.sseGateway = new SSEGateway();
-    this.orchestrator = new Orchestrator(this.sseGateway);
+    this.orchestrator = new Orchestrator(
+      this.sseGateway,
+      undefined,
+      undefined,
+      undefined,
+      this.deletionLock,
+    );
+    this.htmlKnowledgeService = new HtmlKnowledgeService();
   }
 
   /** 列出项目下的所有运行 */
@@ -43,10 +63,10 @@ export class TestGenController {
   }
 
   /** 删除运行 */
-  deleteRun(runId: string) {
+  async deleteRun(runId: string) {
     const row = pipelineRepo.getRun(runId);
-    if (!row) throw new Error('Test gen run not found');
-    this.orchestrator.delete(runId);
+    if (!row) throw new NotFoundError('Test gen run not found');
+    await this.orchestrator.delete(runId);
     return { success: true };
   }
 
@@ -58,32 +78,55 @@ export class TestGenController {
 
   /** 启动流水线 */
   async startPipeline(projectId: string, body: unknown) {
-    const params = startPipelineSchema.parse(body);
-    const runId = randomId('tgr');
-    pipelineRepo.createRun(runId, projectId, params.mode, params);
+    const params = parseRequest(() => startPipelineSchema.parse(body));
+    this.deletionLock.assertStartAllowed(projectId);
+    const candidateRunId = randomId('tgr');
+    const result = params.htmlKnowledgeSetId
+      ? this.htmlKnowledgeService.createOrReuseRun(
+          projectId,
+          params.htmlKnowledgeSetId,
+          candidateRunId,
+          params,
+        )
+      : (() => {
+          pipelineRepo.createRun(candidateRunId, projectId, params.mode, params);
+          return { runId: candidateRunId, created: true } as const;
+        })();
     // 异步执行，不阻塞响应
-    this.orchestrator.start(runId, projectId, params).catch(err => {
-      Log.for('controller').error(`Pipeline ${runId} failed: ${err.message}`);
-    });
-    return { runId };
+    if (result.created) {
+      this.orchestrator.start(result.runId, projectId, params).catch(err => {
+        Log.for('controller').error(`Pipeline ${result.runId} failed: ${err.message}`);
+      });
+    }
+    return result;
   }
 
   /** 审核通过/重试 */
   resumeRun(runId: string, body: unknown) {
-    const { action, feedback, editedData } = resumePipelineSchema.parse(body);
-    this.orchestrator.resume(runId, action, feedback, editedData);
+    const { action, feedback, editedData } = parseRequest(() => resumePipelineSchema.parse(body));
+    this.orchestrator.assertCanResume(runId);
+    void this.orchestrator.resume(runId, action, feedback, editedData).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      Log.for('controller').error(`Resume ${runId} failed: ${message}`);
+    });
     return { success: true, action };
   }
 
   /** 从失败的 agent 重试 */
-  async retryRun(runId: string) {
-    await this.orchestrator.retry(runId);
+  retryRun(runId: string) {
+    this.orchestrator.assertCanRetry(runId);
+    void this.orchestrator.retry(runId).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      Log.for('controller').error(`Retry ${runId} failed: ${message}`);
+    });
     return { success: true };
   }
 
   /** 保存 checkpoint 编辑 */
   async saveCheckpointEdits(runId: string, body: unknown) {
-    const { editedData, checkpointNumber } = checkpointUpdateSchema.parse(body);
+    const { editedData, checkpointNumber } = parseRequest(
+      () => checkpointUpdateSchema.parse(body),
+    );
     await this.orchestrator.saveCheckpointEdits(runId, editedData, checkpointNumber);
     return { success: true };
   }
@@ -96,13 +139,13 @@ export class TestGenController {
   /** 保存用例到项目 */
   saveCases(runId: string) {
     const run = pipelineRepo.getRun(runId);
-    if (!run) throw new Error('Run not found');
+    if (!run) throw new NotFoundError('Run not found');
 
     const logs = pipelineRepo.getAgentLogs(runId);
     const allCases = logs
       .filter(l => l.agent_name === 'quality_manager' && l.output_data?.finalTestCases)
       .flatMap(l => l.output_data.finalTestCases);
-    if (allCases.length === 0) throw new Error('No test cases found to export');
+    if (allCases.length === 0) throw new ConflictError('No test cases found to export');
 
     // 保存全部用例，不在保存阶段去重。每个用例生成新的 DB id（不沿用 LLM 生成的
     // transient id），避免跨运行同名 id 互相覆盖。去重应由生成阶段负责。
@@ -154,5 +197,18 @@ export class TestGenController {
         log.error(`Failed to resume run ${run.id}: ${err.message}`);
       });
     }
+  }
+}
+
+function parseRequest<T>(parse: () => T): T {
+  try {
+    return parse();
+  } catch (error) {
+    if (!(error instanceof ZodError)) throw error;
+    const message = error.issues.map((issue) => {
+      const path = issue.path.map(String).join('.');
+      return path ? `${path}: ${issue.message}` : issue.message;
+    }).join('; ');
+    throw new ValidationError(message || 'Invalid request');
   }
 }

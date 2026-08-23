@@ -6,7 +6,7 @@ export interface TestGenApiAdapter {
   runs: (projectId: string) => Promise<any[]>;
   active: (projectId: string) => Promise<any | null>;
   get: (runId: string) => Promise<any>;
-  start: (projectId: string, config: StartConfig) => Promise<{ runId: string }>;
+  start: (projectId: string, config: StartConfig) => Promise<{ runId: string; created?: boolean }>;
   resume: (runId: string, action: any) => Promise<any>;
   checkpoint: (runId: string) => Promise<any>;
   logs: (runId: string, agentName?: string) => Promise<any[]>;

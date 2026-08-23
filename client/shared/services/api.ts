@@ -1,5 +1,44 @@
 import { Project, TestSuite, HeaderProfile, BodyTemplate, ApiEndpoint, ExecutionReport, Settings, ExecutionRequest, DynamicVariable } from '@/shared/types';
 import type { Requirement } from '../../../shared/contracts/index';
+import type { StartConfig } from '@/shared/test-gen-run/types';
+
+export type HtmlKnowledgeSetStatus = 'UPLOADING' | 'READY' | 'BOUND';
+export type HtmlKnowledgePageStatus = 'PENDING' | 'READY' | 'FAILED';
+export type HtmlInformationLevel = 'NORMAL' | 'LOW_INFORMATION';
+
+export interface HtmlKnowledgeManifestPage {
+  readonly fileName: string;
+  readonly byteSize: number;
+}
+
+export interface HtmlKnowledgeManifest {
+  readonly pages: readonly HtmlKnowledgeManifestPage[];
+}
+
+export interface HtmlKnowledgePageDto {
+  readonly pageId: string;
+  readonly fileName: string;
+  readonly expectedByteSize: number;
+  readonly status: HtmlKnowledgePageStatus;
+  readonly errorMessage: string | null;
+  readonly pageTitle: string | null;
+  readonly byteSize: number | null;
+  readonly informationLevel: HtmlInformationLevel | null;
+  readonly warnings: readonly string[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface HtmlKnowledgeSetDto {
+  readonly knowledgeSetId: string;
+  readonly status: HtmlKnowledgeSetStatus;
+  readonly pageCount: number;
+  readonly totalBytes: number;
+  readonly indexVersion: number;
+  readonly pages: readonly HtmlKnowledgePageDto[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
 
 export interface CrudService<T extends { id: string }> {
   list: () => Promise<T[]>;
@@ -130,11 +169,58 @@ export const api = {
     runs: (projectId: string) => apiFetch<any[]>(`test-gen/runs/${projectId}`),
     active: (projectId: string) => apiFetch<any | null>(`test-gen/active/${projectId}`),
     get: (runId: string) => apiFetch<any>(`test-gen/${runId}`),
-    start: (projectId: string, config: any) =>
-      apiFetch<{ runId: string }>(`test-gen/${projectId}/start`, {
+    start: (projectId: string, config: StartConfig) =>
+      apiFetch<{ runId: string; created?: boolean }>(`test-gen/${projectId}/start`, {
         method: 'POST',
         body: JSON.stringify(config),
       }),
+    htmlKnowledge: {
+      createSet: (projectId: string, manifest: HtmlKnowledgeManifest) =>
+        apiFetch<HtmlKnowledgeSetDto>(`test-gen/${projectId}/html-knowledge-sets`, {
+          method: 'POST',
+          body: JSON.stringify(manifest),
+        }),
+      getSet: (projectId: string, setId: string, signal?: AbortSignal) =>
+        apiFetch<HtmlKnowledgeSetDto>(
+          `test-gen/${projectId}/html-knowledge-sets/${setId}`,
+          signal ? { signal } : undefined,
+        ),
+      uploadPage: (
+        projectId: string,
+        setId: string,
+        pageId: string,
+        file: File,
+        signal?: AbortSignal,
+      ) => apiFetch<HtmlKnowledgePageDto>(
+        `test-gen/${projectId}/html-knowledge-sets/${setId}/pages/${pageId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          body: file,
+          signal,
+        },
+      ),
+      deletePage: (
+        projectId: string,
+        setId: string,
+        pageId: string,
+        signal?: AbortSignal,
+      ) =>
+        apiFetch<HtmlKnowledgeSetDto>(
+          `test-gen/${projectId}/html-knowledge-sets/${setId}/pages/${pageId}`,
+          { method: 'DELETE', ...(signal ? { signal } : {}) },
+        ),
+      deleteSet: (projectId: string, setId: string, signal?: AbortSignal) =>
+        apiFetch<{ success: boolean }>(
+          `test-gen/${projectId}/html-knowledge-sets/${setId}`,
+          { method: 'DELETE', ...(signal ? { signal } : {}) },
+        ),
+      finalizeSet: (projectId: string, setId: string, signal?: AbortSignal) =>
+        apiFetch<HtmlKnowledgeSetDto>(
+          `test-gen/${projectId}/html-knowledge-sets/${setId}/finalize`,
+          { method: 'POST', ...(signal ? { signal } : {}) },
+        ),
+    },
     resume: (runId: string, action: any) =>
       apiFetch<{ success: boolean }>(`test-gen/${runId}/resume`, {
         method: 'POST',

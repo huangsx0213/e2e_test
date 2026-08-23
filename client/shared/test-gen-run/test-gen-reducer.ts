@@ -284,7 +284,7 @@ if (type === 'pipeline:context' || type === 'pipeline:budget' || type === 'phase
         ),
         isRunning: false,
         isConnected: false,
-        error: { message: 'Run was aborted by user.' },
+        error: { code: 'API_ERROR', message: 'Run was aborted by user.' },
       };
 
     case 'RETRY_STARTED': {

@@ -6,13 +6,19 @@ import type { SkillDefinition } from '../nodes/types.ts';
 import type { BatchRequirement } from '../state.ts';
 import {
   makeRequirementDetailQuery,
-  requirementGraphQuery,
-  flowDetailQuery,
-  crossEpicImpactQuery,
+  makeRequirementGraphQuery,
+  makeFlowDetailQuery,
+  makeCrossEpicImpactQuery,
   makePreviousBatchConditionsQuery,
   makePreviousBatchCasesQuery,
+  type RequirementSkillRepository,
 } from './data-skills.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import {
+  makeHtmlKnowledgeQuery,
+  type ResolvedHtmlKnowledgeRuntime,
+} from './html-knowledge.ts';
+import { requirementsFromHtmlSnapshot } from '../../html-knowledge/requirement-snapshot.ts';
 
 const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -191,49 +197,119 @@ const knowledgeSkills = loadKnowledgeSkills();
 
 /**
  * Skills bound to the Analyst: Data + ISTQB Guide + Knowledge Base.
- * Requires runId so previous_batch_conditions_query can look up historical agent logs.
+ * Requires runId for historical logs and projectId for tenant-scoped data lookups.
  * Passes batchRequirements for requirement_detail_query fallback.
  */
-export function buildAnalystSkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
-  return [
-    makeRequirementDetailQuery(batchRequirements),
-    requirementGraphQuery,
-    flowDetailQuery,
-    crossEpicImpactQuery,
-    makePreviousBatchConditionsQuery(runId),
+export function buildAnalystSkills(
+  runId: string,
+  projectId: string,
+  batchRequirements?: BatchRequirement[],
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime,
+): SkillDefinition[] {
+  const requirementRepository = snapshotRequirementRepository(htmlKnowledge);
+  const cacheScope = requirementCacheScope(runId, projectId, htmlKnowledge);
+  const skills: SkillDefinition[] = [
+    makeRequirementDetailQuery(projectId, batchRequirements, requirementRepository, cacheScope),
+    makeRequirementGraphQuery(projectId, requirementRepository),
+    makeFlowDetailQuery(projectId, requirementRepository, cacheScope),
+    makeCrossEpicImpactQuery(projectId, requirementRepository),
+    makePreviousBatchConditionsQuery(runId, projectId, undefined, requirementRepository),
     istqbGuideSkill,
     ...knowledgeSkills.filter((s) => s.name === 'analyst_rules'),
   ];
+  if (htmlKnowledge) {
+    skills.push(makeHtmlKnowledgeQuery({
+      runId,
+      currentBatch: batchRequirements ?? [],
+      runtime: htmlKnowledge,
+    }));
+  }
+  return skills;
 }
 
 /**
  * Skills bound to the Designer: Data (subset) + ISTQB Guide + Knowledge Base.
- * Requires runId so previous_batch_cases_query can look up historical agent logs.
+ * Requires runId for historical logs and projectId for tenant-scoped data lookups.
  * Passes batchRequirements for requirement_detail_query fallback.
  */
-export function buildDesignerSkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
-  return [
-    makeRequirementDetailQuery(batchRequirements),
-    requirementGraphQuery,
-    flowDetailQuery,
-    makePreviousBatchCasesQuery(runId),
+export function buildDesignerSkills(
+  runId: string,
+  projectId: string,
+  batchRequirements?: BatchRequirement[],
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime,
+): SkillDefinition[] {
+  const requirementRepository = snapshotRequirementRepository(htmlKnowledge);
+  const cacheScope = requirementCacheScope(runId, projectId, htmlKnowledge);
+  const skills: SkillDefinition[] = [
+    makeRequirementDetailQuery(projectId, batchRequirements, requirementRepository, cacheScope),
+    makeRequirementGraphQuery(projectId, requirementRepository),
+    makeFlowDetailQuery(projectId, requirementRepository, cacheScope),
+    makePreviousBatchCasesQuery(runId, projectId, undefined, requirementRepository),
     istqbGuideSkill,
     ...knowledgeSkills.filter((s) => s.name === 'designer_rules'),
   ];
+  if (htmlKnowledge) {
+    skills.push(makeHtmlKnowledgeQuery({
+      runId,
+      currentBatch: batchRequirements ?? [],
+      runtime: htmlKnowledge,
+    }));
+  }
+  return skills;
 }
 
 /**
  * Skills bound to the Quality Manager: Data + Knowledge Base.
- * Requires runId so previous_batch_cases_query can look up historical agent logs for D2 cross-batch redundancy.
+ * Requires runId for historical logs and projectId for tenant-scoped data lookups.
  * Passes batchRequirements for requirement_detail_query fallback.
  */
-export function buildQualitySkills(runId: string, batchRequirements?: BatchRequirement[]): SkillDefinition[] {
-  return [
-    makeRequirementDetailQuery(batchRequirements),
-    flowDetailQuery,
-    makePreviousBatchCasesQuery(runId),
+export function buildQualitySkills(
+  runId: string,
+  projectId: string,
+  batchRequirements?: BatchRequirement[],
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime,
+): SkillDefinition[] {
+  const requirementRepository = snapshotRequirementRepository(htmlKnowledge);
+  const cacheScope = requirementCacheScope(runId, projectId, htmlKnowledge);
+  const skills: SkillDefinition[] = [
+    makeRequirementDetailQuery(projectId, batchRequirements, requirementRepository, cacheScope),
+    makeFlowDetailQuery(projectId, requirementRepository, cacheScope),
+    makePreviousBatchCasesQuery(runId, projectId, undefined, requirementRepository),
     istqbGuideSkill,
     ...knowledgeSkills.filter((s) => s.name === 'quality_rules'),
   ];
+  if (htmlKnowledge) {
+    skills.push(makeHtmlKnowledgeQuery({
+      runId,
+      currentBatch: batchRequirements ?? [],
+      runtime: htmlKnowledge,
+    }));
+  }
+  return skills;
+}
+
+function snapshotRequirementRepository(
+  htmlKnowledge: ResolvedHtmlKnowledgeRuntime | undefined,
+): RequirementSkillRepository | undefined {
+  if (!htmlKnowledge) return undefined;
+  const requirements = requirementsFromHtmlSnapshot(htmlKnowledge.snapshot);
+  return {
+    listByProject: (projectId) => {
+      if (projectId !== htmlKnowledge.projectId) {
+        throw new Error('HTML knowledge requirement source belongs to another project');
+      }
+      return requirements;
+    },
+  };
+}
+
+function requirementCacheScope(
+  runId: string,
+  projectId: string,
+  htmlKnowledge: ResolvedHtmlKnowledgeRuntime | undefined,
+): string {
+  return htmlKnowledge
+    ? `${projectId}:${runId}:${htmlKnowledge.reference.knowledgeSetId}:${htmlKnowledge.reference.requirementSnapshotHash}`
+    : projectId;
 }
 

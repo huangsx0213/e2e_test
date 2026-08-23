@@ -28,3 +28,38 @@ export class ConflictError extends ApiError {
     this.name = 'ConflictError';
   }
 }
+
+export class PayloadTooLargeError extends ApiError {
+  constructor(message = 'Payload too large') {
+    super(message, 413);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
+export class RequestTimeoutError extends ApiError {
+  constructor(message = 'Request timeout') {
+    super(message, 408);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+export class UnsupportedMediaTypeError extends ApiError {
+  constructor(message = 'Unsupported media type') {
+    super(message, 415);
+    this.name = 'UnsupportedMediaTypeError';
+  }
+}
+
+export class TooManyRequestsError extends ApiError {
+  constructor(message = 'Too many requests') {
+    super(message, 429);
+    this.name = 'TooManyRequestsError';
+  }
+}
+
+export class ServiceUnavailableError extends ApiError {
+  constructor(message = 'Service unavailable') {
+    super(message, 503);
+    this.name = 'ServiceUnavailableError';
+  }
+}

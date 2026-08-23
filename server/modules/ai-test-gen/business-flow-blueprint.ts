@@ -1,8 +1,8 @@
-import { requirementRepo } from '../requirements/repository.ts';
 import type { Requirement, PipelineBusinessFlowBlueprint } from '../../shared/contracts/index.ts';
 
 interface BuildBlueprintsInput {
-  flowStories: Requirement[];
+  flowStories: readonly Requirement[];
+  requirements: readonly Requirement[];
 }
 
 /**
@@ -13,14 +13,15 @@ interface BuildBlueprintsInput {
  * blueprint per AC. The path type (happy/exception/alternate) is inferred by
  * the LLM from the AC's given/when/then semantics — not pre-classified.
  */
-export function buildBlueprintsFromFlowStories({ flowStories }: BuildBlueprintsInput): PipelineBusinessFlowBlueprint[] {
+export function buildBlueprintsFromFlowStories({
+  flowStories,
+  requirements,
+}: BuildBlueprintsInput): PipelineBusinessFlowBlueprint[] {
   if (flowStories.length === 0) return [];
 
-  const projectId = flowStories[0].projectId;
-  const allReqs = requirementRepo.listByProject(projectId);
-  const reqMap = new Map(allReqs.map(r => [r.id, r]));
+  const reqMap = new Map(requirements.map(r => [r.id, r]));
   const childrenByParent = new Map<string, Requirement[]>();
-  for (const r of allReqs) {
+  for (const r of requirements) {
     if (r.parentId) {
       const list = childrenByParent.get(r.parentId);
       if (list) list.push(r);

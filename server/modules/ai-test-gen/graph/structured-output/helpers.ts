@@ -20,10 +20,13 @@ export function wrapSingleObjectInArray<T>(value: unknown): T[] {
   return [];
 }
 
-export function coerceNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return fallback;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+export function coerceNumber(value: unknown): unknown {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return value;
 }
 
 export function formatZodValidationError(

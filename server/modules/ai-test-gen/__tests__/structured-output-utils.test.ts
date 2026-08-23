@@ -7,6 +7,7 @@ import {
   zodToJsonSchema,
 } from '../graph/nodes/utils.ts';
 import { createAnalystOutputProfile } from '../graph/structured-output/analyst.ts';
+import { HtmlKnowledgeCriticalError } from '../graph/skills/html-knowledge.ts';
 
 describe('callLLMWithStructuredOutput', () => {
   it('does not advertise an unsupported structured-output tool during the thinking phase', () => {
@@ -156,6 +157,328 @@ describe('callLLMWithStructuredOutput', () => {
     const lastMessage = phase2Messages[phase2Messages.length - 1];
     expect(lastMessage.role).toBe('user');
     expect(String(lastMessage.content)).toContain('Based on the analysis above, output a single JSON object matching this schema.');
+  });
+
+  it('sends full tool evidence to the provider but persists only the skill projection with real latency', async () => {
+    const evidenceMarker = 'FULL_EVIDENCE_MARKER';
+    const calls: any[][] = [];
+    let streamIndex = 0;
+    const provider = {
+      streamChat: vi.fn(async function* (messages: any[]) {
+        calls.push(structuredClone(messages));
+        streamIndex += 1;
+        if (streamIndex === 1) {
+          yield {
+            type: 'tool_call_start',
+            toolCall: {
+              id: 'html-tool-1',
+              name: 'html_knowledge_query',
+              args: { requirementIds: 'REQ-1' },
+            },
+          };
+          yield {
+            type: 'tool_call_end',
+            toolCall: {
+              id: 'html-tool-1',
+              name: 'html_knowledge_query',
+              args: { requirementIds: 'REQ-1' },
+            },
+          };
+          yield { type: 'done', usage: { promptTokens: 1, completionTokens: 1 } };
+          return;
+        }
+        yield { type: 'content', content: '{"ok":true}' };
+        yield { type: 'done', usage: { promptTokens: 1, completionTokens: 1 } };
+      }),
+    } as any;
+    const fullResult = JSON.stringify({ staticText: evidenceMarker });
+    const skill = {
+      name: 'html_knowledge_query',
+      description: 'Retrieve HTML evidence',
+      schema: z.object({ requirementIds: z.string() }),
+      func: vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 12));
+        return fullResult;
+      }),
+      summarizeForState: vi.fn((_input, _result, meta) => ({
+        input: { requirementIds: ['REQ-1'], focus: 'all', maxResults: 5 },
+        output: {
+          resultChars: meta.resultSize,
+          confidence: [{ requestedRequirementId: 'REQ-1', confidence: 'high' }],
+          pageIds: ['page-1'],
+          chunkIds: ['chunk-1'],
+          omittedRequirementIds: [],
+          truncated: false,
+          cacheHit: false,
+        },
+      })),
+    };
+    const profile = {
+      toolSchema: { type: 'object', properties: {} },
+      shouldAttemptPhase1Extraction: () => true,
+      normalize: (raw: unknown) => raw,
+      parse: (raw: unknown) => raw,
+      formatValidationError: () => 'invalid',
+    };
+
+    const result = await callLLMWithStructuredOutput(
+      provider,
+      [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }],
+      [skill],
+      profile as any,
+      undefined,
+      'test_analyst',
+    );
+
+    expect(JSON.stringify(calls[1])).toContain(evidenceMarker);
+    expect(JSON.stringify(result.toolCallRecords)).not.toContain(evidenceMarker);
+    expect(result.toolCallRecords?.[0]).toMatchObject({
+      name: 'html_knowledge_query',
+      input: { requirementIds: ['REQ-1'], focus: 'all', maxResults: 5 },
+      output: {
+        resultChars: fullResult.length,
+        pageIds: ['page-1'],
+        chunkIds: ['chunk-1'],
+      },
+    });
+    expect(result.toolCallRecords?.[0].latencyMs).toBeGreaterThanOrEqual(1);
+  });
+
+  it('emits a projected tool call before a later agent failure', async () => {
+    const rawEvidence = 'RAW_HTML_BEFORE_AGENT_FAILURE';
+    const onToolCall = vi.fn();
+    let round = 0;
+    const provider = {
+      streamChat: vi.fn(async function* () {
+        round += 1;
+        if (round === 1) {
+          yield {
+            type: 'tool_call_start',
+            toolCall: { id: 'html-before-failure', name: 'html_knowledge_query', args: {} },
+          };
+          yield {
+            type: 'tool_call_end',
+            toolCall: { id: 'html-before-failure', name: 'html_knowledge_query', args: {} },
+          };
+          return;
+        }
+        throw new Error('provider failed after tool success');
+      }),
+    } as any;
+
+    await expect(callLLMWithStructuredOutput(
+      provider,
+      [],
+      [{
+        name: 'html_knowledge_query',
+        description: 'Retrieve HTML evidence',
+        schema: z.object({}),
+        func: async () => rawEvidence,
+        summarizeForState: () => ({
+          input: { requirementIds: ['story-1'] },
+          output: { resultChars: rawEvidence.length, pageIds: ['page-1'] },
+        }),
+      }],
+      {
+        toolSchema: { type: 'object', properties: {} },
+        normalize: (raw: unknown) => raw,
+        parse: (raw: unknown) => raw,
+        formatValidationError: () => 'invalid',
+      } as any,
+      { onToolCall },
+      'test_analyst',
+    )).rejects.toThrow('provider failed after tool success');
+
+    expect(onToolCall).toHaveBeenCalledOnce();
+    expect(onToolCall).toHaveBeenCalledWith('test_analyst', expect.objectContaining({
+      output: { resultChars: rawEvidence.length, pageIds: ['page-1'] },
+    }));
+    expect(JSON.stringify(onToolCall.mock.calls)).not.toContain(rawEvidence);
+  });
+
+  it('lets html_knowledge_query handle malformed JSON arguments as a corrective tool result', async () => {
+    const calls: any[][] = [];
+    let streamIndex = 0;
+    const func = vi.fn(async () => JSON.stringify({
+      error: 'INVALID_HTML_KNOWLEDGE_QUERY',
+      message: 'Use requirementIds as a string or array.',
+    }));
+    const provider = {
+      streamChat: vi.fn(async function* (messages: any[]) {
+        calls.push(structuredClone(messages));
+        streamIndex += 1;
+        if (streamIndex === 1) {
+          yield {
+            type: 'tool_call_start',
+            toolCall: { id: 'bad-html-args', name: 'html_knowledge_query', args: '{not-json' },
+          };
+          yield {
+            type: 'tool_call_end',
+            toolCall: { id: 'bad-html-args', name: 'html_knowledge_query', args: '{not-json' },
+          };
+          return;
+        }
+        yield { type: 'content', content: '{"ok":true}' };
+      }),
+    } as any;
+
+    await callLLMWithStructuredOutput(
+      provider,
+      [{ role: 'system', content: 'system' }, { role: 'user', content: 'user' }],
+      [{
+        name: 'html_knowledge_query',
+        description: 'Retrieve HTML evidence',
+        schema: z.object({ requirementIds: z.string() }),
+        func,
+      }],
+      {
+        toolSchema: { type: 'object', properties: {} },
+        shouldAttemptPhase1Extraction: () => true,
+        normalize: (raw: unknown) => raw,
+        parse: (raw: unknown) => raw,
+        formatValidationError: () => 'invalid',
+      } as any,
+    );
+
+    expect(func).toHaveBeenCalledWith('{not-json');
+    expect(JSON.stringify(calls[1])).toContain('INVALID_HTML_KNOWLEDGE_QUERY');
+  });
+
+  it('aborts immediately when html_knowledge_query throws a critical retrieval failure', async () => {
+    const provider = {
+      streamChat: vi.fn(async function* () {
+        yield {
+          type: 'tool_call_start',
+          toolCall: { id: 'html-failure', name: 'html_knowledge_query', args: {} },
+        };
+        yield {
+          type: 'tool_call_end',
+          toolCall: { id: 'html-failure', name: 'html_knowledge_query', args: {} },
+        };
+      }),
+    } as any;
+
+    await expect(callLLMWithStructuredOutput(
+      provider,
+      [],
+      [{
+        name: 'html_knowledge_query',
+        description: 'Retrieve HTML evidence',
+        schema: z.object({}),
+        func: async () => {
+          throw new HtmlKnowledgeCriticalError('Bound HTML knowledge set is corrupt');
+        },
+      }],
+      {
+        toolSchema: { type: 'object', properties: {} },
+        normalize: (raw: unknown) => raw,
+        parse: (raw: unknown) => raw,
+        formatValidationError: () => 'invalid',
+      } as any,
+    )).rejects.toThrow(/Critical tool execution failed.*html_knowledge_query/i);
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['circular', (() => {
+      const value: Record<string, unknown> = {};
+      value.self = value;
+      return value;
+    })()],
+  ])('normalizes a %s successful tool result to explicit null', async (_name, toolResult) => {
+    const providerCalls: any[][] = [];
+    let round = 0;
+    const provider = {
+      streamChat: vi.fn(async function* (messages: any[]) {
+        providerCalls.push(structuredClone(messages));
+        round += 1;
+        if (round === 1) {
+          yield {
+            type: 'tool_call_start',
+            toolCall: { id: 'tool-null', name: 'nullable_tool', args: {} },
+          };
+          yield {
+            type: 'tool_call_end',
+            toolCall: { id: 'tool-null', name: 'nullable_tool', args: {} },
+          };
+          return;
+        }
+        yield { type: 'content', content: '{"ok":true}' };
+      }),
+    } as any;
+
+    const result = await callLLMWithStructuredOutput(
+      provider,
+      [],
+      [{
+        name: 'nullable_tool',
+        description: 'Returns a non-serializable value',
+        schema: z.object({}),
+        func: async () => toolResult,
+      }],
+      {
+        toolSchema: { type: 'object', properties: {} },
+        shouldAttemptPhase1Extraction: () => true,
+        normalize: (raw: unknown) => raw,
+        parse: (raw: unknown) => raw,
+        formatValidationError: () => 'invalid',
+      } as any,
+    );
+
+    const toolMessage = providerCalls[1].find((message) => message.role === 'tool');
+    expect(toolMessage.content).toBe('null');
+    expect(result.toolCallRecords?.[0].output).toBeNull();
+  });
+
+  it.each([
+    ['null', () => null],
+    ['missing output', () => ({ input: {} })],
+    ['non-serializable', () => ({ input: {}, output: 1n })],
+    ['throwing', () => { throw new Error('PRIVATE_PROJECTION_DETAILS'); }],
+  ])('fails closed for a %s state projection without persisting raw results', async (_name, summarizeForState) => {
+    const rawEvidence = 'RAW_PRIVATE_TOOL_EVIDENCE';
+    const provider = {
+      streamChat: vi.fn(async function* () {
+        yield {
+          type: 'tool_call_start',
+          toolCall: { id: 'projection-failure', name: 'projection_tool', args: {} },
+        };
+        yield {
+          type: 'tool_call_end',
+          toolCall: { id: 'projection-failure', name: 'projection_tool', args: {} },
+        };
+      }),
+    } as any;
+
+    let error: unknown;
+    try {
+      await callLLMWithStructuredOutput(
+        provider,
+        [],
+        [{
+          name: 'projection_tool',
+          description: 'Projects tool state',
+          schema: z.object({}),
+          func: async () => ({ rawEvidence }),
+          summarizeForState: summarizeForState as any,
+        }],
+        {
+          toolSchema: { type: 'object', properties: {} },
+          normalize: (raw: unknown) => raw,
+          parse: (raw: unknown) => raw,
+          formatValidationError: () => 'invalid',
+        } as any,
+      );
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/tool state projection failed/i);
+    expect((error as Error).message).not.toContain(rawEvidence);
+    expect((error as Error).message).not.toContain('PRIVATE_PROJECTION_DETAILS');
+    expect(provider.streamChat).toHaveBeenCalledTimes(1);
   });
 });
 

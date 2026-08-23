@@ -8,6 +8,10 @@ import { buildDesignerSkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createDesignerOutputProfile } from '../structured-output/designer.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import {
+  requireMatchingHtmlKnowledgeRuntime,
+  type ResolvedHtmlKnowledgeRuntime,
+} from '../skills/html-knowledge.ts';
 
 // ============================================================
 // Output Schema
@@ -21,6 +25,7 @@ export interface DesignerNodeOptions {
   observer?: AgentObserver;
   timeoutMs?: number;
   signal?: AbortSignal;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
 }
 
 export function makeDesignerNode(opts: DesignerNodeOptions) {
@@ -31,8 +36,13 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
     const startTime = Date.now();
     const log = Log.for(agentName);
     const condCount = (state.approvedConditions ?? state.testConditions ?? []).length;
+    const htmlKnowledge = requireMatchingHtmlKnowledgeRuntime(
+      state.projectId,
+      state.htmlKnowledgeReference,
+      opts.htmlKnowledge,
+    );
     // Build skills dynamically inside the node: pass state.runId so previous_batch_cases_query can query historical agent logs
-    const skills = opts.skills ?? buildDesignerSkills(state.runId, state.currentBatch);
+    const skills = opts.skills ?? buildDesignerSkills(state.runId, state.projectId, state.currentBatch, htmlKnowledge);
     log.info(`ENTER ── ${condCount} conditions to design`);
 
     observer?.onStart?.(agentName);
@@ -105,7 +115,11 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
         messages,
         skills,
         outputProfile,
-        { onStep: observer?.onStep, onThinking: observer?.onThinking },
+        {
+          onStep: observer?.onStep,
+          onThinking: observer?.onThinking,
+          onToolCall: observer?.onToolCall,
+        },
         agentName,
         { signal: nodeSignal, agentName },
       );
@@ -134,7 +148,7 @@ export function makeDesignerNode(opts: DesignerNodeOptions) {
           skillName: tc.name,
           input: tc.input,
           output: tc.output,
-          latencyMs: 0,
+          latencyMs: tc.latencyMs,
           timestamp: Date.now(),
         })),
         phase: 'review-draft' as const,

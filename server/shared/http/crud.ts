@@ -15,7 +15,7 @@ export type CrudRepository<T extends WithId> = {
   list: () => T[];
   get: (id: string) => T | undefined;
   save: (record: Partial<T>) => T;
-  remove: (id: string) => void;
+  remove: (id: string) => void | Promise<void>;
 };
 
 export type CrudService<T extends WithId> = {
@@ -23,7 +23,7 @@ export type CrudService<T extends WithId> = {
   get: (id: string) => T | undefined;
   create: (payload: unknown) => T;
   update: (id: string, payload: unknown) => T | undefined;
-  remove: (id: string) => void;
+  remove: (id: string) => void | Promise<void>;
 };
 
 export type CrudController = {
@@ -31,7 +31,7 @@ export type CrudController = {
   get: (req: Request, res: Response) => void;
   create: (req: Request, res: Response) => void;
   update: (req: Request, res: Response) => void;
-  remove: (req: Request, res: Response) => void;
+  remove: (req: Request, res: Response) => void | Promise<void>;
 };
 
 export function createCrudService<T extends WithId>(options: {
@@ -93,8 +93,8 @@ export function createCrudController<T extends WithId>(service: CrudService<T>):
       const record = service.update(getParam(req.params.id), req.body);
       res.json(record);
     }),
-    remove: withErrorHandling((req, res) => {
-      service.remove(getParam(req.params.id));
+    remove: withErrorHandling(async (req, res) => {
+      await service.remove(getParam(req.params.id));
       res.json({ success: true });
     }),
   };

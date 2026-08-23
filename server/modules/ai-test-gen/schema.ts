@@ -12,6 +12,7 @@ export const startPipelineSchema = z.object({
   reasoningSummary: z.enum(['auto', 'detailed', 'concise']).optional(),
   textVerbosity: z.enum(['low', 'medium', 'high']).optional(),
   referenceRunIds: z.array(z.string()).optional(),
+  htmlKnowledgeSetId: z.string().min(1).optional(),
 });
 
 export const resumePipelineSchema = z.object({
@@ -22,5 +23,5 @@ export const resumePipelineSchema = z.object({
 
 export const checkpointUpdateSchema = z.object({
   editedData: z.record(z.string(), z.unknown()),
-  checkpointNumber: z.number().min(1).max(3),
+  checkpointNumber: z.number().int().min(1).max(3),
 });

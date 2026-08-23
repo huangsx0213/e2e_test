@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { makeSchemaOpenAICompatible, zodToJsonSchema } from '../nodes/utils.ts';
 import {
   arrayFromRecordValues,
+  coerceNumber,
   formatZodValidationError,
   nullToEmptyArray,
   nullToUndefined,
@@ -135,50 +136,44 @@ function validateDraftCaseCoverage(
   if (expectedDraftCases.length === 0) return parsed;
 
   const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));
-  const coveredIds = new Set(parsed.finalTestCases.map((testCase) => testCase.id));
-  const missingIds = expectedDraftCases
-    .map((draftCase) => draftCase.id)
-    .filter((draftCaseId) => !coveredIds.has(draftCaseId));
+  const allowedCoveredConditionIds = new Set(
+    expectedDraftCases.flatMap((draftCase) => [
+      draftCase.conditionId,
+      ...(draftCase.coveredConditions ?? []),
+    ]),
+  );
+  const allowedReferencedConditionIds = new Set(
+    expectedDraftCases.flatMap((draftCase) => draftCase.referencedComponentConditions ?? []),
+  );
+  const seenCaseIds = new Set<string>();
 
-  if (missingIds.length > 0) {
-    // Auto-fix: instead of failing the entire Quality node, auto-add missing
-    // cases as "rejected". This prevents a single LLM omission from crashing
-    // the pipeline and making the run unrecoverable via retry. The auto-repair
-    // loop (checkpoint_3) or manual review can address the gap later.
-    const log = Log.for('quality:auto-fix');
-    log.warn(`LLM omitted ${missingIds.length} draft case(s) [${missingIds.join(', ')}] — auto-adding as rejected`);
-    for (const missingId of missingIds) {
-      const expected = expectedById.get(missingId);
-      if (!expected) continue;
-      parsed.finalTestCases.push({
-        id: expected.id,
-        title: `Auto-rejected: omitted by Quality LLM`,
-        conditionId: expected.conditionId,
-        requirementId: expected.requirementId,
-        coveredConditions: expected.coveredConditions ?? [],
-        referencedComponentConditions: expected.referencedComponentConditions ?? [],
-        priority: 'medium',
-        category: 'functional',
-        testLevel: expected.expectedTestLevel ?? 'component',
-        techniqueApplied: 'Unknown',
-        preconditions: [],
-        testData: [],
-        steps: [{
-          stepNumber: 1,
-          action: 'N/A — case auto-rejected by validation',
-          expected: 'Case was omitted by Quality LLM and requires manual review.',
-        }],
-        tags: ['auto-rejected'],
-        status: 'rejected',
-        reviewSummary: 'Auto-rejected: case was omitted from Quality LLM output. Requires manual review or re-generation.',
-        changeLog: [],
-      });
+  for (const testCase of parsed.finalTestCases) {
+    if (seenCaseIds.has(testCase.id)) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['finalTestCases'],
+          message: `Duplicate final test case id: ${testCase.id}`,
+          input: testCase,
+        },
+      ]);
+    }
+    seenCaseIds.add(testCase.id);
+
+    if (!expectedById.has(testCase.id)) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['finalTestCases'],
+          message: `Final reviewed case ${testCase.id} does not match any input draft case id`,
+          input: testCase,
+        },
+      ]);
     }
   }
 
   for (const testCase of parsed.finalTestCases) {
-    const expected = expectedById.get(testCase.id);
-    if (!expected) continue;
+    const expected = expectedById.get(testCase.id)!;
     if (testCase.conditionId !== expected.conditionId || testCase.requirementId !== expected.requirementId) {
       throw new z.ZodError([
         {
@@ -188,6 +183,34 @@ function validateDraftCaseCoverage(
           input: testCase,
         },
       ]);
+    }
+    for (const [field, allowedIds] of [
+      ['coveredConditions', allowedCoveredConditionIds],
+      ['referencedComponentConditions', allowedReferencedConditionIds],
+    ] as const) {
+      const missingTraceabilityIds = (expected[field] ?? [])
+        .filter((id) => !testCase[field].includes(id));
+      if (missingTraceabilityIds.length > 0) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            path: ['finalTestCases'],
+            message: `Final reviewed case ${testCase.id} dropped ${field} IDs: ${missingTraceabilityIds.join(', ')}`,
+            input: testCase,
+          },
+        ]);
+      }
+      const foreignTraceabilityIds = testCase[field].filter((id) => !allowedIds.has(id));
+      if (foreignTraceabilityIds.length > 0) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            path: ['finalTestCases'],
+            message: `Final reviewed case ${testCase.id} added FOREIGN ${field} IDs: ${foreignTraceabilityIds.join(', ')}`,
+            input: testCase,
+          },
+        ]);
+      }
     }
     if (expected.expectedTestLevel && testCase.testLevel !== expected.expectedTestLevel) {
       throw new z.ZodError([
@@ -210,6 +233,20 @@ function validateDraftCaseCoverage(
         },
       ]);
     }
+  }
+
+  const missingIds = expectedDraftCases
+    .map((draftCase) => draftCase.id)
+    .filter((draftCaseId) => !seenCaseIds.has(draftCaseId));
+  if (missingIds.length > 0) {
+    throw new z.ZodError([
+      {
+        code: 'custom',
+        path: ['finalTestCases'],
+        message: `Missing final reviewed cases for draft case ids: ${missingIds.join(', ')}`,
+        input: parsed,
+      },
+    ]);
   }
 
   return parsed;
@@ -352,15 +389,18 @@ function coerceChangeLogValue(v: unknown): string | undefined {
 
 function normalizeFinalTestCase(
   value: unknown,
-  _expectedById?: Map<string, ExpectedDraftCase>,
 ): Record<string, unknown> {
   const tc = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const steps = Array.isArray(tc.steps)
+    ? tc.steps.map((step) => {
+        const normalizedStep = step && typeof step === 'object' ? step as Record<string, unknown> : {};
+        return {
+          ...normalizedStep,
+          stepNumber: coerceNumber(normalizedStep.stepNumber),
+        };
+      })
+    : tc.steps;
 
-  // Structural-only normalization: null→[] for array fields, type coercion
-  // for changeLog values. NO semantic auto-fixes (no semicolon splitting,
-  // no testLevel lowercasing, no fallback to expected draft case values).
-  // The LLM must produce correct values; schema rejection + Phase 2 retry
-  // is the source-level enforcement.
   const changeLog = nullToEmptyArray(tc.changeLog as Record<string, unknown>[] | null | undefined)
     .map((change) => {
       const normalizedChange = change && typeof change === 'object' ? change as Record<string, unknown> : {};
@@ -373,12 +413,9 @@ function normalizeFinalTestCase(
 
   return {
     ...tc,
-    reviewSummary: typeof tc.reviewSummary === 'string' ? tc.reviewSummary : '',
     coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined),
     referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined),
-    preconditions: nullToEmptyArray(tc.preconditions as string[] | null | undefined),
-    testData: nullToEmptyArray(tc.testData as string[] | null | undefined),
-    steps: Array.isArray(tc.steps) ? tc.steps : [],
+    steps,
     tags: nullToEmptyArray(tc.tags as string[] | null | undefined),
     changeLog,
   };
@@ -386,67 +423,41 @@ function normalizeFinalTestCase(
 
 /**
  * Normalize the coverageMatrix produced by the Quality Manager.
- * Tolerates missing/malformed fields so a partial matrix still parses.
- * F27: the LLM is now the source of truth; we just sanitize.
+ * F27: only nullable optional fields are normalized; required values pass
+ * through unchanged so the runtime schema can reject omissions and bad types.
  */
 function normalizeCoverageMatrix(raw: Record<string, unknown>): Record<string, unknown> {
-  const rowsRaw = Array.isArray(raw.rows) ? raw.rows : [];
-  const rows = rowsRaw.map((r) => {
-    const row = r && typeof r === 'object' ? r as Record<string, unknown> : {};
-    const status = typeof row.coverageStatus === 'string' ? row.coverageStatus : 'covered';
-    const flowStepRaw = row.flowStepRef && typeof row.flowStepRef === 'object'
-      ? row.flowStepRef as Record<string, unknown>
-      : null;
-    const flowStepRef = flowStepRaw
-      ? {
-          flowId: String(flowStepRaw.flowId ?? ''),
-          sequence: typeof flowStepRaw.sequence === 'number' ? flowStepRaw.sequence : 0,
-          actionSummary: typeof flowStepRaw.actionSummary === 'string' ? flowStepRaw.actionSummary : undefined,
+  const normalized = { ...raw };
+
+  if (Array.isArray(raw.rows)) {
+    normalized.rows = raw.rows.map((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+      const row = { ...value as Record<string, unknown> };
+      if (row.conditionType === null) row.conditionType = nullToUndefined(row.conditionType);
+      if (row.notes === null) row.notes = nullToUndefined(row.notes);
+      if (row.flowStepRef === null) {
+        row.flowStepRef = nullToUndefined(row.flowStepRef);
+      } else if (row.flowStepRef && typeof row.flowStepRef === 'object' && !Array.isArray(row.flowStepRef)) {
+        const flowStepRef = { ...row.flowStepRef as Record<string, unknown> };
+        if (flowStepRef.actionSummary === null) {
+          flowStepRef.actionSummary = nullToUndefined(flowStepRef.actionSummary);
         }
-      : undefined;
-    const conditionType = typeof row.conditionType === 'string'
-      && (row.conditionType === 'component' || row.conditionType === 'flow')
-        ? row.conditionType
-        : undefined;
-    return {
-      ...row,
-      conditionId: String(row.conditionId ?? ''),
-      conditionSummary: String(row.conditionSummary ?? ''),
-      requirementId: String(row.requirementId ?? ''),
-      testLevel: typeof row.testLevel === 'string' ? row.testLevel : 'component',
-      primaryTechnique: String(row.primaryTechnique ?? ''),
-      category: String(row.category ?? ''),
-      conditionType,
-      flowStepRef,
-      coveredByCaseIds: nullToEmptyArray(row.coveredByCaseIds as string[] | null | undefined),
-      coverageStatus: status === 'missing' ? 'missing' : 'covered',
-      notes: nullToUndefined(row.notes as string | null | undefined),
-    };
-  });
+        row.flowStepRef = flowStepRef;
+      }
+      return row;
+    });
+  }
 
-  const summaryRaw = raw.summary && typeof raw.summary === 'object' ? raw.summary as Record<string, unknown> : {};
-  const numOrZero = (v: unknown): number => typeof v === 'number' && Number.isFinite(v) ? v : 0;
-  const recordOfNumbers = (v: unknown): Record<string, number> => {
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      const out: Record<string, number> = {};
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = numOrZero(val);
-      return out;
+  if (raw.summary && typeof raw.summary === 'object' && !Array.isArray(raw.summary)) {
+    const summary = { ...raw.summary as Record<string, unknown> };
+    if (summary.byConditionType === null) {
+      summary.byConditionType = nullToUndefined(summary.byConditionType);
     }
-    return {};
-  };
+    normalized.summary = summary;
+  }
 
-  return {
-    rows,
-    summary: {
-      totalConditions: numOrZero(summaryRaw.totalConditions),
-      coveredConditions: numOrZero(summaryRaw.coveredConditions),
-      missingConditions: numOrZero(summaryRaw.missingConditions),
-      byTestLevel: recordOfNumbers(summaryRaw.byTestLevel),
-      byTechnique: recordOfNumbers(summaryRaw.byTechnique),
-      byCategory: recordOfNumbers(summaryRaw.byCategory),
-      byConditionType: recordOfNumbers(summaryRaw.byConditionType),
-    },
-  };
+  return normalized;
 }
 
 export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase[] = []): StructuredOutputProfile<QualityRuntimeOutput> {
@@ -469,9 +480,8 @@ export function createQualityOutputProfile(expectedDraftCases: ExpectedDraftCase
           input = { finalTestCases: arrayFromRecordValues<unknown>(input) };
         }
       }
-      const expectedById = new Map(expectedDraftCases.map((draftCase) => [draftCase.id, draftCase]));
       const normalized: Record<string, unknown> = {
-        finalTestCases: arrayFromRecordValues<unknown>(input.finalTestCases).map((testCase) => normalizeFinalTestCase(testCase, expectedById)),
+        finalTestCases: arrayFromRecordValues<unknown>(input.finalTestCases).map(normalizeFinalTestCase),
       };
       // Preserve coverageMatrix if the LLM produced one
       if (input.coverageMatrix && typeof input.coverageMatrix === 'object') {

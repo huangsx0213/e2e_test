@@ -1,23 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-
-// Hoisted mock so the module-under-test picks it up at import time
-const mockRequirementRepo = vi.hoisted(() => ({
-  listByProject: vi.fn(() => [] as any[]),
-  get: vi.fn(),
-}));
-
-vi.mock('../../requirements/repository.ts', () => ({
-  requirementRepo: mockRequirementRepo,
-}));
+import { describe, expect, it } from 'vitest';
 
 import { buildBlueprintsFromFlowStories } from '../business-flow-blueprint.ts';
 import type { Requirement } from '../../../shared/contracts/index.ts';
 
 describe('buildBlueprintsFromFlowStories', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it('emits one blueprint per AC — each AC is a separate business flow path', () => {
     const story: Requirement = {
       id: 'story-flow-1',
@@ -65,12 +51,10 @@ describe('buildBlueprintsFromFlowStories', () => {
       position: 0,
     };
 
-    mockRequirementRepo.listByProject.mockReturnValue([...acChildren, primaryReq]);
-    mockRequirementRepo.get.mockImplementation((id: string) =>
-      id === 'story-1' ? primaryReq : undefined,
-    );
-
-    const blueprints = buildBlueprintsFromFlowStories({ flowStories: [story] });
+    const blueprints = buildBlueprintsFromFlowStories({
+      flowStories: [story],
+      requirements: [story, ...acChildren, primaryReq],
+    });
 
     // Two ACs → two blueprints (two separate paths)
     expect(blueprints).toHaveLength(2);
@@ -103,7 +87,7 @@ describe('buildBlueprintsFromFlowStories', () => {
       sequence: 1,
       requirementId: 'story-flow-1',
       requirementIds: [],
-      requirementTitle: 'Exception: invalid credentials block checkout',
+      requirementTitle: 'Checkout',
       requirementLevel: 'story',
       actionSummary: 'Exception: invalid credentials block checkout',
     });
@@ -115,10 +99,10 @@ describe('buildBlueprintsFromFlowStories', () => {
       level: 'story', status: 'APPROVED', position: 0, isFlow: true,
     };
 
-    mockRequirementRepo.listByProject.mockReturnValue([]);
-    mockRequirementRepo.get.mockReturnValue(undefined);
-
-    const blueprints = buildBlueprintsFromFlowStories({ flowStories: [story] });
+    const blueprints = buildBlueprintsFromFlowStories({
+      flowStories: [story],
+      requirements: [story],
+    });
     // No ACs → no paths → no blueprints
     expect(blueprints).toEqual([]);
   });
@@ -143,10 +127,10 @@ describe('buildBlueprintsFromFlowStories', () => {
       level: 'ac', status: 'APPROVED', position: 1, relatedRequirementIds: [],
     };
 
-    mockRequirementRepo.listByProject.mockReturnValue([ac1, ac2]);
-    mockRequirementRepo.get.mockReturnValue(undefined);
-
-    const blueprints = buildBlueprintsFromFlowStories({ flowStories: [story1, story2] });
+    const blueprints = buildBlueprintsFromFlowStories({
+      flowStories: [story1, story2],
+      requirements: [story1, story2, ac1, ac2],
+    });
     expect(blueprints).toHaveLength(2);
     expect(blueprints[0]).toMatchObject({ id: 'ac-a-1', flowStoryId: 'story-a', name: 'Flow A — Happy path' });
     expect(blueprints[1]).toMatchObject({ id: 'ac-b-1', flowStoryId: 'story-b', name: 'Flow B — Error: timeout' });

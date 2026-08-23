@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { makeSchemaOpenAICompatible, zodToJsonSchema } from '../nodes/utils.ts';
 import {
   arrayFromRecordValues,
+  coerceNumber,
   formatZodValidationError,
+  nullToEmptyArray,
   wrapSingleObjectInArray,
 } from './helpers.ts';
 import type { StructuredOutputProfile } from './profile.ts';
@@ -123,30 +125,48 @@ function validateConditionCoverage(
 ): DesignerRuntimeOutput {
   if (expectedConditions.length === 0) return parsed;
 
+  const expectedByCondition = new Map(expectedConditions.map((condition) => [condition.id, condition]));
+  const seenCaseIds = new Set<string>();
   const coveredConditionIds = new Set<string>();
-  for (const tc of parsed.draftTestCases) {
-    if (tc.conditionId) coveredConditionIds.add(tc.conditionId);
-    for (const cid of tc.coveredConditions ?? []) coveredConditionIds.add(cid);
-  }
-  const missingConditionIds = expectedConditions
-    .filter((c) => !coveredConditionIds.has(c.id))
-    .map((c) => c.id);
-
-  if (missingConditionIds.length > 0) {
-    throw new z.ZodError([
-      {
-        code: 'custom',
-        path: ['draftTestCases'],
-        message: `Missing draft test cases for conditionIds: ${missingConditionIds.join(', ')}`,
-        input: parsed,
-      },
-    ]);
-  }
-
-  const expectedByCondition = new Map(expectedConditions.map((c) => [c.id, c]));
   for (const testCase of parsed.draftTestCases) {
+    if (seenCaseIds.has(testCase.id)) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['draftTestCases'],
+          message: `Duplicate draft test case id: ${testCase.id}`,
+          input: testCase,
+        },
+      ]);
+    }
+    seenCaseIds.add(testCase.id);
+
     const expected = expectedByCondition.get(testCase.conditionId);
-    if (!expected) continue;
+    if (!expected) {
+      throw new z.ZodError([
+        {
+          code: 'custom',
+          path: ['draftTestCases'],
+          message: `Draft test case ${testCase.id} uses conditionId "${testCase.conditionId}" outside the current Analyst conditions`,
+          input: testCase,
+        },
+      ]);
+    }
+    for (const conditionId of testCase.coveredConditions) {
+      if (!expectedByCondition.has(conditionId)) {
+        throw new z.ZodError([
+          {
+            code: 'custom',
+            path: ['draftTestCases'],
+            message: `Draft test case ${testCase.id} includes conditionId "${conditionId}" in coveredConditions outside the current Analyst conditions`,
+            input: testCase,
+          },
+        ]);
+      }
+      coveredConditionIds.add(conditionId);
+    }
+    coveredConditionIds.add(testCase.conditionId);
+
     if (testCase.requirementId !== expected.requirementId) {
       throw new z.ZodError([
         {
@@ -167,6 +187,20 @@ function validateConditionCoverage(
         },
       ]);
     }
+  }
+  const missingConditionIds = expectedConditions
+    .filter((c) => !coveredConditionIds.has(c.id))
+    .map((c) => c.id);
+
+  if (missingConditionIds.length > 0) {
+    throw new z.ZodError([
+      {
+        code: 'custom',
+        path: ['draftTestCases'],
+        message: `Missing draft test cases for conditionIds: ${missingConditionIds.join(', ')}`,
+        input: parsed,
+      },
+    ]);
   }
 
   return parsed;
@@ -194,43 +228,31 @@ function normalizeDraftTestCase(
 ): Record<string, unknown> {
   const tc = value && typeof value === 'object' ? value as Record<string, unknown> : {};
 
-  // NOTE: No silent auto-fixes on purpose. This function previously renumbered
-  // steps, lowercased `testLevel`, coerced `selfReview.score`, and force-filled
-  // null arrays — all of which MASKED the LLM's actual mistakes and prevented
-  // the schema from surfacing them. We now pass values through verbatim and let
-  // the Zod schema be the single strict source of truth. Fix the model's
-  // behavior at the source (see the Designer system prompt's "Strict schema
-  // constraints" section) instead of patching its output after the fact.
   const steps = Array.isArray(tc.steps)
     ? tc.steps.map((step) => {
         const s = step && typeof step === 'object' ? step as Record<string, unknown> : {};
         return {
-          stepNumber: s.stepNumber,
-          action: s.action,
-          expected: s.expected,
+          ...s,
+          stepNumber: coerceNumber(s.stepNumber),
         };
       })
-    : [];
+    : tc.steps;
 
-  const selfReview = tc.selfReview && typeof tc.selfReview === 'object'
-    ? tc.selfReview as Record<string, unknown>
-    : {};
+  const selfReview = tc.selfReview && typeof tc.selfReview === 'object' && !Array.isArray(tc.selfReview)
+    ? {
+        ...(tc.selfReview as Record<string, unknown>),
+        score: coerceNumber((tc.selfReview as Record<string, unknown>).score),
+      }
+    : tc.selfReview;
 
   return {
     ...tc,
-    // Minimal type coercion only — ensure the two critical traceability ids are
-    // strings (undefined -> "") so the schema receives a well-typed value. This
-    // is NOT masking a semantic violation; a wrong/id-less id is still rejected
-    // by validateConditionCoverage below.
-    conditionId: String(tc.conditionId ?? ''),
-    requirementId: String(tc.requirementId ?? ''),
+    coveredConditions: nullToEmptyArray(tc.coveredConditions as string[] | null | undefined),
+    referencedComponentConditions: nullToEmptyArray(tc.referencedComponentConditions as string[] | null | undefined),
     steps,
-    selfReview: {
-      score: selfReview.score,
-      strengths: selfReview.strengths,
-      weaknesses: selfReview.weaknesses,
-      suggestions: selfReview.suggestions,
-    },
+    postconditions: nullToEmptyArray(tc.postconditions as string[] | null | undefined),
+    tags: nullToEmptyArray(tc.tags as string[] | null | undefined),
+    selfReview,
   };
 }
 
@@ -258,10 +280,12 @@ function validateFlowCaseReferences(
   const externalComponentReferences = new Set(externalComponentReferenceIds);
 
   for (const testCase of parsed.draftTestCases) {
-    if (testCase.testLevel !== 'integration') continue;
+    if (testCase.coveredConditions.length === 0 && testCase.conditionId) {
+      testCase.coveredConditions = [testCase.conditionId];
+    }
 
     // F11: integration cases must declare at least one referenced component condition.
-    if (testCase.referencedComponentConditions.length === 0) {
+    if (testCase.testLevel === 'integration' && testCase.referencedComponentConditions.length === 0) {
       throw new z.ZodError([
         {
           code: 'custom',
@@ -272,7 +296,7 @@ function validateFlowCaseReferences(
       ]);
     }
 
-    // F12: every referenced component condition must exist and be type=component.
+    // F12: every reference on every case must be an approved component condition.
     for (const refId of testCase.referencedComponentConditions) {
       if (externalComponentReferences.has(refId)) continue;
       const ref = byId.get(refId);
@@ -286,7 +310,7 @@ function validateFlowCaseReferences(
           },
         ]);
       }
-      if (ref.conditionType && ref.conditionType !== 'component') {
+      if (ref.conditionType !== 'component') {
         const componentConditionIds = expectedConditions
           .filter(c => c.conditionType === 'component')
           .map(c => c.id);

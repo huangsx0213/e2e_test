@@ -1,6 +1,7 @@
 import { randomId } from '../../shared/utils/index.ts';
 import { pipelineRepo } from './repository.ts';
 import type { ChatMessage } from './infra/provider.ts';
+import type { ToolCallRecord } from './graph/nodes/types.ts';
 
 interface TraceEntry {
   timestamp: number;
@@ -20,7 +21,7 @@ interface AgentRunSnapshot {
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
   errorMessage?: string;
   errorRawResponse?: string;
-  toolHistory?: unknown[];
+  toolHistory?: ToolCallRecord[];
 }
 
 const OUTPUT_SUMMARY_MAP: Record<string, { key: string; label: string }> = {
@@ -42,6 +43,7 @@ export class RunScope {
   private totalCompletionTokens = 0;
   private totalReasoningTokens = 0;
   public totalLatencyMs = 0;
+  private disposed = false;
 
   // Thinking throttle: buffer text per agent+phase+type, flush every THINKING_FLUSH_MS
   private readonly thinkingBuffer = new Map<string, { text: string; type: string; phase: string }>();
@@ -125,6 +127,7 @@ export class RunScope {
   }
 
   setBatch(batch: number, total: number): void {
+    if (this.disposed) return;
     this.currentBatch = batch;
     this.emit('batch:start', { batch, total, timestamp: Date.now() });
   }
@@ -134,14 +137,22 @@ export class RunScope {
   }
 
   recordAgentStart(agentName: string, inputPrompt?: ChatMessage[]): void {
+    if (this.disposed) return;
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
     // Reuse existing logId if this agent already ran in this batch (e.g. auto-repair loop).
     // This ensures saveAgentLog's ON CONFLICT(id) DO UPDATE overwrites the previous entry
     // instead of creating a duplicate row that would pollute previous_batch_cases_query.
     const existing = this.agentStates.get(key);
+    const priorLogs = existing ? [] : pipelineRepo.getAgentLogs(this.runId, agentName);
+    const persisted = existing
+      ? undefined
+      : [...priorLogs].reverse()
+        .find((entry) => entry.batch === batch);
+    const previousToolHistory = existing?.toolHistory
+      ?? (Array.isArray(persisted?.tool_history) ? persisted.tool_history : []);
     const snap: AgentRunSnapshot = {
-      logId: existing?.logId ?? randomId('aglog'),
+      logId: existing?.logId ?? persisted?.id ?? randomId('aglog'),
       agentName,
       batch,
       inputPrompt: inputPrompt ?? null,
@@ -150,13 +161,29 @@ export class RunScope {
       latencyMs: 0,
       rawTrace: [],
       status: 'RUNNING',
+      toolHistory: [...previousToolHistory],
     };
     this.agentStates.set(key, snap);
     pipelineRepo.saveAgentLog({
       logId: snap.logId, batch, agentName, status: 'RUNNING',
-      inputPrompt, rawTrace: [],
+      inputPrompt, outputData: null, rawTrace: [], toolHistory: snap.toolHistory,
     }, this.runId);
     this.emit('agent:start', { agentName, batch, timestamp: Date.now() });
+  }
+
+  recordAgentToolCall(agentName: string, toolCall: ToolCallRecord): void {
+    if (this.disposed) return;
+    const batch = this.currentBatch;
+    const snap = this.agentStates.get(this.stateKey(agentName, batch));
+    if (!snap) return;
+    snap.toolHistory = [...(snap.toolHistory ?? []), toolCall];
+    pipelineRepo.saveAgentLog({
+      logId: snap.logId,
+      batch,
+      agentName,
+      status: 'RUNNING',
+      toolHistory: snap.toolHistory,
+    }, this.runId);
   }
 
   recordAgentComplete(agentName: string, params: {
@@ -164,8 +191,8 @@ export class RunScope {
     latencyMs: number;
     inputPrompt?: ChatMessage[];
     outputData?: unknown;
-    toolHistory?: unknown[];
   }): void {
+    if (this.disposed) return;
     // Flush any remaining thinking text for this agent before marking complete
     this.flushAgentThinking(agentName);
 
@@ -185,14 +212,15 @@ export class RunScope {
     snap.tokenUsage = params.tokenUsage;
     snap.latencyMs = params.latencyMs;
     if (params.inputPrompt) snap.inputPrompt = params.inputPrompt;
-    if (params.outputData) snap.outputData = params.outputData;
-    if (params.toolHistory) snap.toolHistory = params.toolHistory;
+    snap.outputData = params.outputData ?? null;
+    delete snap.errorMessage;
+    delete snap.errorRawResponse;
 
     pipelineRepo.saveAgentLog({
       logId: snap.logId, batch, agentName, status: 'COMPLETED',
       inputPrompt: snap.inputPrompt, outputData: snap.outputData,
       tokenUsage: params.tokenUsage, latencyMs: params.latencyMs,
-      rawTrace: snap.rawTrace, toolHistory: params.toolHistory,
+      rawTrace: snap.rawTrace, toolHistory: snap.toolHistory,
     }, this.runId);
 
     this.totalPromptTokens += params.tokenUsage.input;
@@ -213,6 +241,7 @@ export class RunScope {
   }
 
   recordAgentError(agentName: string, error: Error): void {
+    if (this.disposed) return;
     // Flush any remaining thinking text for this agent
     this.flushAgentThinking(agentName);
 
@@ -251,6 +280,7 @@ export class RunScope {
   }
 
   recordAgentStep(agentName: string, stepIndex: number, stepName: string): void {
+    if (this.disposed) return;
     const batch = this.currentBatch;
     const key = this.stateKey(agentName, batch);
     const snap = this.agentStates.get(key);
@@ -259,6 +289,7 @@ export class RunScope {
   }
 
   recordAgentThinking(agentName: string, text: string, type: 'reasoning' | 'content' = 'content', phase: 'react' | 'extraction' = 'react'): void {
+    if (this.disposed) return;
     // Buffer thinking text, flush periodically via timer
     const key = `${agentName}:${phase}:${type}`;
     const existing = this.thinkingBuffer.get(key);
@@ -272,11 +303,13 @@ export class RunScope {
   /** Flush buffered thinking text and persist all accumulated thinking data.
    *  Called by orchestrator when pipeline is interrupted at a checkpoint. */
   flushAndPersistThinking(): void {
+    if (this.disposed) return;
     this.flushThinking();
     this.persistThinkingData();
   }
 
   markComplete(stats: { totalCases: number; totalBatches: number }): void {
+    if (this.disposed) return;
     this.stopThinkingFlush();
     this.persistThinkingData();
     const usage = {
@@ -293,6 +326,7 @@ export class RunScope {
   }
 
   markFailed(error: string): void {
+    if (this.disposed) return;
     this.stopThinkingFlush();
     this.persistThinkingData();
     pipelineRepo.markRunFailed(this.runId);
@@ -300,7 +334,14 @@ export class RunScope {
   }
 
   private emit(event: string, data: unknown): void {
+    if (this.disposed) return;
     this.emitEvent(event, data);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.stopThinkingFlush();
+    this.disposed = true;
   }
 
   private persistThinkingData(): void {

@@ -1,11 +1,24 @@
 import { randomId } from '../../shared/utils/index.ts';
 import type { AIProvider } from './infra/provider.ts';
-import { pipelineRepo } from './repository.ts';
+import { pipelineRepo, type TestGenRunRow } from './repository.ts';
 import { SSEGateway } from './sse-gateway.ts';
-import { ContextBuilder, type RunContext, type StartParams } from './context.ts';
-import { type TestGenSession, type BatchInput, type BatchResult, type InterruptInfo, type RunOutcome } from './session.ts';
+import {
+  ContextBuilder,
+  HtmlKnowledgeRuntimeError,
+  RunCancelledError,
+  type RunContext,
+  type StartParams,
+} from './context.ts';
+import {
+  CheckpointUnavailableError,
+  type TestGenSession,
+  type BatchInput,
+  type BatchResult,
+  type InterruptInfo,
+  type RunOutcome,
+} from './session.ts';
 import { requirementRepo } from '../requirements/repository.ts';
-import { buildRequirementIndex } from '../requirements/index-generator.ts';
+import { buildRequirementIndexFromRequirements } from '../requirements/index-generator.ts';
 import { groupRequirementsByEpic, selectedRequirementAndFlowIds } from './helpers.ts';
 import { deduplicateTestCases } from './helpers.ts';
 import { buildBlueprintsFromFlowStories } from './business-flow-blueprint.ts';
@@ -15,7 +28,33 @@ import { CHECKPOINT_BY_PHASE } from './graph/state.ts';
 import { buildAnalystInput } from './analyst-input-builder.ts';
 import type { GlobalEpicEntry, PreviousBatchCoverageSummary } from './graph/state.ts';
 import { db } from '../../shared/db/client.ts';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '../../shared/http/errors.ts';
 import { Log } from '../../shared/services/logger.ts';
+import { RunCacheRegistry, runCacheRegistry } from './run-cache-registry.ts';
+import { ProjectDeletionLock, projectDeletionLock } from './project-deletion-lock.ts';
+import { requirementsFromHtmlSnapshot } from './html-knowledge/requirement-snapshot.ts';
+import type { ResolvedHtmlKnowledgeRuntime } from './graph/skills/html-knowledge.ts';
+import type { HtmlKnowledgeReference } from './html-knowledge/types.ts';
+import type { Requirement } from '../../shared/contracts/index.ts';
+
+type OrchestratorLifecycleRepository = Pick<
+  typeof pipelineRepo,
+  | 'deleteRun'
+  | 'markRunFailed'
+  | 'getRun'
+  | 'getFailedRun'
+  | 'getRunWithThreadId'
+  | 'setRunRunning'
+>;
+
+export interface RunDeletionPreparation {
+  readonly wasActive: boolean;
+  readonly error?: unknown;
+}
 
 function createDummyProvider(): AIProvider {
   return {
@@ -168,27 +207,211 @@ interface BatchLoopParams {
   accumulatedCoverage: Map<string, PreviousBatchCoverageSummary>;
   startFrom: number;
   totalSubBatches: number;
+  htmlKnowledgeReference?: HtmlKnowledgeReference;
+}
+
+interface RunRequirementSource {
+  requirements: Requirement[];
+  requirementIds: string[];
+  flowIds: string[];
+  allIndex: ReturnType<typeof buildRequirementIndexFromRequirements>;
+}
+
+interface CompletedAgentOutput {
+  agentName: string;
+  outputData: Record<string, unknown>;
+}
+
+function selectAgentLogRecoveryPrefix(
+  logs: any[],
+  currentBatch: number,
+  mode: 'auto' | 'interactive',
+): CompletedAgentOutput[] | undefined {
+  const current = logs.filter((log) => log.batch === currentBatch);
+  const byAgent = (agentName: string) =>
+    current.filter((log) => log.agent_name === agentName);
+  const analystLogs = byAgent('test_analyst');
+  const designerLogs = byAgent('test_designer');
+  const qualityLogs = byAgent('quality_manager');
+  const analysts = analystLogs.filter((log) => log.status === 'COMPLETED');
+  const designers = designerLogs.filter((log) => log.status === 'COMPLETED');
+
+  if (analystLogs.length > 1
+    || designerLogs.length > 1
+    || qualityLogs.length > 0
+    || analysts.length > 1
+    || designers.length > 1) {
+    return undefined;
+  }
+  if (designers.length > 0 && (analysts.length !== 1 || mode !== 'auto')) {
+    return undefined;
+  }
+  if (analysts.length === 0) return [];
+
+  const analystOutput = analysts[0].output_data;
+  if (!analystOutput
+    || typeof analystOutput !== 'object'
+    || !Array.isArray(analystOutput.testConditions)) {
+    return undefined;
+  }
+  const outputs: CompletedAgentOutput[] = [{
+    agentName: 'test_analyst',
+    outputData: analystOutput,
+  }];
+  if (designers.length === 1) {
+    const designerOutput = designers[0].output_data;
+    if (!designerOutput
+      || typeof designerOutput !== 'object'
+      || !Array.isArray(designerOutput.draftTestCases)) {
+      return undefined;
+    }
+    outputs.push({
+      agentName: 'test_designer',
+      outputData: designerOutput,
+    });
+  }
+  return outputs;
+}
+
+export function loadRunRequirementSource(
+  projectId: string,
+  config: Pick<StartParams, 'requirementIds' | 'flowIds' | 'htmlKnowledgeSetId'>,
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime,
+): RunRequirementSource {
+  if (config.htmlKnowledgeSetId !== undefined) {
+    if (typeof config.htmlKnowledgeSetId !== 'string' || !config.htmlKnowledgeSetId) {
+      throw new HtmlKnowledgeRuntimeError(
+        'Configured HTML knowledge set ID is invalid',
+      );
+    }
+    if (!htmlKnowledge
+      || htmlKnowledge.projectId !== projectId
+      || htmlKnowledge.reference.knowledgeSetId !== config.htmlKnowledgeSetId) {
+      throw new HtmlKnowledgeRuntimeError(
+        'Configured HTML knowledge runtime is unavailable or mismatched',
+      );
+    }
+    const requirements = requirementsFromHtmlSnapshot(htmlKnowledge.snapshot);
+    return {
+      requirements,
+      requirementIds: [...htmlKnowledge.snapshot.selectedRequirementIds],
+      flowIds: [...htmlKnowledge.snapshot.selectedFlowIds],
+      allIndex: buildRequirementIndexFromRequirements(requirements),
+    };
+  }
+  if (htmlKnowledge) {
+    throw new HtmlKnowledgeRuntimeError(
+      'Resolved HTML knowledge runtime has no persisted set configuration',
+    );
+  }
+  const requirements = requirementRepo.listByProject(projectId);
+  return {
+    requirements,
+    requirementIds: [...(config.requirementIds ?? [])],
+    flowIds: [...(config.flowIds ?? [])],
+    allIndex: buildRequirementIndexFromRequirements(requirements),
+  };
 }
 
 export class Orchestrator {
   private readonly contextBuilder: ContextBuilder;
-  private readonly abortedRuns = new Set<string>();
 
-  constructor(private readonly sseGateway: SSEGateway) {
-    this.contextBuilder = new ContextBuilder(sseGateway);
+  constructor(
+    private readonly sseGateway: SSEGateway,
+    private readonly cacheRegistry: RunCacheRegistry = runCacheRegistry,
+    contextBuilder?: ContextBuilder,
+    private readonly lifecycleRepository: OrchestratorLifecycleRepository = pipelineRepo,
+    private readonly deletionLock: ProjectDeletionLock = projectDeletionLock,
+  ) {
+    this.contextBuilder = contextBuilder ?? new ContextBuilder(sseGateway);
   }
 
   abort(runId: string): void {
-    this.abortedRuns.add(runId);
     this.contextBuilder.abort(runId);
-    pipelineRepo.markRunFailed(runId);
+    this.lifecycleRepository.markRunFailed(runId);
   }
 
-  delete(runId: string): void {
-    this.abortedRuns.add(runId);
-    this.contextBuilder.delete(runId);
-    pipelineRepo.deleteRun(runId);
-    this.sseGateway.cleanup(runId);
+  async abortAndWaitForDeletion(runId: string): Promise<RunDeletionPreparation> {
+    let wasActive = false;
+    try {
+      wasActive = this.contextBuilder.beginDeletion(runId);
+      await this.contextBuilder.waitForQuiescence(runId);
+      this.cacheRegistry.evict(runId);
+      return { wasActive };
+    } catch (error) {
+      return { wasActive, error };
+    }
+  }
+
+  completeDeletion(runId: string): void {
+    try {
+      this.sseGateway.cleanup(runId);
+    } finally {
+      this.contextBuilder.finishDeletion(runId);
+    }
+  }
+
+  cancelDeletion(runId: string): void {
+    this.contextBuilder.finishDeletion(runId);
+  }
+
+  failDeletion(runId: string, reason: string, wasActive: boolean): void {
+    const boundedReason = Array.from(reason).slice(0, 500).join('');
+    let failure: unknown;
+    try {
+      if (wasActive) {
+        try {
+          this.lifecycleRepository.markRunFailed(runId);
+        } catch (error) {
+          failure = error;
+        }
+        try {
+          this.sseGateway.emit(runId, 'pipeline:error', {
+            phase: 'deletion',
+            message: boundedReason,
+            recoverable: true,
+          });
+        } catch (error) {
+          failure ??= error;
+        }
+      }
+    } finally {
+      this.contextBuilder.finishDeletion(runId);
+    }
+    if (failure) throw failure;
+  }
+
+  async delete(runId: string): Promise<void> {
+    try {
+      const preparation = await this.abortAndWaitForDeletion(runId);
+      if (preparation.error) {
+        try {
+          this.failDeletion(runId, 'Run deletion failed', preparation.wasActive);
+        } catch {
+          // Preserve the preparation failure while still releasing the barrier.
+        }
+        throw preparation.error;
+      }
+      try {
+        this.lifecycleRepository.deleteRun(runId);
+      } catch (error) {
+        try {
+          this.failDeletion(runId, 'Run deletion failed', preparation.wasActive);
+        } catch {
+          // Preserve the transaction failure after best-effort recovery.
+        }
+        throw error;
+      }
+      try {
+        this.completeDeletion(runId);
+      } catch {
+        Log.for('orchestrator').error(
+          `Post-commit run cleanup failed: runId=${runId}`,
+        );
+      }
+    } finally {
+      this.contextBuilder.finishDeletion(runId);
+    }
   }
 
   async start(runId: string, projectId: string, params: StartParams): Promise<void> {
@@ -217,6 +440,7 @@ export class Orchestrator {
         reasoningEffort: params.reasoningEffort,
         reasoningSummary: params.reasoningSummary,
         textVerbosity: params.textVerbosity,
+        htmlKnowledgeSetId: params.htmlKnowledgeSetId,
       });
       const providerRow = params.providerConfigName
         ? pipelineRepo.getProviderConfigByName(params.providerConfigName)
@@ -226,17 +450,26 @@ export class Orchestrator {
       log.kv('context.tokenLimit', ctx.tokenLimit ?? 'none', 0);
 
       // 构建需求索引和批次
-      const allIndex = buildRequirementIndex(projectId);
-      const requirements = requirementRepo.listByProject(projectId);
+      const requirementSource = loadRunRequirementSource(
+        projectId,
+        params,
+        ctx.htmlKnowledge,
+      );
+      const {
+        allIndex,
+        requirements,
+        requirementIds,
+        flowIds,
+      } = requirementSource;
 
       // Explicitly selected Flow Stories must be part of the same Epic group as
       // selected component Stories so each Epic can run component then flow.
-      const selectedFlowSet = new Set(params.flowIds || []);
+      const selectedFlowSet = new Set(flowIds);
       const reqMap = new Map(requirements.map(r => [r.id, r]));
-      const selectedIds = selectedRequirementAndFlowIds(params.requirementIds || [], params.flowIds || []);
+      const selectedIds = selectedRequirementAndFlowIds(requirementIds, flowIds);
       const { epics, rootGroups, totalBatches, selectedIndex } = groupRequirementsByEpic(allIndex, selectedIds);
       if (epics.length === 0 && selectedFlowSet.size === 0) {
-        throw new Error('No matching requirements found for selected IDs');
+        throw new ValidationError('No matching requirements found for selected IDs');
       }
 
       log.info(`Requirements indexed: ${selectedIndex.length} selected, ${epics.length} epics`);
@@ -255,7 +488,10 @@ export class Orchestrator {
       const filteredFlowStories = selectedFlowSet.size > 0
         ? allFlowStories.filter(s => selectedFlowSet.has(s.id))
         : allFlowStories;
-      const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
+      const businessFlows = buildBlueprintsFromFlowStories({
+        flowStories: filteredFlowStories,
+        requirements,
+      });
       log.info(`Flow stories: ${allFlowStories.length} total, ${filteredFlowStories.length} selected, ${businessFlows.length} blueprints`);
 
       // ── Pre-flight validation (P1.4, P1.5) ──
@@ -308,7 +544,7 @@ export class Orchestrator {
         const msg = `Pre-flight validation failed (${validationErrors.length} errors):\n  - ${validationErrors.join('\n  - ')}`;
         log.error(msg);
         ctx.sendEvent('pipeline:error', { phase: 'preflight', message: msg, recoverable: false });
-        throw new Error(msg);
+        throw new ValidationError(msg);
       }
       log.info(`Pre-flight validation passed: ${selectedFlowSet.size} flow(s), all references and component stories valid`);
 
@@ -411,8 +647,8 @@ export class Orchestrator {
       const loopRes = await this.executeBatchLoop(ctx, {
         runId,
         projectId,
-        requirementIds: params.requirementIds || [],
-        flowIds: params.flowIds || [],
+        requirementIds,
+        flowIds,
         mode: params.mode,
         epics,
         rootGroups,
@@ -425,6 +661,7 @@ export class Orchestrator {
         accumulatedCoverage,
         startFrom: 0,
         totalSubBatches,
+        htmlKnowledgeReference: ctx.htmlKnowledge?.reference,
       }, allResults);
 
       if (loopRes.interrupted) {
@@ -448,11 +685,27 @@ export class Orchestrator {
         log.success(`All batches done ── ${totalCases} final cases${removedCount > 0 ? ` (${removedCount} suspected duplicates — prevent at generation, not here)` : ''}`);
       }
     } catch (err: any) {
+      if (err instanceof RunCancelledError) return;
       if (ctx) {
         if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
       } else {
+        const htmlFailure = err instanceof HtmlKnowledgeRuntimeError;
+        pipelineRepo.markRunFailed(runId, htmlFailure
+          ? {
+              type: 'HTML_KNOWLEDGE_UNAVAILABLE',
+              phase: 'html-knowledge',
+              recoverable: true,
+            }
+          : {
+              type: 'CONTEXT_SETUP_FAILED',
+              phase: 'context',
+              recoverable: true,
+            });
         this.sseGateway.emit(runId, 'pipeline:error', {
-          phase: 'orchestrator', message: err.message, recoverable: false,
+          phase: htmlFailure ? 'html-knowledge' : 'context',
+          type: htmlFailure ? err.code : 'CONTEXT_SETUP_FAILED',
+          message: err.message,
+          recoverable: true,
         });
       }
     } finally {
@@ -464,13 +717,11 @@ export class Orchestrator {
   }
 
   async resume(runId: string, action: 'approve' | 'retry', feedback?: string, editedData?: any): Promise<void> {
-    const row = pipelineRepo.getRunWithThreadId(runId);
-    if (!row || row.status !== 'WAITING_REVIEW') {
-      throw new Error('Test gen is not waiting for review');
-    }
+    const row = this.assertCanResume(runId);
 
     const cpNum = CHECKPOINT_BY_PHASE[row.phase] ?? 0;
 
+    this.deletionLock.assertStartAllowed(row.project_id);
     pipelineRepo.insertAuditLog(runId, `checkpoint_${cpNum}`, action, editedData ?? null);
     pipelineRepo.setRunRunning(runId);
 
@@ -491,6 +742,7 @@ export class Orchestrator {
         reasoningSummary: config.reasoningSummary,
         textVerbosity: config.textVerbosity,
         currentBatch: row.current_batch || 0,
+        htmlKnowledgeSetId: config.htmlKnowledgeSetId,
       });
 
       const outcome = await ctx.session.resumeAt(row.thread_id, {
@@ -498,6 +750,8 @@ export class Orchestrator {
         feedback,
         edits: editedData,
       });
+
+      if (ctx.isAborted()) return;
 
       if (outcome.type === 'interrupt') {
         this.handleInterrupt(runId, ctx, outcome.interrupt);
@@ -527,15 +781,16 @@ export class Orchestrator {
         allResults.push(...remaining.allResults);
       }
 
+      if (ctx.isAborted()) return;
+
       // totalCases 使用原始计数（与保存行为一致），去重仅作度量告警
       this.finishRun(ctx, allResults, totalBatches || 1);
     } catch (err: any) {
+      if (err instanceof RunCancelledError) return;
       if (ctx) {
         if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
       } else {
-        this.sseGateway.emit(runId, 'pipeline:error', {
-          phase: 'resume', message: err.message, recoverable: false,
-        });
+        this.markRecoverableContextFailure(runId, err);
       }
     } finally {
       if (ctx) {
@@ -545,29 +800,41 @@ export class Orchestrator {
     }
   }
 
+  assertCanResume(runId: string): any {
+    const row = this.requireResumableRun(runId);
+    this.deletionLock.assertStartAllowed(row.project_id);
+    return row;
+  }
+
+  assertCanRetry(runId: string): TestGenRunRow {
+    if (!this.lifecycleRepository.getRun(runId)) {
+      throw new NotFoundError('Test gen run not found');
+    }
+    const row = this.lifecycleRepository.getFailedRun(runId);
+    if (!row) throw new ConflictError('Test gen run is not in FAILED status');
+    this.deletionLock.assertStartAllowed(row.project_id);
+    return row;
+  }
+
   /**
    * 从失败的 agent 重试：利用 LangGraph checkpointer 保存的状态，
    * 从最后一个成功的 checkpoint 重新执行失败的节点。
    */
   async retry(runId: string): Promise<void> {
     const log = Log.for('orchestrator');
-    const row = pipelineRepo.getFailedRun(runId);
-    if (!row) {
-      throw new Error('Test gen run is not in FAILED status');
-    }
+    const row = this.assertCanRetry(runId);
 
     const threadId = row.thread_id;
-    if (!threadId) {
-      throw new Error('No thread_id found for failed run, cannot retry');
-    }
-
-    pipelineRepo.setRunRunning(runId);
+    const config = row.config ? (typeof row.config === 'string' ? JSON.parse(row.config) : row.config) : {};
+    this.deletionLock.assertStartAllowed(row.project_id);
+    this.lifecycleRepository.setRunRunning(runId);
     this.sseGateway.emit(runId, 'pipeline:retry', {
       phase: row.phase,
-      message: `Retrying from last checkpoint (phase: ${row.phase})`,
+      message: threadId
+        ? `Retrying from last checkpoint (phase: ${row.phase})`
+        : 'Restarting run from persisted configuration',
     });
 
-    const config = row.config ? (typeof row.config === 'string' ? JSON.parse(row.config) : row.config) : {};
     let ctx: RunContext | null = null;
     let keepSse = false;
 
@@ -580,28 +847,41 @@ export class Orchestrator {
         reasoningSummary: config.reasoningSummary,
         textVerbosity: config.textVerbosity,
         currentBatch: row.current_batch || 0,
+        htmlKnowledgeSetId: config.htmlKnowledgeSetId,
       });
 
       ctx.scope.restoreBatchState(row.current_batch || 0);
       const batchIndex = (row.current_batch || 1) - 1;
+      let recoveredBatchNumber: number | undefined;
+      let recoveredTotalBatches: number | undefined;
 
-      // Always try checkpoint recovery first. When a node (analyst/designer/
-      // quality) throws, LangGraph does NOT save a checkpoint for that node —
-      // the last checkpoint is from the PREVIOUS successful node. So
-      // stream(null, ...) resumes from the failed agent itself, which is
-      // exactly what we want.
-      //
-      // If recovery fails (no checkpoint, corrupt state, __start__-only
-      // checkpoint, etc.), fall back to restarting the batch from scratch.
-      let outcome: RunOutcome;
-      try {
-        log.info(`Attempting checkpoint recovery (threadId=${threadId}, batch=${batchIndex}, failedPhase=${row.phase || 'unknown'})`);
-        outcome = await ctx.session.retryFromLastCheckpoint(threadId, batchIndex);
-      } catch (retryErr: any) {
-        log.warn(`Checkpoint recovery failed (${retryErr.message}), attempting agent-log recovery for batch ${row.current_batch}`);
-        const batchInput = this.rebuildBatchInputForRetry(runId, row.project_id, config, row.current_batch || 1);
+      const recoverWithoutCheckpoint = async (
+        checkpointError?: CheckpointUnavailableError,
+      ): Promise<RunOutcome> => {
+        if (checkpointError) {
+          log.warn(`Checkpoint recovery unavailable (${checkpointError.message}), attempting agent-log recovery for batch ${row.current_batch}`);
+        } else {
+          log.info(`No checkpoint thread exists; rebuilding persisted batch ${row.current_batch || 1}`);
+        }
+        const batchInput = this.rebuildBatchInputForRetry(
+          runId,
+          row.project_id,
+          config,
+          row.current_batch || 1,
+          ctx!.htmlKnowledge,
+        );
         if (!batchInput) {
-          throw new Error(`Failed to rebuild batch input for retry (batch ${row.current_batch}): ${retryErr.message}`);
+          throw new CheckpointUnavailableError(
+            `Failed to rebuild batch input for retry (batch ${row.current_batch || 1})`,
+            checkpointError ? { cause: checkpointError } : undefined,
+          );
+        }
+
+        recoveredBatchNumber = row.current_batch || 1;
+        recoveredTotalBatches = batchInput.inputState.batchContext.totalBatches;
+        ctx!.scope.restoreBatchState(recoveredBatchNumber);
+        if (!row.total_batches) {
+          pipelineRepo.updateBatchCount(runId, recoveredTotalBatches);
         }
 
         // 查出当前 batch 已成功完成的 agent logs，按执行顺序排序。
@@ -609,31 +889,45 @@ export class Orchestrator {
         // 避免浪费已成功 agent 的 LLM 调用结果。
         const currentBatchNum = row.current_batch || 1;
         const allLogs = pipelineRepo.getAgentLogs(runId);
-        const batchLogs = allLogs.filter(l => l.batch === currentBatchNum && l.status === 'COMPLETED');
-        const agentOrder = ['test_analyst', 'test_designer', 'quality_manager'];
-        const completedAgentOutputs = agentOrder
-          .map(name => batchLogs.find(l => l.agent_name === name))
-          .filter((l): l is NonNullable<typeof l> => !!l && !!l.output_data)
-          .map(l => ({ agentName: l.agent_name as string, outputData: l.output_data as Record<string, unknown> }));
+        const recoveryPrefix = selectAgentLogRecoveryPrefix(
+          allLogs,
+          currentBatchNum,
+          row.mode === 'interactive' || config.mode === 'interactive'
+            ? 'interactive'
+            : 'auto',
+        );
 
         // Use a fresh thread_id to avoid stale checkpoint state
-        const retryThreadId = `${threadId}-retry-${Date.now()}`;
+        const retryThreadId = `${runId}-batch-${currentBatchNum}-retry-${Date.now()}`;
         pipelineRepo.updateThreadId(runId, retryThreadId);
 
-        if (completedAgentOutputs.length > 0) {
-          log.info(`Recovered ${completedAgentOutputs.length} completed agent(s) [${completedAgentOutputs.map(a => a.agentName).join(', ')}] from logs, resuming from failed agent (not from scratch)`);
-          outcome = await ctx.session.retryFromAgentLogs(
+        if (recoveryPrefix && recoveryPrefix.length > 0) {
+          log.info(`Recovered ${recoveryPrefix.length} completed agent(s) [${recoveryPrefix.map(a => a.agentName).join(', ')}] from logs, resuming from failed agent (not from scratch)`);
+          return ctx!.session.retryFromAgentLogs(
             retryThreadId,
             batchIndex,
             batchInput.inputState as Record<string, unknown>,
-            completedAgentOutputs,
+            recoveryPrefix,
           );
-        } else {
-          // 没有已成功的 agent（例如 analyst 就失败了），只能从头开始
-          log.info(`No completed agents found for batch ${currentBatchNum}, starting from scratch`);
-          outcome = await ctx.session.startBatch(batchInput, retryThreadId);
+        }
+        log.info(`${recoveryPrefix ? 'No completed agents found' : 'Agent-log history is ambiguous'} for batch ${currentBatchNum}, starting from scratch`);
+        return ctx!.session.startBatch(batchInput, retryThreadId);
+      };
+
+      let outcome: RunOutcome;
+      if (!threadId) {
+        outcome = await recoverWithoutCheckpoint();
+      } else {
+        try {
+          log.info(`Attempting checkpoint recovery (threadId=${threadId}, batch=${batchIndex}, failedPhase=${row.phase || 'unknown'})`);
+          outcome = await ctx.session.retryFromLastCheckpoint(threadId, batchIndex);
+        } catch (retryErr) {
+          if (!(retryErr instanceof CheckpointUnavailableError)) throw retryErr;
+          outcome = await recoverWithoutCheckpoint(retryErr);
         }
       }
+
+      if (ctx.isAborted()) return;
 
       if (outcome.type === 'interrupt') {
         this.handleInterrupt(runId, ctx, outcome.interrupt);
@@ -643,8 +937,24 @@ export class Orchestrator {
 
       // Update state for the newly completed retried batch (P1.8)
       try {
-        const { coverage, statePresent } = this.readRunStateCoverage(runId);
-        if (!statePresent) this.loadCoverageFromLogs(runId, coverage);
+        let coverage = new Map<string, PreviousBatchCoverageSummary>();
+        let loadedFromArray = false;
+        try {
+          const stored = this.readRunStateCoverage(runId);
+          coverage = stored.coverage;
+          loadedFromArray = stored.loadedFromArray;
+        } catch (stateError: any) {
+          Log.for('orchestrator').warn(
+            `Stored retry coverage is invalid; rebuilding from logs: ${stateError.message}`,
+          );
+        }
+        if (!loadedFromArray) {
+          this.loadCoverageFromLogs(
+            runId,
+            coverage,
+            row.current_batch || recoveredBatchNumber || 1,
+          );
+        }
         const batchConditions: any[] = outcome.result.lastState?.testConditions ?? [];
         for (const tc of batchConditions) mergeCoverage(coverage, tc);
         const batchCases: any[] = outcome.result.lastState?.finalTestCases ?? [];
@@ -656,23 +966,24 @@ export class Orchestrator {
 
       // 继续剩余批次
       const allResults: BatchResult[] = [outcome.result];
-      const totalBatches = row.total_batches || 0;
-      const currentBatch = row.current_batch || 0;
+      const totalBatches = row.total_batches || recoveredTotalBatches || 0;
+      const currentBatch = row.current_batch || recoveredBatchNumber || 0;
       if (currentBatch < totalBatches) {
         const remaining = await this.continueRemainingBatches(runId, row.project_id, config, ctx);
         if (remaining.interrupted) { keepSse = true; return; }
         allResults.push(...remaining.allResults);
       }
 
+      if (ctx.isAborted()) return;
+
       // totalCases 使用原始计数（与保存行为一致），去重仅作度量告警
       this.finishRun(ctx, allResults, totalBatches || 1);
     } catch (err: any) {
+      if (err instanceof RunCancelledError) return;
       if (ctx) {
         if (!ctx.isAborted()) ctx.scope.markFailed(err.message);
       } else {
-        this.sseGateway.emit(runId, 'pipeline:error', {
-          phase: 'retry', message: err.message, recoverable: true,
-        });
+        this.markRecoverableContextFailure(runId, err);
       }
     } finally {
       if (ctx) {
@@ -680,6 +991,52 @@ export class Orchestrator {
         if (!keepSse) this.sseGateway.cleanup(runId);
       }
     }
+  }
+
+  private requireResumableRun(runId: string): any {
+    const row = this.lifecycleRepository.getRunWithThreadId(runId);
+    if (!row) throw new NotFoundError('Test gen run not found');
+    if (row.status !== 'WAITING_REVIEW') {
+      throw new ConflictError('Test gen is not waiting for review');
+    }
+    return row;
+  }
+
+  private requireEditableCheckpointRun(runId: string, checkpointNumber: number): any {
+    if (!Number.isInteger(checkpointNumber) || checkpointNumber < 1 || checkpointNumber > 3) {
+      throw new ValidationError('Checkpoint number must be an integer between 1 and 3');
+    }
+    const row = this.lifecycleRepository.getRunWithThreadId(runId);
+    if (!row) throw new NotFoundError('Test gen run not found');
+    if (row.status !== 'WAITING_REVIEW') {
+      throw new ConflictError('Test gen is not waiting for review');
+    }
+    if (CHECKPOINT_BY_PHASE[row.phase] !== checkpointNumber) {
+      throw new ValidationError('Checkpoint number does not match the current review phase');
+    }
+    if (!row.thread_id) throw new ConflictError('Test gen run has no checkpoint thread');
+    return row;
+  }
+
+  private markRecoverableContextFailure(runId: string, error: Error): void {
+    const htmlFailure = error instanceof HtmlKnowledgeRuntimeError;
+    this.lifecycleRepository.markRunFailed(runId, htmlFailure
+      ? {
+          type: 'HTML_KNOWLEDGE_UNAVAILABLE',
+          phase: 'html-knowledge',
+          recoverable: true,
+        }
+      : {
+          type: 'CONTEXT_SETUP_FAILED',
+          phase: 'context',
+          recoverable: true,
+        });
+    this.sseGateway.emit(runId, 'pipeline:error', {
+      phase: htmlFailure ? 'html-knowledge' : 'context',
+      type: htmlFailure ? error.code : 'CONTEXT_SETUP_FAILED',
+      message: error.message,
+      recoverable: true,
+    });
   }
 
   /**
@@ -694,20 +1051,25 @@ export class Orchestrator {
     projectId: string,
     config: any,
     currentBatch: number,
+    htmlKnowledge?: ResolvedHtmlKnowledgeRuntime,
   ): BatchInput | null {
-    const requirementIds: string[] = config.requirementIds || [];
-    const flowIds: string[] = config.flowIds || [];
-
-    const allIndex = buildRequirementIndex(projectId);
+    const requirementSource = loadRunRequirementSource(projectId, {
+      requirementIds: Array.isArray(config.requirementIds) ? config.requirementIds : [],
+      flowIds: Array.isArray(config.flowIds) ? config.flowIds : [],
+      htmlKnowledgeSetId: config.htmlKnowledgeSetId,
+    }, htmlKnowledge);
+    const { requirementIds, flowIds, allIndex, requirements } = requirementSource;
     const selectedIds = selectedRequirementAndFlowIds(requirementIds, flowIds);
     const { epics, rootGroups } = groupRequirementsByEpic(allIndex, selectedIds);
-    const requirements = requirementRepo.listByProject(projectId);
     const allFlowStories = requirements.filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
     const selectedFlowSet = new Set(flowIds);
     const filteredFlowStories = selectedFlowSet.size > 0
       ? allFlowStories.filter(s => selectedFlowSet.has(s.id))
       : allFlowStories;
-    const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
+    const businessFlows = buildBlueprintsFromFlowStories({
+      flowStories: filteredFlowStories,
+      requirements,
+    });
     const reqMap = new Map(requirements.map(r => [r.id, r]));
 
     // Compute total sub-batches: 1 per epic (component + flow merged, mixed mode) (P0.3)
@@ -758,7 +1120,7 @@ export class Orchestrator {
     // Load accumulated coverage from past agent logs
     const accumulatedCoverage = new Map<string, PreviousBatchCoverageSummary>();
     try {
-      this.loadCoverageFromLogs(runId, accumulatedCoverage);
+      this.loadCoverageFromLogs(runId, accumulatedCoverage, currentBatch);
     } catch (e) {
       Log.for('orchestrator').warn(`Failed to load past coverage for retry: ${e}`);
     }
@@ -771,8 +1133,9 @@ export class Orchestrator {
         ...this.buildBatchInputState(
           runId, projectId, requirementIds, requirements, rootGroups, failedEpic,
           currentBatch - 1, totalSubBatches, businessFlows,
-          config.mode || 'auto', config.flowIds,
+          config.mode || 'auto', flowIds,
           'mixed', failedStoryIds, flowReferencedComponentContext,
+          htmlKnowledge?.reference,
         ),
         flowReferencedComponentContext: flowReferencedComponentContext.size > 0
           ? Object.fromEntries(flowReferencedComponentContext)
@@ -812,43 +1175,49 @@ export class Orchestrator {
   }
 
   async saveCheckpointEdits(runId: string, editedData: Record<string, unknown>, checkpointNumber: number): Promise<void> {
-    const row = pipelineRepo.getRunWithThreadId(runId);
-    if (!row?.thread_id) {
-      Log.for('orchestrator').error(`Run ${runId} missing or no thread_id`);
-      return;
-    }
-
-    const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
-    const agentName = AGENT_NAMES[checkpointNumber];
-
-    const stateKeys: Record<string, unknown> = {};
-    if (checkpointNumber === 1) {
-      if (editedData.conditions) stateKeys.testConditions = editedData.conditions;
-      if (editedData.analysis) stateKeys.requirementAnalysis = editedData.analysis;
-    } else if (checkpointNumber === 2) {
-      if (editedData.cases) stateKeys.draftTestCases = editedData.cases;
-    } else if (checkpointNumber === 3) {
-      if (editedData.cases) stateKeys.finalTestCases = editedData.cases;
-      if (editedData.matrix) stateKeys.coverageMatrix = editedData.matrix;
-    }
-    if (Object.keys(stateKeys).length === 0) return;
-
-    const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
-    await graph.updateState({ configurable: { thread_id: row.thread_id } }, stateKeys);
-
+    const releaseOperation = this.contextBuilder.registerExternalOperation(runId);
     try {
-      const updatedPayload = await this.getCheckpointState(runId);
-      if (updatedPayload) {
-        this.sseGateway.emit(runId, 'checkpoint:waiting', {
-          checkpointNumber,
-          type: row.phase,
-          summary: 'Awaiting Review',
-          payload: updatedPayload,
-        });
+      const initialRow = this.requireEditableCheckpointRun(runId, checkpointNumber);
+      this.deletionLock.assertStartAllowed(initialRow.project_id);
+
+      const AGENT_NAMES: Record<number, string> = { 1: 'test_analyst', 2: 'test_designer', 3: 'quality_manager' };
+      const agentName = AGENT_NAMES[checkpointNumber];
+      const stateKeys: Record<string, unknown> = {};
+      if (checkpointNumber === 1) {
+        if (editedData.conditions) stateKeys.testConditions = editedData.conditions;
+        if (editedData.analysis) stateKeys.requirementAnalysis = editedData.analysis;
+      } else if (checkpointNumber === 2) {
+        if (editedData.cases) stateKeys.draftTestCases = editedData.cases;
+      } else if (checkpointNumber === 3) {
+        if (editedData.cases) stateKeys.finalTestCases = editedData.cases;
+        if (editedData.matrix) stateKeys.coverageMatrix = editedData.matrix;
       }
-      if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
-    } catch (err) {
-      Log.for('orchestrator').error(`Failed to refresh checkpoint state after edit for ${runId}: ${err}`);
+      if (Object.keys(stateKeys).length === 0) return;
+
+      const graph = buildTestGenGraph({ provider: createDummyProvider(), checkpointer });
+      const currentRow = this.requireEditableCheckpointRun(runId, checkpointNumber);
+      this.deletionLock.assertStartAllowed(currentRow.project_id);
+      await graph.updateState(
+        { configurable: { thread_id: currentRow.thread_id } },
+        stateKeys,
+      );
+
+      try {
+        const updatedPayload = await this.getCheckpointState(runId);
+        if (updatedPayload) {
+          this.sseGateway.emit(runId, 'checkpoint:waiting', {
+            checkpointNumber,
+            type: currentRow.phase,
+            summary: 'Awaiting Review',
+            payload: updatedPayload,
+          });
+        }
+        if (agentName) pipelineRepo.updateAgentLogOutput(runId, agentName, stateKeys);
+      } catch (err) {
+        Log.for('orchestrator').error(`Failed to refresh checkpoint state after edit for ${runId}: ${err}`);
+      }
+    } finally {
+      releaseOperation();
     }
   }
 
@@ -858,21 +1227,31 @@ export class Orchestrator {
     config: any,
     ctx: RunContext,
   ): Promise<{ allResults: BatchResult[]; interrupted: boolean }> {
-    const requirementIds: string[] = config.requirementIds || [];
-    const flowIds: string[] = config.flowIds || [];
+    const requirementSource = loadRunRequirementSource(projectId, {
+      requirementIds: Array.isArray(config.requirementIds) ? config.requirementIds : [],
+      flowIds: Array.isArray(config.flowIds) ? config.flowIds : [],
+      htmlKnowledgeSetId: config.htmlKnowledgeSetId,
+    }, ctx.htmlKnowledge);
+    const {
+      requirementIds,
+      flowIds,
+      allIndex,
+      requirements,
+    } = requirementSource;
     const startFrom = ctx.scope.currentBatch;
 
-    const allIndex = buildRequirementIndex(projectId);
     const selectedIds = selectedRequirementAndFlowIds(requirementIds, flowIds);
     const { epics, rootGroups, totalBatches } = groupRequirementsByEpic(allIndex, selectedIds);
-    const requirements = requirementRepo.listByProject(projectId);
     const allFlowStories = requirements
       .filter(r => r.level === 'story' && r.isFlow && r.status === 'APPROVED');
     const selectedFlowSet = new Set(flowIds);
     const filteredFlowStories = selectedFlowSet.size > 0
       ? allFlowStories.filter(s => selectedFlowSet.has(s.id))
       : allFlowStories;
-    const businessFlows = buildBlueprintsFromFlowStories({ flowStories: filteredFlowStories });
+    const businessFlows = buildBlueprintsFromFlowStories({
+      flowStories: filteredFlowStories,
+      requirements,
+    });
     const reqMap = new Map(requirements.map(r => [r.id, r]));
 
     // 计算总子批次数：每个 epic 一个批次（component + flow 合并，mixed mode） (P0.3)
@@ -907,7 +1286,7 @@ export class Orchestrator {
 
     if (!loadedFromState) {
       try {
-        this.loadCoverageFromLogs(runId, accumulatedCoverage);
+        this.loadCoverageFromLogs(runId, accumulatedCoverage, startFrom + 1);
         if (accumulatedCoverage.size > 0) {
           Log.for('orchestrator').info(`Pre-loaded coverage for ${accumulatedCoverage.size} requirements from past logs before continuing`);
         }
@@ -934,6 +1313,7 @@ export class Orchestrator {
       accumulatedCoverage,
       startFrom,
       totalSubBatches,
+      htmlKnowledgeReference: ctx.htmlKnowledge?.reference,
     }, allResults);
 
     return { allResults, interrupted: loopRes.interrupted };
@@ -985,6 +1365,7 @@ export class Orchestrator {
                 'mixed',
                 combinedStoryIds,
                 params.flowReferencedComponentContext,
+                params.htmlKnowledgeReference,
               ),
               globalStats: params.globalStats,
               globalEpicIndex: params.globalEpicIndex,
@@ -1036,16 +1417,23 @@ export class Orchestrator {
   }
 
   /** 从已完成的 analyst / quality agent logs 中合并累积覆盖（跨批次、跨运行去重）。 */
-  private loadCoverageFromLogs(runId: string, coverage: Map<string, PreviousBatchCoverageSummary>): void {
+  private loadCoverageFromLogs(
+    runId: string,
+    coverage: Map<string, PreviousBatchCoverageSummary>,
+    beforeBatch?: number,
+  ): void {
+    const isEligible = (logEntry: any): boolean =>
+      logEntry.status === 'COMPLETED'
+      && (beforeBatch === undefined || logEntry.batch < beforeBatch);
     const analystLogs = pipelineRepo.getAgentLogs(runId, 'test_analyst');
-    for (const logEntry of analystLogs) {
+    for (const logEntry of analystLogs.filter(isEligible)) {
       const tcs: any[] = logEntry.output_data?.testConditions ?? [];
       for (const tc of tcs) {
         if (tc.id && tc.condition && tc.requirementId) mergeCoverage(coverage, tc);
       }
     }
     const qualityLogs = pipelineRepo.getAgentLogs(runId, 'quality_manager');
-    for (const logEntry of qualityLogs) {
+    for (const logEntry of qualityLogs.filter(isEligible)) {
       const cases: any[] = logEntry.output_data?.finalTestCases ?? [];
       for (const tc of cases) mergeCaseCoverage(coverage, tc);
     }
@@ -1194,6 +1582,7 @@ export class Orchestrator {
     generationMode: 'component' | 'flow' | 'mixed' = 'component',
     selectedStoryIds: string[] = [],
     flowReferencedComponentContext: Map<string, any[]> = new Map(),
+    htmlKnowledgeReference?: HtmlKnowledgeReference,
   ) {
     const selectedStoryIdSet = new Set(selectedStoryIds);
     // Filter requirements to only include selected stories and their ACs
@@ -1292,6 +1681,7 @@ export class Orchestrator {
       batchContext: { currentBatch: i + 1, totalBatches, processedCount: i },
       projectContext: { name: projectName, pages: [], endpoints: [] },
       businessFlowBlueprints: filteredBusinessFlows,
+      htmlKnowledgeReference,
       selectedFlowIds,
       generationMode,
       phase: 'analysis' as const,

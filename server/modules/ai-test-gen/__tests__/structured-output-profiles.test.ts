@@ -31,7 +31,318 @@ describe('structured-output helpers', () => {
   });
 
   it('coerces numeric text to a number', () => {
-    expect(coerceNumber('2', 1)).toBe(2);
+    expect(coerceNumber('2')).toBe(2);
+    expect(coerceNumber(2)).toBe(2);
+  });
+
+  it.each([null, '', ' ', true, false, Number.NaN, Number.POSITIVE_INFINITY])(
+    'leaves invalid numeric input %s unchanged for schema validation',
+    (value) => {
+      expect(coerceNumber(value)).toBe(value);
+    },
+  );
+});
+
+function makeQualityCase(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'TC-1',
+    title: 'Verify login',
+    conditionId: 'C-1',
+    requirementId: 'REQ-1',
+    priority: 'high',
+    category: 'functional',
+    testLevel: 'component',
+    techniqueApplied: 'Equivalence Partitioning',
+    preconditions: [],
+    testData: [],
+    steps: [{ stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' }],
+    tags: [],
+    status: 'approved',
+    reviewSummary: 'ok',
+    changeLog: [],
+    ...overrides,
+  };
+}
+
+function makeDesignerCase(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'TC-1',
+    title: 'Verify login',
+    conditionId: 'C-1',
+    requirementId: 'REQ-1',
+    priority: 'critical',
+    category: 'functional',
+    testLevel: 'component',
+    techniqueApplied: 'Equivalence Partitioning',
+    preconditions: [],
+    testData: [],
+    steps: [{ stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' }],
+    postconditions: [],
+    tags: [],
+    selfReview: { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+    ...overrides,
+  };
+}
+
+function makeCoverageMatrix(overrides: Record<string, unknown> = {}) {
+  return {
+    rows: [{
+      conditionId: 'C-1',
+      conditionSummary: 'Verify login',
+      requirementId: 'REQ-1',
+      testLevel: 'component',
+      primaryTechnique: 'Equivalence Partitioning',
+      category: 'functional',
+      coveredByCaseIds: ['TC-1'],
+      coverageStatus: 'covered',
+    }],
+    summary: {
+      totalConditions: 1,
+      coveredConditions: 1,
+      missingConditions: 0,
+      byTestLevel: { component: 1 },
+      byTechnique: { 'Equivalence Partitioning': 1 },
+      byCategory: { functional: 1 },
+    },
+    ...overrides,
+  };
+}
+
+function withoutField<T extends Record<string, unknown>>(value: T, field: keyof T): Record<string, unknown> {
+  const copy = { ...value };
+  delete copy[field];
+  return copy;
+}
+
+describe('qualityOutputProfile validation', () => {
+  it.each(['action', 'expected'] as const)('rejects a step missing %s', (field) => {
+    const step = withoutField(
+      { stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' },
+      field,
+    );
+
+    expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase({ steps: [step] })],
+    }))).toThrow(new RegExp(field));
+  });
+
+  it('rejects null step numbers instead of defaulting them', () => {
+    expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase({
+        steps: [{ stepNumber: null, action: 'Enter credentials', expected: 'Dashboard shown' }],
+      })],
+    }))).toThrow(/stepNumber/);
+  });
+
+  it.each(['preconditions', 'testData', 'steps'] as const)(
+    'rejects an omitted required %s collection',
+    (field) => {
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [withoutField(makeQualityCase(), field)],
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['preconditions', 'testData', 'steps'] as const)(
+    'rejects null for required %s',
+    (field) => {
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase({ [field]: null })],
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['rows', 'summary'] as const)(
+    'rejects an omitted coverageMatrix.%s field',
+    (field) => {
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: withoutField(makeCoverageMatrix(), field),
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it('rejects omitted coverageMatrix.rows[].coveredByCaseIds', () => {
+    const matrix = makeCoverageMatrix();
+    const row = withoutField(matrix.rows[0], 'coveredByCaseIds');
+
+    expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase()],
+      coverageMatrix: { ...matrix, rows: [row] },
+    }))).toThrow(/coveredByCaseIds/);
+  });
+
+  it.each(['byTestLevel', 'byTechnique', 'byCategory'] as const)(
+    'rejects an omitted coverageMatrix.summary.%s collection',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+      const summary = withoutField(matrix.summary, field);
+
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: { ...matrix, summary },
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each([
+    'conditionId',
+    'conditionSummary',
+    'requirementId',
+    'testLevel',
+    'primaryTechnique',
+    'category',
+    'coverageStatus',
+  ] as const)('rejects an omitted coverageMatrix row %s', (field) => {
+    const matrix = makeCoverageMatrix();
+    const row = withoutField(matrix.rows[0], field);
+    const normalized = qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase()],
+      coverageMatrix: { ...matrix, rows: [row] },
+    }) as any;
+
+    expect(normalized.coverageMatrix.rows[0]).not.toHaveProperty(field);
+    expect(() => qualityOutputProfile.parse(normalized)).toThrow(new RegExp(field));
+  });
+
+  it.each([
+    'conditionId',
+    'conditionSummary',
+    'requirementId',
+    'testLevel',
+    'primaryTechnique',
+    'category',
+    'coverageStatus',
+  ] as const)('rejects null for required coverageMatrix row %s', (field) => {
+    const matrix = makeCoverageMatrix();
+
+    expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase()],
+      coverageMatrix: {
+        ...matrix,
+        rows: [{ ...matrix.rows[0], [field]: null }],
+      },
+    }))).toThrow(new RegExp(field));
+  });
+
+  it.each(['totalConditions', 'coveredConditions', 'missingConditions'] as const)(
+    'rejects an omitted coverageMatrix.summary.%s count',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+      const summary = withoutField(matrix.summary, field);
+      const normalized = qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: { ...matrix, summary },
+      }) as any;
+
+      expect(normalized.coverageMatrix.summary).not.toHaveProperty(field);
+      expect(() => qualityOutputProfile.parse(normalized)).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['totalConditions', 'coveredConditions', 'missingConditions'] as const)(
+    'rejects null for required coverageMatrix.summary.%s count',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: {
+          ...matrix,
+          summary: { ...matrix.summary, [field]: null },
+        },
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['flowId', 'sequence'] as const)(
+    'rejects an omitted coverageMatrix row flowStepRef.%s',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+      const flowStepRef = withoutField({ flowId: 'FLOW-1', sequence: 1 }, field);
+      const normalized = qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: {
+          ...matrix,
+          rows: [{ ...matrix.rows[0], conditionType: 'flow', flowStepRef }],
+        },
+      }) as any;
+
+      expect(normalized.coverageMatrix.rows[0].flowStepRef).not.toHaveProperty(field);
+      expect(() => qualityOutputProfile.parse(normalized)).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['flowId', 'sequence'] as const)(
+    'rejects null for required coverageMatrix row flowStepRef.%s',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: {
+          ...matrix,
+          rows: [{
+            ...matrix.rows[0],
+            conditionType: 'flow',
+            flowStepRef: { flowId: 'FLOW-1', sequence: 1, [field]: null },
+          }],
+        },
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it('normalizes null for optional coverageMatrix fields', () => {
+    const matrix = makeCoverageMatrix();
+    const parsed = qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase()],
+      coverageMatrix: {
+        ...matrix,
+        rows: [{
+          ...matrix.rows[0],
+          conditionType: null,
+          flowStepRef: { flowId: 'FLOW-1', sequence: 1, actionSummary: null },
+          notes: null,
+        }],
+        summary: { ...matrix.summary, byConditionType: null },
+      },
+    }));
+
+    expect(parsed.coverageMatrix?.rows[0].conditionType).toBeUndefined();
+    expect(parsed.coverageMatrix?.rows[0].flowStepRef?.actionSummary).toBeUndefined();
+    expect(parsed.coverageMatrix?.rows[0].notes).toBeUndefined();
+    expect(parsed.coverageMatrix?.summary.byConditionType).toBeUndefined();
+  });
+
+  it.each(['totalConditions', 'coveredConditions', 'missingConditions'] as const)(
+    'does not coerce coverageMatrix.summary.%s numeric text',
+    (field) => {
+      const matrix = makeCoverageMatrix();
+
+      expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+        finalTestCases: [makeQualityCase()],
+        coverageMatrix: {
+          ...matrix,
+          summary: { ...matrix.summary, [field]: '1' },
+        },
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it('does not coerce coverageMatrix row flowStepRef.sequence numeric text', () => {
+    const matrix = makeCoverageMatrix();
+
+    expect(() => qualityOutputProfile.parse(qualityOutputProfile.normalize({
+      finalTestCases: [makeQualityCase()],
+      coverageMatrix: {
+        ...matrix,
+        rows: [{
+          ...matrix.rows[0],
+          conditionType: 'flow',
+          flowStepRef: { flowId: 'FLOW-1', sequence: '1' },
+        }],
+      },
+    }))).toThrow(/sequence/);
   });
 });
 
@@ -92,12 +403,35 @@ describe('qualityOutputProfile', () => {
     }))).toThrow(/Missing final reviewed cases for draft case ids: TC-2/);
   });
 
+  it('rejects an INJECTED final case outside the draft case IDs', () => {
+    const profile = createQualityOutputProfile([
+      { id: 'TC-1', conditionId: 'C-1', requirementId: 'REQ-1' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [
+        makeQualityCase(),
+        makeQualityCase({ id: 'INJECTED' }),
+      ],
+    }))).toThrow(/INJECTED/);
+  });
+
+  it('rejects duplicate final case IDs', () => {
+    const profile = createQualityOutputProfile([
+      { id: 'TC-1', conditionId: 'C-1', requirementId: 'REQ-1' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [makeQualityCase(), makeQualityCase({ title: 'Duplicate' })],
+    }))).toThrow(/duplicate.*TC-1/i);
+  });
+
   it('rejects outputs that drift conditionId or requirementId for an existing draft case id', () => {
     const profile = createQualityOutputProfile([
       { id: 'TC-1', conditionId: 'C-1', requirementId: 'REQ-1' },
     ]);
 
-    const parsed = profile.parse(profile.normalize({
+    expect(() => profile.parse(profile.normalize({
       finalTestCases: [{
         id: 'TC-1',
         title: 'Verify login',
@@ -115,10 +449,157 @@ describe('qualityOutputProfile', () => {
         reviewSummary: 'ok',
         changeLog: [],
       }],
+    }))).toThrow(/Final reviewed case TC-1 changed conditionId or requirementId/);
+  });
+
+  it('rejects a component case that drops an expected covered condition', () => {
+    const profile = createQualityOutputProfile([{
+      id: 'TC-1',
+      conditionId: 'C-1',
+      requirementId: 'REQ-1',
+      expectedTestLevel: 'component',
+      coveredConditions: ['C-1', 'C-2'],
+      referencedComponentConditions: [],
+    }]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [makeQualityCase({ coveredConditions: ['C-1'] })],
+    }))).toThrow(/coveredConditions.*C-2/);
+  });
+
+  it('allows a component case to add a covered condition from the draft union', () => {
+    const profile = createQualityOutputProfile([
+      {
+        id: 'TC-1',
+        conditionId: 'C-1',
+        requirementId: 'REQ-1',
+        expectedTestLevel: 'component',
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: [],
+      },
+      {
+        id: 'TC-2',
+        conditionId: 'C-2',
+        requirementId: 'REQ-1',
+        expectedTestLevel: 'component',
+        coveredConditions: ['C-2'],
+        referencedComponentConditions: [],
+      },
+    ]);
+
+    const parsed = profile.parse(profile.normalize({
+      finalTestCases: [
+        makeQualityCase({ coveredConditions: ['C-1', 'C-2'] }),
+        makeQualityCase({ id: 'TC-2', conditionId: 'C-2', coveredConditions: ['C-2'] }),
+      ],
     }));
 
-    expect(parsed.finalTestCases[0].conditionId).toBe('C-1');
-    expect(parsed.finalTestCases[0].requirementId).toBe('REQ-1');
+    expect(parsed.finalTestCases[0].coveredConditions).toEqual(['C-1', 'C-2']);
+  });
+
+  it('rejects an integration case that drops an expected covered condition', () => {
+    const profile = createQualityOutputProfile([{
+      id: 'TC-1',
+      conditionId: 'FLOW-1',
+      requirementId: 'REQ-1',
+      expectedTestLevel: 'integration',
+      coveredConditions: ['FLOW-1', 'FLOW-2'],
+      referencedComponentConditions: ['C-1'],
+    }]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [makeQualityCase({
+        conditionId: 'FLOW-1',
+        testLevel: 'integration',
+        coveredConditions: ['FLOW-1'],
+        referencedComponentConditions: ['C-1'],
+      })],
+    }))).toThrow(/coveredConditions.*FLOW-2/);
+  });
+
+  it('rejects an integration case that replaces an expected component reference', () => {
+    const profile = createQualityOutputProfile([{
+      id: 'TC-1',
+      conditionId: 'FLOW-1',
+      requirementId: 'REQ-1',
+      expectedTestLevel: 'integration',
+      coveredConditions: ['FLOW-1'],
+      referencedComponentConditions: ['C-1', 'C-2'],
+    }]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [makeQualityCase({
+        conditionId: 'FLOW-1',
+        testLevel: 'integration',
+        coveredConditions: ['FLOW-1'],
+        referencedComponentConditions: ['C-2', 'C-3'],
+      })],
+    }))).toThrow(/referencedComponentConditions.*C-1/);
+  });
+
+  it.each([
+    ['coveredConditions', ['C-1', 'FOREIGN-CONDITION']],
+    ['referencedComponentConditions', ['C-REF', 'FOREIGN-REFERENCE']],
+  ] as const)('rejects FOREIGN IDs added to final %s', (field, values) => {
+    const profile = createQualityOutputProfile([{
+      id: 'TC-1',
+      conditionId: 'C-1',
+      requirementId: 'REQ-1',
+      expectedTestLevel: 'integration',
+      coveredConditions: ['C-1'],
+      referencedComponentConditions: ['C-REF'],
+    }]);
+
+    expect(() => profile.parse(profile.normalize({
+      finalTestCases: [makeQualityCase({
+        testLevel: 'integration',
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: ['C-REF'],
+        [field]: values,
+      })],
+    }))).toThrow(/FOREIGN/);
+  });
+
+  it('allows an integration case to add coverage and component references from the draft unions', () => {
+    const profile = createQualityOutputProfile([
+      {
+        id: 'TC-1',
+        conditionId: 'FLOW-1',
+        requirementId: 'REQ-1',
+        expectedTestLevel: 'integration',
+        coveredConditions: ['FLOW-1'],
+        referencedComponentConditions: ['C-1'],
+      },
+      {
+        id: 'TC-2',
+        conditionId: 'FLOW-2',
+        requirementId: 'REQ-1',
+        expectedTestLevel: 'integration',
+        coveredConditions: ['FLOW-2'],
+        referencedComponentConditions: ['C-2'],
+      },
+    ]);
+
+    const parsed = profile.parse(profile.normalize({
+      finalTestCases: [
+        makeQualityCase({
+          conditionId: 'FLOW-1',
+          testLevel: 'integration',
+          coveredConditions: ['FLOW-1', 'FLOW-2'],
+          referencedComponentConditions: ['C-1', 'C-2'],
+        }),
+        makeQualityCase({
+          id: 'TC-2',
+          conditionId: 'FLOW-2',
+          testLevel: 'integration',
+          coveredConditions: ['FLOW-2'],
+          referencedComponentConditions: ['C-2'],
+        }),
+      ],
+    }));
+
+    expect(parsed.finalTestCases[0].coveredConditions).toEqual(['FLOW-1', 'FLOW-2']);
+    expect(parsed.finalTestCases[0].referencedComponentConditions).toEqual(['C-1', 'C-2']);
   });
 
   it('rejects final cases whose testLevel contradicts the draft case', () => {
@@ -189,6 +670,83 @@ describe('designerOutputProfile', () => {
     expect(parsed.draftTestCases[0].selfReview.score).toBe(8);
   });
 
+  it.each(['action', 'expected'] as const)('rejects a step missing %s', (field) => {
+    const step = withoutField(
+      { stepNumber: 1, action: 'Enter credentials', expected: 'Dashboard shown' },
+      field,
+    );
+
+    expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+      makeDesignerCase({ steps: [step] }),
+    ))).toThrow(new RegExp(field));
+  });
+
+  it('rejects a missing selfReview object', () => {
+    expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+      withoutField(makeDesignerCase(), 'selfReview'),
+    ))).toThrow(/selfReview/);
+  });
+
+  it.each(['preconditions', 'testData', 'steps'] as const)(
+    'rejects an omitted required %s collection',
+    (field) => {
+      expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+        withoutField(makeDesignerCase(), field),
+      ))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['preconditions', 'testData', 'steps'] as const)(
+    'rejects null for required %s',
+    (field) => {
+      expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+        makeDesignerCase({ [field]: null }),
+      ))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['strengths', 'weaknesses', 'suggestions'] as const)(
+    'rejects an omitted selfReview.%s collection',
+    (field) => {
+      const selfReview = withoutField(
+        { score: 8, strengths: [], weaknesses: [], suggestions: [] },
+        field,
+      );
+
+      expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+        makeDesignerCase({ selfReview }),
+      ))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['strengths', 'weaknesses', 'suggestions'] as const)(
+    'rejects null for required selfReview.%s',
+    (field) => {
+      expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+        makeDesignerCase({
+          selfReview: {
+            score: 8,
+            strengths: [],
+            weaknesses: [],
+            suggestions: [],
+            [field]: null,
+          },
+        }),
+      ))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each([null, '', ' ', true, false])(
+    'rejects invalid stepNumber input %s instead of defaulting it',
+    (stepNumber) => {
+      expect(() => designerOutputProfile.parse(designerOutputProfile.normalize(
+        makeDesignerCase({
+          steps: [{ stepNumber, action: 'Enter credentials', expected: 'Dashboard shown' }],
+        }),
+      ))).toThrow(/stepNumber/);
+    },
+  );
+
   it('rejects outputs that do not cover every expected condition at least once', () => {
     const profile = createDesignerOutputProfile([{ id: 'C-1', requirementId: 'REQ-1' }, { id: 'C-2', requirementId: 'REQ-2' }]);
 
@@ -215,6 +773,58 @@ describe('designerOutputProfile', () => {
         },
       }],
     }))).toThrow(/Missing draft test cases for conditionIds: C-2/);
+  });
+
+  it('rejects an INJECTED primary condition outside the Analyst conditions', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', conditionType: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [makeDesignerCase({
+        conditionId: 'INJECTED',
+        coveredConditions: ['C-1'],
+      })],
+    }))).toThrow(/INJECTED/);
+  });
+
+  it('rejects FOREIGN covered conditions outside the current Analyst conditions', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', conditionType: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [makeDesignerCase({
+        coveredConditions: ['C-1', 'FOREIGN-CONDITION'],
+      })],
+    }))).toThrow(/FOREIGN-CONDITION/);
+  });
+
+  it('rejects FOREIGN component references outside the approved IDs', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', conditionType: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [makeDesignerCase({
+        coveredConditions: ['C-1'],
+        referencedComponentConditions: ['FOREIGN-REFERENCE'],
+      })],
+    }))).toThrow(/FOREIGN-REFERENCE/);
+  });
+
+  it('rejects duplicate draft case IDs', () => {
+    const profile = createDesignerOutputProfile([
+      { id: 'C-1', requirementId: 'REQ-1', conditionType: 'component' },
+      { id: 'C-2', requirementId: 'REQ-2', conditionType: 'component' },
+    ]);
+
+    expect(() => profile.parse(profile.normalize({
+      draftTestCases: [
+        makeDesignerCase({ coveredConditions: ['C-1'] }),
+        makeDesignerCase({ conditionId: 'C-2', requirementId: 'REQ-2', coveredConditions: ['C-2'] }),
+      ],
+    }))).toThrow(/duplicate.*TC-1/i);
   });
 
   it('rejects draft cases whose testLevel contradicts the Analyst tag', () => {
@@ -423,6 +1033,26 @@ describe('designerOutputProfile', () => {
 
 describe('analystOutputProfile', () => {
   const profile = createAnalystOutputProfile();
+
+  it('rejects an omitted testConditions collection', () => {
+    expect(() => profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+    }))).toThrow(/testConditions/);
+  });
+
+  it('rejects null for required testConditions', () => {
+    expect(() => profile.parse(profile.normalize({
+      requirementAnalysis: {
+        overallApproach: 'Use risk-based analysis',
+        riskAssessmentSummary: 'High authentication risk',
+      },
+      testConditions: null,
+    }))).toThrow(/testConditions/);
+  });
+
   it('normalizes nullable optional fields in test conditions', () => {
     const parsed = profile.parse(profile.normalize({
       requirementAnalysis: {
@@ -453,6 +1083,63 @@ describe('analystOutputProfile', () => {
     expect(parsed.testConditions[0].dependencies).toEqual([]);
     expect(parsed.testConditions[0].requirementLevel).toBeUndefined();
   });
+
+  it.each(['secondaryTechniques', 'coverageDimensions'] as const)(
+    'rejects an omitted required %s collection',
+    (field) => {
+      const condition = withoutField({
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify login with valid credentials',
+        conditionType: 'component',
+        flowStepRefs: [],
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Equivalence Partitioning',
+        secondaryTechniques: [],
+        techniqueRationale: 'Valid and invalid partitions',
+        coverageDimensions: ['functional'],
+      }, field);
+
+      expect(() => profile.parse(profile.normalize({
+        requirementAnalysis: {
+          overallApproach: 'Use risk-based analysis',
+          riskAssessmentSummary: 'High authentication risk',
+        },
+        testConditions: [condition],
+      }))).toThrow(new RegExp(field));
+    },
+  );
+
+  it.each(['secondaryTechniques', 'coverageDimensions'] as const)(
+    'rejects null for required %s',
+    (field) => {
+      const condition = {
+        id: 'C-1',
+        requirementId: 'REQ-1',
+        condition: 'Verify login with valid credentials',
+        conditionType: 'component',
+        flowStepRefs: [],
+        category: 'functional',
+        priority: 'high',
+        riskLevel: 'medium',
+        primaryTechnique: 'Equivalence Partitioning',
+        secondaryTechniques: [],
+        techniqueRationale: 'Valid and invalid partitions',
+        coverageDimensions: ['functional'],
+        [field]: null,
+      };
+
+      expect(() => profile.parse(profile.normalize({
+        requirementAnalysis: {
+          overallApproach: 'Use risk-based analysis',
+          riskAssessmentSummary: 'High authentication risk',
+        },
+        testConditions: [condition],
+      }))).toThrow(new RegExp(field));
+    },
+  );
 
   it('rejects conditions missing a conditionType', () => {
     expect(() => profile.parse(profile.normalize({

@@ -19,9 +19,17 @@ vi.mock('../../nl-cases/repository.ts', () => ({
   },
 }));
 
-vi.mock('../../../shared/utils/index.ts', () => ({
-  randomId: (prefix: string) => `${prefix}-mock-id`,
+vi.mock('../../suites/repository.ts', () => ({
+  saveSuite: vi.fn(),
 }));
+
+vi.mock('../../../shared/utils/index.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/utils/index.ts')>();
+  return {
+    ...actual,
+    randomId: (prefix: string) => `${prefix}-mock-id`,
+  };
+});
 
 import { AiDrivenRecorderController } from '../controller.ts';
 import { SSEGateway } from '../../ai-test-gen/sse-gateway.ts';
@@ -33,6 +41,12 @@ import {
   AI_RECORDER_START_EVENT,
   AI_RECORDER_STOP_EVENT,
 } from '../../../../shared/recording/protocol.ts';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+  ValidationError,
+} from '../../../shared/http/errors.ts';
 
 // === Helpers ===
 
@@ -71,6 +85,15 @@ function makeMockAgent(ws?: { send: ReturnType<typeof vi.fn> }) {
     status: 'idle',
     ws: ws ?? { send: vi.fn() },
   };
+}
+
+function captureError(action: () => unknown): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
 
 describe('AiDrivenRecorderController', () => {
@@ -146,37 +169,69 @@ describe('AiDrivenRecorderController', () => {
     it('NlCase 不存在时抛错', () => {
       vi.mocked(nlCaseRepo.get).mockReturnValue(undefined);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nonexistent', providerConfigId: 'pc-1' }))
-        .toThrow('NlCase not found: nonexistent');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nonexistent', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ statusCode: 404, message: 'NlCase not found: nonexistent' });
     });
 
     it('NlCase 不属于该项目时抛错', () => {
       vi.mocked(nlCaseRepo.get).mockReturnValue({ ...makeApprovedNlCase(), projectId: 'other-project' } as any);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('NlCase does not belong to this project');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({
+        statusCode: 404,
+        message: 'NlCase does not belong to this project',
+      });
     });
 
     it('NlCase 状态非 APPROVED 时抛错', () => {
       vi.mocked(nlCaseRepo.get).mockReturnValue({ ...makeApprovedNlCase(), status: 'DRAFT' } as any);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('NlCase must be APPROVED, current: DRAFT');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toMatchObject({
+        statusCode: 409,
+        message: 'NlCase must be APPROVED, current: DRAFT',
+      });
     });
 
     it('NlCase 已有 generatedSuiteId 时抛错', () => {
       vi.mocked(nlCaseRepo.get).mockReturnValue({ ...makeApprovedNlCase(), generatedSuiteId: 'existing-suite' } as any);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('NlCase already has generatedSuiteId: existing-suite');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toMatchObject({
+        statusCode: 409,
+        message: 'NlCase already has generatedSuiteId: existing-suite',
+      });
     });
 
     it('providerConfig 不存在时抛错', () => {
       vi.mocked(nlCaseRepo.get).mockReturnValue(makeApprovedNlCase() as any);
       repository.getDecryptedProviderConfig.mockReturnValue(undefined);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'nonexistent' }))
-        .toThrow('Provider config not found: nonexistent');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'nonexistent' },
+      ));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({
+        statusCode: 404,
+        message: 'Provider config not found: nonexistent',
+      });
     });
 
     it('providerConfig 类型为 unverified 时抛错', () => {
@@ -189,8 +244,15 @@ describe('AiDrivenRecorderController', () => {
         model: 'gpt-4',
       });
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('Provider type openai-compatible is not allowed for AI recording (unverified)');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toMatchObject({
+        statusCode: 409,
+        message: 'Provider type openai-compatible is not allowed for AI recording (unverified)',
+      });
     });
 
     it('已有进行中的 run 时抛错', () => {
@@ -202,8 +264,15 @@ describe('AiDrivenRecorderController', () => {
         { id: 'old-run', nl_case_id: 'nl-1', status: 'running' },
       ]);
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('NlCase already has an active run: old-run');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
+      expect(error).toBeInstanceOf(ConflictError);
+      expect(error).toMatchObject({
+        statusCode: 409,
+        message: 'NlCase already has an active run: old-run',
+      });
     });
 
     it('无 idle Agent 时抛错并标记 run failed', () => {
@@ -213,20 +282,31 @@ describe('AiDrivenRecorderController', () => {
       });
       vi.mocked(agentRegistry.getActiveConnections).mockReturnValue(new Map());
 
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1', providerConfigId: 'pc-1' }))
-        .toThrow('No idle agent available');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { nlCaseId: 'nl-1', providerConfigId: 'pc-1' },
+      ));
 
+      expect(error).toBeInstanceOf(ServiceUnavailableError);
+      expect(error).toMatchObject({ statusCode: 503, message: 'No idle agent available' });
       expect(repository.updateRunStatus).toHaveBeenCalledWith('run-mock-id', 'failed', 'No idle agent available');
     });
 
     it('缺少 nlCaseId 时抛错', () => {
-      expect(() => controller.startRun('proj-1', { providerConfigId: 'pc-1' }))
-        .toThrow('nlCaseId is required');
+      const error = captureError(() => controller.startRun(
+        'proj-1',
+        { providerConfigId: 'pc-1' },
+      ));
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ statusCode: 400, message: 'nlCaseId is required' });
     });
 
     it('缺少 providerConfigId 时抛错', () => {
-      expect(() => controller.startRun('proj-1', { nlCaseId: 'nl-1' }))
-        .toThrow('providerConfigId is required');
+      const error = captureError(() => controller.startRun('proj-1', { nlCaseId: 'nl-1' }));
+
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({ statusCode: 400, message: 'providerConfigId is required' });
     });
   });
 
@@ -261,7 +341,9 @@ describe('AiDrivenRecorderController', () => {
     it('run 不存在时抛错', () => {
       repository.getRun.mockReturnValue(undefined);
 
-      expect(() => controller.getRun('proj-1', 'nonexistent')).toThrow('Run not found: nonexistent');
+      const error = captureError(() => controller.getRun('proj-1', 'nonexistent'));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ statusCode: 404, message: 'Run not found: nonexistent' });
     });
 
     it('run 不属于该项目时抛错', () => {
@@ -275,7 +357,12 @@ describe('AiDrivenRecorderController', () => {
         failed_steps: 0,
       });
 
-      expect(() => controller.getRun('proj-1', 'run-1')).toThrow('Run does not belong to this project');
+      const error = captureError(() => controller.getRun('proj-1', 'run-1'));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({
+        statusCode: 404,
+        message: 'Run does not belong to this project',
+      });
     });
 
     it('replay_report 为非法 JSON 时返回 undefined', () => {
@@ -372,7 +459,9 @@ describe('AiDrivenRecorderController', () => {
     it('run 不存在时抛错，不调用 deleteRun', () => {
       repository.getRun.mockReturnValue(undefined);
 
-      expect(() => controller.deleteRun('proj-1', 'nonexistent')).toThrow('Run not found: nonexistent');
+      const error = captureError(() => controller.deleteRun('proj-1', 'nonexistent'));
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ statusCode: 404, message: 'Run not found: nonexistent' });
       expect(repository.deleteRun).not.toHaveBeenCalled();
     });
   });

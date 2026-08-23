@@ -1,6 +1,6 @@
 import { toJSONSchema, type ZodType } from 'zod';
 import type { AIProvider, ChatMessage, ChatOptions, ToolCall } from '../../infra/provider.ts';
-import type { SkillDefinition } from './types.ts';
+import type { SkillDefinition, ToolCallRecord } from './types.ts';
 import type { StructuredOutputProfile } from '../structured-output/profile.ts';
 import { Log } from '../../../../shared/services/logger.ts';
 import { jsonrepair } from 'jsonrepair';
@@ -282,6 +282,58 @@ function truncateToolResult(content: string): string {
   return content.slice(0, MAX_TOOL_RESULT_CHARS) + `\n...(truncated, ${content.length} chars total)`;
 }
 
+export class ToolStateProjectionError extends Error {
+  constructor() {
+    super('Tool state projection failed');
+    this.name = 'ToolStateProjectionError';
+  }
+}
+
+function serializeToolResult(result: unknown): { content: string; stateOutput: unknown } {
+  if (typeof result === 'string') return { content: result, stateOutput: result };
+  try {
+    const content = JSON.stringify(result, null, 2);
+    return typeof content === 'string'
+      ? { content, stateOutput: JSON.parse(content) }
+      : { content: 'null', stateOutput: null };
+  } catch {
+    return { content: 'null', stateOutput: null };
+  }
+}
+
+function projectToolCallForState(
+  skill: SkillDefinition,
+  input: unknown,
+  result: unknown,
+  stateOutput: unknown,
+  meta: { latencyMs: number; resultSize: number },
+): { input: unknown; output: unknown } {
+  if (!skill.summarizeForState) return { input, output: stateOutput };
+
+  let projection: unknown;
+  try {
+    projection = skill.summarizeForState(input, result, meta);
+  } catch {
+    throw new ToolStateProjectionError();
+  }
+  let normalizedProjection: unknown;
+  try {
+    const serialized = JSON.stringify(projection);
+    if (serialized === undefined) throw new ToolStateProjectionError();
+    normalizedProjection = JSON.parse(serialized);
+  } catch {
+    throw new ToolStateProjectionError();
+  }
+  if (!normalizedProjection
+    || typeof normalizedProjection !== 'object'
+    || Array.isArray(normalizedProjection)
+    || !Object.hasOwn(normalizedProjection, 'input')
+    || !Object.hasOwn(normalizedProjection, 'output')) {
+    throw new ToolStateProjectionError();
+  }
+  return normalizedProjection as { input: unknown; output: unknown };
+}
+
 function extractedValueSummary(value: unknown): { type: string; keys: string[]; draftTestCases: string } {
   const keys = value && typeof value === 'object' ? Object.keys(value as Record<string, unknown>) : [];
   const draftTestCases = (value as any)?.draftTestCases ? typeof (value as any).draftTestCases : 'missing';
@@ -318,7 +370,7 @@ async function consumeExtractionStream(
 interface ReActResult {
   contentText: string;
   thinkingText: string;
-  toolCallRecords: Array<{ name: string; input: unknown; output: unknown }>;
+  toolCallRecords: ToolCallRecord[];
   usage: { input: number; output: number; reasoning: number };
   conversationMessages: ChatMessage[];
 }
@@ -332,7 +384,11 @@ async function runAgentReActLoop(
   messages: ChatMessage[],
   skills: SkillDefinition[],
   outputProfile: StructuredOutputProfile<unknown>,
-  observer: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
+  observer: {
+    onStep?: (name: string, idx: number, step: string) => void;
+    onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void;
+    onToolCall?: (name: string, toolCall: ToolCallRecord) => void;
+  },
   agentName: string,
   extra: Partial<ChatOptions> | undefined,
 ): Promise<ReActResult> {
@@ -423,7 +479,7 @@ async function runAgentReActLoop(
 
     // Execute tool calls
     const toolResults: ChatMessage[] = [];
-    const criticalTools = new Set(['requirement_detail_query', 'istqb_guide', 'requirement_graph_query', 'flow_detail_query']);
+    const criticalTools = new Set(['requirement_detail_query', 'istqb_guide', 'requirement_graph_query', 'flow_detail_query', 'html_knowledge_query']);
     
     for (const tc of namedToolCalls) {
       const skill = skillMap.get(tc.name);
@@ -435,16 +491,40 @@ async function runAgentReActLoop(
 
       const skillStart = Date.now();
       try {
-        const args = typeof tc.args === 'string' ? JSON.parse(tc.args) : tc.args;
+        let args = tc.args;
+        if (typeof tc.args === 'string') {
+          try {
+            args = JSON.parse(tc.args);
+          } catch (error) {
+            // The HTML skill validates its own untrusted model input and returns
+            // a bounded correction instead of turning malformed arguments into
+            // a critical retrieval failure.
+            if (tc.name !== 'html_knowledge_query') throw error;
+          }
+        }
         const result = await skill.func(args as Record<string, unknown>);
         const latencyMs = Date.now() - skillStart;
+        const serializedResult = serializeToolResult(result);
+        const persisted = projectToolCallForState(skill, args, result, serializedResult.stateOutput, {
+          latencyMs,
+          resultSize: serializedResult.content.length,
+        });
         log.kv(`${tc.name}`, `completed (${latencyMs}ms)`);
-        toolCallRecords.push({ name: tc.name, input: args, output: result });
-        toolResults.push({ role: 'tool', content: truncateToolResult(typeof result === 'string' ? result : JSON.stringify(result, null, 2)), toolCallId: tc.id });
+        const toolCallRecord: ToolCallRecord = {
+          name: tc.name,
+          input: persisted.input,
+          output: persisted.output,
+          latencyMs,
+        };
+        toolCallRecords.push(toolCallRecord);
+        observer?.onToolCall?.(agentName, toolCallRecord);
+        toolResults.push({ role: 'tool', content: truncateToolResult(serializedResult.content), toolCallId: tc.id });
         observer?.onStep?.(agentName, round + 1, `Called ${tc.name} (${latencyMs}ms)`);
       } catch (err: any) {
         const latencyMs = Date.now() - skillStart;
         log.error(`Skill ${tc.name} FAILED (${latencyMs}ms): ${err.message}`);
+
+        if (err instanceof ToolStateProjectionError) throw err;
         
         // Critical Tool Failure - Abort immediately instead of letting the LLM hallucinate
         if (criticalTools.has(tc.name)) {
@@ -452,7 +532,14 @@ async function runAgentReActLoop(
           throw new Error(`Critical tool execution failed: [${tc.name}] ${err.message}. Aborting to prevent context hallucination.`);
         }
 
-        toolCallRecords.push({ name: tc.name, input: tc.args, output: { error: err.message } });
+        const toolCallRecord: ToolCallRecord = {
+          name: tc.name,
+          input: tc.args,
+          output: { error: err.message },
+          latencyMs,
+        };
+        toolCallRecords.push(toolCallRecord);
+        observer?.onToolCall?.(agentName, toolCallRecord);
         toolResults.push({ role: 'tool', content: JSON.stringify({ error: err.message }, null, 2), toolCallId: tc.id });
       }
     }
@@ -493,10 +580,14 @@ export async function callLLMWithStructuredOutput<T>(
   messages: ChatMessage[],
   skills: SkillDefinition[],
   outputProfile: StructuredOutputProfile<T>,
-  observer?: { onStep?: (name: string, idx: number, step: string) => void; onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void },
+  observer?: {
+    onStep?: (name: string, idx: number, step: string) => void;
+    onThinking?: (name: string, text: string, type: 'reasoning' | 'content', phase: 'react' | 'extraction') => void;
+    onToolCall?: (name: string, toolCall: ToolCallRecord) => void;
+  },
   agentName?: string,
   extra?: Partial<ChatOptions>,
-): Promise<{ output: T; usage: { input: number; output: number; reasoning: number }; toolCallRecords?: Array<{ name: string; input: unknown; output: unknown }> }> {
+): Promise<{ output: T; usage: { input: number; output: number; reasoning: number }; toolCallRecords?: ToolCallRecord[] }> {
   const name = agentName ?? '';
 
   // ── Phase 1: ReAct Loop ──
@@ -505,7 +596,11 @@ export async function callLLMWithStructuredOutput<T>(
     messages,
     skills,
     outputProfile,
-    { onStep: observer?.onStep, onThinking: observer?.onThinking },
+    {
+      onStep: observer?.onStep,
+      onThinking: observer?.onThinking,
+      onToolCall: observer?.onToolCall,
+    },
     name,
     extra,
   );

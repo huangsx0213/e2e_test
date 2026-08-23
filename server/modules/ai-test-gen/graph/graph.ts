@@ -9,6 +9,7 @@ import { makeCheckpoint } from './nodes/checkpoints.ts';
 import { makeCompleteNode } from './nodes/complete.ts';
 import type { AgentObserver } from './nodes/types.ts';
 import { Log } from '../../../shared/services/logger.ts';
+import type { ResolvedHtmlKnowledgeRuntime } from './skills/html-knowledge.ts';
 
 export interface BuildGraphOptions {
   provider: AIProvider;
@@ -19,6 +20,7 @@ export interface BuildGraphOptions {
   useCache?: boolean;
   signal?: AbortSignal;
   checkpointer?: BaseCheckpointSaver;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
 }
 
 export function buildTestGenGraph(opts: BuildGraphOptions) {
@@ -28,24 +30,30 @@ export function buildTestGenGraph(opts: BuildGraphOptions) {
   log.info('Building LangGraph state graph with 8 nodes...');
 
   // Create each node
-  const preparationNode = makePreparationNode({ observer });
+  const preparationNode = makePreparationNode({
+    observer,
+    htmlKnowledge: opts.htmlKnowledge,
+  });
   const analystNode = makeAnalystNode({
     provider: opts.provider,
     observer,
     timeoutMs,
     signal,
+    htmlKnowledge: opts.htmlKnowledge,
   });
   const designerNode = makeDesignerNode({
     provider: opts.provider,
     observer,
     timeoutMs,
     signal,
+    htmlKnowledge: opts.htmlKnowledge,
   });
   const qualityNode = makeQualityNode({
     provider: opts.provider,
     observer,
     timeoutMs,
     signal,
+    htmlKnowledge: opts.htmlKnowledge,
   });
   const checkpoint1 = makeCheckpoint(1);
   const checkpoint2 = makeCheckpoint(2);

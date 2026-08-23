@@ -1,13 +1,35 @@
 import { Router } from 'express';
 import { withErrorHandling } from '../../shared/http/async-handler.ts';
-import { TestGenController } from './controller.ts';
+import type { TestGenController } from './controller.ts';
+import { createHtmlKnowledgeRouter } from './html-knowledge/router.ts';
+import { HtmlKnowledgeService } from './html-knowledge/service.ts';
+import { testGenController } from './runtime.ts';
 import { startPipelineSchema, resumePipelineSchema, checkpointUpdateSchema } from './schema.ts';
 
 const router = Router();
-const controller = new TestGenController();
+const controller = testGenController;
+const htmlKnowledgeService = new HtmlKnowledgeService();
 
 function p(param: string | string[]): string {
   return typeof param === 'string' ? param : param[0];
+}
+
+export function createResumeRunHandler(
+  resumeController: Pick<TestGenController, 'resumeRun'>,
+) {
+  return withErrorHandling((req, res) => {
+    const result = resumeController.resumeRun(p(req.params.runId), req.body);
+    res.json(result);
+  });
+}
+
+export function createStartPipelineHandler(
+  startController: Pick<TestGenController, 'startPipeline'>,
+) {
+  return withErrorHandling(async (req, res) => {
+    const result = await startController.startPipeline(p(req.params.projectId), req.body);
+    res.status(result.created ? 201 : 200).json(result);
+  });
 }
 
 // ============================================================
@@ -23,6 +45,11 @@ router.get('/runs/:projectId', withErrorHandling((req, res) => {
 router.get('/active/:projectId', withErrorHandling((req, res) => {
   res.json(controller.getActiveRun(p(req.params.projectId)));
 }));
+
+router.use(
+  '/:projectId/html-knowledge-sets',
+  createHtmlKnowledgeRouter(htmlKnowledgeService),
+);
 
 // 运行详情
 router.get('/:runId', withErrorHandling((req, res) => {
@@ -78,16 +105,10 @@ router.get('/:runId/stream', (req, res) => {
 // ============================================================
 
 // 启动流水线
-router.post('/:projectId/start', withErrorHandling(async (req, res) => {
-  const result = await controller.startPipeline(p(req.params.projectId), req.body);
-  res.status(201).json(result);
-}));
+router.post('/:projectId/start', createStartPipelineHandler(controller));
 
 // 审核通过/重试
-router.post('/:runId/resume', withErrorHandling((req, res) => {
-  const result = controller.resumeRun(p(req.params.runId), req.body);
-  res.json(result);
-}));
+router.post('/:runId/resume', createResumeRunHandler(controller));
 
 // 从失败的 agent 重试
 router.post('/:runId/retry', withErrorHandling(async (req, res) => {
@@ -114,8 +135,8 @@ router.post('/:runId/save-cases', withErrorHandling((req, res) => {
 }));
 
 // 删除
-router.delete('/:runId', withErrorHandling((req, res) => {
-  const result = controller.deleteRun(p(req.params.runId));
+router.delete('/:runId', withErrorHandling(async (req, res) => {
+  const result = await controller.deleteRun(p(req.params.runId));
   res.json(result);
 }));
 

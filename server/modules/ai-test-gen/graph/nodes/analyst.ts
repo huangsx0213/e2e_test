@@ -8,6 +8,10 @@ import { buildAnalystSkills } from '../skills/skills.ts';
 import { pipelineRepo } from '../../repository.ts';
 import { createAnalystOutputProfile } from '../structured-output/analyst.ts';
 import { Log } from '../../../../shared/services/logger.ts';
+import {
+  requireMatchingHtmlKnowledgeRuntime,
+  type ResolvedHtmlKnowledgeRuntime,
+} from '../skills/html-knowledge.ts';
 
 // ============================================================
 // Output Schema
@@ -21,6 +25,7 @@ export interface AnalystNodeOptions {
   observer?: AgentObserver;
   timeoutMs?: number;
   signal?: AbortSignal;
+  htmlKnowledge?: ResolvedHtmlKnowledgeRuntime;
 }
 
 export function makeAnalystNode(opts: AnalystNodeOptions) {
@@ -35,8 +40,13 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
     const selectedFlowCount = state.selectedFlowIds?.length ?? 0;
     log.info(`ENTER ── batch ${batchInfo}, ${reqCount} requirements, selectedFlows=${selectedFlowCount}`);
 
+    const htmlKnowledge = requireMatchingHtmlKnowledgeRuntime(
+      state.projectId,
+      state.htmlKnowledgeReference,
+      opts.htmlKnowledge,
+    );
     // Build skills dynamically inside the node: pass state.runId so previous_batch_conditions_query can query historical agent logs
-    const skills = opts.skills ?? buildAnalystSkills(state.runId, state.currentBatch);
+    const skills = opts.skills ?? buildAnalystSkills(state.runId, state.projectId, state.currentBatch, htmlKnowledge);
     log.kv('skills.available', skills.length);
 
     observer?.onStart?.(agentName);
@@ -91,7 +101,11 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
         messages,
         skills,
         analystOutputProfile,
-        { onStep: observer?.onStep, onThinking: observer?.onThinking },
+        {
+          onStep: observer?.onStep,
+          onThinking: observer?.onThinking,
+          onToolCall: observer?.onToolCall,
+        },
         agentName,
         { signal: nodeSignal, agentName },
       );
@@ -123,7 +137,7 @@ export function makeAnalystNode(opts: AnalystNodeOptions) {
           skillName: tc.name,
           input: tc.input,
           output: tc.output,
-          latencyMs: 0,
+          latencyMs: tc.latencyMs,
           timestamp: Date.now(),
         })),
         phase: 'review-conditions' as const,

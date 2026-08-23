@@ -16,6 +16,7 @@ import { businessConfigSeed } from './seed-data/business-config.ts';
 function clearAllData(): void {
   db.exec(`
     DELETE FROM natural_language_test_cases;
+    DELETE FROM test_gen_html_knowledge_sets WHERE run_id IS NULL;
     DELETE FROM test_gen_runs;
     DELETE FROM report_logs;
     DELETE FROM reports;

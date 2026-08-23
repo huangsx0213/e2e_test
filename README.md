@@ -38,7 +38,7 @@ QuantumQA is a unified, low-code **E2E Testing Matrix** designed for high-fideli
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v18 or higher)
+- Node.js 20.19 or newer
 - npm or yarn
 
 ### Installation

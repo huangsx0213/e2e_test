@@ -62,7 +62,7 @@ describe('createAIProvider', () => {
     expect(requestBody.response_format).toBeUndefined();
   });
 
-  it('does not send response_format for json_schema (not supported by some providers)', async () => {
+  it('uses json_object response_format for structured output on OpenAI-compatible providers', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
       headers: mockFetchHeaders(),
@@ -101,7 +101,7 @@ describe('createAIProvider', () => {
     }
 
     const requestBody = JSON.parse(String(fetchSpy.mock.calls[0][1].body));
-    expect(requestBody.response_format).toBeUndefined();
+    expect(requestBody.response_format).toEqual({ type: 'json_object' });
   });
 
 });

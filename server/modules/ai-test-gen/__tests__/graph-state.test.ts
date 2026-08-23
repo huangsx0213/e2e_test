@@ -20,6 +20,7 @@ describe('graph/state', () => {
       expect(keys).toContain('batchContext');
       expect(keys).toContain('projectContext');
       expect(keys).toContain('businessFlowBlueprints');
+      expect(keys).toContain('htmlKnowledgeReference');
       expect(keys).toContain('phase');
       expect(keys).toContain('errors');
       // Analyst outputs
@@ -39,6 +40,37 @@ describe('graph/state', () => {
       expect(keys).toContain('initializationLogs');
       expect(keys).toContain('tokenBudget');
       expect(keys).toContain('skillCalls');
+
+      // Only the bounded, persistence-safe reference belongs in checkpoints.
+      expect(keys).not.toContain('htmlKnowledge');
+      expect(keys).not.toContain('htmlKnowledgeRuntime');
+      expect(keys).not.toContain('htmlKnowledgeSnapshot');
+      expect(keys).not.toContain('knowledgeIndex');
+      expect(keys).not.toContain('normalizedHtml');
+    });
+
+    it('appends tool-call history across all agents, zero-call updates, and retries', () => {
+      const channel = TestGenStateAnnotation.spec.skillCalls.fromCheckpoint();
+      const analyst = {
+        agent: 'test_analyst', skillName: 'html_knowledge_query', input: {}, output: {}, latencyMs: 1, timestamp: 1,
+      };
+      const designer = {
+        agent: 'test_designer', skillName: 'requirement_detail_query', input: {}, output: {}, latencyMs: 2, timestamp: 2,
+      };
+      const quality = {
+        agent: 'quality_manager', skillName: 'flow_detail_query', input: {}, output: {}, latencyMs: 3, timestamp: 3,
+      };
+      const analystRetry = {
+        agent: 'test_analyst', skillName: 'requirement_graph_query', input: {}, output: {}, latencyMs: 4, timestamp: 4,
+      };
+
+      channel.update([[analyst]]);
+      channel.update([[designer]]);
+      channel.update([[]]);
+      channel.update([[quality]]);
+      channel.update([[analystRetry]]);
+
+      expect(channel.get()).toEqual([analyst, designer, quality, analystRetry]);
     });
   });
 

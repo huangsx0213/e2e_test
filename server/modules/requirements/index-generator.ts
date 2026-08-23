@@ -2,8 +2,9 @@ import { requirementRepo } from './repository.ts';
 import { Log } from '../../shared/services/logger';
 import fs from 'fs';
 import path from 'path';
+import type { Requirement } from '../../../shared/contracts/index.ts';
 
-interface IndexItem {
+export interface IndexItem {
   id: string;
   title: string;
   level: number;
@@ -55,6 +56,12 @@ function truncate(text: string, maxLen: number): string {
 
 export function buildRequirementIndex(projectId: string): IndexItem[] {
   const allReqs = requirementRepo.listByProject(projectId);
+  return buildRequirementIndexFromRequirements(allReqs);
+}
+
+export function buildRequirementIndexFromRequirements(
+  allReqs: readonly Requirement[],
+): IndexItem[] {
   if (allReqs.length === 0) return [];
   const parentMap = new Map(allReqs.map(r => [r.id, r.parentId || null]));
   const childMap = new Map<string, string[]>();

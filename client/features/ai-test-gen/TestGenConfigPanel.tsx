@@ -1,17 +1,21 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useId, useMemo, useRef } from 'react';
 import { ChevronRight, ChevronDown, Play, FileText, GitBranch, Settings2, Zap, CheckCircle, History } from 'lucide-react';
 import type { Requirement } from '../../../shared/contracts/index';
 import { useProviderConfigs, useTestGenRuns } from '../../shared/hooks/useQueryHooks';
 import { parseStoryMarkdown } from '../../shared/requirements/format-parser';
 import { parseACMarkdown } from '../../shared/requirements/format-parser';
 import { FormatSegmentBlock } from '../requirements/FormatSegmentBlock';
+import { HtmlKnowledgeSection } from './HtmlKnowledgeSection';
+import type { HtmlKnowledgeUploadController } from './useHtmlKnowledgeUpload';
 
 interface TestGenConfigPanelProps {
   projectId: string;
   requirements: Requirement[];
   flowStories: Requirement[];
+  htmlKnowledgeUpload: HtmlKnowledgeUploadController;
   onStart: (config: TestGenStartConfig) => void;
   disabled?: boolean;
+  startPending?: boolean;
 }
 
 export interface TestGenStartConfig {
@@ -27,6 +31,7 @@ export interface TestGenStartConfig {
   reasoningSummary?: string;
   textVerbosity?: string;
   referenceRunIds?: string[];
+  htmlKnowledgeSetId?: string;
 }
 
 interface TreeNode {
@@ -269,9 +274,12 @@ export function TestGenConfigPanel({
   projectId,
   requirements,
   flowStories,
+  htmlKnowledgeUpload,
   onStart,
   disabled,
+  startPending = false,
 }: TestGenConfigPanelProps) {
+  const startFeedbackId = useId();
   const { data: providerConfigs = [] } = useProviderConfigs();
   const { data: pastRuns = [] } = useTestGenRuns(projectId);
   const savedConfig = useMemo(() => loadConfig(), []);
@@ -388,6 +396,7 @@ export function TestGenConfigPanel({
   };
 
   const handleReset = () => {
+    void htmlKnowledgeUpload.reset();
     setMode(defaultConfig.mode);
     setShowApprovedOnly(defaultConfig.showApprovedOnly);
     setSelectedModel(defaultConfig.selectedModel);
@@ -417,10 +426,29 @@ export function TestGenConfigPanel({
       reasoningSummary: reasoningSummary || undefined,
       textVerbosity: textVerbosity || undefined,
       referenceRunIds: Array.from(referenceRunIds),
+      htmlKnowledgeSetId: htmlKnowledgeUpload.readySetId,
     });
   };
 
-  const canStart = (selectedReqs.size > 0 || selectedFlows.size > 0) && selectedProvider !== '' && !disabled;
+  const hasSelection = selectedReqs.size > 0 || selectedFlows.size > 0;
+  const controlsDisabled = Boolean(disabled || startPending);
+  const canStart = hasSelection
+    && selectedProvider !== ''
+    && !htmlKnowledgeUpload.isBlockingStart
+    && !controlsDisabled;
+  const startDisabledReason = startPending
+    ? 'Test Gen start is in progress'
+    : !hasSelection
+    ? 'Select at least one requirement or flow'
+    : selectedProvider === ''
+    ? 'Select a model to continue'
+    : htmlKnowledgeUpload.phase === 'invalid' || htmlKnowledgeUpload.phase === 'failed'
+    ? 'Resolve HTML knowledge errors before starting'
+    : htmlKnowledgeUpload.isBlockingStart
+    ? 'Wait for HTML knowledge preparation to finish'
+    : disabled
+    ? 'A Test Gen run is already active'
+    : null;
 
   return (
     <div className="h-full flex overflow-hidden bg-white">
@@ -650,7 +678,8 @@ export function TestGenConfigPanel({
           <h3 className="text-[13px] font-semibold text-slate-700">Settings</h3>
           <button
             onClick={handleReset}
-            className="ml-auto text-[11px] font-medium text-slate-400 hover:text-red-500 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
+            disabled={controlsDisabled}
+            className="ml-auto text-[11px] font-medium text-slate-600 hover:text-red-700 px-2 py-1 rounded-md hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             Reset
           </button>
@@ -771,6 +800,8 @@ export function TestGenConfigPanel({
             )}
           </div>
 
+          <HtmlKnowledgeSection controller={htmlKnowledgeUpload} disabled={controlsDisabled} />
+
           {/* Reference Runs */}
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <div>
@@ -876,17 +907,21 @@ export function TestGenConfigPanel({
           <button
             onClick={handleStart}
             disabled={!canStart}
+            aria-describedby={startDisabledReason ? startFeedbackId : undefined}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow disabled:shadow-none"
           >
             <Play size={16} fill="currentColor" />
-            Start Test Gen
+            {startPending ? 'Starting Test Gen...' : 'Start Test Gen'}
           </button>
-          {!canStart && selectedProvider === '' && (
-            <p className="text-[11px] text-amber-600 mt-1.5 text-center">Select a model to continue</p>
-          )}
-          {!canStart && selectedProvider !== '' && selectedReqs.size === 0 && (
-            <p className="text-[11px] text-slate-400 mt-1.5 text-center">
-              Select at least one requirement
+          {!canStart && startDisabledReason && (
+            <p
+              id={startFeedbackId}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="text-[11px] text-slate-600 mt-1.5 text-center"
+            >
+              {startDisabledReason}
             </p>
           )}
         </div>
