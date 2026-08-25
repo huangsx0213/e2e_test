@@ -51,6 +51,7 @@ describe('AiDrivenRecorderRepository', () => {
         'proj-1',
         'nl-1',
         'pc-1',
+        'agent',
         JSON.stringify({ headless: true }),
       );
     });
@@ -66,6 +67,7 @@ describe('AiDrivenRecorderRepository', () => {
         'proj-1',
         'nl-1',
         null,
+        'agent',
         null,
       );
     });
@@ -77,6 +79,32 @@ describe('AiDrivenRecorderRepository', () => {
       const id = repo.createRun({ id: 'custom-id', projectId: 'proj-1', nlCaseId: 'nl-1' });
 
       expect(id).toBe('custom-id');
+    });
+
+    it('defaults execution_mode to agent and persists overrides', () => {
+      const stmt = makeStmt();
+      mockPrepare.mockReturnValue(stmt);
+
+      repo.createRun({ projectId: 'proj-1', nlCaseId: 'nl-1' });
+      expect(mockPrepare).toHaveBeenCalledWith(expect.stringContaining('execution_mode'));
+      expect(stmt.run).toHaveBeenLastCalledWith(
+        expect.any(String),
+        'proj-1',
+        'nl-1',
+        null,
+        'agent',
+        null,
+      );
+
+      repo.createRun({ projectId: 'proj-1', nlCaseId: 'nl-2', executionMode: 'local' });
+      expect(stmt.run).toHaveBeenLastCalledWith(
+        expect.any(String),
+        'proj-1',
+        'nl-2',
+        null,
+        'local',
+        null,
+      );
     });
   });
 
@@ -227,6 +255,7 @@ describe('AiDrivenRecorderRepository', () => {
         1500,
         null,
         JSON.stringify({ source: 'stagehand' }),
+        null,   // log_details
       );
     });
 
@@ -253,6 +282,35 @@ describe('AiDrivenRecorderRepository', () => {
         null,    // durationMs
         null,    // error
         null,    // provenance
+        null,    // log_details
+      );
+    });
+
+    it('logDetails 序列化进 log_details 列', () => {
+      const stmt = makeStmt();
+      mockPrepare.mockReturnValue(stmt);
+
+      repo.insertStepLog({
+        runId: 'run-1',
+        nlStepIndex: 2,
+        instruction: '点击',
+        logDetails: { verificationWarning: 'w', logs: [{ t: 1, level: 'info', message: 'm' }] },
+      });
+
+      expect(stmt.run).toHaveBeenCalledWith(
+        expect.any(String),
+        'run-1',
+        2,
+        '点击',
+        null,
+        0,
+        null,
+        0,
+        0,
+        null,
+        null,
+        null,
+        JSON.stringify({ verificationWarning: 'w', logs: [{ t: 1, level: 'info', message: 'm' }] }),
       );
     });
   });

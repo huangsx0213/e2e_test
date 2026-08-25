@@ -21,16 +21,27 @@ import {
   AI_RECORDER_STOP_EVENT,
 } from '../../../shared/recording/protocol.ts';
 import {
+  findCaseStartUrl,
+  normalizeExplicitStartUrl,
+} from '../../../shared/recording/start-url.ts';
+import {
   ConflictError,
   NotFoundError,
   ServiceUnavailableError,
   ValidationError,
 } from '../../shared/http/errors.ts';
+import { LocalRecordingRunner } from './local-runner.ts';
+import { getLocalRunHandle } from './run-registry.ts';
+import { RecordingService } from '../recording/service.ts';
+import { defaultIngestService } from '../recording/default-ingest.ts';
 
 export interface StartRunRequest {
   nlCaseId: string;
   providerConfigId: string;
   model?: string;
+  executionMode?: 'agent' | 'local';
+  /** 显式起始 URL 覆盖；缺省时从 NlCase preconditions/testData 解析 */
+  startUrl?: string;
   options?: {
     headless?: boolean;
     maxRetriesPerStep?: number;
@@ -49,6 +60,7 @@ export interface RunStatusResponse {
   runId: string;
   nlCaseId: string;
   status: string;
+  executionMode: 'agent' | 'local';
   progress: {
     total: number;
     completed: number;
@@ -62,15 +74,30 @@ export interface RunStatusResponse {
 export class AiDrivenRecorderController {
   public readonly sseGateway: SSEGateway;
   private readonly repository: AiDrivenRecorderRepository;
+  private readonly localRunner: LocalRecordingRunner;
 
-  constructor(sseGateway: SSEGateway, repository: AiDrivenRecorderRepository) {
+  constructor(
+    sseGateway: SSEGateway,
+    repository: AiDrivenRecorderRepository,
+    localRunner?: LocalRecordingRunner,
+  ) {
     this.sseGateway = sseGateway;
     this.repository = repository;
+    // 可注入以便测试；生产默认走 RecordingService 持久化 live step（与人工录制一致）
+    this.localRunner = localRunner ?? new LocalRecordingRunner({
+      sseGateway,
+      repository,
+      recordingBridge: new RecordingService(defaultIngestService, wsService),
+    });
   }
 
   /** 启动 AI 录制 run */
   startRun(projectId: string, body: unknown): StartRunResponse {
     const params = body as StartRunRequest;
+    const executionMode = params?.executionMode ?? 'agent';
+    if (executionMode !== 'agent' && executionMode !== 'local') {
+      throw new ValidationError('executionMode must be "agent" or "local"');
+    }
     if (!params?.nlCaseId) throw new ValidationError('nlCaseId is required');
     if (!params?.providerConfigId) throw new ValidationError('providerConfigId is required');
 
@@ -82,9 +109,6 @@ export class AiDrivenRecorderController {
     }
     if (nlCase.status !== 'APPROVED') {
       throw new ConflictError(`NlCase must be APPROVED, current: ${nlCase.status}`);
-    }
-    if (nlCase.generatedSuiteId) {
-      throw new ConflictError(`NlCase already has generatedSuiteId: ${nlCase.generatedSuiteId}`);
     }
 
     // 2. 校验 providerConfig 存在且在认证矩阵中允许触发
@@ -107,6 +131,28 @@ export class AiDrivenRecorderController {
       throw new ConflictError(`NlCase already has an active run: ${conflictingRun.id}`);
     }
 
+    // 3.5 local 模式容量预检：409 必须先于一切副作用（draft suite / run 记录）
+    if (executionMode === 'local') {
+      this.localRunner.assertCapacity();
+    }
+
+    // 3.6 起始 URL 前置校验：解析不到时在启动前快速失败（400），
+    //     避免浏览器启动后才发现、浪费一次 run。显式覆盖优先。
+    let startUrl: string | undefined;
+    const rawStartUrl = typeof params?.startUrl === 'string' ? params.startUrl.trim() : '';
+    if (rawStartUrl) {
+      try {
+        startUrl = normalizeExplicitStartUrl(rawStartUrl);
+      } catch (err: any) {
+        throw new ValidationError(err?.message ?? 'Invalid startUrl');
+      }
+    } else if (!findCaseStartUrl(nlCase)) {
+      throw new ValidationError(
+        `NlCase ${nlCase.id} has no resolvable start URL. Add a URL to its preconditions or testData ` +
+          `(key containing "url"), or set "Start URL" in the recorder config.`,
+      );
+    }
+
     // 4. 预分配 draft suiteId / caseId（Agent 完成后回填内容）
     const suiteId = randomId('ai-draft-suite');
     const caseId = randomId('ai-draft-case');
@@ -127,35 +173,51 @@ export class AiDrivenRecorderController {
       nlCaseId: params.nlCaseId,
       providerConfigId: params.providerConfigId,
       options: params.options,
+      executionMode,
     });
 
-    // 6. 发现 idle Agent
-    const activeConnections = agentRegistry.getActiveConnections();
-    let idleAgent: { id: string; ws?: import('ws').WebSocket } | undefined;
-    for (const agent of activeConnections.values()) {
-      if (agent.status === 'idle' && agent.ws) {
-        idleAgent = agent;
-        break;
+    // 6. 按 executionMode 分发：local 在 Server 进程内执行；agent 走既有 WS 下发
+    if (executionMode === 'local') {
+      this.localRunner.start({
+        runId,
+        projectId,
+        nlCase,
+        providerConfig,
+        options: params.options ?? {},
+        ...(startUrl ? { startUrl } : {}),
+        caseId,
+        suiteId,
+      });
+    } else {
+      // 发现 idle Agent
+      const activeConnections = agentRegistry.getActiveConnections();
+      let idleAgent: { id: string; ws?: import('ws').WebSocket } | undefined;
+      for (const agent of activeConnections.values()) {
+        if (agent.status === 'idle' && agent.ws) {
+          idleAgent = agent;
+          break;
+        }
       }
-    }
-    if (!idleAgent) {
-      this.repository.updateRunStatus(runId, 'failed', 'No idle agent available');
-      throw new ServiceUnavailableError('No idle agent available');
-    }
+      if (!idleAgent) {
+        this.repository.updateRunStatus(runId, 'failed', 'No idle agent available');
+        throw new ServiceUnavailableError('No idle agent available');
+      }
 
-    // 7. 通过 WS 下发 AI_RECORDER_START
-    const startPayload = {
-      runId,
-      projectId,
-      nlCase,
-      providerConfigId: params.providerConfigId, // 只传 ID，Agent 通过 WS 请求解密 config
-      model: params.model,
-      options: params.options ?? {},
-      caseId,
-      suiteId,
-    };
-    const packet = JSON.stringify({ event: AI_RECORDER_START_EVENT, data: startPayload });
-    idleAgent.ws!.send(packet);
+      // 通过 WS 下发 AI_RECORDER_START
+      const startPayload = {
+        runId,
+        projectId,
+        nlCase,
+        providerConfigId: params.providerConfigId, // 只传 ID，Agent 通过 WS 请求解密 config
+        model: params.model,
+        ...(startUrl ? { startUrl } : {}),
+        options: params.options ?? {},
+        caseId,
+        suiteId,
+      };
+      const packet = JSON.stringify({ event: AI_RECORDER_START_EVENT, data: startPayload });
+      idleAgent.ws!.send(packet);
+    }
 
     // 8. SSE 广播 run:start
     this.sseGateway.emit(runId, 'run:start', {
@@ -179,6 +241,7 @@ export class AiDrivenRecorderController {
       runId: run.id,
       nlCaseId: run.nl_case_id,
       status: run.status,
+      executionMode: run.execution_mode as 'agent' | 'local',
       progress: {
         total: run.total_steps,
         completed: run.completed_steps,
@@ -208,6 +271,7 @@ export class AiDrivenRecorderController {
       runId: run.id,
       nlCaseId: run.nl_case_id,
       status: run.status,
+      executionMode: run.execution_mode as 'agent' | 'local',
       progress: {
         total: run.total_steps,
         completed: run.completed_steps,
@@ -229,9 +293,14 @@ export class AiDrivenRecorderController {
       throw new NotFoundError('Run does not belong to this project');
     }
 
-    // 如果 run 还在进行中，先发送 STOP 给 Agent
+    // 如果 run 还在进行中：local 走进程内句柄 abort（避免向无关 agent 广播 STOP
+    // 误杀并发 agent 会话）；agent 保持既有 STOP 广播
     if (run.status === 'running' || run.status === 'refining' || run.status === 'replaying') {
-      wsService.broadcast(AI_RECORDER_STOP_EVENT, { runId });
+      if (run.execution_mode === 'local') {
+        getLocalRunHandle(runId)?.abort();
+      } else {
+        wsService.broadcast(AI_RECORDER_STOP_EVENT, { runId });
+      }
     }
 
     // SSE 广播 run:error（让前端关闭连接）

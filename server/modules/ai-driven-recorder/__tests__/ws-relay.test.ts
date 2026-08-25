@@ -5,10 +5,12 @@ import {
   registerAiRecorderWsRelay,
   AI_RECORDER_SSE_CLEANUP_EVENTS,
 } from '../ws-relay.ts';
+import { registerLocalRun, unregisterLocalRun } from '../run-registry.ts';
 import {
   AI_RECORDER_COMPLETE_EVENT,
   AI_RECORDER_PROVIDER_CONFIG_REQUEST_EVENT,
   AI_RECORDER_PROVIDER_CONFIG_RESPONSE_EVENT,
+  AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
 } from '../../../../shared/recording/protocol.ts';
 
 // === Mocks ===
@@ -41,6 +43,7 @@ vi.mock('../../../shared/utils/index.ts', () => ({
 }));
 
 import { globalEventBus } from '../../../shared/services/eventBus.ts';
+import { wsService } from '../../../shared/services/websocketService.ts';
 import { saveDraftSuite } from '../draft-suite-saver.ts';
 import { saveSuite } from '../../suites/repository.ts';
 
@@ -354,6 +357,67 @@ describe('ws-relay', () => {
 
       expect(repository.getDecryptedProviderConfig).not.toHaveBeenCalled();
       expect(sendToAgent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AI_RECORDER_TAKEOVER_COMPLETE 事件', () => {
+    it('通过 wsService.broadcast 以裸事件名转发给 Agent（仅 runId，丢弃其余字段）', () => {
+      globalEventBus.emit('RECORDING_EVENT', {
+        event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+        data: { runId: 'run-1', nlStepIndex: 2, projectId: 'proj-1', spoofedField: 'x' },
+      }, {} as any);
+
+      expect(wsService.broadcast).toHaveBeenCalledWith(
+        AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+        { runId: 'run-1' },
+      );
+    });
+
+    it('已注册的本地 run 收到 envelope 时被 resolveTakeover(true)，未注册 runId 行为不变', () => {
+      const handle = { abort: vi.fn(), resolveTakeover: vi.fn() };
+      registerLocalRun('run-local', handle);
+
+      try {
+        globalEventBus.emit('RECORDING_EVENT', {
+          event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+          data: { runId: 'run-local' },
+        }, {} as any);
+        expect(handle.resolveTakeover).toHaveBeenCalledWith(true);
+
+        // 该文件 harness 会跨测试累积 relay 监听器（同一 emit 触发多次调用），
+        // 因此用 mockClear 后断言“不再新增调用”来验证未注册路径不触碰 handle
+        vi.mocked(handle.resolveTakeover).mockClear();
+
+        // 未注册的 runId：不触碰 handle，broadcast 行为保持原样
+        globalEventBus.emit('RECORDING_EVENT', {
+          event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+          data: { runId: 'run-agent-only' },
+        }, {} as any);
+        expect(handle.resolveTakeover).not.toHaveBeenCalled();
+        expect(wsService.broadcast).toHaveBeenCalledWith(
+          AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+          { runId: 'run-agent-only' },
+        );
+      } finally {
+        unregisterLocalRun('run-local');
+      }
+    });
+
+    it('缺少/空字符串/非字符串 runId 时不广播', () => {
+      globalEventBus.emit('RECORDING_EVENT', {
+        event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+        data: {},
+      }, {} as any);
+      globalEventBus.emit('RECORDING_EVENT', {
+        event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+        data: { runId: '' },
+      }, {} as any);
+      globalEventBus.emit('RECORDING_EVENT', {
+        event: AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
+        data: { runId: 42 },
+      }, {} as any);
+
+      expect(wsService.broadcast).not.toHaveBeenCalled();
     });
   });
 

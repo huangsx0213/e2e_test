@@ -2,6 +2,8 @@
 
 This project leverages an isomorphic monolithic architecture. Alongside running natively on Local Node environments, it provides deep support for deployments across platforms based on Docker and containerized PaaS (such as Hugging Face Spaces, Render, or self-managed Kubernetes clusters). Because the underlying subsystems rely heavily on headless browser execution and API request orchestration, please ensure that the container specifications are adequately provisioned.
 
+> **AI Recorder — Local server mode**: native (non-Docker) hosts that will run AI recording with `Execution Position = Local server` must have Chromium provisioned (`npx playwright install chromium`). Docker images built from the Playwright base image already include it.
+
 ---
 
 ## 1. Core Container Configuration Specifications

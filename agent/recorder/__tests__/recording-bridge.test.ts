@@ -88,6 +88,50 @@ describe('RecordingBridge', () => {
     expect(elemData.element.locators.length).toBeGreaterThan(0);
   });
 
+  it('redacts secret dataValue from step record, description, and stepInfo', () => {
+    const emitStep = vi.fn();
+    const emitElement = vi.fn();
+    const payload: RecorderStepPayload = {
+      action: 'fill',
+      locator: { kind: 'official', selector: 'internal:label="Password"' },
+      locatorCandidates: [],
+      value: 'supersecret',
+      pageUrl: 'https://app.com/login',
+      timestamp: Date.now(),
+    };
+    bridgeConsolidatedStep(payload, 'proj-1', 'case-1', 'suite-1', {
+      secrets: ['supersecret'],
+      emitStepRecorded: emitStep,
+      emitElementRecorded: emitElement,
+    });
+    expect(emitStep).toHaveBeenCalledTimes(1);
+    const stepData = emitStep.mock.calls[0][0];
+    expect(stepData.stepInfo.dataValue).toBe('***');
+    expect(stepData.stepInfo.step.data).toBe('***');
+    expect(stepData.stepInfo.step.description).not.toContain('supersecret');
+    expect(JSON.stringify(stepData)).not.toContain('supersecret');
+  });
+
+  it('goto step keeps full URL even when secrets are configured', () => {
+    const emitStep = vi.fn();
+    const emitElement = vi.fn();
+    const payload: RecorderStepPayload = {
+      action: 'goto',
+      locatorCandidates: [],
+      value: 'https://app.com/dashboard',
+      pageUrl: 'https://app.com/dashboard',
+      timestamp: Date.now(),
+    };
+    bridgeConsolidatedStep(payload, 'proj-1', 'case-1', 'suite-1', {
+      secrets: ['dashboard'],
+      emitStepRecorded: emitStep,
+      emitElementRecorded: emitElement,
+    });
+    const stepData = emitStep.mock.calls[0][0];
+    expect(stepData.stepInfo.step.target).toBe('https://app.com/dashboard');
+    expect(stepData.stepInfo.step.description).toBe('Navigate to https://app.com/dashboard');
+  });
+
   it('goto step has target set to URL', () => {
     const emitStep = vi.fn();
     const emitElement = vi.fn();

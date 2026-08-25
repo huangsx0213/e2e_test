@@ -9,6 +9,7 @@
  */
 
 import { locatorRefToLegacyDef, locatorRefToName } from './locator.ts';
+import { redactValue } from './refiner.ts';
 import type { RecorderStepPayload, LocatorRef } from './protocol.ts';
 import type { UIElement, TestStep } from '../../shared/contracts/index.ts';
 import type { StepInfo, StepRecordedEvent, ElementRecordedEvent } from '../../shared/recording/protocol.ts';
@@ -22,6 +23,12 @@ import type { StepInfo, StepRecordedEvent, ElementRecordedEvent } from '../../sh
  * 如果缺少 projectId，handleStepRecorded 会因 `if (!project || !stepInfo) return;` 静默丢弃。
  */
 export interface BridgeCallbacks {
+  /**
+   * 需脱敏的明文值列表（与 refiner 的 secrets 同源，见 extractSecretValues）。
+   * live consolidated step 会立即被 Server 持久化，发射前必须按同一规则脱敏，
+   * 否则明文密码/token 会落库。可选字段：旧调用方不传时行为不变。
+   */
+  secrets?: string[];
   emitStepRecorded: (data: StepRecordedEvent['data']) => void;
   emitElementRecorded: (data: ElementRecordedEvent['data']) => void;
 }
@@ -37,13 +44,15 @@ export function bridgeConsolidatedStep(
   const legacy = locator ? locatorRefToLegacyDef(locator) : undefined;
   const elementName = locator ? locatorRefToName(locator) : '';
   const dataValue = cleanStep.value || '';
+  // live 步骤发射前按精确匹配脱敏（goto 的 target 仍用原始 URL：导航地址不属于敏感值）
+  const safeValue = redactValue(dataValue, callbacks.secrets ?? []);
 
   const stepRecord: TestStep = {
     id: `step-${Math.random().toString(36).slice(2, 10)}`,
     action: cleanStep.action,
     target: cleanStep.action === 'goto' ? (cleanStep.value || '') : elementName,
-    data: dataValue,
-    description: buildStepDescription(cleanStep.action, locator, dataValue),
+    data: safeValue,
+    description: buildStepDescription(cleanStep.action, locator, safeValue),
     isVerified: true,
     metadata: {
       recorder: {
@@ -72,7 +81,7 @@ export function bridgeConsolidatedStep(
     stepInfo: {
       action: cleanStep.action,
       element: uiElement,
-      dataValue,
+      dataValue: safeValue,
       step: stepRecord,
     },
     type: 'UI',

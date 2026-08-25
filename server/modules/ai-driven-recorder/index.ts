@@ -41,6 +41,32 @@ router.get('/:projectId/runs/:runId', withErrorHandling((req, res) => {
   res.json(status);
 }));
 
+// 查询 run 的步骤日志（历史加载 / 展开详情）
+router.get('/:projectId/runs/:runId/steps', withErrorHandling((req, res) => {
+  const projectId = p(req.params.projectId);
+  const runId = p(req.params.runId);
+  const run = controller.getRun(projectId, runId); // 归属校验：不属于该项目时抛 404
+  const steps = repository.getStepLogs(runId).map((row) => ({
+    nlStepIndex: row.nl_step_index,
+    instruction: row.instruction,
+    expected: row.expected ?? undefined,
+    success: row.success === 1,
+    error: row.error ?? undefined,
+    verificationWarning:
+      row.log_details
+        ? (() => { try { return (JSON.parse(row.log_details) as any).verificationWarning; } catch { return undefined; } })()
+        : undefined,
+    logs:
+      row.log_details
+        ? (() => { try { return (JSON.parse(row.log_details) as any).logs; } catch { return undefined; } })()
+        : undefined,
+    retryCount: row.retry_count,
+    durationMs: row.duration_ms ?? undefined,
+    recordedStepCount: row.recorded_step_count,
+  }));
+  res.json({ runId, runStatus: run.status, steps });
+}));
+
 // SSE 流
 router.get('/:projectId/runs/:runId/stream', (req, res) => {
   sseGateway.attachStream(p(req.params.runId), res);

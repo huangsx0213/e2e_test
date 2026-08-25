@@ -17,8 +17,16 @@ function updateStep(
   patch: Partial<RecorderStep>,
 ): RecorderStep[] {
   return steps.map((s) =>
-    s.nlStepIndex === nlStepIndex ? { ...s, ...patch } : s,
+    s.nlStepIndex === nlStepIndex ? patchDefined(s, patch) : s,
   );
+}
+
+/** 仅合并已定义字段，避免事件缺字段时把已播种的值清成 undefined */
+function patchDefined<T extends object>(target: T, patch: Partial<T>): T {
+  const defined = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  );
+  return { ...target, ...defined };
 }
 
 export function recorderReducer(
@@ -82,6 +90,8 @@ export function recorderReducer(
           status: 'completed',
           recordedStepCount: action.recordedStepCount,
           durationMs: action.durationMs,
+          verificationWarning: action.verificationWarning,
+          logs: action.logs,
         }),
       };
 
@@ -92,6 +102,7 @@ export function recorderReducer(
           status: 'failed',
           error: action.error,
           retryCount: action.retryCount ?? 0,
+          logs: action.logs,
         }),
       };
 

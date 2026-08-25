@@ -278,7 +278,9 @@ export const api = {
       apiFetch<any[]>(`ai-driven-recorder/${projectId}/runs`),
     getRun: (projectId: string, runId: string) =>
       apiFetch<any>(`ai-driven-recorder/${projectId}/runs/${runId}`),
-    start: (projectId: string, config: { nlCaseId: string; providerConfigId: string; options?: Record<string, unknown> }) =>
+    steps: (projectId: string, runId: string) =>
+      apiFetch<{ runId: string; runStatus: string; steps: any[] }>(`ai-driven-recorder/${projectId}/runs/${runId}/steps`),
+    start: (projectId: string, config: { nlCaseId: string; providerConfigId: string; executionMode?: 'agent' | 'local'; startUrl?: string; options?: Record<string, unknown> }) =>
       apiFetch<{ runId: string; suiteId: string; caseId: string; status: string }>(`ai-driven-recorder/${projectId}/runs`, {
         method: 'POST',
         body: JSON.stringify(config),

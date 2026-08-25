@@ -18,7 +18,7 @@
  *   - 不依赖任何外部状态或 IO
  */
 
-import type { TestStep } from '../../shared/contracts/index.ts';
+import type { TestStep, NlTestCaseTestData, StepAssertion, AssertionSource, AssertionOperator } from '../../shared/contracts/index.ts';
 import type { LocatorRef } from './protocol.ts';
 
 export interface RefinerOptions {
@@ -51,6 +51,7 @@ export function refineDraftSuite(
   const runId = options.runId ?? 'unknown';
   let steps = dedupeSteps(rawSteps);
   steps = mapAssertions(steps);
+  steps = applyAiAssertions(steps);
   steps = parameterize(steps, options.parameters ?? {});
   steps = redactSecrets(steps, options.secrets ?? []);
   steps = expandSelectors(steps);
@@ -89,6 +90,50 @@ export function mapAssertions(steps: TestStep[]): TestStep[] {
   });
 }
 
+// === AI 断言挂载 ===
+
+/** 录制元数据里允许的 UI 断言 source / operator 白名单（与执行引擎 assertions.ts 对齐） */
+const AI_ASSERTION_SOURCES: readonly AssertionSource[] = [
+  'UI_TEXT', 'UI_VALUE', 'UI_ATTRIBUTE', 'UI_PAGE_URL', 'UI_PAGE_TITLE',
+  'UI_ELEMENT_VISIBLE', 'UI_ELEMENT_ENABLED', 'UI_ELEMENT_CHECKED', 'UI_ELEMENT_COUNT',
+];
+const AI_ASSERTION_OPERATORS: readonly AssertionOperator[] = [
+  'EQUALS', 'CONTAINS', 'NOT_EQUALS', 'NOT_CONTAINS', 'EXISTS', 'MATCHES_REGEX',
+];
+
+export interface AiAssertionProposal {
+  source: string;
+  operator: string;
+  expectedValue?: string;
+  /** 生成来源的 expected 原文，用于 message 溯源 */
+  expectedText?: string;
+}
+
+/**
+ * 把录制元数据中的 AI 断言建议（metadata.aiAssertion）转为 StepAssertion。
+ * 校验 source/operator 枚举与 expectedValue 必填性，非法建议静默丢弃。
+ * message 带 "AI:" 前缀溯源，用户可在 Test Designer 中编辑或删除。
+ */
+export function applyAiAssertions(steps: TestStep[]): TestStep[] {
+  return steps.map(step => {
+    const meta = (step.metadata as any)?.aiAssertion as AiAssertionProposal | undefined;
+    if (!meta || typeof meta !== 'object') return step;
+    if (!AI_ASSERTION_SOURCES.includes(meta.source as AssertionSource)) return step;
+    if (!AI_ASSERTION_OPERATORS.includes(meta.operator as AssertionOperator)) return step;
+    const needsExpectedValue = meta.operator !== 'EXISTS' && meta.operator !== 'NOT_EXISTS';
+    if (needsExpectedValue && (!meta.expectedValue || typeof meta.expectedValue !== 'string')) return step;
+
+    const assertion: StepAssertion = {
+      id: `assert-${step.id}`,
+      source: meta.source as AssertionSource,
+      operator: meta.operator as AssertionOperator,
+      ...(meta.expectedValue ? { expectedValue: meta.expectedValue } : {}),
+      message: `AI generated from expected: "${(meta.expectedText ?? '').slice(0, 150)}"`,
+    };
+    return { ...step, assertions: [...(step.assertions ?? []), assertion] };
+  });
+}
+
 /**
  * 把已知参数值替换为 ${paramName} 模板语法。
  * 例如 parameters = { username: 'admin' }，则 data='admin' → data='${username}'。
@@ -101,22 +146,66 @@ export function parameterize(steps: TestStep[], parameters: Record<string, strin
     if (!valueToParam.has(value)) valueToParam.set(value, name);
   }
   return steps.map(step => {
-    if (!step.data) return step;
-    const paramName = valueToParam.get(step.data);
-    return paramName ? { ...step, data: `\${${paramName}}` } : step;
+    let next: TestStep = { ...step };
+    if (next.data) {
+      const paramName = valueToParam.get(next.data);
+      if (paramName) next = { ...next, data: `\${${paramName}}` };
+    }
+    // 断言期望值同步参数化（如 UI_VALUE EQUALS admin → ${username}）
+    if (next.assertions && next.assertions.length > 0) {
+      next = {
+        ...next,
+        assertions: next.assertions.map(a =>
+          a.expectedValue && valueToParam.has(a.expectedValue)
+            ? { ...a, expectedValue: `\${${valueToParam.get(a.expectedValue)!}}` }
+            : a,
+        ),
+      };
+    }
+    return next;
   });
+}
+
+/**
+ * 精确匹配脱敏：值等于任一 secret 时替换为 ***（与 redactSecrets 同规则）。
+ * 仅做全串精确匹配，不做子串替换；空值安全。
+ */
+export function redactValue(value: string, secrets: string[]): string {
+  if (!value || secrets.length === 0) return value;
+  return secrets.includes(value) ? '***' : value;
+}
+
+/**
+ * 从 nlCase.testData 提取敏感明文值列表。
+ * key 命中 password/secret/token/key（不区分大小写）即视为敏感，
+ * 与 refiner options 构建处共用，保证两份列表永不漂移。
+ */
+export function extractSecretValues(testData: NlTestCaseTestData[]): string[] {
+  return (testData ?? [])
+    .filter((td) => /password|secret|token|key/i.test(td.key))
+    .map((td) => td.value);
 }
 
 /**
  * 把敏感值替换为 ***，避免明文落盘到 draft suite。
  * secrets 是需要脱敏的明文值列表（如密码、token）。
+ * 同时覆盖断言期望值（如密码输入值断言）。
  */
 export function redactSecrets(steps: TestStep[], secrets: string[]): TestStep[] {
   if (secrets.length === 0) return steps;
-  const secretSet = new Set(secrets);
   return steps.map(step => {
-    if (!step.data) return step;
-    return secretSet.has(step.data) ? { ...step, data: '***' } : step;
+    let next: TestStep = step.data
+      ? { ...step, data: redactValue(step.data, secrets) }
+      : step;
+    if (next.assertions && next.assertions.length > 0) {
+      next = {
+        ...next,
+        assertions: next.assertions.map(a =>
+          a.expectedValue ? { ...a, expectedValue: redactValue(a.expectedValue, secrets) } : a,
+        ),
+      };
+    }
+    return next;
   });
 }
 

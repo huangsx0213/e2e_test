@@ -5,7 +5,7 @@
  * 参考 docs/05-AIDrivenRecordingEngine.md §8.4.5
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import {
   CheckCircle2,
   Loader2,
@@ -14,12 +14,16 @@ import {
   Eye,
   Hand,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
+  ScrollText,
 } from 'lucide-react';
-import type { RecorderRunState } from '@/shared/ai-driven-recorder-run';
+import type { RecorderRunState, RecorderStep } from '@/shared/ai-driven-recorder-run';
 
 interface RecorderRuntimePanelProps {
   state: RecorderRunState;
+  /** Takeover 完成消息发送中，禁用 Done 防止重复确认 */
+  takeoverPending: boolean;
   onTakeoverComplete: (nlStepIndex: number) => void;
   onViewSuite: (suiteId: string, caseId: string) => void;
 }
@@ -34,9 +38,24 @@ const STATUS_CONFIG = {
 
 export function RecorderRuntimePanel({
   state,
+  takeoverPending,
   onTakeoverComplete,
   onViewSuite,
 }: RecorderRuntimePanelProps) {
+  // 展开的步骤卡片（nlStepIndex 集合）；有日志或错误的步骤才可展开
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const toggleStep = useCallback((idx: number) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }, []);
+
+  const hasDetails = (step: RecorderStep) =>
+    (step.logs?.length ?? 0) > 0 || !!step.error || !!step.verificationWarning;
+
   const handleTakeover = useCallback(
     (nlStepIndex: number) => {
       onTakeoverComplete(nlStepIndex);
@@ -104,12 +123,17 @@ export function RecorderRuntimePanel({
             {state.steps.map((step) => {
               const cfg = STATUS_CONFIG[step.status];
               const Icon = cfg.icon;
+              const expandable = hasDetails(step);
+              const expanded = expandedSteps.has(step.nlStepIndex);
               return (
                 <div
                   key={step.nlStepIndex}
                   className={`rounded-xl border ${cfg.bg} border-slate-100 transition-all`}
                 >
-                  <div className="flex items-start gap-3 px-3 py-2.5">
+                  <div
+                    className={`flex items-start gap-3 px-3 py-2.5 ${expandable ? 'cursor-pointer select-none hover:bg-black/[0.02] rounded-t-xl' : ''}`}
+                    onClick={() => expandable && toggleStep(step.nlStepIndex)}
+                  >
                     {/* Status icon */}
                     <div className="mt-0.5 shrink-0">
                       <Icon
@@ -123,7 +147,7 @@ export function RecorderRuntimePanel({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className="text-[10px] font-mono font-bold text-slate-400">
-                          #{step.nlStepIndex}
+                          #{step.nlStepIndex + 1}
                         </span>
                         <span className={`text-[10px] font-bold uppercase tracking-wide ${cfg.color}`}>
                           {cfg.label}
@@ -136,6 +160,13 @@ export function RecorderRuntimePanel({
                         {step.durationMs != null && (
                           <span className="text-[10px] font-mono text-slate-400">
                             {(step.durationMs / 1000).toFixed(1)}s
+                          </span>
+                        )}
+                        {expandable && (
+                          <span className="text-[10px] text-slate-400 flex items-center gap-1 ml-auto">
+                            <ScrollText size={11} />
+                            {expanded ? 'hide log' : 'log'}
+                            {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                           </span>
                         )}
                       </div>
@@ -157,6 +188,14 @@ export function RecorderRuntimePanel({
                         <div className="flex items-start gap-1.5 mt-1.5 px-2 py-1 rounded bg-red-50/50 border border-red-100">
                           <AlertCircle size={11} className="text-red-400 mt-0.5 shrink-0" />
                           <span className="text-xs text-red-600">{step.error}</span>
+                        </div>
+                      )}
+                      {step.verificationWarning && (
+                        <div className="flex items-start gap-1.5 mt-1.5 px-2 py-1 rounded bg-amber-50/60 border border-amber-100">
+                          <AlertCircle size={11} className="text-amber-500 mt-0.5 shrink-0" />
+                          <span className="text-xs text-amber-600">
+                            Verification warning: {step.verificationWarning}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -181,11 +220,61 @@ export function RecorderRuntimePanel({
                         </span>
                         <button
                           onClick={() => handleTakeover(step.nlStepIndex)}
-                          className="flex items-center gap-1 px-3 py-1 rounded-md bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors shrink-0"
+                          disabled={takeoverPending}
+                          className="flex items-center gap-1 px-3 py-1 rounded-md bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                          <CheckCircle2 size={12} />
-                          Done
+                          {takeoverPending ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" />
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={12} />
+                              Done
+                            </>
+                          )}
                         </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded per-step log timeline */}
+                  {expandable && expanded && (
+                    <div
+                      className="px-3 pb-3 -mt-0.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="rounded-lg bg-slate-900 px-3 py-2.5 max-h-64 overflow-y-auto">
+                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                          <ScrollText size={11} />
+                          Execution log
+                        </div>
+                        {(step.logs ?? []).map((entry, i) => (
+                          <div key={i} className="flex items-start gap-2 font-mono text-[11px] leading-relaxed">
+                            <span className="text-slate-500 shrink-0">
+                              +{(entry.t / 1000).toFixed(1)}s
+                            </span>
+                            <span
+                              className={`shrink-0 font-bold ${
+                                entry.level === 'error'
+                                  ? 'text-red-400'
+                                  : entry.level === 'warn'
+                                  ? 'text-amber-400'
+                                  : 'text-emerald-400'
+                              }`}
+                            >
+                              {entry.level.toUpperCase()}
+                            </span>
+                            <span className="text-slate-300 break-all">{entry.message}</span>
+                          </div>
+                        ))}
+                        {(step.logs?.length ?? 0) === 0 && (
+                          <div className="font-mono text-[11px] text-slate-400">
+                            {step.error ? `error: ${step.error}` : ''}
+                            {step.verificationWarning ? `${step.error ? ' · ' : ''}warning: ${step.verificationWarning}` : ''}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

@@ -17,8 +17,9 @@ import {
   startRecording as recorderV2StartRecording,
   stopRecording as recorderV2StopRecording,
 } from './recorder/index.ts';
-import { AIRecordingSession } from './recorder/ai-recording-session.ts';
+import { AIRecordingSession, SessionAbortedError } from './recorder/ai-recording-session.ts';
 import { bridgeConsolidatedStep } from './recorder/recording-bridge.ts';
+import { extractSecretValues } from './recorder/refiner.ts';
 
 type SendMsg = (event: string, data: any) => void;
 type RecordingLogger = Pick<Console, 'info' | 'error' | 'warn'>;
@@ -165,7 +166,7 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
   // === AI 驱动录制事件（与 RECORDING_START/STOP 平级，独立 WS 事件类型） ===
 
   if (parsed.event === AI_RECORDER_START_EVENT) {
-    const { runId, projectId, nlCase, providerConfigId, model, options, caseId, suiteId } = parsed.data || {};
+    const { runId, projectId, nlCase, providerConfigId, model, options, caseId, suiteId, startUrl } = parsed.data || {};
     deps.logger.info(`[AGENT] Received AI Recorder Start: run=${runId} nlCase=${nlCase?.id} model=${model}`);
 
     try {
@@ -173,17 +174,34 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
       deps.setAgentStatus('busy');
       deps.sendMsg('AGENT_HEARTBEAT', { agentId: deps.agentId, status: 'busy' });
 
+      // AbortController 必须先于 provider-config 请求创建并注册到 currentAiSession：
+      // 否则 STOP 在 fetch 挂起期间到达会被静默丢弃（currentAiSession 仍为 null），
+      // 响应返回后浏览器照常启动。
+      const controller = new AbortController();
+      currentAiSession = controller;
+
       // 1. 通过 WS 双向通信获取解密后的 providerConfig（API key 不落盘）
       const providerConfig = await fetchProviderConfigViaWs(deps, runId, providerConfigId);
 
-      // 如果前端指定了 model，覆盖 providerConfig 的默认模型
+      // 如果前端指定了 model，覆盖 providerConfig 的默认模型。
+      // Azure 路径下 buildStagehandModelName 优先取 deployment，
+      // 因此覆盖时必须同步 deployment，否则 UI 选择的模型会被无视。
       if (model) {
         providerConfig.model = model;
+        if (providerConfig.type === 'azure-openai') {
+          providerConfig.deployment = model;
+        }
       }
 
+      // STOP 可能落在 fetch 窗口内；此时不得启动浏览器，直接以用户中止终态收尾
+      if (controller.signal.aborted) throw new SessionAbortedError();
+
       // 2. 初始化 AIRecordingSession + RecordingBridge
-      currentAiSession = new AbortController();
       const session = new AIRecordingSession();
+
+      // live consolidated step 会立即被 Server 持久化，发射前需按与 refiner
+      // 同一份 secrets（同规则同来源）脱敏，避免明文密码/token 落库
+      const secrets = extractSecretValues(nlCase.testData);
 
       // 3. 执行 AI 录制
       //    onConsolidatedStep 通过 bridge 发射 step-recorded + element-recorded
@@ -192,8 +210,11 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
         nlCase,
         providerConfig,
         options,
+        signal: controller.signal,
+        ...(startUrl ? { startUrl } : {}),
         onConsolidatedStep: (step) => {
           bridgeConsolidatedStep(step, projectId, caseId, suiteId, {
+            secrets,
             emitStepRecorded: (stepEventData) => {
               deps.emitRecordingEvent(STEP_RECORDED_EVENT, stepEventData);
             },
@@ -211,7 +232,11 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
           // AI_RECORDER_TAKEOVER_COMPLETE 或超时（120s）
           // Server 收到 step:takeover 后通过 SSE 推送给前端，前端引导用户手动操作
           return new Promise<boolean>((resolve) => {
-            const timeout = setTimeout(() => resolve(false), 120_000);
+            const timeout = setTimeout(() => {
+              // 超时路径同样清理，避免 takeoverCallbacks Map 泄漏
+              takeoverCallbacks.delete(runId);
+              resolve(false);
+            }, 120_000);
             takeoverCallbacks.set(runId, {
               resolve,
               clearTimeout: () => clearTimeout(timeout),
@@ -220,14 +245,28 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
         },
       });
 
-      // 4. 上报完成（携带 replayReport，Server 直接写入 DB，不再调用 AutoReplay）
-      deps.emitRecordingEvent(AI_RECORDER_COMPLETE_EVENT, { runId, result, caseId, suiteId });
-      return true;
-    } catch (error) {
-      deps.logger.error('[AGENT] AI Recorder failed:', error);
+      // 4. 上报完成（refinedSteps 为 Server 落库契约字段，见 ws-relay.handleAiRecorderComplete）
       deps.emitRecordingEvent(AI_RECORDER_COMPLETE_EVENT, {
         runId,
-        error: error instanceof Error ? error.message : String(error),
+        result: {
+          refinedSteps: result.steps,
+          stepBoundaries: result.stepBoundaries,
+          replayCandidateSuite: result.replayCandidateSuite,
+          replayReport: result.replayReport,
+        },
+        caseId,
+        suiteId,
+      });
+      return true;
+    } catch (error) {
+      const aborted = error instanceof SessionAbortedError;
+      // 用户主动中止是正常终态，不打错误日志
+      if (!aborted) deps.logger.error('[AGENT] AI Recorder failed:', error);
+      deps.emitRecordingEvent(AI_RECORDER_COMPLETE_EVENT, {
+        runId,
+        error: aborted
+          ? 'Recording aborted by user'
+          : (error instanceof Error ? error.message : String(error)),
         caseId,
         suiteId,
       });
@@ -241,19 +280,15 @@ export async function handleRecordingControlMessage(parsed: any, deps: Recording
   if (parsed.event === AI_RECORDER_STOP_EVENT) {
     const { runId } = parsed.data || {};
     deps.logger.info(`[AGENT] Received AI Recorder Stop: run=${runId}`);
-    // 中止当前 session（通过 AbortController，AIRecordingSession 内部可检查 signal）
-    if (currentAiSession) {
-      currentAiSession.abort();
-      currentAiSession = null;
-    }
-    // 清理可能挂起的 takeover 回调
+    // 仅触发中止；状态复位统一由 START 处理器的 finally 负责，
+    // 避免 session 仍在收尾时 Agent 就被标记 idle。
+    currentAiSession?.abort();
     const cb = takeoverCallbacks.get(runId);
     if (cb) {
       cb.clearTimeout();
       cb.resolve(false);
       takeoverCallbacks.delete(runId);
     }
-    deps.resetAfterStop();
     return true;
   }
 

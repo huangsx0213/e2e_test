@@ -208,6 +208,8 @@ export interface AiRecorderStartData {
   nlCase: NlTestCase;
   providerConfigId: string;
   model?: string;
+  /** 显式起始 URL 覆盖；提供时 Agent 跳过从用例解析 */
+  startUrl?: string;
   options: { headless?: boolean; maxRetriesPerStep?: number; timeoutPerStep?: number };
   caseId: string;
   suiteId: string;

@@ -40,6 +40,7 @@ export function AiDrivenRecorderPage({
 }: AiDrivenRecorderPageProps) {
   const [activeTab, setActiveTab] = useState<TabId>('new');
   const [showAbortConfirm, setShowAbortConfirm] = useState(false);
+  const [takeoverPending, setTakeoverPending] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const queryClient = useQueryClient();
 
@@ -122,23 +123,39 @@ export function AiDrivenRecorderPage({
 
   const handleTakeoverComplete = useCallback(
     (nlStepIndex: number) => {
-      // 通过 WS 发送 AI_RECORDER_TAKEOVER_COMPLETE
-      // 前端没有直接的 WS 客户端，需要通过 REST 或 WS 发送
-      // 这里通过 WS 发送（复用 useTestCaseRecording 的 WS 模式）
+      const runId = state.runId;
+      if (!runId || !currentProjectId || takeoverPending) return;
+      setTakeoverPending(true);
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}`;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = () => {
+        if (timer) clearTimeout(timer);
+        setTakeoverPending(false);
+        try {
+          ws.close();
+        } catch {
+          // noop
+        }
+      };
       ws.onopen = () => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // 必须用 RECORDING_EVENT 信封：server ws-handlers 只订阅该信封并广播内部事件给 Agent
         ws.send(
           JSON.stringify({
-            event: 'AI_RECORDER_TAKEOVER_COMPLETE',
-            data: { runId: state.runId, nlStepIndex },
+            event: 'RECORDING_EVENT',
+            data: {
+              event: 'AI_RECORDER_TAKEOVER_COMPLETE',
+              data: { runId, nlStepIndex, projectId: currentProjectId },
+            },
           }),
         );
-        ws.close();
+        finish();
       };
+      ws.onerror = finish;
+      timer = setTimeout(finish, 5000); // 兜底：socket 无响应时恢复按钮
     },
-    [state.runId],
+    [state.runId, currentProjectId, takeoverPending],
   );
 
   const handleViewSuite = useCallback(
@@ -236,6 +253,7 @@ export function AiDrivenRecorderPage({
         {activeTab === 'runtime' && (
           <RecorderRuntimePanel
             state={state}
+            takeoverPending={takeoverPending}
             onTakeoverComplete={handleTakeoverComplete}
             onViewSuite={handleViewSuite}
           />

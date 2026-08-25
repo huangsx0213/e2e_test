@@ -10,6 +10,7 @@
  *      - step:start / step:observe / step:complete / step:failed / step:takeover → SSEGateway.emit
  *      - AI_RECORDER_COMPLETE → 保存 draft suite + 更新 run 状态 + SSEGateway.emit('run:complete')
  *      - AI_RECORDER_PROVIDER_CONFIG_REQUEST → 查询 DB 解密 config + 通过 WS 回传 RESPONSE
+ *      - AI_RECORDER_TAKEOVER_COMPLETE → wsService.broadcast 转发给 Agent（ws-handlers 仅投递给浏览器）
  *   3. 不重复调用 RecordingService（step-recorded/element-recorded 已由 ws-handlers.ts 处理）
  *
  * 注意：本模块只做事件路由和 DB 更新，不运行 Refiner、不调 LLM、不碰浏览器。
@@ -21,14 +22,14 @@ import { wsService } from '../../shared/services/websocketService.ts';
 import { Log } from '../../shared/services/logger';
 import { SSEGateway } from '../ai-test-gen/sse-gateway.ts';
 import { AiDrivenRecorderRepository } from './repository.ts';
-import { saveDraftSuite } from './draft-suite-saver.ts';
-import { saveSuite } from '../suites/repository.ts';
-import { nlCaseRepo } from '../nl-cases/repository.ts';
-import type { TestSuite, TestCase } from '../../../shared/contracts/index.ts';
+import { persistStepLog } from './step-log-persistence.ts';
+import { finalizeRunCompletion, finalizeRunFailure } from './finalize-run.ts';
+import { getLocalRunHandle } from './run-registry.ts';
 import {
   AI_RECORDER_COMPLETE_EVENT,
   AI_RECORDER_PROVIDER_CONFIG_REQUEST_EVENT,
   AI_RECORDER_PROVIDER_CONFIG_RESPONSE_EVENT,
+  AI_RECORDER_TAKEOVER_COMPLETE_EVENT,
 } from '../../../shared/recording/protocol.ts';
 
 /**
@@ -102,7 +103,6 @@ export function registerAiRecorderWsRelay(ctx: WsRelayContext): void {
       // === SSE 进度事件 ===
       case 'step:start':
       case 'step:observe':
-      case 'step:failed':
       case 'step:takeover':
       case 'recorder:fallback':
         if (runId) {
@@ -110,9 +110,45 @@ export function registerAiRecorderWsRelay(ctx: WsRelayContext): void {
         }
         return;
 
+      case 'step:failed':
+        if (runId) {
+          // 终态：持久化步骤日志（含时间线与错误），再 SSE 广播
+          try {
+            persistStepLog({
+              runId,
+              nlStepIndex: Number(innerData.nlStepIndex),
+              instruction: innerData.instruction,
+              expected: innerData.expected,
+              success: false,
+              error: innerData.error,
+              retryCount: innerData.retryCount,
+              logs: innerData.logs,
+            });
+          } catch (persistErr: any) {
+            Log.for('ws-relay').warn(`step log persist failed: ${persistErr?.message}`);
+          }
+          sseGateway.emit(runId, 'step:failed', innerData);
+        }
+        return;
+
       case 'step:complete':
         if (runId) {
-          // 更新 step_log（如果需要）+ SSE 广播
+          // 终态：持久化步骤日志（含时间线与验证警告），再 SSE 广播
+          try {
+            persistStepLog({
+              runId,
+              nlStepIndex: Number(innerData.nlStepIndex),
+              instruction: innerData.instruction,
+              expected: innerData.expected,
+              success: true,
+              recordedStepCount: innerData.recordedStepCount,
+              durationMs: innerData.durationMs,
+              verificationWarning: innerData.verificationWarning,
+              logs: innerData.logs,
+            });
+          } catch (persistErr: any) {
+            Log.for('ws-relay').warn(`step log persist failed: ${persistErr?.message}`);
+          }
           sseGateway.emit(runId, 'step:complete', innerData);
         }
         return;
@@ -130,6 +166,21 @@ export function registerAiRecorderWsRelay(ctx: WsRelayContext): void {
         return;
       }
 
+      // === Takeover 完成：ws-handlers 仅投递给订阅 project 的浏览器，Agent 收不到，
+      //     因此仿照 AI_RECORDER_STOP（controller.ts）用 wsService.broadcast 全量转发 ===
+      case AI_RECORDER_TAKEOVER_COMPLETE_EVENT: {
+        if (!runId || typeof runId !== 'string') {
+          Log.for('ws-relay').warn('AI_RECORDER_TAKEOVER_COMPLETE missing/invalid runId, dropped');
+          return;
+        }
+        // 本地会话：解析等待中的 takeover promise（未注册的 agent 会话无此句柄，忽略）
+        getLocalRunHandle(runId)?.resolveTakeover(true);
+        // 仅转发 Agent 消费的 runId，丢弃客户端提供的其余字段（防伪造 payload 透传）
+        wsService.broadcast(AI_RECORDER_TAKEOVER_COMPLETE_EVENT, { runId });
+        Log.for('ws-relay').info(`AI_RECORDER_TAKEOVER_COMPLETE relayed to agents: run=${runId}`);
+        return;
+      }
+
       default:
         return;
     }
@@ -138,9 +189,8 @@ export function registerAiRecorderWsRelay(ctx: WsRelayContext): void {
 
 /**
  * 处理 AI_RECORDER_COMPLETE 事件：
- *   1. 保存 draft suite（如果 result 中包含 refinedSteps）
- *   2. 更新 run 状态为 completed + 写入 replayReport
- *   3. SSE 广播 run:complete
+ * 薄委托层 —— 校验 run 存在后，将成功/失败的持久化逻辑委托给共享的
+ * finalize-run 模块（与 local runner 共用同一实现）。
  */
 function handleAiRecorderComplete(
   runId: string,
@@ -165,66 +215,17 @@ function handleAiRecorderComplete(
 
   // 错误路径
   if (data.error) {
-    repository.updateRunStatus(runId, 'failed', data.error);
-    sseGateway.emit(runId, 'run:error', { runId, error: data.error });
+    finalizeRunFailure({ repository, sseGateway }, { runId, error: data.error });
     return;
   }
 
   const result = data.result || {};
-  const replayReport = result.replayReport;
-
-  // 保存 draft suite（如果 Agent 已预分配 suiteId/caseId，则更新 existing suite；否则创建新的）
-  let suiteId = data.suiteId || run.result_suite_id || '';
-  let caseId = data.caseId || run.result_case_id || '';
-
-  if (result.refinedSteps && result.refinedSteps.length > 0) {
-    if (suiteId) {
-      // 预分配路径：更新已有的 suite/case 为 refined steps
-      const nlCase = nlCaseRepo.get(run.nl_case_id);
-      const caseTitle = nlCase?.title ?? `AI Recorded Case (${run.nl_case_id})`;
-      const testCase: TestCase = {
-        id: caseId,
-        name: caseTitle,
-        description: `AI 驱动录制生成，关联 NlCase: ${run.nl_case_id}`,
-        steps: result.refinedSteps,
-      };
-      const suite: TestSuite = {
-        id: suiteId,
-        projectId: run.project_id,
-        name: `[AI Draft] ${caseTitle}`,
-        description: `AI 驱动录制生成的草稿套件，来源 NlCase: ${run.nl_case_id}`,
-        cases: [testCase],
-        position: 0,
-      };
-      saveSuite(suite);
-      if (nlCase) {
-        nlCaseRepo.save({ ...nlCase, generatedSuiteId: suiteId });
-      }
-    } else {
-      // 兜底：创建新的 draft suite
-      const saved = saveDraftSuite(run.project_id, run.nl_case_id, {
-        steps: result.refinedSteps,
-      });
-      suiteId = saved.suiteId;
-      caseId = saved.caseId;
-    }
-  }
-
-  // 更新 DB
-  repository.updateRunResult(runId, {
-    suiteId: suiteId || undefined,
-    caseId: caseId || undefined,
-    replayReport,
-  });
-  repository.updateRunStatus(runId, 'completed');
-
-  // SSE 广播
-  sseGateway.emit(runId, 'run:complete', {
+  finalizeRunCompletion({ repository, sseGateway }, {
     runId,
-    suiteId,
-    caseId,
-    replayReport,
-    durationMs: run.started_at ? Date.now() - new Date(run.started_at).getTime() : 0,
+    suiteId: data.suiteId || '',
+    caseId: data.caseId || '',
+    refinedSteps: result.refinedSteps,
+    replayReport: result.replayReport,
   });
 }
 

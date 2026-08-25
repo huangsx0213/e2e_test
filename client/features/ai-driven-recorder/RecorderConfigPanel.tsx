@@ -10,6 +10,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Loader2, AlertCircle, ChevronDown, FileText, Settings2, Play } from 'lucide-react';
 import type { StartConfig } from '@/shared/ai-driven-recorder-run';
+import { findCaseStartUrl, normalizeExplicitStartUrl } from '../../../shared/recording/start-url';
 
 interface RecorderConfigPanelProps {
   nlCases: any[];
@@ -53,6 +54,8 @@ interface SavedRecorderConfig {
   model: string;
   modelName: string;
   providerConfigId: string;
+  executionMode: 'agent' | 'local';
+  startUrl: string;
   headless: boolean;
   maxRetries: number;
   timeoutPerStep: number;
@@ -75,6 +78,8 @@ const defaultRecorderConfig: SavedRecorderConfig = {
   model: '',
   modelName: '',
   providerConfigId: '',
+  executionMode: 'agent',
+  startUrl: '',
   headless: false,
   maxRetries: 2,
   timeoutPerStep: 30,
@@ -95,6 +100,8 @@ export function RecorderConfigPanel({
   const [headless, setHeadless] = useState(savedConfig?.headless ?? defaultRecorderConfig.headless);
   const [maxRetries, setMaxRetries] = useState(savedConfig?.maxRetries ?? defaultRecorderConfig.maxRetries);
   const [timeoutPerStep, setTimeoutPerStep] = useState(savedConfig?.timeoutPerStep ?? defaultRecorderConfig.timeoutPerStep);
+  const [executionMode, setExecutionMode] = useState<'agent' | 'local'>(savedConfig?.executionMode ?? defaultRecorderConfig.executionMode);
+  const [startUrl, setStartUrl] = useState<string>(savedConfig?.startUrl ?? defaultRecorderConfig.startUrl);
   const [error, setError] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
@@ -104,11 +111,13 @@ export function RecorderConfigPanel({
       model,
       modelName,
       providerConfigId,
+      executionMode,
+      startUrl,
       headless,
       maxRetries,
       timeoutPerStep,
     });
-  }, [model, modelName, providerConfigId, headless, maxRetries, timeoutPerStep]);
+  }, [model, modelName, providerConfigId, executionMode, startUrl, headless, maxRetries, timeoutPerStep]);
 
   useEffect(() => {
     if (!modelOpen) return;
@@ -154,7 +163,7 @@ export function RecorderConfigPanel({
   }, [modelOptions, model]);
 
   const approvedCases = useMemo(
-    () => nlCases.filter((c) => c.status === 'APPROVED' && !c.generatedSuiteId),
+    () => nlCases.filter((c) => c.status === 'APPROVED'),
     [nlCases],
   );
 
@@ -177,10 +186,28 @@ export function RecorderConfigPanel({
       setError('Please select a model');
       return;
     }
+    // 起始 URL 校验：显式覆盖优先（规范化），否则要求用例可解析
+    let normalizedStartUrl: string | undefined;
+    const trimmedStartUrl = startUrl.trim();
+    if (trimmedStartUrl) {
+      try {
+        normalizedStartUrl = normalizeExplicitStartUrl(trimmedStartUrl);
+      } catch {
+        setError('Invalid Start URL — expected an absolute URL like https://app.example.com/login');
+        return;
+      }
+    } else if (selectedCase && !findCaseStartUrl(selectedCase as any)) {
+      setError(
+        'No start URL found in this case. Add a URL to its preconditions/testData, or enter Start URL above.',
+      );
+      return;
+    }
     const config: StartConfig = {
       nlCaseId,
       providerConfigId,
       model,
+      executionMode,
+      ...(normalizedStartUrl ? { startUrl: normalizedStartUrl } : {}),
       options: { headless, maxRetriesPerStep: maxRetries, timeoutPerStep: timeoutPerStep * 1000 },
     };
     const nlCaseSteps = (selectedCase?.steps ?? []).map((s: any) => ({
@@ -189,7 +216,15 @@ export function RecorderConfigPanel({
       expected: s.expected,
     }));
     onStart(config, nlCaseSteps);
-  }, [nlCaseId, providerConfigId, model, headless, maxRetries, timeoutPerStep, selectedCase, onStart]);
+  }, [nlCaseId, providerConfigId, model, executionMode, startUrl, headless, maxRetries, timeoutPerStep, selectedCase, onStart]);
+
+  // 即时警告：未填覆盖且选中用例解析不到起始 URL（不阻塞，仅提示）
+  const startUrlWarning = useMemo(() => {
+    if (startUrl.trim() || !selectedCase) return null;
+    return findCaseStartUrl(selectedCase as any)
+      ? null
+      : 'This case has no resolvable start URL. Recording will fail unless you set Start URL below or add a URL to the case.';
+  }, [startUrl, selectedCase]);
 
   return (
     <div className="h-full flex overflow-hidden bg-white">
@@ -432,6 +467,49 @@ export function RecorderConfigPanel({
 
           {/* Options */}
           <div className="space-y-3">
+            <div className="p-3 rounded-lg border border-slate-100 bg-white">
+              <label htmlFor="recorder-execution-mode" className="block text-sm font-medium text-slate-700">
+                Execution Position
+              </label>
+              <div className="text-[11px] text-slate-400 mt-0.5 mb-2">Agent process or this server directly (no fallback)</div>
+              <select
+                id="recorder-execution-mode"
+                value={executionMode}
+                onChange={(e) => setExecutionMode(e.target.value as 'agent' | 'local')}
+                disabled={disabled}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white text-slate-700 hover:border-slate-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all disabled:opacity-50"
+              >
+                <option value="agent">Agent</option>
+                <option value="local">Local server</option>
+              </select>
+            </div>
+            <div className="p-3 rounded-lg border border-slate-100 bg-white">
+              <label htmlFor="recorder-start-url" className="block text-sm font-medium text-slate-700">
+                Start URL <span className="text-[11px] font-normal text-slate-400">(optional override)</span>
+              </label>
+              <div className="text-[11px] text-slate-400 mt-0.5 mb-2">
+                Leave empty to resolve from the case's preconditions / testData
+              </div>
+              <input
+                id="recorder-start-url"
+                type="text"
+                value={startUrl}
+                onChange={(e) => setStartUrl(e.target.value)}
+                placeholder="https://app.example.com/login"
+                disabled={disabled}
+                className={`w-full border rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 transition-all disabled:opacity-50 ${
+                  startUrlWarning
+                    ? 'border-amber-300 focus:border-amber-300 focus:ring-amber-500/10'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-blue-300 focus:ring-blue-500/10'
+                }`}
+              />
+            </div>
+            {startUrlWarning && (
+              <div data-testid="start-url-warning" className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                {startUrlWarning}
+              </div>
+            )}
             <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-white">
               <div>
                 <div className="text-sm font-medium text-slate-700">Headless Mode</div>

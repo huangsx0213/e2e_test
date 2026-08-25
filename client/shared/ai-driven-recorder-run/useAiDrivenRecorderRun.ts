@@ -42,10 +42,10 @@ export function useAiDrivenRecorderRun(
         dispatch({ type: 'STEP_OBSERVE', runId: data.runId, nlStepIndex: data.nlStepIndex, hint: data.hint });
         break;
       case 'step:complete':
-        dispatch({ type: 'STEP_COMPLETE', runId: data.runId, nlStepIndex: data.nlStepIndex, recordedStepCount: data.recordedStepCount, durationMs: data.durationMs });
+        dispatch({ type: 'STEP_COMPLETE', runId: data.runId, nlStepIndex: data.nlStepIndex, recordedStepCount: data.recordedStepCount, durationMs: data.durationMs, verificationWarning: data.verificationWarning, logs: data.logs });
         break;
       case 'step:failed':
-        dispatch({ type: 'STEP_FAILED', runId: data.runId, nlStepIndex: data.nlStepIndex, error: data.error, retryCount: data.retryCount });
+        dispatch({ type: 'STEP_FAILED', runId: data.runId, nlStepIndex: data.nlStepIndex, error: data.error ?? data.reason, retryCount: data.retryCount, logs: data.logs });
         break;
       case 'step:takeover':
         dispatch({ type: 'STEP_TAKEOVER', runId: data.runId, nlStepIndex: data.nlStepIndex, reason: data.reason });
@@ -129,8 +129,11 @@ export function useAiDrivenRecorderRun(
       try {
         const result = await api.start(projectId, config);
 
-        const steps: RecorderStep[] = (nlCaseSteps ?? []).map((s) => ({
-          nlStepIndex: s.sequence,
+        // nlStepIndex 必须与 Agent 事件一致（0-based 数组下标）。
+        // 之前误用 1-based 的 sequence，导致 SSE 事件整体错位一格：
+        // 第一条状态被丢弃、后续卡片指令被覆盖、最后一条永远 PENDING。
+        const steps: RecorderStep[] = (nlCaseSteps ?? []).map((s, i) => ({
+          nlStepIndex: i,
           instruction: s.action,
           expected: s.expected,
           status: 'pending' as const,
@@ -179,13 +182,34 @@ export function useAiDrivenRecorderRun(
       try {
         const run = await api.getRun(projectId, runId);
         const replayReport: ReplayReport | undefined = run.replayReport;
+
+        // 从服务端步骤日志重建步骤列表（含每步时间线与验证警告）
+        let steps: RecorderStep[] = [];
+        try {
+          const stepData = await api.steps(projectId, runId);
+          steps = (stepData.steps ?? []).map((s: any) => ({
+            nlStepIndex: s.nlStepIndex,
+            instruction: s.instruction ?? '',
+            expected: s.expected,
+            status: (s.success ? 'completed' : 'failed') as RecorderStep['status'],
+            retryCount: s.retryCount ?? 0,
+            error: s.error,
+            verificationWarning: s.verificationWarning,
+            logs: s.logs,
+            durationMs: s.durationMs,
+            recordedStepCount: s.recordedStepCount,
+          }));
+        } catch {
+          // 步骤日志拉取失败不阻断 run 元数据加载
+        }
+
         dispatch({
           type: 'LOAD_RUN',
           runId,
           state: {
             runId,
             status: run.status,
-            steps: [],
+            steps,
             suiteId: run.result?.suiteId ?? null,
             caseId: run.result?.caseId ?? null,
             replayReport: replayReport ?? null,
@@ -193,11 +217,16 @@ export function useAiDrivenRecorderRun(
             error: run.error ? { message: run.error } : null,
           },
         });
+
+        // 仍在进行中的 run：重新订阅 SSE 继续跟踪
+        if (run.status === 'running' || run.status === 'refining' || run.status === 'replaying') {
+          connectSSE(runId);
+        }
       } catch {
         // best effort
       }
     },
-    [projectId, api],
+    [projectId, api, connectSSE],
   );
 
   // 清理

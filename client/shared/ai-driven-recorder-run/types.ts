@@ -19,6 +19,10 @@ export interface RecorderStep {
   error?: string;
   recordedStepCount?: number;
   durationMs?: number;
+  /** act 已成功但 expected 验证未通过时的非致命警告（录制语义：操作已捕获） */
+  verificationWarning?: string;
+  /** 每步执行时间线（act/observe/extract/verify 各阶段日志） */
+  logs?: Array<{ t: number; level: string; message: string }>;
 }
 
 export interface ReplayReport {
@@ -54,8 +58,8 @@ export type RecorderAction =
   | { type: 'SET_CONNECTED'; connected: boolean }
   | { type: 'STEP_START'; runId: string; nlStepIndex: number; instruction: string; expected?: string }
   | { type: 'STEP_OBSERVE'; runId: string; nlStepIndex: number; hint: string }
-  | { type: 'STEP_COMPLETE'; runId: string; nlStepIndex: number; recordedStepCount?: number; durationMs?: number }
-  | { type: 'STEP_FAILED'; runId: string; nlStepIndex: number; error: string; retryCount?: number }
+  | { type: 'STEP_COMPLETE'; runId: string; nlStepIndex: number; recordedStepCount?: number; durationMs?: number; verificationWarning?: string; logs?: Array<{ t: number; level: string; message: string }> }
+  | { type: 'STEP_FAILED'; runId: string; nlStepIndex: number; error: string; retryCount?: number; logs?: Array<{ t: number; level: string; message: string }> }
   | { type: 'STEP_TAKEOVER'; runId: string; nlStepIndex: number; reason?: string }
   | { type: 'RUN_COMPLETE'; runId: string; suiteId: string; caseId: string; replayReport?: ReplayReport }
   | { type: 'RUN_ERROR'; runId: string; error: string }
@@ -69,6 +73,10 @@ export interface StartConfig {
   nlCaseId: string;
   providerConfigId: string;
   model?: string;
+  /** 执行位置：Agent 进程（默认）或服务端本机。仅显式选择，无自动回退 */
+  executionMode?: 'agent' | 'local';
+  /** 显式起始 URL 覆盖；缺省时由后端从用例 preconditions/testData 解析 */
+  startUrl?: string;
   options?: {
     headless?: boolean;
     maxRetriesPerStep?: number;
@@ -79,6 +87,7 @@ export interface StartConfig {
 export interface AiRecorderApiAdapter {
   runs: (projectId: string) => Promise<any[]>;
   getRun: (projectId: string, runId: string) => Promise<any>;
+  steps: (projectId: string, runId: string) => Promise<{ runId: string; runStatus: string; steps: any[] }>;
   start: (projectId: string, config: StartConfig) => Promise<{ runId: string; suiteId: string; caseId: string; status: string }>;
   delete: (projectId: string, runId: string) => Promise<any>;
   streamUrl: (projectId: string, runId: string) => string;

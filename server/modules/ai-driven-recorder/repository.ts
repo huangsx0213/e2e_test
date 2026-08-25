@@ -23,6 +23,7 @@ export interface AiDrivenRecordingRunRow {
   nl_case_id: string;
   provider_config_id: string | null;
   status: string;
+  execution_mode: string;
   started_at: string;
   completed_at: string | null;
   total_steps: number;
@@ -49,6 +50,7 @@ export interface AiDrivenRecordingStepLogRow {
   duration_ms: number | null;
   error: string | null;
   provenance: string | null;
+  log_details: string | null;
   created_at: string;
 }
 
@@ -78,17 +80,19 @@ export class AiDrivenRecorderRepository {
     nlCaseId: string;
     providerConfigId?: string;
     options?: Record<string, unknown>;
+    executionMode?: 'agent' | 'local';
   }): string {
     const id = params.id ?? randomId('ai-rec-run');
     db.prepare(`
       INSERT INTO ai_driven_recording_runs
-        (id, project_id, nl_case_id, provider_config_id, status, options)
-      VALUES (?, ?, ?, ?, 'running', ?)
+        (id, project_id, nl_case_id, provider_config_id, status, execution_mode, options)
+      VALUES (?, ?, ?, ?, 'running', ?, ?)
     `).run(
       id,
       params.projectId,
       params.nlCaseId,
       params.providerConfigId ?? null,
+      params.executionMode ?? 'agent',
       params.options ? JSON.stringify(params.options) : null,
     );
     return id;
@@ -184,13 +188,14 @@ export class AiDrivenRecorderRepository {
     durationMs?: number;
     error?: string;
     provenance?: unknown;
+    logDetails?: unknown;
   }): string {
     const id = randomId('ai-rec-step');
     db.prepare(`
       INSERT INTO ai_driven_recording_step_logs
         (id, run_id, nl_step_index, instruction, expected, success, assertions,
-         recorded_step_count, retry_count, duration_ms, error, provenance)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         recorded_step_count, retry_count, duration_ms, error, provenance, log_details)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       params.runId,
@@ -204,6 +209,7 @@ export class AiDrivenRecorderRepository {
       params.durationMs ?? null,
       params.error ?? null,
       params.provenance ? JSON.stringify(params.provenance) : null,
+      params.logDetails !== undefined ? JSON.stringify(params.logDetails) : null,
     );
     return id;
   }
